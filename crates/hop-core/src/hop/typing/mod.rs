@@ -1,5 +1,6 @@
 mod compile_match;
 mod export;
+mod match_types;
 mod resolve_type;
 mod rest_spread;
 mod r#type;
@@ -21,9 +22,10 @@ mod variable_scope;
 pub use compile_match::CaseVar;
 pub use compile_match::{Decision, FieldBinding, Variable, compile_decision_tree};
 pub use export::Export;
-pub use r#type::{ComparableType, DataType, EquatableType, HtmlType, NumericType, Type};
+pub use match_types::{MatchTypes, TypeShape};
+pub use r#type::{ComparableType, DataType, EquatableType, NumericType, Type};
 pub use type_error::TypeError;
-pub use type_registry::{EnumVariant, ResolvedType, TypeRegistry};
+pub use type_registry::{RecordField, ResolvedType, TypeRegistry};
 pub use typecheck::typecheck;
 pub use typed_expr::{
     TypedAttribute, TypedAttrs, TypedExpr, TypedLoopSource, TypedRecordUpdateField,
@@ -41,6 +43,4 @@ mod type_registry_builder;
 #[cfg(test)]
 pub use compile_match::compile_arms;
 #[cfg(test)]
-pub use type_registry::RecordField;
-#[cfg(test)]
-pub use type_registry_builder::{Ty, TypeRegistryBuilder};
+pub use type_registry_builder::Ty;

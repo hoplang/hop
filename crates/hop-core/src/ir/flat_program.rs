@@ -3,13 +3,14 @@ use std::fmt;
 use pretty::BoxDoc;
 
 use crate::document::CheapString;
-use crate::hop::typing::{DataType, HtmlType, Type};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::IrHtmlElement;
 use crate::ir::ir_match::IrMatch;
+use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType};
+use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 use super::ir_parameter::IrParameter;
@@ -17,6 +18,7 @@ use super::ir_parameter::IrParameter;
 /// A Flat program.
 #[derive(Debug, Clone)]
 pub struct FlatProgram {
+    pub types: IrTypeDeclarations,
     pub functions: Vec<FlatFunctionDeclaration>,
     pub value_ids: ValueIdCounter,
 }
@@ -37,8 +39,8 @@ pub struct FlatDataFunction {
     /// Whether the function is called from outside the program, so it is kept
     /// even when nothing in the program calls it.
     pub entrypoint: bool,
-    pub parameters: Vec<IrParameter<DataType>>,
-    pub return_type: DataType,
+    pub parameters: Vec<IrParameter<IrDataType>>,
+    pub return_type: IrDataType,
     pub body: FlatDataBlock,
 }
 
@@ -49,7 +51,7 @@ pub struct FlatHtmlFunction {
     /// Whether the function is called from outside the program, so it is kept
     /// even when nothing in the program calls it.
     pub entrypoint: bool,
-    pub parameters: Vec<IrParameter<Type>>,
+    pub parameters: Vec<IrParameter<IrType>>,
     pub body: FlatHtmlBlock,
 }
 
@@ -62,8 +64,8 @@ impl FlatFunctionDeclaration {
     }
 
     /// The parameters, those of a function that returns a value widened to
-    /// Type.
-    pub fn parameters(&self) -> Vec<IrParameter<Type>> {
+    /// IrType.
+    pub fn parameters(&self) -> Vec<IrParameter<IrType>> {
         match self {
             FlatFunctionDeclaration::Data(function) => {
                 function.parameters.iter().map(IrParameter::widen).collect()
@@ -93,13 +95,13 @@ pub struct FlatHtmlBlock {
 
 #[derive(Debug, Clone)]
 pub struct FlatDataBinding {
-    pub binder: IrBinder<DataType>,
+    pub binder: IrBinder<IrDataType>,
     pub op: FlatDataOp,
 }
 
 #[derive(Debug, Clone)]
 pub struct FlatHtmlBinding {
-    pub binder: IrBinder<HtmlType>,
+    pub binder: IrBinder<IrHtmlType>,
     pub op: FlatHtmlOp,
 }
 

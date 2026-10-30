@@ -239,21 +239,17 @@ impl Session {
             ..Default::default()
         };
 
-        let (flat, pages) = orchestrate_flat(self.typed_modules(), options);
+        let (flat, pages) = orchestrate_flat(self.typed_modules(), &self.type_registry, options);
         let flat = if skip_optimization {
             flat
         } else {
             optimize_flat(flat)
         };
-        let writer = flat_to_writer(flat, &self.type_registry, &pages, Some(&shell));
+        let writer = flat_to_writer(flat, &pages, Some(&shell));
 
         match target {
-            TargetLanguage::Typescript => {
-                ir::TsTranspiler::new().transpile_program(&writer, &self.type_registry)
-            }
-            TargetLanguage::Rust => {
-                ir::RustTranspiler::new().transpile_program(&writer, &self.type_registry)
-            }
+            TargetLanguage::Typescript => ir::TsTranspiler::new().transpile_program(&writer),
+            TargetLanguage::Rust => ir::RustTranspiler::new().transpile_program(&writer),
         }
     }
 

@@ -1,8 +1,5 @@
 use crate::document::CheapString;
-use crate::hop::typing::{
-    Constructor, DataType, HtmlType, Pattern, PatternField, RecordField, ResolvedType, Ty, Type,
-    TypeRegistry,
-};
+use crate::hop::typing::{Constructor, Pattern, PatternField, Ty};
 use crate::html::HtmlElementKind;
 use crate::ir::flat_lint;
 use crate::ir::flat_program::{
@@ -17,6 +14,8 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_parameter::IrParameter;
+use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType};
+use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
@@ -25,11 +24,11 @@ use crate::symbols::type_name::TypeName;
 use std::cell::{Ref, RefCell};
 
 pub struct FlatProgramBuilder {
-    registry: TypeRegistry,
+    types: IrTypeDeclarations,
     function_ids: FunctionIdCounter,
     value_ids: RefCell<ValueIdCounter>,
     /// The type of every name bound so far, indexed by the name's number.
-    value_types: RefCell<Vec<Type>>,
+    value_types: RefCell<Vec<IrType>>,
     functions: Vec<DeclaredFunction>,
 }
 
@@ -41,12 +40,12 @@ impl Default for FlatProgramBuilder {
 
 impl FlatProgramBuilder {
     pub fn new() -> Self {
-        Self::with_registry(TypeRegistry::default())
+        Self::with_types(IrTypeDeclarations::default())
     }
 
-    pub fn with_registry(registry: TypeRegistry) -> Self {
+    pub fn with_types(types: IrTypeDeclarations) -> Self {
         FlatProgramBuilder {
-            registry,
+            types,
             function_ids: FunctionIdCounter::new(),
             value_ids: RefCell::new(ValueIdCounter::new()),
             value_types: RefCell::new(Vec::new()),
@@ -103,7 +102,7 @@ impl FlatProgramBuilder {
         let parameters = params
             .into_iter()
             .map(|(name, typ)| {
-                let typ = Type::from(typ);
+                let typ = self.types.ty(typ);
                 let var = self.binder(typ.clone());
                 IrParameter {
                     name: AttributeName::parse(name).unwrap(),
@@ -115,7 +114,7 @@ impl FlatProgramBuilder {
             function,
             entrypoint,
             parameters,
-            return_type: return_type.into(),
+            return_type: self.types.ty(return_type),
             body: None,
         });
         self
@@ -138,7 +137,7 @@ impl FlatProgramBuilder {
         self
     }
 
-    fn binder(&self, typ: Type) -> ValueId {
+    fn binder(&self, typ: IrType) -> ValueId {
         let name = self.value_ids.borrow_mut().next();
         let mut types = self.value_types.borrow_mut();
         assert_eq!(types.len(), name.index());
@@ -147,22 +146,17 @@ impl FlatProgramBuilder {
     }
 
     pub fn build(self) -> FlatProgram {
-        self.build_with_registry().0
-    }
-
-    pub fn build_with_registry(self) -> (FlatProgram, TypeRegistry) {
-        let registry = self.registry;
         let functions = self
             .functions
             .into_iter()
             .map(|declared| match declared.return_type {
-                Type::Html(_) => FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                IrType::Html(_) => FlatFunctionDeclaration::Html(FlatHtmlFunction {
                     function: declared.function,
                     entrypoint: declared.entrypoint,
                     parameters: declared.parameters,
                     body: declared.body.unwrap().into_html(),
                 }),
-                Type::Data(return_type) => FlatFunctionDeclaration::Data(FlatDataFunction {
+                IrType::Data(return_type) => FlatFunctionDeclaration::Data(FlatDataFunction {
                     parameters: declared
                         .parameters
                         .into_iter()
@@ -180,19 +174,20 @@ impl FlatProgramBuilder {
             })
             .collect();
         let program = FlatProgram {
+            types: self.types,
             functions,
             value_ids: self.value_ids.into_inner(),
         };
-        flat_lint::assert_well_typed(&program, &registry);
-        (program, registry)
+        flat_lint::assert_well_typed(&program);
+        program
     }
 }
 
 pub struct DeclaredFunction {
     pub function: IrFunction,
     pub entrypoint: bool,
-    pub parameters: Vec<IrParameter<Type>>,
-    pub return_type: Type,
+    pub parameters: Vec<IrParameter<IrType>>,
+    pub return_type: IrType,
     body: Option<BuiltBlock>,
 }
 
@@ -202,7 +197,7 @@ struct BuiltBlock {
     bindings: Vec<FlatDataBinding>,
     html: Vec<FlatHtmlBinding>,
     result: ValueId,
-    typ: Type,
+    typ: IrType,
 }
 
 impl BuiltBlock {
@@ -258,19 +253,19 @@ impl<'a> FlatBlockBuilder<'a> {
         Self::build(self.program, self.function, body_fn)
     }
 
-    fn typ(&self, name: ValueId) -> Type {
+    fn typ(&self, name: ValueId) -> IrType {
         self.program.value_types.borrow()[name.index()].clone()
     }
 
     /// The type of every name the program has bound so far, indexed by the
     /// name's number. The borrow must end before another name is bound.
-    pub fn value_types(&self) -> Ref<'a, [Type]> {
+    pub fn value_types(&self) -> Ref<'a, [IrType]> {
         Ref::map(self.program.value_types.borrow(), Vec::as_slice)
     }
 
-    fn push(&self, typ: Type, op: FlatDataOp) -> ValueId {
+    fn push(&self, typ: IrType, op: FlatDataOp) -> ValueId {
         let name = self.program.binder(typ.clone());
-        let Type::Data(typ) = typ else {
+        let IrType::Data(typ) = typ else {
             panic!("an op of a value produces data");
         };
         self.bindings.borrow_mut().push(FlatDataBinding {
@@ -281,19 +276,23 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     fn push_html(&self, op: FlatHtmlOp) -> ValueId {
-        let name = self.program.binder(Type::HTML);
+        let name = self.program.binder(IrType::HTML);
         self.html.borrow_mut().push(FlatHtmlBinding {
             binder: IrBinder {
                 var: name,
-                typ: HtmlType,
+                typ: IrHtmlType,
             },
             op,
         });
         name
     }
 
-    pub fn registry(&self) -> &'a TypeRegistry {
-        &self.program.registry
+    pub fn types(&self) -> &'a IrTypeDeclarations {
+        &self.program.types
+    }
+
+    pub fn ty(&self, ty: Ty) -> IrType {
+        self.program.types.ty(ty)
     }
 
     pub fn functions(&self) -> &'a [DeclaredFunction] {
@@ -302,21 +301,21 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn str(&self, s: &str) -> ValueId {
         self.push(
-            Type::STRING,
+            IrType::STRING,
             FlatDataOp::Data(IrDataOp::StringLiteral(CheapString::new(s.to_string()))),
         )
     }
 
     pub fn int(&self, n: i32) -> ValueId {
-        self.push(Type::INT, FlatDataOp::Data(IrDataOp::IntLiteral(n)))
+        self.push(IrType::INT, FlatDataOp::Data(IrDataOp::IntLiteral(n)))
     }
 
     pub fn bool(&self, b: bool) -> ValueId {
-        self.push(Type::BOOL, FlatDataOp::Data(IrDataOp::BoolLiteral(b)))
+        self.push(IrType::BOOL, FlatDataOp::Data(IrDataOp::BoolLiteral(b)))
     }
 
     pub fn float(&self, f: f64) -> ValueId {
-        self.push(Type::FLOAT, FlatDataOp::Data(IrDataOp::FloatLiteral(f)))
+        self.push(IrType::FLOAT, FlatDataOp::Data(IrDataOp::FloatLiteral(f)))
     }
 
     pub fn param(&self, name: &str) -> ValueId {
@@ -330,19 +329,22 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn eq(&self, left: ValueId, right: ValueId) -> ValueId {
-        self.push(Type::BOOL, FlatDataOp::Data(IrDataOp::Equals(left, right)))
+        self.push(
+            IrType::BOOL,
+            FlatDataOp::Data(IrDataOp::Equals(left, right)),
+        )
     }
 
     pub fn lt(&self, left: ValueId, right: ValueId) -> ValueId {
         self.push(
-            Type::BOOL,
+            IrType::BOOL,
             FlatDataOp::Data(IrDataOp::LessThan(left, right)),
         )
     }
 
     pub fn lte(&self, left: ValueId, right: ValueId) -> ValueId {
         self.push(
-            Type::BOOL,
+            IrType::BOOL,
             FlatDataOp::Data(IrDataOp::LessThanOrEqual(left, right)),
         )
     }
@@ -370,7 +372,7 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn not(&self, operand: ValueId) -> ValueId {
         self.push(
-            Type::BOOL,
+            IrType::BOOL,
             FlatDataOp::Data(IrDataOp::BoolNegation(operand)),
         )
     }
@@ -384,28 +386,28 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn array(&self, elements: impl IntoIterator<Item = ValueId>) -> ValueId {
         let elements: Vec<ValueId> = elements.into_iter().collect();
-        let Type::Data(element_type) = self.typ(elements[0]) else {
+        let IrType::Data(element_type) = self.typ(elements[0]) else {
             panic!();
         };
         self.push(
-            Type::array(element_type),
+            IrType::array(element_type),
             FlatDataOp::Data(IrDataOp::Array(elements)),
         )
     }
 
-    pub fn empty_array(&self, element_type: Type) -> ValueId {
-        let Type::Data(element_type) = element_type else {
+    pub fn empty_array(&self, element_type: IrType) -> ValueId {
+        let IrType::Data(element_type) = element_type else {
             panic!();
         };
         self.push(
-            Type::array(element_type),
+            IrType::array(element_type),
             FlatDataOp::Data(IrDataOp::Array(Vec::new())),
         )
     }
 
     pub fn array_from_range(&self, start: ValueId, end: ValueId) -> ValueId {
         self.push(
-            Type::array(DataType::Int),
+            IrType::array(IrDataType::Int),
             FlatDataOp::Data(IrDataOp::ArrayFromRange(start, end)),
         )
     }
@@ -415,45 +417,48 @@ impl<'a> FlatBlockBuilder<'a> {
         let element_types = elements
             .iter()
             .map(|element| match self.typ(*element) {
-                Type::Data(element_type) => element_type,
-                Type::Html(_) => panic!(),
+                IrType::Data(element_type) => element_type,
+                IrType::Html(_) => panic!(),
             })
             .collect();
         self.push(
-            Type::Data(DataType::Tuple(element_types)),
+            IrType::Data(IrDataType::Tuple(element_types)),
             FlatDataOp::Data(IrDataOp::Tuple(elements)),
         )
     }
 
     pub fn tuple_index(&self, tuple: ValueId, index: usize) -> ValueId {
-        let Type::Data(DataType::Tuple(elements)) = self.typ(tuple) else {
+        let IrType::Data(IrDataType::Tuple(elements)) = self.typ(tuple) else {
             panic!();
         };
         self.push(
-            Type::Data(elements[index].clone()),
+            IrType::Data(elements[index].clone()),
             FlatDataOp::Data(IrDataOp::TupleIndex(tuple, index)),
         )
     }
 
     pub fn int_to_string(&self, value: ValueId) -> ValueId {
-        self.push(Type::STRING, FlatDataOp::Data(IrDataOp::IntToString(value)))
+        self.push(
+            IrType::STRING,
+            FlatDataOp::Data(IrDataOp::IntToString(value)),
+        )
     }
 
     pub fn float_to_int(&self, value: ValueId) -> ValueId {
-        self.push(Type::INT, FlatDataOp::Data(IrDataOp::FloatToInt(value)))
+        self.push(IrType::INT, FlatDataOp::Data(IrDataOp::FloatToInt(value)))
     }
 
     pub fn int_to_float(&self, value: ValueId) -> ValueId {
-        self.push(Type::FLOAT, FlatDataOp::Data(IrDataOp::IntToFloat(value)))
+        self.push(IrType::FLOAT, FlatDataOp::Data(IrDataOp::IntToFloat(value)))
     }
 
     pub fn record<'f>(
         &self,
-        typ: impl Into<Type>,
+        typ: IrType,
         fields: impl IntoIterator<Item = (&'f str, ValueId)>,
     ) -> ValueId {
         self.push(
-            typ.into(),
+            typ,
             FlatDataOp::Data(IrDataOp::Record(
                 fields
                     .into_iter()
@@ -465,12 +470,12 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn enum_variant_with_fields<'f>(
         &self,
-        typ: impl Into<Type>,
+        typ: IrType,
         variant_name: &str,
         field_values: impl IntoIterator<Item = (&'f str, ValueId)>,
     ) -> ValueId {
         self.push(
-            typ.into(),
+            typ,
             FlatDataOp::Data(IrDataOp::Enum(
                 TypeName::parse(variant_name).unwrap(),
                 field_values
@@ -482,21 +487,21 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn some(&self, inner: ValueId) -> ValueId {
-        let Type::Data(inner_type) = self.typ(inner) else {
+        let IrType::Data(inner_type) = self.typ(inner) else {
             panic!();
         };
         self.push(
-            Type::option(inner_type),
+            IrType::option(inner_type),
             FlatDataOp::Data(IrDataOp::OptionSome(inner)),
         )
     }
 
-    pub fn none(&self, inner_type: Type) -> ValueId {
-        let Type::Data(inner_type) = inner_type else {
+    pub fn none(&self, inner_type: IrType) -> ValueId {
+        let IrType::Data(inner_type) = inner_type else {
             panic!();
         };
         self.push(
-            Type::option(inner_type),
+            IrType::option(inner_type),
             FlatDataOp::Data(IrDataOp::OptionNone),
         )
     }
@@ -516,7 +521,7 @@ impl<'a> FlatBlockBuilder<'a> {
         let MatchExprArms { arms, typ, .. } = arms;
         let typ = typ.unwrap();
         let arms = arms.into_iter();
-        if typ == Type::HTML {
+        if typ == IrType::HTML {
             let arms = arms
                 .map(|arm| IrMatchArm {
                     pattern: arm.pattern,
@@ -534,19 +539,16 @@ impl<'a> FlatBlockBuilder<'a> {
         self.push(typ, FlatDataOp::Match(IrMatch { subject, arms }))
     }
 
-    fn resolve_pat(&self, typ: &Type, pat: Pat, bindings: &mut ArmBindings) -> IrPattern {
+    fn resolve_pat(&self, typ: &IrType, pat: Pat, bindings: &mut ArmBindings) -> IrPattern {
         let constructor = |constructor: Constructor, args: Vec<IrPattern>| Pattern::Constructor {
             constructor,
             args,
             fields: Vec::new(),
         };
-        let resolved = typ
-            .as_data()
-            .and_then(|data| self.program.registry.resolve(data));
-        match (pat, resolved) {
+        match (pat, typ.as_data()) {
             (Pat::Wildcard, _) => Pattern::Wildcard,
             (Pat::Bind(name), _) => {
-                let Type::Data(data) = typ else {
+                let IrType::Data(data) = typ else {
                     panic!("a pattern binds data, not {typ}");
                 };
                 let var = self.program.binder(typ.clone());
@@ -559,23 +561,25 @@ impl<'a> FlatBlockBuilder<'a> {
             (Pat::True, _) => constructor(Constructor::BoolTrue, Vec::new()),
             (Pat::False, _) => constructor(Constructor::BoolFalse, Vec::new()),
             (Pat::None, _) => constructor(Constructor::OptionNone, Vec::new()),
-            (Pat::Some(inner), Some(ResolvedType::Option(inner_type))) => {
-                let inner = self.resolve_pat(&Type::Data(inner_type.clone()), *inner, bindings);
+            (Pat::Some(inner), Some(IrDataType::Option(inner_type))) => {
+                let inner =
+                    self.resolve_pat(&IrType::Data((**inner_type).clone()), *inner, bindings);
                 constructor(Constructor::OptionSome, vec![inner])
             }
-            (Pat::Tuple(elements), Some(ResolvedType::Tuple(element_types)))
+            (Pat::Tuple(elements), Some(IrDataType::Tuple(element_types)))
                 if elements.len() == element_types.len() =>
             {
                 let args = elements
                     .into_iter()
                     .zip(element_types)
                     .map(|(element, element_type)| {
-                        self.resolve_pat(&Type::Data(element_type.clone()), element, bindings)
+                        self.resolve_pat(&IrType::Data(element_type.clone()), element, bindings)
                     })
                     .collect();
                 constructor(Constructor::Tuple, args)
             }
-            (Pat::Record(listed), Some(ResolvedType::Record { name, fields })) => {
+            (Pat::Record(listed), Some(IrDataType::Record(name))) => {
+                let fields = &self.types().record(name).unwrap().fields;
                 Pattern::Constructor {
                     constructor: Constructor::Record {
                         type_name: name.clone(),
@@ -584,8 +588,12 @@ impl<'a> FlatBlockBuilder<'a> {
                     fields: self.resolve_fields(fields, listed, bindings),
                 }
             }
-            (Pat::Variant(variant, listed), Some(ResolvedType::Enum { name, variants })) => {
-                let declared = variants
+            (Pat::Variant(variant, listed), Some(IrDataType::Enum(name))) => {
+                let declared = self
+                    .types()
+                    .enumeration(name)
+                    .unwrap()
+                    .variants
                     .iter()
                     .find(|v| v.name.as_str() == variant)
                     .unwrap();
@@ -604,10 +612,10 @@ impl<'a> FlatBlockBuilder<'a> {
 
     fn resolve_fields(
         &self,
-        declared: &[RecordField],
+        declared: &[IrField],
         listed: Vec<(String, Pat)>,
         bindings: &mut ArmBindings,
-    ) -> Vec<PatternField<IrBinder<DataType>>> {
+    ) -> Vec<PatternField<IrBinder<IrDataType>>> {
         let mut patterns: Vec<(String, IrPattern)> = Vec::new();
         for (field_name, field_pat) in listed {
             assert!(!patterns.iter().any(|(listed, _)| *listed == field_name));
@@ -615,7 +623,7 @@ impl<'a> FlatBlockBuilder<'a> {
                 .iter()
                 .find(|field| field.name.as_str() == field_name)
                 .unwrap();
-            let pattern = self.resolve_pat(&Type::Data(field.typ.clone()), field_pat, bindings);
+            let pattern = self.resolve_pat(&IrType::Data(field.typ.clone()), field_pat, bindings);
             patterns.push((field_name, pattern));
         }
         declared
@@ -636,58 +644,61 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn field_access(&self, object: ValueId, field_str: &str) -> ValueId {
-        let object_type = self.typ(object);
-        let Some(ResolvedType::Record { fields, .. }) = object_type
-            .as_data()
-            .and_then(|data| self.registry().resolve(data))
-        else {
+        let IrType::Data(IrDataType::Record(name)) = self.typ(object) else {
             panic!();
         };
-        let field = fields
+        let field = self
+            .types()
+            .record(&name)
+            .unwrap()
+            .fields
             .iter()
             .find(|f| f.name.as_str() == field_str)
             .unwrap();
         self.push(
-            Type::Data(field.typ.clone()),
+            IrType::Data(field.typ.clone()),
             FlatDataOp::Data(IrDataOp::FieldAccess(object, field.name.clone())),
         )
     }
 
     pub fn string_concat(&self, parts: impl IntoIterator<Item = ValueId>) -> ValueId {
         self.push(
-            Type::STRING,
+            IrType::STRING,
             FlatDataOp::Data(IrDataOp::StringConcat(parts.into_iter().collect())),
         )
     }
 
     pub fn array_length(&self, operand: ValueId) -> ValueId {
-        self.push(Type::INT, FlatDataOp::Data(IrDataOp::ArrayLength(operand)))
+        self.push(
+            IrType::INT,
+            FlatDataOp::Data(IrDataOp::ArrayLength(operand)),
+        )
     }
 
     pub fn array_is_empty(&self, operand: ValueId) -> ValueId {
         self.push(
-            Type::BOOL,
+            IrType::BOOL,
             FlatDataOp::Data(IrDataOp::ArrayIsEmpty(operand)),
         )
     }
 
     pub fn string_is_empty(&self, operand: ValueId) -> ValueId {
         self.push(
-            Type::BOOL,
+            IrType::BOOL,
             FlatDataOp::Data(IrDataOp::StringIsEmpty(operand)),
         )
     }
 
     pub fn option_is_some(&self, operand: ValueId) -> ValueId {
         self.push(
-            Type::BOOL,
+            IrType::BOOL,
             FlatDataOp::Data(IrDataOp::OptionIsSome(operand)),
         )
     }
 
     pub fn option_is_none(&self, operand: ValueId) -> ValueId {
         self.push(
-            Type::BOOL,
+            IrType::BOOL,
             FlatDataOp::Data(IrDataOp::OptionIsNone(operand)),
         )
     }
@@ -737,11 +748,11 @@ impl<'a> FlatBlockBuilder<'a> {
     where
         F: FnOnce(&FlatBlockBuilder<'_>, ValueId) -> ValueId,
     {
-        let Type::Data(DataType::Array(element_type)) = self.typ(array) else {
+        let IrType::Data(IrDataType::Array(element_type)) = self.typ(array) else {
             panic!();
         };
         let typ = *element_type;
-        let var = self.program.binder(Type::Data(typ.clone()));
+        let var = self.program.binder(IrType::Data(typ.clone()));
         let body = self.block(|t| body_fn(t, var)).into_html();
         self.push_html(FlatHtmlOp::For(IrFor {
             var: Some(IrBinder { var, typ }),
@@ -771,7 +782,7 @@ impl<'a> FlatBlockBuilder<'a> {
             .unwrap();
         let function = callee.function.clone();
         let args = args.into_iter().collect();
-        if callee.return_type == Type::HTML {
+        if callee.return_type == IrType::HTML {
             return self.push_html(FlatHtmlOp::Call(function, args));
         }
         self.push(callee.return_type.clone(), FlatDataOp::Call(function, args))
@@ -811,9 +822,9 @@ impl Pat {
 
 pub struct MatchExprArms<'a> {
     builder: &'a FlatBlockBuilder<'a>,
-    subject_type: Type,
+    subject_type: IrType,
     arms: Vec<IrMatchArm<BuiltBlock>>,
-    typ: Option<Type>,
+    typ: Option<IrType>,
 }
 
 pub struct ArmBindings {

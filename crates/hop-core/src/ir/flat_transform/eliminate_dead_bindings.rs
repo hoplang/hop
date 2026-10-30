@@ -35,6 +35,7 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
         })
         .collect();
     FlatProgram {
+        types: program.types,
         functions,
         value_ids: program.value_ids,
     }
@@ -152,10 +153,11 @@ fn eliminate_match<B>(
 mod tests {
 
     use super::*;
-    use crate::hop::typing::{Ty, TypeRegistryBuilder};
+    use crate::hop::typing::Ty;
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
@@ -165,9 +167,9 @@ mod tests {
     #[test]
     fn fuzz_random_programs_evaluate_identically_after_elimination() {
         arbtest::arbtest(|u| {
-            let (program, registry) = random_program(u);
+            let program = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entrypoint_args = random_entrypoint_args(&program, &mut rng, &registry);
+            let entrypoint_args = random_entrypoint_args(&program, &mut rng);
 
             let before_program = program.clone();
             let before: Vec<Option<String>> = entrypoint_args
@@ -363,7 +365,7 @@ mod tests {
 
     #[test]
     fn should_drop_unused_enum_arm_bindings_and_keep_used_ones() {
-        let types = TypeRegistryBuilder::new()
+        let types = IrTypeDeclarationsBuilder::new()
             .enum_(
                 "Shape",
                 [
@@ -373,7 +375,7 @@ mod tests {
             )
             .build();
         check(
-            FlatProgramBuilder::with_registry(types)
+            FlatProgramBuilder::with_types(types)
                 .function("width", [("shape", Ty::named("Shape"))], Ty::Int, |t| {
                     t.match_(t.param("shape"), |m| {
                         m.arm(Pat::variant("Dot", []), |t, _| t.int(0));

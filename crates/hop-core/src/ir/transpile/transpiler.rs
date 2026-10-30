@@ -1,11 +1,10 @@
-use crate::hop::typing::{
-    ComparableType, DataType, EquatableType, NumericType, ResolvedType, Type, TypeRegistry,
-};
+use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_switch::IrSwitch;
+use crate::ir::ir_type::{IrDataType, IrType};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
     WriterBinding, WriterBlock, WriterFunctionDeclaration, WriterOp, WriterPageDeclaration,
@@ -24,14 +23,11 @@ use super::Doc;
 /// the type of the let that holds it, and is passed along where the value
 /// alone does not determine it.
 pub trait Transpiler {
-    fn transpile_program(&mut self, program: &WriterProgram, registry: &TypeRegistry) -> String;
-    /// The registry of the program currently being transpiled. Used to
-    /// resolve named types during type transpilation.
-    fn registry(&self) -> &TypeRegistry;
+    fn transpile_program(&mut self, program: &WriterProgram) -> String;
     /// The type of a name in scope, as the parameter, binder or let that
     /// binds it declares it. Used to pick the form of an op by the types
     /// of its operands.
-    fn name_type(&self, name: ValueId) -> &Type;
+    fn name_type(&self, name: ValueId) -> &IrType;
     fn transpile_page<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -65,7 +61,7 @@ pub trait Transpiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrBinder<DataType>>,
+        var: Option<&'a IrBinder<IrDataType>>,
         array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a>;
@@ -121,45 +117,37 @@ pub trait Transpiler {
     fn transpile_array_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_type: &DataType,
+        element_type: &IrDataType,
     ) -> Doc<'a>;
-    fn transpile_option_type<'a>(&mut self, arena: &'a Arena<'a>, inner_type: &DataType)
-    -> Doc<'a>;
+    fn transpile_option_type<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        inner_type: &IrDataType,
+    ) -> Doc<'a>;
     fn transpile_tuple_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_types: &[DataType],
+        element_types: &[IrDataType],
     ) -> Doc<'a>;
-    fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
+    fn transpile_record_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
     fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
-    fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &Type) -> Doc<'a> {
+    fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrType) -> Doc<'a> {
         match t {
-            Type::Data(data) => self.transpile_data_type(arena, data),
-            Type::Html(_) => self.transpile_html_type(arena),
+            IrType::Data(data) => self.transpile_data_type(arena, data),
+            IrType::Html(_) => self.transpile_html_type(arena),
         }
     }
-    fn transpile_data_type<'a>(&mut self, arena: &'a Arena<'a>, t: &DataType) -> Doc<'a> {
+    fn transpile_data_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrDataType) -> Doc<'a> {
         match t {
-            DataType::Bool => self.transpile_bool_type(arena),
-            DataType::String => self.transpile_string_type(arena),
-            DataType::Float => self.transpile_float_type(arena),
-            DataType::Int => self.transpile_int_type(arena),
-            DataType::Array(elem) => self.transpile_array_type(arena, elem),
-            DataType::Option(inner) => self.transpile_option_type(arena, inner),
-            DataType::Tuple(elements) => self.transpile_tuple_type(arena, elements),
-            DataType::Named { name, .. } => {
-                let is_record = matches!(
-                    self.registry()
-                        .resolve(t)
-                        .expect("named type must be registered"),
-                    ResolvedType::Record { .. }
-                );
-                if is_record {
-                    self.transpile_named_type(arena, name.as_str())
-                } else {
-                    self.transpile_enum_type(arena, name.as_str())
-                }
-            }
+            IrDataType::Bool => self.transpile_bool_type(arena),
+            IrDataType::String => self.transpile_string_type(arena),
+            IrDataType::Float => self.transpile_float_type(arena),
+            IrDataType::Int => self.transpile_int_type(arena),
+            IrDataType::Array(elem) => self.transpile_array_type(arena, elem),
+            IrDataType::Option(inner) => self.transpile_option_type(arena, inner),
+            IrDataType::Tuple(elements) => self.transpile_tuple_type(arena, elements),
+            IrDataType::Record(name) => self.transpile_record_type(arena, name.as_str()),
+            IrDataType::Enum(name) => self.transpile_enum_type(arena, name.as_str()),
         }
     }
 
@@ -179,7 +167,7 @@ pub trait Transpiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        elem_type: &'a DataType,
+        elem_type: &'a IrDataType,
     ) -> Doc<'a>;
     /// The array of the Ints from start to end inclusive.
     fn transpile_array_from_range<'a>(
@@ -192,7 +180,7 @@ pub trait Transpiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        element_types: &'a [DataType],
+        element_types: &'a [IrDataType],
     ) -> Doc<'a>;
     fn transpile_tuple_index<'a>(
         &mut self,
@@ -309,7 +297,7 @@ pub trait Transpiler {
         &mut self,
         arena: &'a Arena<'a>,
         value: Option<ValueId>,
-        inner_type: &'a DataType,
+        inner_type: &'a IrDataType,
     ) -> Doc<'a>;
     fn transpile_match_value<'a>(
         &mut self,
@@ -335,7 +323,7 @@ pub trait Transpiler {
         &mut self,
         arena: &'a Arena<'a>,
         op: &'a WriterOp,
-        typ: &'a Type,
+        typ: &'a IrType,
     ) -> Doc<'a> {
         match op {
             WriterOp::Data(IrDataOp::StringLiteral(value)) => {
@@ -357,37 +345,37 @@ pub trait Transpiler {
                 self.transpile_tuple_index(arena, *tuple, *index)
             }
             WriterOp::Data(IrDataOp::Array(elements)) => match typ {
-                Type::Data(DataType::Array(elem_type)) => {
+                IrType::Data(IrDataType::Array(elem_type)) => {
                     self.transpile_array_literal(arena, elements, elem_type)
                 }
                 _ => unreachable!("Array value must have Array type"),
             },
             WriterOp::Data(IrDataOp::Tuple(elements)) => match typ {
-                Type::Data(DataType::Tuple(element_types)) => {
+                IrType::Data(IrDataType::Tuple(element_types)) => {
                     self.transpile_tuple_literal(arena, elements, element_types)
                 }
                 _ => unreachable!("Tuple value must have Tuple type"),
             },
             WriterOp::Data(IrDataOp::Record(fields)) => match typ {
-                Type::Data(DataType::Named { name, .. }) => {
+                IrType::Data(IrDataType::Record(name)) => {
                     self.transpile_record_literal(arena, name.as_str(), fields)
                 }
-                _ => unreachable!("Record value must have a named type"),
+                _ => unreachable!("Record value must have a Record type"),
             },
             WriterOp::Data(IrDataOp::Enum(variant_name, fields)) => match typ {
-                Type::Data(DataType::Named { name, .. }) => {
+                IrType::Data(IrDataType::Enum(name)) => {
                     self.transpile_enum_literal(arena, name.as_str(), variant_name.as_str(), fields)
                 }
-                _ => unreachable!("Enum value must have a named type"),
+                _ => unreachable!("Enum value must have an Enum type"),
             },
             WriterOp::Data(IrDataOp::OptionSome(value)) => match typ {
-                Type::Data(DataType::Option(inner_type)) => {
+                IrType::Data(IrDataType::Option(inner_type)) => {
                     self.transpile_option_literal(arena, Some(*value), inner_type)
                 }
                 _ => unreachable!("Option value must have Option type"),
             },
             WriterOp::Data(IrDataOp::OptionNone) => match typ {
-                Type::Data(DataType::Option(inner_type)) => {
+                IrType::Data(IrDataType::Option(inner_type)) => {
                     self.transpile_option_literal(arena, None, inner_type)
                 }
                 _ => unreachable!("Option value must have Option type"),

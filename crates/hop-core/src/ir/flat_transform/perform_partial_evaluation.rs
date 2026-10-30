@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::document::CheapString;
-use crate::hop::typing::{Constructor, DataType, Pattern};
+use crate::hop::typing::{Constructor, Pattern};
 use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
     FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
@@ -10,6 +10,7 @@ use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
+use crate::ir::ir_type::IrDataType;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::field_name::FieldName;
 
@@ -36,6 +37,7 @@ use crate::symbols::field_name::FieldName;
 /// reads it, so nothing is left for a second pass.
 pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
     let FlatProgram {
+        types,
         functions,
         mut value_ids,
     } = program;
@@ -65,6 +67,7 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
         })
         .collect();
     FlatProgram {
+        types,
         functions,
         value_ids,
     }
@@ -401,7 +404,7 @@ impl Evaluator<'_> {
                             out.push(FlatDataBinding {
                                 binder: IrBinder {
                                     var: name,
-                                    typ: DataType::String,
+                                    typ: IrDataType::String,
                                 },
                                 op: FlatDataOp::Data(op),
                             });
@@ -561,10 +564,11 @@ mod tests {
 
     use super::*;
     use crate::document::Document;
-    use crate::hop::typing::{Ty, TypeRegistryBuilder};
+    use crate::hop::typing::Ty;
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
@@ -578,9 +582,9 @@ mod tests {
     #[test]
     fn fuzz_random_programs_evaluate_identically_after_partial_evaluation() {
         arbtest::arbtest(|u| {
-            let (program, registry) = random_program(u);
+            let program = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entrypoint_args = random_entrypoint_args(&program, &mut rng, &registry);
+            let entrypoint_args = random_entrypoint_args(&program, &mut rng);
 
             let before_program = program.clone();
             let before: Vec<Result<String, EvalError>> = entrypoint_args
@@ -643,7 +647,11 @@ mod tests {
         );
         let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let (flat, _) = orchestrate_flat(session.typed_modules(), OrchestrateOptions::default());
+        let (flat, _) = orchestrate_flat(
+            session.typed_modules(),
+            session.type_registry(),
+            OrchestrateOptions::default(),
+        );
         check(flat, expected);
     }
 
@@ -882,14 +890,17 @@ mod tests {
 
     #[test]
     fn should_read_a_field_of_a_record_constructor() {
-        let types = TypeRegistryBuilder::new()
+        let types = IrTypeDeclarationsBuilder::new()
             .record("Point", [("x", Ty::Int), ("y", Ty::Int)])
             .build();
         check(
-            FlatProgramBuilder::with_registry(types)
+            FlatProgramBuilder::with_types(types)
                 .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.field_access(
-                        t.record(Ty::named("Point"), [("x", t.param("n")), ("y", t.int(2))]),
+                        t.record(
+                            t.ty(Ty::named("Point")),
+                            [("x", t.param("n")), ("y", t.int(2))],
+                        ),
                         "x",
                     )))
                 })
@@ -1084,18 +1095,18 @@ mod tests {
 
     #[test]
     fn should_select_an_enum_arm_and_bind_its_fields_to_the_constructor_operands() {
-        let types = TypeRegistryBuilder::new()
+        let types = IrTypeDeclarationsBuilder::new()
             .enum_(
                 "Shape",
                 [("Dot", vec![]), ("Circle", vec![("radius", Ty::Int)])],
             )
             .build();
         check(
-            FlatProgramBuilder::with_registry(types)
+            FlatProgramBuilder::with_types(types)
                 .function("area", [("n", Ty::Int)], Ty::Int, |t| {
                     t.match_(
                         t.enum_variant_with_fields(
-                            Ty::named("Shape"),
+                            t.ty(Ty::named("Shape")),
                             "Circle",
                             [("radius", t.param("n"))],
                         ),

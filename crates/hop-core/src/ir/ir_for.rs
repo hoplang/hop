@@ -1,14 +1,14 @@
 use pretty::BoxDoc;
 
-use crate::hop::typing::DataType;
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_type::IrDataType;
 use crate::ir::value_id::ValueId;
 
 /// A loop that runs the body once per element of the array, in order. When
 /// var is None, the loop binds no variable, but still iterates.
 #[derive(Debug, Clone)]
 pub struct IrFor<Body> {
-    pub var: Option<IrBinder<DataType>>,
+    pub var: Option<IrBinder<IrDataType>>,
     pub array: ValueId,
     pub body: Body,
 }

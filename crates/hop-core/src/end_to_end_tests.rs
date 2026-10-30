@@ -201,6 +201,7 @@ fn check_with_asset_path_rewriter(
 
     let (unoptimized_flat, pages) = orchestrate_flat(
         &typed_modules,
+        registry,
         OrchestrateOptions {
             asset_path_rewriter,
             ..Default::default()
@@ -212,8 +213,8 @@ fn check_with_asset_path_rewriter(
     let unoptimized_eval = execute_evaluator(&unoptimized_flat, &pages);
     let optimized_eval = execute_evaluator(&optimized_flat, &pages);
 
-    let unoptimized_program = flat_to_writer(unoptimized_flat, registry, &pages, None);
-    let optimized_program = flat_to_writer(optimized_flat, registry, &pages, None);
+    let unoptimized_program = flat_to_writer(unoptimized_flat, &pages, None);
+    let optimized_program = flat_to_writer(optimized_flat, &pages, None);
 
     let unoptimized_ir = unoptimized_program.to_string();
     let optimized_ir = optimized_program.to_string();
@@ -255,7 +256,7 @@ fn check_with_asset_path_rewriter(
 
     // Test unoptimized version
     let mut ts_transpiler = TsTranspiler::new();
-    let ts_code = ts_transpiler.transpile_program(&unoptimized_program, registry);
+    let ts_code = ts_transpiler.transpile_program(&unoptimized_program);
     if let Err(e) = typecheck_typescript(&ts_code) {
         panic!(
             "TypeScript typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -277,7 +278,7 @@ fn check_with_asset_path_rewriter(
     output.push_str("-- ts (unoptimized) --\nOK\n");
 
     let mut rust_transpiler = RustTranspiler::new();
-    let rust_code = rust_transpiler.transpile_program(&unoptimized_program, registry);
+    let rust_code = rust_transpiler.transpile_program(&unoptimized_program);
     if let Err(e) = typecheck_rust(&rust_code) {
         panic!(
             "Rust typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -299,7 +300,7 @@ fn check_with_asset_path_rewriter(
     output.push_str("-- rust (unoptimized) --\nOK\n");
 
     // Test optimized version
-    let ts_code = ts_transpiler.transpile_program(&optimized_program, registry);
+    let ts_code = ts_transpiler.transpile_program(&optimized_program);
     if let Err(e) = typecheck_typescript(&ts_code) {
         panic!(
             "TypeScript typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -320,7 +321,7 @@ fn check_with_asset_path_rewriter(
     );
     output.push_str("-- ts (optimized) --\nOK\n");
 
-    let rust_code = rust_transpiler.transpile_program(&optimized_program, registry);
+    let rust_code = rust_transpiler.transpile_program(&optimized_program);
     if let Err(e) = typecheck_rust(&rust_code) {
         panic!(
             "Rust typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -356,7 +357,7 @@ mod tests {
     #[ignore]
     fn fuzz_transpile_ts_renders_identically() {
         arbtest::arbtest(|u| {
-            let (program, registry) = random_program_with_test_view(u);
+            let program = random_program_with_test_view(u);
             let flat = program.to_string();
             let pages = IrPage::for_entrypoints(&program);
             let page_name = TypeName::parse("Test").unwrap();
@@ -376,9 +377,9 @@ mod tests {
                 ) => return Ok(()),
                 Err(e) => panic!("Evaluator failed:\n{e}\n\nFlat:\n{flat}"),
             };
-            let program = flat_to_writer(optimize_flat(program), &registry, &pages, None);
+            let program = flat_to_writer(optimize_flat(program), &pages, None);
             let ir = program.to_string();
-            let ts_code = TsTranspiler::new().transpile_program(&program, &registry);
+            let ts_code = TsTranspiler::new().transpile_program(&program);
             if let Err(e) = typecheck_typescript(&ts_code) {
                 panic!(
                     "TypeScript typecheck failed:\n{e}\n\nFlat:\n{flat}\nIR:\n{ir}\nCode:\n{ts_code}"
@@ -399,7 +400,7 @@ mod tests {
     #[ignore]
     fn fuzz_transpile_rust_renders_identically() {
         arbtest::arbtest(|u| {
-            let (program, registry) = random_program_with_test_view(u);
+            let program = random_program_with_test_view(u);
             let flat = program.to_string();
             let pages = IrPage::for_entrypoints(&program);
             let page_name = TypeName::parse("Test").unwrap();
@@ -419,9 +420,9 @@ mod tests {
                 ) => return Ok(()),
                 Err(e) => panic!("Evaluator failed:\n{e}\n\nFlat:\n{flat}"),
             };
-            let program = flat_to_writer(optimize_flat(program), &registry, &pages, None);
+            let program = flat_to_writer(optimize_flat(program), &pages, None);
             let ir = program.to_string();
-            let rust_code = RustTranspiler::new().transpile_program(&program, &registry);
+            let rust_code = RustTranspiler::new().transpile_program(&program);
             let rust_output = execute_rust(&rust_code).unwrap_or_else(|e| {
                 panic!("Rust failed:\n{e}\n\nFlat:\n{flat}\nIR:\n{ir}\nCode:\n{rust_code}")
             });

@@ -4,9 +4,9 @@ use std::sync::Arc;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
 use crate::hop::typing::{
-    Constructor, DataType, HtmlType, Pattern, PatternField, Type, TypedAttribute, TypedExpr,
-    TypedFunctionDeclaration, TypedLoopSource, TypedPageDeclaration, TypedParameter, TypedPattern,
-    TypedRecordUpdateField,
+    Constructor, DataType, Pattern, PatternField, RecordField, ResolvedType, Type, TypeRegistry,
+    TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource, TypedPageDeclaration,
+    TypedParameter, TypedPattern, TypedRecordUpdateField,
 };
 use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
@@ -19,6 +19,8 @@ use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
+use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType};
+use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::attribute_name::AttributeName;
@@ -57,6 +59,7 @@ use super::ir_parameter::IrParameter;
 pub fn typed_to_flat(
     pages: Vec<TypedPageDeclaration>,
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
+    registry: &TypeRegistry,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 ) -> (FlatProgram, Vec<IrPage>) {
     let mut value_ids = ValueIdCounter::new();
@@ -71,7 +74,12 @@ pub fn typed_to_flat(
             .map(|(index, (module, decl))| (((*module).clone(), decl.name.clone()), (index, *decl)))
             .collect();
 
-    let mut compiler = Compiler::new(&mut value_ids, &mut function_ids, asset_path_rewriter);
+    let mut compiler = Compiler::new(
+        &mut value_ids,
+        &mut function_ids,
+        registry,
+        asset_path_rewriter,
+    );
 
     let pages: Vec<CompiledPage> = pages
         .into_iter()
@@ -101,6 +109,7 @@ pub fn typed_to_flat(
 
     (
         FlatProgram {
+            types: lower_type_declarations(registry),
             functions,
             value_ids,
         },
@@ -124,8 +133,8 @@ struct Specialization {
 /// functions: the parameters and the body of each.
 struct CompiledPage {
     name: TypeName,
-    head: Option<(Vec<IrParameter<Type>>, FlatHtmlBlock)>,
-    body: (Vec<IrParameter<Type>>, FlatHtmlBlock),
+    head: Option<(Vec<IrParameter<IrType>>, FlatHtmlBlock)>,
+    body: (Vec<IrParameter<IrType>>, FlatHtmlBlock),
 }
 
 impl CompiledPage {
@@ -167,6 +176,7 @@ fn page_function(function_ids: &mut FunctionIdCounter, member: &str) -> IrFuncti
 struct Compiler<'a> {
     value_id_counter: &'a mut ValueIdCounter,
     function_id_counter: &'a mut FunctionIdCounter,
+    registry: &'a TypeRegistry,
     /// The specializations calls have requested so far, in request order.
     specializations: Vec<Specialization>,
     /// The name each variable in scope stands for.
@@ -193,11 +203,13 @@ impl<'a> Compiler<'a> {
     fn new(
         value_id_counter: &'a mut ValueIdCounter,
         function_id_counter: &'a mut FunctionIdCounter,
+        registry: &'a TypeRegistry,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> Self {
         Compiler {
             value_id_counter,
             function_id_counter,
+            registry,
             specializations: Vec::new(),
             scopes: vec![Vec::new()],
             params: HashMap::new(),
@@ -229,7 +241,7 @@ impl<'a> Compiler<'a> {
                 name: param.var_name.clone().into(),
                 binder: IrBinder {
                     var,
-                    typ: param.var_type.clone(),
+                    typ: lower_type(self.registry, &param.var_type),
                 },
             });
         }
@@ -238,11 +250,12 @@ impl<'a> Compiler<'a> {
         // the shape, as a call passes them.
         for (name, typ) in shape {
             let var = self.value_id_counter.next();
-            self.rest.push((name.clone(), typ.clone(), var));
-            parameters.push(IrParameter {
-                name,
-                binder: IrBinder { var, typ },
-            });
+            let binder = IrBinder {
+                var,
+                typ: lower_type(self.registry, &typ),
+            };
+            self.rest.push((name.clone(), typ, var));
+            parameters.push(IrParameter { name, binder });
         }
 
         let declaration = match &decl.return_type {
@@ -263,7 +276,7 @@ impl<'a> Compiler<'a> {
                             .expect("a function that returns a value takes values only")
                     })
                     .collect(),
-                return_type: return_type.clone(),
+                return_type: lower_data_type(self.registry, return_type),
                 body: self.compile_data_block(&decl.body),
             }),
         };
@@ -290,7 +303,7 @@ impl<'a> Compiler<'a> {
         &mut self,
         params: &[TypedParameter],
         expr: &TypedExpr,
-    ) -> (Vec<IrParameter<Type>>, FlatHtmlBlock) {
+    ) -> (Vec<IrParameter<IrType>>, FlatHtmlBlock) {
         self.push_scope();
         let parameters = params
             .iter()
@@ -298,7 +311,7 @@ impl<'a> Compiler<'a> {
                 name: param.var_name.clone().into(),
                 binder: IrBinder {
                     var: self.bind(&param.var_name),
-                    typ: param.var_type.clone(),
+                    typ: lower_type(self.registry, &param.var_type),
                 },
             })
             .collect();
@@ -356,6 +369,7 @@ impl<'a> Compiler<'a> {
         let Type::Data(typ) = typ else {
             unreachable!("an op of a value produces data");
         };
+        let typ = lower_data_type(self.registry, &typ);
         let name = self.value_id_counter.next();
         self.bindings.push(FlatDataBinding {
             binder: IrBinder { var: name, typ },
@@ -371,7 +385,7 @@ impl<'a> Compiler<'a> {
         self.html.push(FlatHtmlBinding {
             binder: IrBinder {
                 var: name,
-                typ: HtmlType,
+                typ: IrHtmlType,
             },
             op,
         });
@@ -433,7 +447,7 @@ impl<'a> Compiler<'a> {
                 };
                 Pattern::Binding(IrBinder {
                     var: self.bind(&binder.var),
-                    typ,
+                    typ: lower_data_type(self.registry, &typ),
                 })
             }
             Pattern::Constructor {
@@ -814,9 +828,9 @@ impl<'a> Compiler<'a> {
                         let Type::Data(DataType::Array(element_type)) = array_expr.typ() else {
                             unreachable!("a loop over an array has an Array source");
                         };
-                        *element_type
+                        lower_data_type(self.registry, &element_type)
                     }
-                    TypedLoopSource::RangeInclusive { .. } => DataType::Int,
+                    TypedLoopSource::RangeInclusive { .. } => IrDataType::Int,
                 };
                 self.push_scope();
                 let var = var_name.as_ref().map(|name| IrBinder {
@@ -858,7 +872,7 @@ impl<'a> Compiler<'a> {
                                 constructor: Constructor::OptionSome,
                                 args: vec![Pattern::Binding(IrBinder {
                                     var: binding,
-                                    typ: element_type,
+                                    typ: lower_data_type(self.registry, &element_type),
                                 })],
                                 fields: Vec::new(),
                             },
@@ -889,6 +903,72 @@ impl<'a> Compiler<'a> {
     }
 }
 
+fn lower_type_declarations(registry: &TypeRegistry) -> IrTypeDeclarations {
+    let lower_fields = |fields: &[RecordField]| {
+        fields
+            .iter()
+            .map(|field| IrField {
+                name: field.name.clone(),
+                typ: lower_data_type(registry, &field.typ),
+                examples: field.examples.clone(),
+            })
+            .collect()
+    };
+    IrTypeDeclarations {
+        records: registry
+            .records()
+            .map(|(name, fields)| IrRecord {
+                name: name.clone(),
+                fields: lower_fields(fields),
+            })
+            .collect(),
+        enums: registry
+            .enums()
+            .map(|(name, variants)| IrEnum {
+                name: name.clone(),
+                variants: variants
+                    .iter()
+                    .map(|variant| IrVariant {
+                        name: variant.name.clone(),
+                        fields: lower_fields(&variant.fields),
+                    })
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
+fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
+    match typ {
+        Type::Data(data) => IrType::Data(lower_data_type(registry, data)),
+        Type::Html(_) => IrType::Html(IrHtmlType),
+    }
+}
+
+fn lower_data_type(registry: &TypeRegistry, typ: &DataType) -> IrDataType {
+    match typ {
+        DataType::String => IrDataType::String,
+        DataType::Bool => IrDataType::Bool,
+        DataType::Int => IrDataType::Int,
+        DataType::Float => IrDataType::Float,
+        DataType::Array(element) => IrDataType::Array(Box::new(lower_data_type(registry, element))),
+        DataType::Option(element) => {
+            IrDataType::Option(Box::new(lower_data_type(registry, element)))
+        }
+        DataType::Tuple(elements) => IrDataType::Tuple(
+            elements
+                .iter()
+                .map(|element| lower_data_type(registry, element))
+                .collect(),
+        ),
+        DataType::Named { name, .. } => match registry.resolve(typ) {
+            Some(ResolvedType::Record { .. }) => IrDataType::Record(name.clone()),
+            Some(ResolvedType::Enum { .. }) => IrDataType::Enum(name.clone()),
+            _ => panic!("type `{name}` must be declared"),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -911,6 +991,7 @@ mod tests {
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let (flat, pages) = orchestrate_flat(
             session.typed_modules(),
+            session.type_registry(),
             OrchestrateOptions {
                 ..Default::default()
             },

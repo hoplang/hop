@@ -22,6 +22,7 @@ use crate::ir::value_id::{ValueId, ValueIdCounter};
 /// every read of the call's name becomes a read of the body's result.
 pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
     let FlatProgram {
+        types,
         functions,
         mut value_ids,
     } = program;
@@ -106,6 +107,7 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
         .collect();
 
     FlatProgram {
+        types,
         functions,
         value_ids,
     }
@@ -317,9 +319,9 @@ mod tests {
     #[test]
     fn fuzz_random_programs_evaluate_identically_after_inlining() {
         arbtest::arbtest(|u| {
-            let (program, registry) = random_program(u);
+            let program = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entrypoint_args = random_entrypoint_args(&program, &mut rng, &registry);
+            let entrypoint_args = random_entrypoint_args(&program, &mut rng);
 
             let before_program = program.clone();
             let before: Vec<Option<String>> = entrypoint_args

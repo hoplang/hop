@@ -2,12 +2,13 @@
 
 use pretty::BoxDoc;
 
-use crate::hop::typing::{Constructor, DataType, Pattern};
+use crate::hop::typing::{Constructor, Pattern};
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_type::IrDataType;
 use crate::ir::value_id::ValueId;
 
 /// A pattern whose bindings bind names.
-pub type IrPattern = Pattern<IrBinder<DataType>>;
+pub type IrPattern = Pattern<IrBinder<IrDataType>>;
 
 /// A match as written in the source. The first arm whose pattern matches
 /// the subject is taken, and its pattern binds the parts of the subject it
@@ -99,7 +100,7 @@ impl IrPattern {
     }
 
     /// Apply `f` to the binder of each binding of the pattern.
-    pub fn for_each_binding(&self, f: &mut impl FnMut(&IrBinder<DataType>)) {
+    pub fn for_each_binding(&self, f: &mut impl FnMut(&IrBinder<IrDataType>)) {
         match self {
             Pattern::Wildcard => {}
             Pattern::Binding(binder) => f(binder),

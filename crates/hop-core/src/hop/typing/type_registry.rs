@@ -3,6 +3,7 @@ use std::fmt::{self, Display};
 
 use pretty::BoxDoc;
 
+use super::match_types::{MatchTypes, TypeShape};
 use super::r#type::DataType;
 use crate::examples_annotation::ExamplesAnnotation;
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -37,7 +38,7 @@ pub enum ResolvedType<'a> {
     Bool,
     Int,
     Float,
-    Array(&'a DataType),
+    Array,
     Option(&'a DataType),
     Tuple(&'a [DataType]),
     Record {
@@ -108,13 +109,51 @@ impl TypeRegistry {
             DataType::Bool => Some(ResolvedType::Bool),
             DataType::Int => Some(ResolvedType::Int),
             DataType::Float => Some(ResolvedType::Float),
-            DataType::Array(inner) => Some(ResolvedType::Array(inner)),
+            DataType::Array(_) => Some(ResolvedType::Array),
             DataType::Option(inner) => Some(ResolvedType::Option(inner)),
             DataType::Tuple(elements) => Some(ResolvedType::Tuple(elements)),
             DataType::Named { module, name } => match self.defs.get(module)?.get(name)? {
                 TypeDef::Record { fields } => Some(ResolvedType::Record { name, fields }),
                 TypeDef::Enum { variants } => Some(ResolvedType::Enum { name, variants }),
             },
+        }
+    }
+}
+
+impl MatchTypes for TypeRegistry {
+    type Type = DataType;
+
+    fn shape<'a>(&'a self, typ: &'a DataType) -> TypeShape<'a, DataType> {
+        let resolved = self.resolve(typ).expect("named type must be registered");
+        match resolved {
+            ResolvedType::Bool => TypeShape::Bool,
+            ResolvedType::Option(inner) => TypeShape::Option(inner),
+            ResolvedType::Tuple(elements) => TypeShape::Tuple(elements),
+            ResolvedType::Record { name, fields } => TypeShape::Record {
+                name,
+                fields: fields
+                    .iter()
+                    .map(|field| (&field.name, &field.typ))
+                    .collect(),
+            },
+            ResolvedType::Enum { name, variants } => TypeShape::Enum {
+                name,
+                variants: variants
+                    .iter()
+                    .map(|variant| {
+                        let fields = variant
+                            .fields
+                            .iter()
+                            .map(|field| (&field.name, &field.typ))
+                            .collect();
+                        (&variant.name, fields)
+                    })
+                    .collect(),
+            },
+            ResolvedType::String
+            | ResolvedType::Int
+            | ResolvedType::Float
+            | ResolvedType::Array => TypeShape::Unmatchable,
         }
     }
 }

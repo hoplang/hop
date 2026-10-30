@@ -5,11 +5,12 @@ use pretty::{Arena, DocAllocator};
 use super::Doc;
 use super::transpiler::Transpiler;
 use crate::dependency_graph::DependencyGraph;
-use crate::hop::typing::{DataType, EnumVariant, ResolvedType, Type, TypeRegistry};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
+use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type_declarations::{IrEnum, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
     WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterOp,
@@ -66,11 +67,10 @@ pub struct RustTranspiler {
     /// Field positions carrying `Box` indirection.
     /// We box in both directions for mutually recursive types.
     boxed_edges: HashSet<(TypeName, TypeName)>,
-    /// Registry used to resolve named type structure.
-    registry: TypeRegistry,
+    types: IrTypeDeclarations,
     /// What the binding for every name holds, and the name's type. Every
     /// parameter, let and binder inserts its entry before anything reads it.
-    names: HashMap<ValueId, (Binding, Type)>,
+    names: HashMap<ValueId, (Binding, IrType)>,
 }
 
 impl RustTranspiler {
@@ -79,7 +79,7 @@ impl RustTranspiler {
             needs_escape_html: false,
             needs_html: false,
             boxed_edges: HashSet::new(),
-            registry: TypeRegistry::default(),
+            types: IrTypeDeclarations::default(),
             names: HashMap::new(),
         }
     }
@@ -194,8 +194,8 @@ impl RustTranspiler {
             return self.name_place(arena, name);
         }
         let method = match typ {
-            Type::Data(DataType::Array(_)) => ".to_vec()",
-            Type::Data(DataType::String) => ".to_string()",
+            IrType::Data(IrDataType::Array(_)) => ".to_vec()",
+            IrType::Data(IrDataType::String) => ".to_string()",
             _ => ".clone()",
         };
         let receiver = match self.name_binding(name) {
@@ -221,13 +221,13 @@ impl RustTranspiler {
     }
 
     /// Collect the named types that `t` stores inline.
-    fn inline_refs(t: &DataType, out: &mut BTreeSet<TypeName>) {
+    fn inline_refs(t: &IrDataType, out: &mut BTreeSet<TypeName>) {
         match t {
-            DataType::Named { name, .. } => {
+            IrDataType::Record(name) | IrDataType::Enum(name) => {
                 out.insert(name.clone());
             }
-            DataType::Option(inner) => Self::inline_refs(inner, out),
-            DataType::Tuple(elements) => {
+            IrDataType::Option(inner) => Self::inline_refs(inner, out),
+            IrDataType::Tuple(elements) => {
                 for element in elements {
                     Self::inline_refs(element, out);
                 }
@@ -238,16 +238,16 @@ impl RustTranspiler {
 
     /// The field positions that need `Box` for every declared type to be
     /// finitely sized, as `(declaring type, referenced type)` pairs.
-    fn compute_boxed_edges(registry: &TypeRegistry) -> HashSet<(TypeName, TypeName)> {
+    fn compute_boxed_edges(types: &IrTypeDeclarations) -> HashSet<(TypeName, TypeName)> {
         let mut graph = DependencyGraph::new();
-        for (name, fields) in registry.records() {
+        for IrRecord { name, fields } in &types.records {
             let mut refs = BTreeSet::new();
             for field in fields {
                 Self::inline_refs(&field.typ, &mut refs);
             }
             graph.set_dependencies(name.clone(), refs);
         }
-        for (name, variants) in registry.enums() {
+        for IrEnum { name, variants } in &types.enums {
             let mut refs = BTreeSet::new();
             for variant in variants {
                 for field in &variant.fields {
@@ -274,14 +274,14 @@ impl RustTranspiler {
     /// the case when the field stores an inline reference to a type `owner`
     /// boxes. Mirrors `inline_refs`: descend `Option` and tuples, stop at
     /// `Array`.
-    fn field_type_is_boxed(&self, t: &DataType, owner: &str) -> bool {
+    fn field_type_is_boxed(&self, t: &IrDataType, owner: &str) -> bool {
         match t {
-            DataType::Named { name, .. } => self
+            IrDataType::Record(name) | IrDataType::Enum(name) => self
                 .boxed_edges
                 .iter()
                 .any(|(o, target)| o.as_str() == owner && target == name),
-            DataType::Option(inner) => self.field_type_is_boxed(inner, owner),
-            DataType::Tuple(elements) => elements
+            IrDataType::Option(inner) => self.field_type_is_boxed(inner, owner),
+            IrDataType::Tuple(elements) => elements
                 .iter()
                 .any(|element| self.field_type_is_boxed(element, owner)),
             _ => false,
@@ -292,7 +292,7 @@ impl RustTranspiler {
     fn transpile_field_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        t: &'a DataType,
+        t: &'a IrDataType,
         owner: &str,
     ) -> Doc<'a> {
         if self.field_type_is_boxed(t, owner) {
@@ -314,7 +314,7 @@ impl RustTranspiler {
         owner: &str,
         value: ValueId,
     ) -> Doc<'a> {
-        if let Type::Data(value_type) = self.name_type(value)
+        if let IrType::Data(value_type) = self.name_type(value)
             && self.field_type_is_boxed(value_type, owner)
         {
             arena
@@ -328,14 +328,14 @@ impl RustTranspiler {
 
     /// Whether reads of `field` off `record` have to strip a `Box`.
     fn field_access_is_boxed(&self, record: ValueId, field: &FieldName) -> bool {
-        let Some(ResolvedType::Record { name, fields, .. }) = self
-            .name_type(record)
-            .as_data()
-            .and_then(|data| self.registry.resolve(data))
-        else {
-            unreachable!("field access objects resolve to a record");
+        let Some(IrDataType::Record(name)) = self.name_type(record).as_data() else {
+            unreachable!("field access objects are records");
         };
-        let field_type = fields
+        let field_type = self
+            .types
+            .record(name)
+            .expect("field access objects are declared records")
+            .fields
             .iter()
             .find(|f| f.name == *field)
             .map(|f| &f.typ)
@@ -348,9 +348,9 @@ impl RustTranspiler {
     /// subject, one `Box` deeper when the field carries indirection.
     fn enum_arm_pattern(
         &mut self,
-        variants: &[EnumVariant],
+        variants: &[IrVariant],
         arm_pattern: &EnumPattern,
-        bindings: &[(FieldName, IrBinder<DataType>)],
+        bindings: &[(FieldName, IrBinder<IrDataType>)],
     ) -> String {
         let EnumPattern::Variant {
             type_name,
@@ -363,7 +363,7 @@ impl RustTranspiler {
                 Binding::Borrowed
             };
             self.names
-                .insert(binder.var, (binding, Type::Data(binder.typ.clone())));
+                .insert(binder.var, (binding, IrType::Data(binder.typ.clone())));
         }
         if bindings.is_empty() {
             let has_fields = variants
@@ -408,53 +408,56 @@ impl RustTranspiler {
     }
 
     /// The variants of the enum a match subject holds.
-    fn subject_variants(&self, subject: ValueId) -> Vec<EnumVariant> {
-        let Some(ResolvedType::Enum { variants, .. }) = self
-            .name_type(subject)
-            .as_data()
-            .and_then(|data| self.registry.resolve(data))
-        else {
-            unreachable!("Enum match subject must have Named enum type")
+    fn subject_variants(&self, subject: ValueId) -> Vec<IrVariant> {
+        let Some(IrDataType::Enum(name)) = self.name_type(subject).as_data() else {
+            unreachable!("Enum match subject must have an Enum type")
         };
-        variants.to_vec()
+        self.types
+            .enumeration(name)
+            .expect("Enum match subjects are declared enums")
+            .variants
+            .clone()
     }
 
     /// Whether `t` is one of hop's scalar types.
-    fn is_scalar(t: &Type) -> bool {
+    fn is_scalar(t: &IrType) -> bool {
         match t {
-            Type::Data(DataType::Bool | DataType::Int | DataType::Float) => true,
-            Type::Data(
-                DataType::String
-                | DataType::Array(_)
-                | DataType::Tuple(_)
-                | DataType::Named { .. }
-                | DataType::Option(_),
+            IrType::Data(IrDataType::Bool | IrDataType::Int | IrDataType::Float) => true,
+            IrType::Data(
+                IrDataType::String
+                | IrDataType::Array(_)
+                | IrDataType::Tuple(_)
+                | IrDataType::Record(_)
+                | IrDataType::Enum(_)
+                | IrDataType::Option(_),
             )
-            | Type::Html(_) => false,
+            | IrType::Html(_) => false,
         }
     }
 
     /// Transpile a type for use in function parameters (uses references without explicit lifetimes)
-    fn transpile_param_type<'a>(&mut self, arena: &'a Arena<'a>, t: &'a Type) -> Doc<'a> {
+    fn transpile_param_type<'a>(&mut self, arena: &'a Arena<'a>, t: &'a IrType) -> Doc<'a> {
         match t {
-            Type::Data(DataType::Bool) => arena.text("bool"),
-            Type::Data(DataType::String) => arena.text("&str"),
-            Type::Data(DataType::Float) => arena.text("f64"),
-            Type::Data(DataType::Int) => arena.text("i32"),
-            Type::Html(_) => {
+            IrType::Data(IrDataType::Bool) => arena.text("bool"),
+            IrType::Data(IrDataType::String) => arena.text("&str"),
+            IrType::Data(IrDataType::Float) => arena.text("f64"),
+            IrType::Data(IrDataType::Int) => arena.text("i32"),
+            IrType::Html(_) => {
                 self.needs_html = true;
                 arena.text("&Html")
             }
-            Type::Data(DataType::Array(elem)) => arena
+            IrType::Data(IrDataType::Array(elem)) => arena
                 .text("&[")
                 .append(self.transpile_data_type(arena, elem))
                 .append(arena.text("]")),
-            Type::Data(DataType::Option(inner)) => arena
+            IrType::Data(IrDataType::Option(inner)) => arena
                 .text("&Option<")
                 .append(self.transpile_data_type(arena, inner))
                 .append(arena.text(">")),
-            Type::Data(DataType::Tuple(_)) => arena.text("&").append(self.transpile_type(arena, t)),
-            Type::Data(DataType::Named { name, .. }) => {
+            IrType::Data(IrDataType::Tuple(_)) => {
+                arena.text("&").append(self.transpile_type(arena, t))
+            }
+            IrType::Data(IrDataType::Record(name) | IrDataType::Enum(name)) => {
                 arena.text("&").append(arena.text(name.as_str()))
             }
         }
@@ -465,7 +468,7 @@ impl RustTranspiler {
     fn transpile_function_params<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parameters: &'a [crate::ir::ir_parameter::IrParameter<Type>],
+        parameters: &'a [crate::ir::ir_parameter::IrParameter<IrType>],
     ) -> Vec<Doc<'a>> {
         parameters
             .iter()
@@ -562,22 +565,18 @@ impl Default for RustTranspiler {
 }
 
 impl Transpiler for RustTranspiler {
-    fn registry(&self) -> &TypeRegistry {
-        &self.registry
-    }
-
-    fn name_type(&self, name: ValueId) -> &Type {
+    fn name_type(&self, name: ValueId) -> &IrType {
         self.names
             .get(&name)
             .map(|(_, typ)| typ)
             .unwrap_or_else(|| unreachable!("every name records its type, and {name} has none"))
     }
 
-    fn transpile_program(&mut self, program: &WriterProgram, registry: &TypeRegistry) -> String {
+    fn transpile_program(&mut self, program: &WriterProgram) -> String {
         self.needs_escape_html = false;
         self.needs_html = false;
-        self.boxed_edges = Self::compute_boxed_edges(registry);
-        self.registry = registry.clone();
+        self.boxed_edges = Self::compute_boxed_edges(&program.types);
+        self.types = program.types.clone();
         self.names.clear();
 
         let arena = &Arena::new();
@@ -586,7 +585,11 @@ impl Transpiler for RustTranspiler {
 
         let mut result = arena.nil();
 
-        for (enum_name, variants) in registry.enums() {
+        for IrEnum {
+            name: enum_name,
+            variants,
+        } in &program.types.enums
+        {
             result = result
                 .append(arena.text("#[derive(Clone, Debug)]"))
                 .append(arena.line())
@@ -632,7 +635,11 @@ impl Transpiler for RustTranspiler {
                 .append(arena.line());
         }
 
-        for (record_name, fields) in registry.records() {
+        for IrRecord {
+            name: record_name,
+            fields,
+        } in &program.types.records
+        {
             result = result
                 .append(arena.text("#[derive(Clone, Debug)]"))
                 .append(arena.line())
@@ -933,7 +940,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrBinder<DataType>>,
+        var: Option<&'a IrBinder<IrDataType>>,
         array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a> {
@@ -952,7 +959,7 @@ impl Transpiler for RustTranspiler {
         if let Some(binder) = var {
             self.names.insert(
                 binder.var,
-                (Binding::Borrowed, Type::Data(binder.typ.clone())),
+                (Binding::Borrowed, IrType::Data(binder.typ.clone())),
             );
         }
         doc.append(
@@ -1060,7 +1067,7 @@ impl Transpiler for RustTranspiler {
                 if let Some(binder) = some_arm_binding {
                     self.names.insert(
                         binder.var,
-                        (Binding::Borrowed, Type::Data(binder.typ.clone())),
+                        (Binding::Borrowed, IrType::Data(binder.typ.clone())),
                     );
                 }
 
@@ -1187,7 +1194,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_array_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_type: &DataType,
+        element_type: &IrDataType,
     ) -> Doc<'a> {
         arena
             .text("Vec<")
@@ -1198,7 +1205,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_tuple_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_types: &[DataType],
+        element_types: &[IrDataType],
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1222,7 +1229,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_option_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        inner_type: &DataType,
+        inner_type: &IrDataType,
     ) -> Doc<'a> {
         arena
             .text("Option<")
@@ -1230,7 +1237,7 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(">"))
     }
 
-    fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
+    fn transpile_record_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
         arena.text(name.to_string())
     }
 
@@ -1318,7 +1325,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        elem_type: &'a DataType,
+        elem_type: &'a IrDataType,
     ) -> Doc<'a> {
         if elements.is_empty() {
             arena
@@ -1355,7 +1362,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        _element_types: &'a [DataType],
+        _element_types: &'a [IrDataType],
     ) -> Doc<'a> {
         let items: Vec<Doc<'a>> = elements
             .iter()
@@ -1655,7 +1662,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         value: Option<ValueId>,
-        inner_type: &'a DataType,
+        inner_type: &'a IrDataType,
     ) -> Doc<'a> {
         match value {
             Some(inner) => arena
@@ -1717,7 +1724,7 @@ impl Transpiler for RustTranspiler {
                 if let Some(binder) = some_arm_binding {
                     self.names.insert(
                         binder.var,
-                        (Binding::Borrowed, Type::Data(binder.typ.clone())),
+                        (Binding::Borrowed, IrType::Data(binder.typ.clone())),
                     );
                 }
                 let subject_doc = self.name_ref(arena, *subject);
@@ -1843,12 +1850,13 @@ mod tests {
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let (flat, pages) = orchestrate_flat(
             session.typed_modules(),
+            session.type_registry(),
             OrchestrateOptions {
                 ..Default::default()
             },
         );
-        let writer = flat_to_writer(flat, session.type_registry(), &pages, None);
-        let output = RustTranspiler::new().transpile_program(&writer, session.type_registry());
+        let writer = flat_to_writer(flat, &pages, None);
+        let output = RustTranspiler::new().transpile_program(&writer);
         expected.assert_eq(&output);
     }
 

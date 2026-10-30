@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::hop::typing::{
-    CaseVar, DataType, Decision, FieldBinding, Pattern, Type, TypeRegistry, Variable,
-    compile_decision_tree,
+    CaseVar, Decision, FieldBinding, Pattern, Variable, compile_decision_tree,
 };
 use crate::html::write_escaped_html;
 use crate::ir::document_shell::DocumentShell;
@@ -19,6 +18,8 @@ use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
+use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::ir::writer_program::{
     WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterOp,
@@ -64,16 +65,16 @@ use crate::symbols::type_name::TypeName;
 /// and its body alone.
 pub fn flat_to_writer(
     program: FlatProgram,
-    registry: &TypeRegistry,
     pages: &[IrPage],
     shell: Option<&DocumentShell>,
 ) -> WriterProgram {
     let FlatProgram {
+        types,
         functions,
         value_ids,
     } = program;
     let mut lowerer = Lowerer {
-        registry,
+        types: &types,
         value_ids,
         bindings: HashMap::new(),
         html: HashMap::new(),
@@ -90,7 +91,7 @@ pub fn flat_to_writer(
     for function in &functions {
         if let FlatFunctionDeclaration::Html(function) = function {
             for param in &function.parameters {
-                if param.binder.typ == Type::HTML {
+                if param.binder.typ == IrType::HTML {
                     lowerer.html_parameters.insert(param.binder.var);
                 }
             }
@@ -108,7 +109,7 @@ pub fn flat_to_writer(
             }
             FlatFunctionDeclaration::Html(function) => {
                 for param in &function.parameters {
-                    if let Type::Data(typ) = &param.binder.typ {
+                    if let IrType::Data(typ) = &param.binder.typ {
                         lowerer.binder_types.insert(param.binder.var, typ.clone());
                     }
                 }
@@ -146,12 +147,14 @@ pub fn flat_to_writer(
             lowerer.lower_page(page.name.clone(), head, body, shell)
         })
         .collect();
+    let functions = functions
+        .into_iter()
+        .map(|decl| lowerer.lower_function(decl))
+        .collect();
     WriterProgram {
+        types,
         pages,
-        functions: functions
-            .into_iter()
-            .map(|decl| lowerer.lower_function(decl))
-            .collect(),
+        functions,
     }
 }
 
@@ -189,7 +192,7 @@ enum Reader {
 }
 
 struct Lowerer<'a> {
-    registry: &'a TypeRegistry,
+    types: &'a IrTypeDeclarations,
     value_ids: ValueIdCounter,
     /// Every value binding of the program, by name and by the fresh name of
     /// each copy of it. Names are unique, so one map serves every block.
@@ -211,7 +214,7 @@ struct Lowerer<'a> {
     buffered: HashSet<ValueId>,
     /// The type of each parameter, loop variable and binding of a pattern
     /// of data, which no value binding binds.
-    binder_types: HashMap<ValueId, DataType>,
+    binder_types: HashMap<ValueId, IrDataType>,
     /// What reads each name, once for each read.
     readers: HashMap<ValueId, Vec<Reader>>,
     /// The name a name is read through, in place of its own: the result of
@@ -372,7 +375,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Record the type of a name a loop or a pattern binds.
-    fn analyze_binder(&mut self, binder: &IrBinder<DataType>) {
+    fn analyze_binder(&mut self, binder: &IrBinder<IrDataType>) {
         self.binder_types.insert(binder.var, binder.typ.clone());
     }
 
@@ -475,7 +478,7 @@ impl<'a> Lowerer<'a> {
                 WriterFunctionDeclaration {
                     function: function.function.clone(),
                     parameters: function.parameters.clone(),
-                    return_type: Type::HTML,
+                    return_type: IrType::HTML,
                     body: WriterFunctionBody::Writes(statements),
                 }
             }
@@ -485,7 +488,7 @@ impl<'a> Lowerer<'a> {
                 WriterFunctionDeclaration {
                     function: function.function.clone(),
                     parameters: decl.parameters(),
-                    return_type: Type::Data(function.return_type.clone()),
+                    return_type: IrType::Data(function.return_type.clone()),
                     body: WriterFunctionBody::Returns(WriterBlock {
                         bindings,
                         result: self.name(function.body.result),
@@ -520,7 +523,7 @@ impl<'a> Lowerer<'a> {
             };
             out.push(WriterBinding {
                 name: self.bind(binding.binder.var),
-                typ: Type::Data(binding.binder.typ.clone()),
+                typ: IrType::Data(binding.binder.typ.clone()),
                 op,
             });
         }
@@ -544,7 +547,7 @@ impl<'a> Lowerer<'a> {
                 let name = self.value_ids.next();
                 lets.push(WriterBinding {
                     name,
-                    typ: Type::HTML,
+                    typ: IrType::HTML,
                     op: WriterOp::HtmlLiteral(body),
                 });
                 name
@@ -561,7 +564,7 @@ impl<'a> Lowerer<'a> {
         &self,
         match_: &IrMatch<B>,
     ) -> (
-        Decision<IrBinder<DataType>>,
+        Decision<IrBinder<IrDataType>, IrDataType>,
         HashSet<CaseVar>,
         HashMap<CaseVar, ValueId>,
     ) {
@@ -570,7 +573,7 @@ impl<'a> Lowerer<'a> {
             Some(binding) => binding.binder.typ.clone(),
             None => self.binder_types[&match_.subject].clone(),
         };
-        let decision = compile_decision_tree(self.registry, &patterns, subject_type);
+        let decision = compile_decision_tree(self.types, &patterns, subject_type);
         let mut used = HashSet::new();
         decision.collect_used(&mut used);
         let parts = HashMap::from([(CaseVar(0), self.name(match_.subject))]);
@@ -584,7 +587,7 @@ impl<'a> Lowerer<'a> {
     fn take_apart_record(
         &mut self,
         record: ValueId,
-        fields: &[FieldBinding],
+        fields: &[FieldBinding<IrDataType>],
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
         lets: &mut Vec<WriterBinding>,
@@ -612,7 +615,7 @@ impl<'a> Lowerer<'a> {
                     let name = self.value_ids.next();
                     lets.push(WriterBinding {
                         name,
-                        typ: Type::Data(field.var.typ.clone()),
+                        typ: IrType::Data(field.var.typ.clone()),
                         op: WriterOp::Data(IrDataOp::FieldAccess(record, field.field_name.clone())),
                     });
                     name
@@ -629,7 +632,7 @@ impl<'a> Lowerer<'a> {
     fn take_apart_tuple(
         &mut self,
         tuple: ValueId,
-        elements: &[Variable],
+        elements: &[Variable<IrDataType>],
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
         lets: &mut Vec<WriterBinding>,
@@ -651,7 +654,7 @@ impl<'a> Lowerer<'a> {
                     let name = self.value_ids.next();
                     lets.push(WriterBinding {
                         name,
-                        typ: Type::Data(element.typ.clone()),
+                        typ: IrType::Data(element.typ.clone()),
                         op: WriterOp::Data(IrDataOp::TupleIndex(tuple, index)),
                     });
                     name
@@ -666,7 +669,7 @@ impl<'a> Lowerer<'a> {
     fn lower_data_match(
         &mut self,
         match_: &'a IrMatch<FlatDataBlock>,
-        typ: &DataType,
+        typ: &IrDataType,
         lets: &mut Vec<WriterBinding>,
     ) -> ValueId {
         let (decision, used, mut parts) = self.compile_match(match_);
@@ -680,9 +683,9 @@ impl<'a> Lowerer<'a> {
     /// `used` is not bound.
     fn lower_data_decision(
         &mut self,
-        decision: &Decision<IrBinder<DataType>>,
+        decision: &Decision<IrBinder<IrDataType>, IrDataType>,
         arms: &'a [IrMatchArm<FlatDataBlock>],
-        typ: &DataType,
+        typ: &IrDataType,
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
         lets: &mut Vec<WriterBinding>,
@@ -826,7 +829,7 @@ impl<'a> Lowerer<'a> {
         let name = self.value_ids.next();
         lets.push(WriterBinding {
             name,
-            typ: Type::Data(typ.clone()),
+            typ: IrType::Data(typ.clone()),
             op: WriterOp::Match(switch),
         });
         name
@@ -838,10 +841,10 @@ impl<'a> Lowerer<'a> {
     fn bind_part(
         &mut self,
         part: CaseVar,
-        typ: &DataType,
+        typ: &IrDataType,
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
-    ) -> Option<IrBinder<DataType>> {
+    ) -> Option<IrBinder<IrDataType>> {
         if !used.contains(&part) {
             return None;
         }
@@ -865,7 +868,7 @@ impl<'a> Lowerer<'a> {
                 self.write_op(&binding.op, &mut body);
                 out.push(WriterStmt::Let(WriterBinding {
                     name: self.bind(binding.binder.var),
-                    typ: Type::HTML,
+                    typ: IrType::HTML,
                     op: WriterOp::HtmlLiteral(body),
                 }));
             }
@@ -1013,7 +1016,7 @@ impl<'a> Lowerer<'a> {
     /// stands for. A case variable that is not in `used` is not bound.
     fn write_decision(
         &mut self,
-        decision: &Decision<IrBinder<DataType>>,
+        decision: &Decision<IrBinder<IrDataType>, IrDataType>,
         arms: &'a [IrMatchArm<FlatHtmlBlock>],
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
@@ -1138,21 +1141,24 @@ mod tests {
         );
         let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let (flat, pages) =
-            orchestrate_flat(session.typed_modules(), OrchestrateOptions::default());
+        let (flat, pages) = orchestrate_flat(
+            session.typed_modules(),
+            session.type_registry(),
+            OrchestrateOptions::default(),
+        );
         let flat = optimize_flat(flat);
         let before = flat.to_string();
-        let writer = flat_to_writer(flat, session.type_registry(), &pages, shell).to_string();
+        let writer = flat_to_writer(flat, &pages, shell).to_string();
         expected.assert_eq(&format!("-- flat --\n{before}\n-- writer --\n{writer}"));
     }
 
     /// Prints the optimized program as Flat and as the Writer IR that Flat
     /// lowers to, with a page for each entrypoint.
-    fn check_program((program, registry): (FlatProgram, TypeRegistry), expected: Expect) {
+    fn check_program(program: FlatProgram, expected: Expect) {
         let pages = IrPage::for_entrypoints(&program);
         let flat = optimize_flat(program);
         let before = flat.to_string();
-        let writer = flat_to_writer(flat, &registry, &pages, None).to_string();
+        let writer = flat_to_writer(flat, &pages, None).to_string();
         expected.assert_eq(&format!("-- flat --\n{before}\n-- writer --\n{writer}"));
     }
 
@@ -1450,10 +1456,10 @@ mod tests {
     #[test]
     fn fuzz_random_programs_lower_to_writer_binding_every_name_once() {
         arbtest::arbtest(|u| {
-            let (program, registry) = random_program(u);
+            let program = random_program(u);
             let pages = IrPage::for_entrypoints(&program);
             for flat in [program.clone(), optimize_flat(program)] {
-                let writer = flat_to_writer(flat, &registry, &pages, None);
+                let writer = flat_to_writer(flat, &pages, None);
                 assert_eq!(name_bound_twice(&writer), None, "bound twice in\n{writer}");
             }
             Ok(())
@@ -1491,11 +1497,11 @@ mod tests {
             }
         }
 
-        fn binder(&mut self, binder: &IrBinder<DataType>) {
+        fn binder(&mut self, binder: &IrBinder<IrDataType>) {
             self.bind(binder.var);
         }
 
-        fn parameters(&mut self, parameters: &[IrParameter<Type>]) {
+        fn parameters(&mut self, parameters: &[IrParameter<IrType>]) {
             for parameter in parameters {
                 self.bind(parameter.binder.var);
             }
@@ -1945,7 +1951,7 @@ mod tests {
                         })
                     },
                 )
-                .build_with_registry(),
+                .build(),
             expect![[r#"
                 -- flat --
                 entrypoint fn Greeting@f0(name@v0: Option[String], formal@v1: Bool) -> Html {
@@ -2024,7 +2030,7 @@ mod tests {
                         )
                     },
                 )
-                .build_with_registry(),
+                .build(),
             expect![[r#"
                 -- flat --
                 entrypoint fn Items@f0(items@v0: Array[String], n@v1: Int) -> Html {
@@ -2077,7 +2083,7 @@ mod tests {
                         ])
                     },
                 )
-                .build_with_registry(),
+                .build(),
             expect![[r#"
                 -- flat --
                 entrypoint fn Marks@f0(items@v0: Array[String], name@v1: String) -> Html {
@@ -2133,7 +2139,7 @@ mod tests {
                         ])],
                     )
                 })
-                .build_with_registry(),
+                .build(),
             expect![[r#"
                 -- flat --
                 entrypoint fn Test@f2(label@v5: String) -> Html {

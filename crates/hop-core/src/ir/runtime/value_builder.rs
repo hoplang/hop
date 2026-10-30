@@ -1,15 +1,15 @@
-use crate::hop::typing::TypeRegistry;
+use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::value::Value;
 use crate::symbols::{field_name::FieldName, type_name::TypeName};
 use std::rc::Rc;
 
 pub struct ValueBuilder<'a> {
-    types: &'a TypeRegistry,
+    types: &'a IrTypeDeclarations,
 }
 
 impl<'a> ValueBuilder<'a> {
-    pub fn new(types: &'a TypeRegistry) -> Self {
+    pub fn new(types: &'a IrTypeDeclarations) -> Self {
         ValueBuilder { types }
     }
 
@@ -48,9 +48,16 @@ impl<'a> ValueBuilder<'a> {
     pub fn record(&self, record_name: &str, fields: Vec<(&str, Value)>) -> Value {
         let declared = self
             .types
-            .records()
-            .find(|(name, _)| name.as_str() == record_name)
-            .map(|(_, fields)| fields.iter().map(|f| f.name.as_str()).collect::<Vec<_>>())
+            .records
+            .iter()
+            .find(|record| record.name.as_str() == record_name)
+            .map(|record| {
+                record
+                    .fields
+                    .iter()
+                    .map(|f| f.name.as_str())
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_else(|| panic!("no record `{record_name}` is declared"));
         Value::Record(checked_fields(&declared, fields, record_name))
     }
@@ -68,9 +75,10 @@ impl<'a> ValueBuilder<'a> {
     ) -> Value {
         let variants = self
             .types
-            .enums()
-            .find(|(name, _)| name.as_str() == enum_name)
-            .map(|(_, variants)| variants)
+            .enums
+            .iter()
+            .find(|enumeration| enumeration.name.as_str() == enum_name)
+            .map(|enumeration| &enumeration.variants)
             .unwrap_or_else(|| panic!("no enum `{enum_name}` is declared"));
         let declared = variants
             .iter()

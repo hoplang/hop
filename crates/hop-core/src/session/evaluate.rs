@@ -4,6 +4,8 @@ use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::CheapString;
 use crate::ir;
+use crate::ir::flat_program::FlatProgram;
+use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::EvalError;
 use crate::ir::runtime::random::random_value;
 use crate::ir::{DocumentShell, TailwindInjection, optimize_flat};
@@ -18,11 +20,31 @@ use std::sync::Arc;
 
 impl Session {
     /// Evaluate a page given a document and page name.
+    #[cfg(test)]
     fn evaluate_page_with_values(
         &self,
         document_id: &RootContainedFilePath,
         page_name: &TypeName,
         args: HashMap<AttributeName, ir::runtime::value::Value>,
+        generated_tailwind_css: Option<&str>,
+        skip_optimization: bool,
+        asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
+    ) -> Result<String, EvaluatePageError> {
+        self.evaluate_page_with(
+            document_id,
+            page_name,
+            |_, _| args,
+            generated_tailwind_css,
+            skip_optimization,
+            asset_path_rewriter,
+        )
+    }
+
+    fn evaluate_page_with(
+        &self,
+        document_id: &RootContainedFilePath,
+        page_name: &TypeName,
+        args: impl FnOnce(&FlatProgram, &[IrPage]) -> HashMap<AttributeName, ir::runtime::value::Value>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
@@ -44,6 +66,7 @@ impl Session {
         // reaches.
         let (flat_program, pages) = orchestrate_flat(
             self.typed_modules(),
+            &self.type_registry,
             OrchestrateOptions {
                 page_filter: Some((document_id.clone(), page_name.clone())),
                 asset_path_rewriter,
@@ -54,6 +77,7 @@ impl Session {
         } else {
             optimize_flat(flat_program)
         };
+        let args = args(&flat_program, &pages);
         let shell = DocumentShell::new(generated_tailwind_css.map(TailwindInjection::Inline), None);
         let rendered = ir::runtime::flat_evaluator::evaluate_page(
             &flat_program,
@@ -118,26 +142,41 @@ impl Session {
                 available: self.page_names(),
             })?;
 
-        let params = page_decl
-            .params
-            .iter()
-            .map(|param| {
-                (
-                    param.var_name.clone().into(),
-                    random_value(
+        let args = |program: &FlatProgram, pages: &[IrPage]| {
+            let page = pages
+                .iter()
+                .find(|page| page.name == page_name)
+                .expect("the program compiles the page");
+            let parameters = program
+                .functions
+                .iter()
+                .find(|decl| *decl.function() == page.body)
+                .expect("the program declares the page's body")
+                .parameters();
+            page_decl
+                .params
+                .iter()
+                .map(|param| {
+                    let name: AttributeName = param.var_name.clone().into();
+                    let parameter = parameters
+                        .iter()
+                        .find(|parameter| parameter.name == name)
+                        .expect("the body declares every parameter of the page");
+                    let value = random_value(
                         &mut rng,
-                        &param.var_type,
+                        &parameter.binder.typ,
                         param.examples.as_ref(),
-                        &self.type_registry,
-                    ),
-                )
-            })
-            .collect::<HashMap<_, _>>();
+                        &program.types,
+                    );
+                    (name, value)
+                })
+                .collect()
+        };
 
-        self.evaluate_page_with_values(
+        self.evaluate_page_with(
             document_id,
             &page_name,
-            params,
+            args,
             generated_tailwind_css,
             skip_optimization,
             asset_path_rewriter,

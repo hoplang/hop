@@ -2,9 +2,6 @@ use std::fmt;
 
 use crate::ir::value_id::ValueId;
 
-/// A name with the type of the values it takes, as a binding, a parameter,
-/// a loop or a pattern binds it. `T` is a Type where the name can be Html,
-/// and a DataType where it cannot.
 #[derive(Debug, Clone)]
 pub struct IrBinder<T> {
     pub var: ValueId,

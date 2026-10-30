@@ -2,9 +2,9 @@ use super::bounded_vec::BoundedVec;
 use super::html_node::{Html, HtmlNode};
 use super::value::{MAX_ARRAY_LENGTH, Value};
 use crate::examples_annotation::ExamplesAnnotation;
-use crate::hop::typing::{DataType, EnumVariant, ResolvedType, Type, TypeRegistry};
 use crate::html::HtmlElementKind;
-use crate::root_contained_file_path::RootContainedFilePath;
+use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations, IrVariant};
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
 use std::rc::Rc;
@@ -29,44 +29,62 @@ fn random_word(rng: &mut impl Rng) -> Value {
 
 /// Whether a value of the given type can be constructed without expanding
 /// any named type in `visiting`. Restores `visiting` before returning.
-pub(crate) fn can_construct(
-    ty: &DataType,
-    registry: &TypeRegistry,
-    visiting: &mut Vec<(RootContainedFilePath, TypeName)>,
+fn can_construct(
+    ty: &IrDataType,
+    types: &IrTypeDeclarations,
+    visiting: &mut Vec<TypeName>,
 ) -> bool {
-    if let DataType::Named { module, name } = ty {
-        if visiting.iter().any(|(m, n)| m == module && n == name) {
+    if let Some(name) = named(ty) {
+        if visiting.contains(name) {
             return false;
         }
-        visiting.push((module.clone(), name.clone()));
+        visiting.push(name.clone());
     }
-    let ok = match registry.resolve(ty).expect("named type must be registered") {
-        ResolvedType::String
-        | ResolvedType::Bool
-        | ResolvedType::Int
-        | ResolvedType::Float
+    let ok = match ty {
+        IrDataType::String
+        | IrDataType::Bool
+        | IrDataType::Int
+        | IrDataType::Float
         // Arrays and options can always terminate as empty and None
-        | ResolvedType::Array(_)
-        | ResolvedType::Option(_) => true,
-        ResolvedType::Tuple(elements) => elements
+        | IrDataType::Array(_)
+        | IrDataType::Option(_) => true,
+        IrDataType::Tuple(elements) => elements
             .iter()
-            .all(|element| can_construct(element, registry, visiting)),
-        ResolvedType::Record { fields, .. } => fields
+            .all(|element| can_construct(element, types, visiting)),
+        IrDataType::Record(name) => record_fields(types, name)
             .iter()
-            .all(|field| can_construct(&field.typ, registry, visiting)),
-        ResolvedType::Enum { variants, .. } => variants.iter().any(|v| {
+            .all(|field| can_construct(&field.typ, types, visiting)),
+        IrDataType::Enum(name) => enum_variants(types, name).iter().any(|v| {
             v.fields
                 .iter()
-                .all(|field| can_construct(&field.typ, registry, visiting))
+                .all(|field| can_construct(&field.typ, types, visiting))
         }),
     };
-    if matches!(ty, DataType::Named { .. }) {
+    if named(ty).is_some() {
         visiting.pop();
     }
     ok
 }
 
-/// Generates a random [`Value`] matching the given [`Type`].
+fn named(ty: &IrDataType) -> Option<&TypeName> {
+    match ty {
+        IrDataType::Record(name) | IrDataType::Enum(name) => Some(name),
+        _ => None,
+    }
+}
+
+fn record_fields<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrField] {
+    &types.record(name).expect("record must be declared").fields
+}
+
+fn enum_variants<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrVariant] {
+    &types
+        .enumeration(name)
+        .expect("enum must be declared")
+        .variants
+}
+
+/// Generates a random [`Value`] matching the given [`IrType`].
 ///
 /// Recursively generates values for nested types (arrays, options, records, enums).
 /// An optional `examples` annotation can customize generation for String and Int types.
@@ -79,15 +97,13 @@ pub(crate) fn can_construct(
 /// fields require the record itself.
 pub fn random_value(
     rng: &mut impl Rng,
-    ty: &Type,
+    ty: &IrType,
     examples: Option<&ExamplesAnnotation>,
-    registry: &TypeRegistry,
+    types: &IrTypeDeclarations,
 ) -> Value {
     match ty {
-        Type::Data(data) => {
-            random_value_at_depth(rng, data, examples, registry, 0, &mut Vec::new())
-        }
-        Type::Html(_) => Value::Html(
+        IrType::Data(data) => random_value_at_depth(rng, data, examples, types, 0, &mut Vec::new()),
+        IrType::Html(_) => Value::Html(
             Html::new(HtmlNode::Element {
                 element: HtmlElementKind::Span,
                 attributes: Vec::new(),
@@ -100,22 +116,22 @@ pub fn random_value(
 
 fn random_value_at_depth(
     rng: &mut impl Rng,
-    ty: &DataType,
+    ty: &IrDataType,
     examples: Option<&ExamplesAnnotation>,
-    registry: &TypeRegistry,
+    types: &IrTypeDeclarations,
     depth: usize,
-    visiting: &mut Vec<(RootContainedFilePath, TypeName)>,
+    visiting: &mut Vec<TypeName>,
 ) -> Value {
-    if depth == MAX_DEPTH && !can_construct(ty, registry, &mut Vec::new()) {
+    if depth == MAX_DEPTH && !can_construct(ty, types, &mut Vec::new()) {
         panic!("cannot generate a value for infinitely recursive type {ty}");
     }
-    if depth >= MAX_DEPTH {
-        if let DataType::Named { module, name } = ty {
-            visiting.push((module.clone(), name.clone()));
-        }
+    if depth >= MAX_DEPTH
+        && let Some(name) = named(ty)
+    {
+        visiting.push(name.clone());
     }
-    let value = generate(rng, ty, examples, registry, depth, visiting);
-    if depth >= MAX_DEPTH && matches!(ty, DataType::Named { .. }) {
+    let value = generate(rng, ty, examples, types, depth, visiting);
+    if depth >= MAX_DEPTH && named(ty).is_some() {
         visiting.pop();
     }
     value
@@ -123,14 +139,14 @@ fn random_value_at_depth(
 
 fn generate(
     rng: &mut impl Rng,
-    ty: &DataType,
+    ty: &IrDataType,
     examples: Option<&ExamplesAnnotation>,
-    registry: &TypeRegistry,
+    types: &IrTypeDeclarations,
     depth: usize,
-    visiting: &mut Vec<(RootContainedFilePath, TypeName)>,
+    visiting: &mut Vec<TypeName>,
 ) -> Value {
-    match registry.resolve(ty).expect("named type must be registered") {
-        ResolvedType::String => match examples.and_then(|e| e.pattern.as_ref()) {
+    match ty {
+        IrDataType::String => match examples.and_then(|e| e.pattern.as_ref()) {
             Some(p) => {
                 let cooked = p
                     .cook(&mut |_, _| {})
@@ -139,14 +155,14 @@ fn generate(
             }
             None => random_word(rng),
         },
-        ResolvedType::Bool => Value::Bool(rng.random_bool(0.5)),
-        ResolvedType::Int => {
+        IrDataType::Bool => Value::Bool(rng.random_bool(0.5)),
+        IrDataType::Int => {
             let min = examples.and_then(|e| e.min).unwrap_or(0);
             let max = examples.and_then(|e| e.max).unwrap_or(100);
             Value::Int(rng.random_range(min..=max))
         }
-        ResolvedType::Float => Value::Float(rng.random_range(0.0..100.0)),
-        ResolvedType::Array(inner) => {
+        IrDataType::Float => Value::Float(rng.random_range(0.0..100.0)),
+        IrDataType::Array(inner) => {
             let len = if depth >= MAX_DEPTH {
                 0
             } else {
@@ -155,18 +171,18 @@ fn generate(
                 rng.random_range(min.min(MAX_ARRAY_LENGTH)..=max.min(MAX_ARRAY_LENGTH))
             };
             let elements = (0..len)
-                .map(|_| random_value_at_depth(rng, inner, None, registry, depth + 1, visiting));
+                .map(|_| random_value_at_depth(rng, inner, None, types, depth + 1, visiting));
             Value::Array(Rc::new(
                 BoundedVec::new(elements).expect("the length is within the limit"),
             ))
         }
-        ResolvedType::Option(inner) => {
+        IrDataType::Option(inner) => {
             if depth < MAX_DEPTH && rng.random_bool(0.5) {
                 Value::Option(Some(Rc::new(random_value_at_depth(
                     rng,
                     inner,
                     None,
-                    registry,
+                    types,
                     depth + 1,
                     visiting,
                 ))))
@@ -174,16 +190,16 @@ fn generate(
                 Value::Option(None)
             }
         }
-        ResolvedType::Tuple(elements) => Value::Tuple(
+        IrDataType::Tuple(elements) => Value::Tuple(
             elements
                 .iter()
                 .map(|element| {
-                    random_value_at_depth(rng, element, None, registry, depth + 1, visiting)
+                    random_value_at_depth(rng, element, None, types, depth + 1, visiting)
                 })
                 .collect(),
         ),
-        ResolvedType::Record { fields, .. } => {
-            let map = fields
+        IrDataType::Record(name) => {
+            let map = record_fields(types, name)
                 .iter()
                 .map(|field| {
                     (
@@ -192,7 +208,7 @@ fn generate(
                             rng,
                             &field.typ,
                             field.examples.as_ref(),
-                            registry,
+                            types,
                             depth + 1,
                             visiting,
                         ),
@@ -201,16 +217,17 @@ fn generate(
                 .collect();
             Value::Record(map)
         }
-        ResolvedType::Enum { variants, .. } => {
+        IrDataType::Enum(name) => {
+            let variants = enum_variants(types, name);
             let variant = if depth >= MAX_DEPTH {
                 // Nonempty since the type passed can_construct when it
                 // crossed MAX_DEPTH or was chosen by an enclosing filter
-                let candidates: Vec<&EnumVariant> = variants
+                let candidates: Vec<&IrVariant> = variants
                     .iter()
                     .filter(|v| {
                         v.fields
                             .iter()
-                            .all(|field| can_construct(&field.typ, registry, visiting))
+                            .all(|field| can_construct(&field.typ, types, visiting))
                     })
                     .collect();
                 candidates[rng.random_range(0..candidates.len())]
@@ -227,7 +244,7 @@ fn generate(
                             rng,
                             &field.typ,
                             field.examples.as_ref(),
-                            registry,
+                            types,
                             depth + 1,
                             visiting,
                         ),
@@ -242,13 +259,14 @@ fn generate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::typing::{Ty, TypeRegistryBuilder};
+    use crate::hop::typing::Ty;
+    use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use rand::SeedableRng;
     use rand::rngs::SmallRng;
 
     #[test]
     fn recursive_enum_generation_terminates() {
-        let types = TypeRegistryBuilder::new()
+        let types = IrTypeDeclarationsBuilder::new()
             .enum_(
                 "Tree",
                 [
@@ -264,7 +282,7 @@ mod tests {
                 ],
             )
             .build();
-        let ty = Type::from(Ty::named("Tree"));
+        let ty = types.ty(Ty::named("Tree"));
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, None, &types);
@@ -273,13 +291,13 @@ mod tests {
 
     #[test]
     fn recursive_record_through_option_terminates() {
-        let types = TypeRegistryBuilder::new()
+        let types = IrTypeDeclarationsBuilder::new()
             .record(
                 "Node",
                 [("value", Ty::Int), ("next", Ty::option(Ty::named("Node")))],
             )
             .build();
-        let ty = Type::from(Ty::named("Node"));
+        let ty = types.ty(Ty::named("Node"));
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, None, &types);
@@ -288,7 +306,7 @@ mod tests {
 
     #[test]
     fn mutually_recursive_enums_terminate() {
-        let types = TypeRegistryBuilder::new()
+        let types = IrTypeDeclarationsBuilder::new()
             .enum_(
                 "Expr",
                 [
@@ -307,7 +325,7 @@ mod tests {
                 ],
             )
             .build();
-        let ty = Type::from(Ty::named("Expr"));
+        let ty = types.ty(Ty::named("Expr"));
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, None, &types);
@@ -317,26 +335,26 @@ mod tests {
     #[test]
     #[should_panic(expected = "cannot generate a value")]
     fn uninhabited_recursive_record_panics() {
-        let types = TypeRegistryBuilder::new()
+        let types = IrTypeDeclarationsBuilder::new()
             .record("Node", [("value", Ty::Int), ("next", Ty::named("Node"))])
             .build();
-        let ty = Type::from(Ty::named("Node"));
+        let ty = types.ty(Ty::named("Node"));
         let mut rng = SmallRng::seed_from_u64(0);
         random_value(&mut rng, &ty, None, &types);
     }
 
     #[test]
     fn array_length_respects_min_len_and_max_len() {
-        let ty = Type::from(Ty::array(Ty::Int));
+        let ty = IrType::array(IrDataType::Int);
         let examples = ExamplesAnnotation {
             min_len: Some(3),
             max_len: Some(4),
             ..Default::default()
         };
-        let registry = TypeRegistry::default();
+        let types = IrTypeDeclarations::default();
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
-            let value = random_value(&mut rng, &ty, Some(&examples), &registry);
+            let value = random_value(&mut rng, &ty, Some(&examples), &types);
             let Value::Array(items) = value else {
                 panic!("expected Value::Array");
             };
@@ -351,11 +369,11 @@ mod tests {
 
     #[test]
     fn array_length_defaults_to_zero_through_five() {
-        let ty = Type::from(Ty::array(Ty::Int));
-        let registry = TypeRegistry::default();
+        let ty = IrType::array(IrDataType::Int);
+        let types = IrTypeDeclarations::default();
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
-            let value = random_value(&mut rng, &ty, None, &registry);
+            let value = random_value(&mut rng, &ty, None, &types);
             let Value::Array(items) = value else {
                 panic!("expected Value::Array");
             };

@@ -2,11 +2,12 @@ use std::fmt;
 
 use pretty::BoxDoc;
 
-use crate::hop::typing::Type;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_switch::IrSwitch;
+use crate::ir::ir_type::IrType;
+use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::ValueId;
 use crate::symbols::type_name::TypeName;
 
@@ -24,6 +25,7 @@ use super::ir_parameter::IrParameter;
 /// an arm of a match, so a name identifies its binding.
 #[derive(Debug)]
 pub struct WriterProgram {
+    pub types: IrTypeDeclarations,
     pub pages: Vec<WriterPageDeclaration>,
     pub functions: Vec<WriterFunctionDeclaration>,
 }
@@ -31,15 +33,15 @@ pub struct WriterProgram {
 #[derive(Debug)]
 pub struct WriterPageDeclaration {
     pub name: TypeName,
-    pub parameters: Vec<IrParameter<Type>>,
+    pub parameters: Vec<IrParameter<IrType>>,
     pub body: Vec<WriterStmt>,
 }
 
 #[derive(Debug)]
 pub struct WriterFunctionDeclaration {
     pub function: IrFunction,
-    pub parameters: Vec<IrParameter<Type>>,
-    pub return_type: Type,
+    pub parameters: Vec<IrParameter<IrType>>,
+    pub return_type: IrType,
     pub body: WriterFunctionBody,
 }
 
@@ -56,7 +58,7 @@ pub enum WriterFunctionBody {
 #[derive(Debug)]
 pub struct WriterBinding {
     pub name: ValueId,
-    pub typ: Type,
+    pub typ: IrType,
     pub op: WriterOp,
 }
 

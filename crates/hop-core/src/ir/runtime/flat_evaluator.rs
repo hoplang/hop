@@ -429,10 +429,11 @@ fn evaluate_data_op(op: &IrDataOp, env: &HashTrieMap<ValueId, Value>) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::typing::{Ty, TypeRegistry, TypeRegistryBuilder};
+    use crate::hop::typing::Ty;
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::value_builder::ValueBuilder;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
@@ -440,9 +441,9 @@ mod tests {
     #[test]
     fn fuzz_random_programs_evaluate_without_panicking() {
         arbtest::arbtest(|u| {
-            let (program, registry) = random_program(u);
+            let program = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            for (function, args) in random_entrypoint_args(&program, &mut rng, &registry) {
+            for (function, args) in random_entrypoint_args(&program, &mut rng) {
                 match evaluate_entrypoint(&program, &function, args) {
                     Ok(_)
                     | Err(
@@ -459,12 +460,12 @@ mod tests {
     }
 
     fn check(
-        (program, types): (FlatProgram, TypeRegistry),
+        program: FlatProgram,
         args: impl FnOnce(&ValueBuilder<'_>) -> Vec<(&'static str, Value)>,
         expected: Expect,
     ) {
         let before = program.to_string();
-        let args: HashMap<AttributeName, Value> = args(&ValueBuilder::new(&types))
+        let args: HashMap<AttributeName, Value> = args(&ValueBuilder::new(&program.types))
             .into_iter()
             .map(|(name, value)| (AttributeName::parse(name).unwrap(), value))
             .collect();
@@ -497,7 +498,7 @@ mod tests {
                         }),
                     )
                 })
-                .build_with_registry(),
+                .build(),
             |v| vec![("items", v.array(vec![v.str("a<b"), v.str("c")]))],
             expect![[r#"
                 -- before --
@@ -532,7 +533,7 @@ mod tests {
                         m.arm(Pat::False, |t, _| t.str("no"));
                     }))
                 })
-                .build_with_registry(),
+                .build(),
             |v| vec![("flag", v.bool(false))],
             expect![[r#"
                 -- before --
@@ -573,14 +574,14 @@ mod tests {
 
     #[test]
     fn should_select_an_enum_arm_and_bind_its_fields() {
-        let types = TypeRegistryBuilder::new()
+        let types = IrTypeDeclarationsBuilder::new()
             .enum_(
                 "Shape",
                 [("Dot", vec![]), ("Circle", vec![("radius", Ty::Int)])],
             )
             .build();
         check(
-            FlatProgramBuilder::with_registry(types)
+            FlatProgramBuilder::with_types(types)
                 .entrypoint("Test", [("shape", Ty::named("Shape"))], Ty::Html, |t| {
                     t.escape(t.match_(t.param("shape"), |m| {
                         m.arm(Pat::variant("Dot", []), |t, _| t.str("dot"));
@@ -590,7 +591,7 @@ mod tests {
                         );
                     }))
                 })
-                .build_with_registry(),
+                .build(),
             |v| {
                 vec![(
                     "shape",
@@ -622,18 +623,18 @@ mod tests {
 
     #[test]
     fn should_hold_an_empty_tuple_in_a_record_field() {
-        let types = TypeRegistryBuilder::new()
+        let types = IrTypeDeclarationsBuilder::new()
             .record("Holder", [("nothing", Ty::tuple([]))])
             .build();
         check(
-            FlatProgramBuilder::with_registry(types)
+            FlatProgramBuilder::with_types(types)
                 .entrypoint("Test", [], Ty::Html, |t| {
-                    let held = t.record(Ty::named("Holder"), [("nothing", t.tuple(vec![]))]);
+                    let held = t.record(t.ty(Ty::named("Holder")), [("nothing", t.tuple(vec![]))]);
                     t.escape(
                         t.int_to_string(t.array_length(t.array([t.field_access(held, "nothing")]))),
                     )
                 })
-                .build_with_registry(),
+                .build(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -662,7 +663,7 @@ mod tests {
                     let pair = t.tuple([t.int(1), t.str("two")]);
                     t.escape(t.tuple_index(pair, 1))
                 })
-                .build_with_registry(),
+                .build(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -689,7 +690,7 @@ mod tests {
                     let only = t.tuple([t.str("alone")]);
                     t.escape(t.tuple_index(only, 0))
                 })
-                .build_with_registry(),
+                .build(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -716,7 +717,7 @@ mod tests {
                     let outer = t.tuple([t.int(1), inner]);
                     t.escape(t.tuple_index(t.tuple_index(outer, 1), 0))
                 })
-                .build_with_registry(),
+                .build(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -746,7 +747,7 @@ mod tests {
                     let sum = t.add(t.int(2147483647), t.int(1));
                     t.escape(t.int_to_string(sum))
                 })
-                .build_with_registry(),
+                .build(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -772,7 +773,7 @@ mod tests {
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.element("div", [], t.text("Hello World"))
                 })
-                .build_with_registry(),
+                .build(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -808,7 +809,7 @@ mod tests {
                         )
                     },
                 )
-                .build_with_registry(),
+                .build(),
             |v| vec![("cls", v.str("a\"b")), ("flag", v.bool(true))],
             expect![[r#"
                 -- before --
@@ -832,7 +833,7 @@ mod tests {
                 .entrypoint("Test", [("content", Ty::String)], Ty::Html, |t| {
                     t.escape(t.param("content"))
                 })
-                .build_with_registry(),
+                .build(),
             |v| vec![("content", v.str("<script>alert('xss')</script>"))],
             expect![[r#"
                 -- before --
@@ -857,7 +858,7 @@ mod tests {
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
                 })
-                .build_with_registry(),
+                .build(),
             |v| vec![("show", v.bool(true))],
             expect![[r#"
                 -- before --
@@ -892,7 +893,7 @@ mod tests {
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
                 })
-                .build_with_registry(),
+                .build(),
             |v| vec![("show", v.bool(false))],
             expect![[r#"
                 -- before --
@@ -926,7 +927,7 @@ mod tests {
                         t.html_concat([t.element("li", vec![], t.escape(item)), t.text("\n")])
                     })
                 })
-                .build_with_registry(),
+                .build(),
             |v| {
                 vec![(
                     "items",
@@ -970,7 +971,7 @@ mod tests {
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.call("Sum", [t.int(10)])))
                 })
-                .build_with_registry(),
+                .build(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -1025,7 +1026,7 @@ mod tests {
 
     #[test]
     fn should_error_when_a_function_calls_itself_on_copies_of_its_argument() {
-        let types = TypeRegistryBuilder::new()
+        let types = IrTypeDeclarationsBuilder::new()
             .enum_(
                 "Tree",
                 [
@@ -1037,16 +1038,19 @@ mod tests {
         // Each call holds eight of the tree it was called with, so the tree at
         // the call depth limit has 8^11 leaves, too many to hold unless the
         // copies are shared.
-        let program = FlatProgramBuilder::with_registry(types)
+        let program = FlatProgramBuilder::with_types(types)
             .function("Grow", [("tree", Ty::named("Tree"))], Ty::Int, |t| {
                 let tree = t.param("tree");
                 let children = t.array([tree; 8]);
-                let node =
-                    t.enum_variant_with_fields(Ty::named("Tree"), "Node", [("children", children)]);
+                let node = t.enum_variant_with_fields(
+                    t.ty(Ty::named("Tree")),
+                    "Node",
+                    [("children", children)],
+                );
                 t.call("Grow", [node])
             })
             .entrypoint("Test", [], Ty::Html, |t| {
-                let leaf = t.enum_variant_with_fields(Ty::named("Tree"), "Leaf", []);
+                let leaf = t.enum_variant_with_fields(t.ty(Ty::named("Tree")), "Leaf", []);
                 t.escape(t.int_to_string(t.call("Grow", [leaf])))
             })
             .build();

@@ -25,9 +25,9 @@ mod tests {
     #[test]
     fn fuzz_random_programs_evaluate_identically_after_optimization() {
         arbtest::arbtest(|u| {
-            let (program, registry) = random_program(u);
+            let program = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entrypoint_args = random_entrypoint_args(&program, &mut rng, &registry);
+            let entrypoint_args = random_entrypoint_args(&program, &mut rng);
 
             let before_program = program.clone();
             let before: Vec<Option<String>> = entrypoint_args
@@ -49,7 +49,7 @@ mod tests {
                 .collect();
 
             let program = optimize_flat(program);
-            flat_lint::assert_well_typed(&program, &registry);
+            flat_lint::assert_well_typed(&program);
 
             for ((function, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit a limit has no output to preserve.

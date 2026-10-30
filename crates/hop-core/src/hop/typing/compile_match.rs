@@ -12,9 +12,10 @@
 //! introducing new match subjects.
 use std::collections::{HashMap, HashSet};
 
+use crate::hop::typing::match_types::{MatchTypes, TypeShape};
 use crate::hop::typing::r#type::DataType;
 use crate::hop::typing::type_error::TypeErrorKind;
-use crate::hop::typing::type_registry::{ResolvedType, TypeRegistry};
+use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typed_pattern::Constructor;
 use crate::hop::typing::typed_pattern::{Pattern, PatternField, TypedBinder, TypedPattern};
 use crate::symbols::field_name::FieldName;
@@ -51,20 +52,20 @@ pub struct Body<N> {
 
 /// A variable used in a match expression.
 #[derive(Clone, Debug)]
-pub struct Variable {
+pub struct Variable<T> {
     pub id: CaseVar,
-    pub typ: DataType,
+    pub typ: T,
 }
 
 /// A single case (or row) in a match expression/table.
 #[derive(Clone, Debug)]
-struct Row<N> {
-    columns: Vec<Column<N>>,
+struct Row<N, T> {
+    columns: Vec<Column<N, T>>,
     body: Body<N>,
 }
 
-impl<N> Row<N> {
-    fn remove_column(&mut self, variable: &Variable) -> Option<Column<N>> {
+impl<N, T> Row<N, T> {
+    fn remove_column(&mut self, variable: &Variable<T>) -> Option<Column<N, T>> {
         self.columns
             .iter()
             .position(|c| c.variable.id == variable.id)
@@ -78,108 +79,108 @@ impl<N> Row<N> {
 /// that variable. A row may contain multiple columns, though this wouldn't be
 /// exposed to the source language.
 #[derive(Clone, Debug)]
-struct Column<N> {
-    variable: Variable,
+struct Column<N, T> {
+    variable: Variable<T>,
     pattern: Pattern<N>,
 }
 
 /// A case for boolean pattern matching - no bindings possible.
 #[derive(Clone, Debug)]
-pub struct BoolCase<N> {
-    pub body: Decision<N>,
+pub struct BoolCase<N, T> {
+    pub body: Decision<N, T>,
 }
 
 /// A case for the Some variant of Option - exactly one potential binding.
 #[derive(Clone, Debug)]
-pub struct OptionSomeCase<N> {
+pub struct OptionSomeCase<N, T> {
     /// The case variable holding the inner value.
-    pub var: Variable,
-    pub body: Decision<N>,
+    pub var: Variable<T>,
+    pub body: Decision<N, T>,
 }
 
 /// A case for the None variant of Option - no bindings.
 #[derive(Clone, Debug)]
-pub struct OptionNoneCase<N> {
-    pub body: Decision<N>,
+pub struct OptionNoneCase<N, T> {
+    pub body: Decision<N, T>,
 }
 
 /// A case for an enum variant - may have multiple field bindings.
 #[derive(Clone, Debug)]
-pub struct EnumCase<N> {
+pub struct EnumCase<N, T> {
     pub type_name: TypeName,
     pub variant_name: TypeName,
     /// Bindings for each field in the variant.
-    pub bindings: Vec<FieldBinding>,
-    pub body: Decision<N>,
+    pub bindings: Vec<FieldBinding<T>>,
+    pub body: Decision<N, T>,
 }
 
 /// A case for record destructuring - has bindings for each field.
 #[derive(Clone, Debug)]
-pub struct RecordCase<N> {
+pub struct RecordCase<N, T> {
     /// Used for debug formatting in tests
     pub _type_name: TypeName,
     /// Bindings for each field in the record.
-    pub bindings: Vec<FieldBinding>,
-    pub body: Decision<N>,
+    pub bindings: Vec<FieldBinding<T>>,
+    pub body: Decision<N, T>,
 }
 
 /// A case for tuple destructuring - has a case variable for each element.
 #[derive(Clone, Debug)]
-pub struct TupleCase<N> {
+pub struct TupleCase<N, T> {
     /// The case variables holding the tuple's elements, in order.
-    pub elements: Vec<Variable>,
-    pub body: Decision<N>,
+    pub elements: Vec<Variable<T>>,
+    pub body: Decision<N, T>,
 }
 
 /// A binding for a field in a record or enum variant.
 #[derive(Debug, Clone)]
-pub struct FieldBinding {
+pub struct FieldBinding<T> {
     /// The field name this binding corresponds to.
     pub field_name: FieldName,
     /// The case variable holding this field's value.
-    pub var: Variable,
+    pub var: Variable<T>,
 }
 
 /// A decision tree compiled from a list of match cases.
 #[derive(Clone, Debug)]
-pub enum Decision<N> {
+pub enum Decision<N, T> {
     /// A pattern is matched and the right-hand value is to be returned.
     Success(Body<N>),
 
     /// Switch on a boolean value.
     SwitchBool {
-        variable: Variable,
-        true_case: Box<BoolCase<N>>,
-        false_case: Box<BoolCase<N>>,
+        variable: Variable<T>,
+        true_case: Box<BoolCase<N, T>>,
+        false_case: Box<BoolCase<N, T>>,
     },
 
     /// Switch on an Option value.
     SwitchOption {
-        variable: Variable,
-        some_case: Box<OptionSomeCase<N>>,
-        none_case: Box<OptionNoneCase<N>>,
+        variable: Variable<T>,
+        some_case: Box<OptionSomeCase<N, T>>,
+        none_case: Box<OptionNoneCase<N, T>>,
     },
 
     /// Switch on an enum value.
     SwitchEnum {
-        variable: Variable,
-        cases: Vec<EnumCase<N>>,
+        variable: Variable<T>,
+        cases: Vec<EnumCase<N, T>>,
     },
 
     /// Match a record (single case, destructures fields).
     SwitchRecord {
-        variable: Variable,
-        case: Box<RecordCase<N>>,
+        variable: Variable<T>,
+        case: Box<RecordCase<N, T>>,
     },
 
     /// Match a tuple (single case, destructures elements).
     SwitchTuple {
-        variable: Variable,
-        case: Box<TupleCase<N>>,
+        variable: Variable<T>,
+        case: Box<TupleCase<N, T>>,
     },
 }
 
-impl<N> Decision<N> {
+impl<N, T> Decision<N, T> {
     /// Collect every case variable the tree reads, as the subject of a
     /// switch or as the source of a binding.
     pub fn collect_used(&self, used: &mut HashSet<CaseVar>) {
@@ -224,7 +225,7 @@ impl<N> Decision<N> {
 }
 
 /// Information about a matched constructor for a variable.
-struct VarInfo {
+struct VarInfo<T> {
     /// The constructor (e.g., `Some`, `None`, `Color::Red`, `User`).
     constructor: Constructor,
     /// Constructor arguments: (optional_field_name, sub_var).
@@ -234,7 +235,7 @@ struct VarInfo {
     /// Foo{a: #1, b: #2}    [(Some("a"), #1), (Some("b"), #2)]
     /// (#1, #2)             [(None, #1), (None, #2)]
     /// ```
-    args: Vec<(Option<FieldName>, Variable)>,
+    args: Vec<(Option<FieldName>, Variable<T>)>,
 }
 
 /// Checks if a pattern introduces no bindings and requires no runtime discrimination.
@@ -260,19 +261,19 @@ fn is_free_from_bindings<N>(pattern: &Pattern<N>) -> bool {
 }
 
 /// Returns the index of a constructor within the given type.
-fn constructor_index(cons: &Constructor, resolved: ResolvedType<'_>) -> usize {
+fn constructor_index<T>(cons: &Constructor, shape: &TypeShape<'_, T>) -> usize {
     match cons {
         Constructor::BoolFalse => 0,
         Constructor::BoolTrue => 1,
         Constructor::OptionSome => 0,
         Constructor::OptionNone => 1,
         Constructor::EnumVariant { variant_name, .. } => {
-            let ResolvedType::Enum { variants, .. } = resolved else {
+            let TypeShape::Enum { variants, .. } = shape else {
                 panic!("type is not an enum")
             };
             variants
                 .iter()
-                .position(|variant| variant.name == *variant_name)
+                .position(|(name, _)| *name == variant_name)
                 .expect("unknown variant")
         }
         // Records and tuples have only one constructor, so index is always 0
@@ -303,7 +304,7 @@ pub fn compile_match(
     registry: &TypeRegistry,
     patterns: &[TypedPattern],
     subject_type: DataType,
-) -> Result<Decision<TypedBinder>, MatchError> {
+) -> Result<Decision<TypedBinder, DataType>, MatchError> {
     if patterns.is_empty() {
         return Err(MatchError {
             kind: Box::new(TypeErrorKind::MatchNoArms {}),
@@ -351,30 +352,30 @@ pub fn compile_match(
 
 /// Compile the patterns of a match the typechecker accepted into a decision
 /// tree. Every value matches one of them, so the tree is complete.
-pub fn compile_decision_tree<N: Clone>(
-    registry: &TypeRegistry,
+pub fn compile_decision_tree<N: Clone, M: MatchTypes>(
+    types: &M,
     patterns: &[Pattern<N>],
-    subject_type: DataType,
-) -> Decision<N> {
-    let (tree, _, _) = compile_arms(registry, patterns, subject_type);
+    subject_type: M::Type,
+) -> Decision<N, M::Type> {
+    let (tree, _, _) = compile_arms(types, patterns, subject_type);
     tree.expect("an accepted match has a pattern for every value")
 }
 
 /// Compile the patterns into a decision tree, which is None when some value
 /// matches none of them. Also returns the indices of the patterns some value
 /// reaches, and a pattern for each value that matches none.
-pub fn compile_arms<N: Clone>(
-    registry: &TypeRegistry,
+pub fn compile_arms<N: Clone, M: MatchTypes>(
+    types: &M,
     patterns: &[Pattern<N>],
-    subject_type: DataType,
-) -> (Option<Decision<N>>, Vec<usize>, Vec<Pattern<N>>) {
+    subject_type: M::Type,
+) -> (Option<Decision<N, M::Type>>, Vec<usize>, Vec<Pattern<N>>) {
     let subject_var = Variable {
         id: CaseVar(0),
         typ: subject_type,
     };
     let mut next_case = 1;
 
-    let rows: Vec<Row<N>> = patterns
+    let rows: Vec<Row<N, M::Type>> = patterns
         .iter()
         .enumerate()
         .map(|(idx, pattern)| Row {
@@ -395,7 +396,7 @@ pub fn compile_arms<N: Clone>(
 
     let tree = compile_rows(
         &mut next_case,
-        registry,
+        types,
         &mut reachable,
         &mut missing_patterns,
         &mut var_info,
@@ -404,14 +405,14 @@ pub fn compile_arms<N: Clone>(
     (tree, reachable, missing_patterns)
 }
 
-fn compile_rows<N: Clone>(
+fn compile_rows<N: Clone, M: MatchTypes>(
     next_case: &mut usize,
-    registry: &TypeRegistry,
+    types: &M,
     reachable: &mut Vec<usize>,
     missing_patterns: &mut Vec<Pattern<N>>,
-    var_info: &mut HashMap<CaseVar, VarInfo>,
-    mut rows: Vec<Row<N>>,
-) -> Option<Decision<N>> {
+    var_info: &mut HashMap<CaseVar, VarInfo<M::Type>>,
+    mut rows: Vec<Row<N, M::Type>>,
+) -> Option<Decision<N, M::Type>> {
     if rows.is_empty() {
         missing_patterns.push(witness_for_var(var_info, CaseVar(0)));
         return None;
@@ -444,71 +445,68 @@ fn compile_rows<N: Clone>(
     let branch_var = find_branch_variable(&rows);
     // Resolve a clone of the type, since branch_var moves into the decision.
     let branch_typ = branch_var.typ.clone();
-    let resolved = registry
-        .resolve(&branch_typ)
-        .expect("named type must be registered");
+    let shape = types.shape(&branch_typ);
 
-    let mut cases = match resolved {
-        ResolvedType::Bool => {
+    let mut cases = match &shape {
+        TypeShape::Bool => {
             vec![
                 (Constructor::BoolFalse, Vec::new(), Vec::new()),
                 (Constructor::BoolTrue, Vec::new(), Vec::new()),
             ]
         }
-        ResolvedType::Option(inner) => {
+        TypeShape::Option(inner) => {
             vec![
                 (
                     Constructor::OptionSome,
-                    vec![(None, fresh_var(next_case, inner.clone()))],
+                    vec![(None, fresh_var(next_case, (*inner).clone()))],
                     Vec::new(),
                 ),
                 (Constructor::OptionNone, Vec::new(), Vec::new()),
             ]
         }
-        ResolvedType::Enum { name, variants, .. } => variants
+        TypeShape::Enum { name, variants } => variants
             .iter()
-            .map(|variant| {
+            .map(|(variant_name, fields)| {
                 // Create fresh variables for each field in the variant
-                let field_vars = variant
-                    .fields
+                let field_vars = fields
                     .iter()
-                    .map(|field| {
+                    .map(|(field_name, typ)| {
                         (
-                            Some(field.name.clone()),
-                            fresh_var(next_case, field.typ.clone()),
+                            Some((*field_name).clone()),
+                            fresh_var(next_case, (*typ).clone()),
                         )
                     })
                     .collect();
                 (
                     Constructor::EnumVariant {
-                        type_name: name.clone(),
-                        variant_name: variant.name.clone(),
+                        type_name: (*name).clone(),
+                        variant_name: (*variant_name).clone(),
                     },
                     field_vars,
                     Vec::new(),
                 )
             })
             .collect(),
-        ResolvedType::Record { name, fields, .. } => {
+        TypeShape::Record { name, fields } => {
             // Records have a single constructor with fresh variables for each field
             let field_vars = fields
                 .iter()
-                .map(|field| {
+                .map(|(field_name, typ)| {
                     (
-                        Some(field.name.clone()),
-                        fresh_var(next_case, field.typ.clone()),
+                        Some((*field_name).clone()),
+                        fresh_var(next_case, (*typ).clone()),
                     )
                 })
                 .collect();
             vec![(
                 Constructor::Record {
-                    type_name: name.clone(),
+                    type_name: (*name).clone(),
                 },
                 field_vars,
                 Vec::new(),
             )]
         }
-        ResolvedType::Tuple(elements) => {
+        TypeShape::Tuple(elements) => {
             // Tuples have a single constructor with fresh variables for each element
             let element_vars = elements
                 .iter()
@@ -516,9 +514,7 @@ fn compile_rows<N: Clone>(
                 .collect();
             vec![(Constructor::Tuple, element_vars, Vec::new())]
         }
-        ResolvedType::String | ResolvedType::Int | ResolvedType::Float | ResolvedType::Array(_) => {
-            panic!("pattern matching not supported for this type")
-        }
+        TypeShape::Unmatchable => panic!("pattern matching not supported for this type"),
     };
 
     // Compile the cases and sub cases for the constructor located at the
@@ -545,7 +541,7 @@ fn compile_rows<N: Clone>(
                 fields,
             } = col.pattern
             {
-                let idx = constructor_index(&cons, resolved);
+                let idx = constructor_index(&cons, &shape);
                 let mut cols = row.columns;
 
                 if !fields.is_empty() {
@@ -592,7 +588,7 @@ fn compile_rows<N: Clone>(
 
         let body = compile_rows(
             next_case,
-            registry,
+            types,
             reachable,
             missing_patterns,
             var_info,
@@ -609,8 +605,8 @@ fn compile_rows<N: Clone>(
     }
 
     // All case bodies are Some, build the appropriate typed Decision variant
-    match resolved {
-        ResolvedType::Bool => {
+    match shape {
+        TypeShape::Bool => {
             // compiled_cases is ordered: [false, true]
             let mut iter = compiled_cases.into_iter();
             let (_, _, false_body) = iter.next().unwrap();
@@ -625,7 +621,7 @@ fn compile_rows<N: Clone>(
                 }),
             })
         }
-        ResolvedType::Option(_) => {
+        TypeShape::Option(_) => {
             // compiled_cases is ordered: [some, none]
             let mut iter = compiled_cases.into_iter();
             let (_, some_vars, some_body) = iter.next().unwrap();
@@ -642,7 +638,7 @@ fn compile_rows<N: Clone>(
                 }),
             })
         }
-        ResolvedType::Enum { name, .. } => {
+        TypeShape::Enum { name, .. } => {
             let cases = compiled_cases
                 .into_iter()
                 .map(|(cons, vars, body)| {
@@ -669,7 +665,7 @@ fn compile_rows<N: Clone>(
                 cases,
             })
         }
-        ResolvedType::Record { name, .. } => {
+        TypeShape::Record { name, .. } => {
             // Records have exactly one case
             let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
 
@@ -689,7 +685,7 @@ fn compile_rows<N: Clone>(
                 }),
             })
         }
-        ResolvedType::Tuple(_) => {
+        TypeShape::Tuple(_) => {
             // Tuples have exactly one case
             let (_, vars, body) = compiled_cases.into_iter().next().unwrap();
 
@@ -701,13 +697,13 @@ fn compile_rows<N: Clone>(
                 }),
             })
         }
-        _ => unreachable!("Unsupported type for pattern matching"),
+        TypeShape::Unmatchable => unreachable!("Unsupported type for pattern matching"),
     }
 }
 
 /// Given a row, returns the variable in that row that's referred to the
 /// most across all rows.
-fn find_branch_variable<N>(rows: &[Row<N>]) -> Variable {
+fn find_branch_variable<N, T: Clone>(rows: &[Row<N, T>]) -> Variable<T> {
     let mut counts: HashMap<CaseVar, usize> = HashMap::new();
     for row in rows {
         for col in &row.columns {
@@ -723,7 +719,7 @@ fn find_branch_variable<N>(rows: &[Row<N>]) -> Variable {
 }
 
 /// Returns a new case variable to use in the decision tree.
-fn fresh_var(next_case: &mut usize, typ: DataType) -> Variable {
+fn fresh_var<T>(next_case: &mut usize, typ: T) -> Variable<T> {
     let id = CaseVar(*next_case);
     *next_case += 1;
     Variable { id, typ }
@@ -734,7 +730,7 @@ fn fresh_var(next_case: &mut usize, typ: DataType) -> Variable {
 /// Starting from the root variable, it traverses `var_info` to reconstruct the
 /// pattern that would be needed to make the match exhaustive. A variable that
 /// no switch has tested is a wildcard.
-fn witness_for_var<N>(var_info: &HashMap<CaseVar, VarInfo>, var: CaseVar) -> Pattern<N> {
+fn witness_for_var<N, T>(var_info: &HashMap<CaseVar, VarInfo<T>>, var: CaseVar) -> Pattern<N> {
     let Some(info) = var_info.get(&var) else {
         return Pattern::Wildcard;
     };
@@ -867,7 +863,7 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    fn format_decision(decision: &Decision<TypedBinder>, indent: usize) -> String {
+    fn format_decision(decision: &Decision<TypedBinder, DataType>, indent: usize) -> String {
         let pad = "  ".repeat(indent);
         match decision {
             Decision::Success(body) => {

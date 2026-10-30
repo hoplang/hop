@@ -4,11 +4,12 @@ use pretty::{Arena, DocAllocator};
 
 use super::Doc;
 use super::transpiler::Transpiler;
-use crate::hop::typing::{DataType, Type, TypeRegistry};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
+use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type_declarations::{IrEnum, IrRecord};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
     WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration,
@@ -29,7 +30,7 @@ fn name_ident(name: ValueId) -> String {
 
 /// Destructuring entry for a parameter: `name: v_0`. The property name stays
 /// the source name, since it is the caller-facing argument name.
-fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter<Type>) -> Doc<'a> {
+fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter<IrType>) -> Doc<'a> {
     arena
         .text(param.name().as_str())
         .append(arena.text(": "))
@@ -49,12 +50,10 @@ pub struct TsTranspiler {
     needs_float_to_int: bool,
     /// Tracks whether Html type is used during transpilation
     needs_html: bool,
-    /// Registry of the program currently being transpiled
-    registry: TypeRegistry,
     /// The type of every name bound so far. A match binds its subject to
     /// a fresh constant of the subject's declared type, so a nested match
     /// on the same name is not narrowed by the arm it sits in.
-    name_types: HashMap<ValueId, Type>,
+    name_types: HashMap<ValueId, IrType>,
     /// Numbers the subject constants.
     subjects: usize,
 }
@@ -66,7 +65,6 @@ impl TsTranspiler {
             needs_escape_html: false,
             needs_float_to_int: false,
             needs_html: false,
-            registry: TypeRegistry::default(),
             name_types: HashMap::new(),
             subjects: 0,
         }
@@ -108,7 +106,7 @@ impl TsTranspiler {
     fn transpile_parameter_list<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parameters: &'a [IrParameter<Type>],
+        parameters: &'a [IrParameter<IrType>],
     ) -> Doc<'a> {
         for param in parameters {
             self.name_types
@@ -227,7 +225,7 @@ impl TsTranspiler {
                 let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
                 for (_, binder) in &arm.bindings {
                     self.name_types
-                        .insert(binder.var, Type::Data(binder.typ.clone()));
+                        .insert(binder.var, IrType::Data(binder.typ.clone()));
                 }
                 let bindings_doc = if arm.bindings.is_empty() {
                     arena.nil()
@@ -286,7 +284,7 @@ impl TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         subject: ValueId,
-        some_arm_binding: Option<&'a IrBinder<DataType>>,
+        some_arm_binding: Option<&'a IrBinder<IrDataType>>,
         some_arm_body: &'a Body,
         none_arm_body: &'a Body,
         mut body: impl FnMut(&mut Self, &'a Body) -> Doc<'a>,
@@ -302,7 +300,7 @@ impl TsTranspiler {
         let binding_doc = match some_arm_binding {
             Some(binder) => {
                 self.name_types
-                    .insert(binder.var, Type::Data(binder.typ.clone()));
+                    .insert(binder.var, IrType::Data(binder.typ.clone()));
                 arena
                     .text("const ")
                     .append(arena.text(name_ident(binder.var)))
@@ -371,22 +369,17 @@ impl Default for TsTranspiler {
 }
 
 impl Transpiler for TsTranspiler {
-    fn registry(&self) -> &TypeRegistry {
-        &self.registry
-    }
-
-    fn name_type(&self, name: ValueId) -> &Type {
+    fn name_type(&self, name: ValueId) -> &IrType {
         self.name_types
             .get(&name)
             .unwrap_or_else(|| unreachable!("every name records its type, and {name} has none"))
     }
 
-    fn transpile_program(&mut self, program: &WriterProgram, registry: &TypeRegistry) -> String {
+    fn transpile_program(&mut self, program: &WriterProgram) -> String {
         self.needs_option = false;
         self.needs_escape_html = false;
         self.needs_float_to_int = false;
         self.needs_html = false;
-        self.registry = registry.clone();
         self.name_types.clear();
         self.subjects = 0;
 
@@ -394,7 +387,11 @@ impl Transpiler for TsTranspiler {
         let pages = &program.pages;
         let mut result = arena.nil();
 
-        for (enum_name, variants) in registry.enums() {
+        for IrEnum {
+            name: enum_name,
+            variants,
+        } in &program.types.enums
+        {
             result = result
                 .append(arena.text("export namespace "))
                 .append(arena.text(enum_name.as_str()))
@@ -501,7 +498,11 @@ impl Transpiler for TsTranspiler {
                 .append(arena.line());
         }
 
-        for (record_name, fields) in registry.records() {
+        for IrRecord {
+            name: record_name,
+            fields,
+        } in &program.types.records
+        {
             if fields.is_empty() {
                 result = result
                     .append(arena.text("export class "))
@@ -826,14 +827,14 @@ impl Transpiler for TsTranspiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrBinder<DataType>>,
+        var: Option<&'a IrBinder<IrDataType>>,
         array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a> {
         let var_name = match var {
             Some(binder) => {
                 self.name_types
-                    .insert(binder.var, Type::Data(binder.typ.clone()));
+                    .insert(binder.var, IrType::Data(binder.typ.clone()));
                 name_ident(binder.var)
             }
             None => "_".to_string(),
@@ -1014,7 +1015,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        _elem_type: &'a DataType,
+        _elem_type: &'a IrDataType,
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
             .iter()
@@ -1046,7 +1047,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        _element_types: &'a [DataType],
+        _element_types: &'a [IrDataType],
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
             .iter()
@@ -1309,7 +1310,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         value: Option<ValueId>,
-        inner_type: &'a DataType,
+        inner_type: &'a IrDataType,
     ) -> Doc<'a> {
         self.needs_option = true;
         match value {
@@ -1472,7 +1473,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_array_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_type: &DataType,
+        element_type: &IrDataType,
     ) -> Doc<'a> {
         self.transpile_data_type(arena, element_type)
             .append(arena.text("[]"))
@@ -1481,7 +1482,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_tuple_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_types: &[DataType],
+        element_types: &[IrDataType],
     ) -> Doc<'a> {
         arena
             .text("[")
@@ -1500,7 +1501,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_option_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        inner_type: &DataType,
+        inner_type: &IrDataType,
     ) -> Doc<'a> {
         self.needs_option = true;
         arena
@@ -1509,7 +1510,7 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(">"))
     }
 
-    fn transpile_named_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
+    fn transpile_record_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
         arena.text(name.to_string())
     }
 
@@ -1543,12 +1544,13 @@ mod tests {
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let (flat, pages) = orchestrate_flat(
             session.typed_modules(),
+            session.type_registry(),
             OrchestrateOptions {
                 ..Default::default()
             },
         );
-        let writer = flat_to_writer(flat, session.type_registry(), &pages, None);
-        let output = TsTranspiler::new().transpile_program(&writer, session.type_registry());
+        let writer = flat_to_writer(flat, &pages, None);
+        let output = TsTranspiler::new().transpile_program(&writer);
         expected.assert_eq(&output);
     }
 

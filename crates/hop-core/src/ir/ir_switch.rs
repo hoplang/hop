@@ -2,8 +2,8 @@
 
 use pretty::BoxDoc;
 
-use crate::hop::typing::DataType;
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_type::IrDataType;
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -22,7 +22,7 @@ pub enum EnumPattern {
 pub struct EnumMatchArm<Body> {
     pub pattern: EnumPattern,
     /// Field bindings for this arm, e.g. `Result::Ok(value: v)` binds field "value" to variable "v"
-    pub bindings: Vec<(FieldName, IrBinder<DataType>)>,
+    pub bindings: Vec<(FieldName, IrBinder<IrDataType>)>,
     pub body: Body,
 }
 
@@ -45,7 +45,7 @@ pub enum IrSwitch<Body> {
     /// An option match, e.g. `match opt { Some(x) => x, None => "empty" }`
     Option {
         subject: ValueId,
-        some_arm_binding: Option<IrBinder<DataType>>,
+        some_arm_binding: Option<IrBinder<IrDataType>>,
         some_arm_body: Body,
         none_arm_body: Body,
     },

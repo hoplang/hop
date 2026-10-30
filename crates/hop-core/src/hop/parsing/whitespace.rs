@@ -160,6 +160,7 @@ mod tests {
         let page_name = TypeName::parse("Test").unwrap();
         let (flat, pages) = orchestrate_flat(
             &typed_modules,
+            session.type_registry(),
             OrchestrateOptions {
                 ..Default::default()
             },

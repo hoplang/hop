@@ -1,5 +1,5 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
-use crate::hop::typing::TypedModule;
+use crate::hop::typing::{TypeRegistry, TypedModule};
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::ir_page::IrPage;
 use crate::ir::typed_to_flat;
@@ -18,6 +18,7 @@ pub struct OrchestrateOptions {
 
 pub fn orchestrate_flat(
     typed_modules: &HashMap<RootContainedFilePath, TypedModule>,
+    registry: &TypeRegistry,
     options: OrchestrateOptions,
 ) -> (FlatProgram, Vec<IrPage>) {
     // Take pages from all modules (sorted by module ID for deterministic order)
@@ -49,5 +50,5 @@ pub fn orchestrate_flat(
 
     // Only the functions the selected pages reach are compiled, so a
     // page_filter build holds what that page actually needs.
-    typed_to_flat(pages, &functions, options.asset_path_rewriter)
+    typed_to_flat(pages, &functions, registry, options.asset_path_rewriter)
 }
