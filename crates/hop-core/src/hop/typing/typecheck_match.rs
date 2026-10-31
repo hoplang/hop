@@ -56,7 +56,10 @@ pub fn typecheck_match(
     let mut typed_bodies = Vec::with_capacity(arms.len());
     let mut result_type: Option<Type> = None;
 
+    let uses_before = var_env.html_uses();
+    let mut uses_after = uses_before.clone();
     for arm in arms {
+        var_env.set_html_uses(&uses_before);
         let mut bindings = Vec::new();
         // The body of an arm whose pattern does not typecheck is skipped,
         // since the variables the pattern binds are unknown
@@ -119,6 +122,11 @@ pub fn typecheck_match(
                 ));
             }
         }
+        for name in var_env.html_uses() {
+            if !uses_after.contains(&name) {
+                uses_after.push(name);
+            }
+        }
 
         let Some(typed_body) = typed_body else {
             continue;
@@ -148,6 +156,7 @@ pub fn typecheck_match(
             typed_bodies.push(typed_body);
         }
     }
+    var_env.set_html_uses(&uses_after);
 
     // Exhaustiveness and reachability are only checked when every pattern
     // typechecks, so that pattern indices line up with the arms

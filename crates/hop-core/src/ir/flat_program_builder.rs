@@ -231,6 +231,7 @@ impl FlatProgramBuilder {
             value_ids: self.value_ids.into_inner(),
         };
         flat_lint::assert_well_typed(&program);
+        flat_lint::assert_html_affine(&program);
         program
     }
 }

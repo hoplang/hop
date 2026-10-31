@@ -98,23 +98,38 @@ const STRING_LITERALS: &[&str] = &[
     "cr\rtab\t",
 ];
 
+// Each name with whether the path has used it, which only Html can be.
 #[derive(Clone, Default)]
 struct Scope {
-    names: Vec<ValueId>,
+    names: Vec<(ValueId, bool)>,
 }
 
 impl Scope {
     fn push(&mut self, value: ValueId) -> ValueId {
-        self.names.push(value);
+        self.names.push((value, false));
         value
     }
 
-    // The body of a lambda cannot read Html bound outside it.
+    fn set_used(&mut self, value: ValueId, used: bool) {
+        if let Some((_, flag)) = self.names.iter_mut().rev().find(|(name, _)| *name == value) {
+            *flag = used;
+        }
+    }
+
+    // The body of a loop or a lambda cannot read Html bound outside it.
     fn without_html(&self, types: &[IrType]) -> Scope {
         Scope {
             names: (self.names.iter().copied())
-                .filter(|name| types[name.index()] != IrType::HTML)
+                .filter(|(name, _)| types[name.index()] != IrType::HTML)
                 .collect(),
+        }
+    }
+
+    // `arm` is this scope with names pushed after it forked, and after the
+    // fork a name is used when any path used it.
+    fn join(&mut self, arm: &Scope) {
+        for ((_, used), (_, arm_used)) in self.names.iter_mut().zip(&arm.names) {
+            *used |= *arm_used;
         }
     }
 
@@ -125,8 +140,8 @@ impl Scope {
     ) -> impl Iterator<Item = ValueId> + 'a {
         self.names
             .iter()
-            .copied()
-            .filter(move |name| fits(&types[name.index()]))
+            .filter(move |(name, used)| !used && fits(&types[name.index()]))
+            .map(|(name, _)| *name)
     }
 }
 
@@ -547,7 +562,7 @@ impl FlatGenerator<'_, '_> {
         var: Option<ValueId>,
         depth: usize,
     ) -> ValueId {
-        let mut scope = scope.clone();
+        let mut scope = scope.without_html(&b.value_types());
         if let Some(var) = var {
             scope.push(var);
         }
@@ -558,7 +573,9 @@ impl FlatGenerator<'_, '_> {
         if self.index(DEAD_BINDING_ODDS) == DEAD_BINDING_ODDS - 1 {
             let ty = self.random_type(1);
             let typ = self.ir_type(ty);
-            self.op_of_type(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
+            let dead = self.op_of_type(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
+            // Html that nothing has read yet, which a later op may read.
+            scope.set_used(dead, false);
         }
         self.html_op(b, scope, depth, MAX_EXPRESSION_DEPTH)
     }
@@ -716,7 +733,7 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn html_leaf(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
-        match self.name_in_scope(b, scope, &IrType::HTML) {
+        let value = match self.name_in_scope(b, scope, &IrType::HTML) {
             Some(name) => name,
             None => {
                 let literal = match self.index(3) {
@@ -734,7 +751,9 @@ impl FlatGenerator<'_, '_> {
                 };
                 scope.push(literal)
             }
-        }
+        };
+        scope.set_used(value, true);
+        value
     }
 
     fn data_leaf(
@@ -1076,7 +1095,9 @@ impl FlatGenerator<'_, '_> {
                 }
             }
         };
-        scope.push(value)
+        scope.push(value);
+        scope.set_used(value, true);
+        value
     }
 
     fn data_op(
@@ -1393,18 +1414,23 @@ impl FlatGenerator<'_, '_> {
             }
         };
         let arms = self.partition(b, &subject_ty, MAX_PATTERN_DEPTH, true, &mut 0);
-        b.match_(subject, |m| {
+        let mut joined = scope.clone();
+        let value = b.match_(subject, |m| {
             for (pat, binds) in arms {
                 m.arm(pat, |b, bindings| {
                     let depth = depth - 1;
-                    let mut scope = scope.clone();
+                    let mut arm = scope.clone();
                     for name in binds {
-                        scope.push(bindings.binding(&name));
+                        arm.push(bindings.binding(&name));
                     }
-                    self.block_of_type(b, &mut scope, target, depth)
+                    let body = self.block_of_type(b, &mut arm, target, depth);
+                    joined.join(&arm);
+                    body
                 });
             }
-        })
+        });
+        *scope = joined;
+        value
     }
 }
 
@@ -1783,59 +1809,59 @@ mod tests {
             ));
         }
         expect![[r#"
-            7422 of 65536 input bytes consumed per program on average, at most 56829
+            6737 of 65536 input bytes consumed per program on average, at most 37062
             0 of 100 programs exhaust the input
             11 of 210 entrypoints hit the call depth limit
             0 of 210 entrypoints hit the array length limit
             0 of 210 entrypoints hit the string length limit
             0 of 210 entrypoints hit the Html size limit
-            1 of 210 entrypoints hit the op count limit
-            964 of 9578 Html bindings have more than one reference
+            3 of 210 entrypoints hit the op count limit
+            102 of 10288 Html bindings have more than one reference
             2.5 arms per match on average, at least 2 and at most 27
-            8854 of 23136 match arms bind names
+            8228 of 20803 match arms bind names
 
             op                   ops/program % progs  % live   % dyn
-            Apply                       88.1    91.0    96.0    75.9
-            Array                      199.2    88.0    94.7    16.4
-            ArrayFromRange               5.2    77.0    97.7     0.0
-            ArrayIsEmpty                 1.3    41.0    97.0    41.7
-            ArrayLength                 13.2    80.0    97.6    50.3
-            BoolLiteral                 68.5    87.0    95.6     0.0
-            BoolNegation                 1.2    43.0    96.7    50.4
-            Call                         8.4    51.0    99.5    82.4
-            Enum                       126.0    67.0    95.1    20.3
-            Equals                       1.2    42.0    98.4    67.7
-            FieldAccess                  4.1    40.0    97.3    59.3
-            FloatLiteral                76.9    88.0    95.1     0.0
-            FloatToInt                  12.2    76.0    96.8    48.7
-            HtmlApply                    4.3    73.0    99.1    79.0
-            HtmlConcat                  31.1    86.0    99.3    51.6
-            HtmlElement                 17.3    78.0    99.2    71.8
-            HtmlEscape                  15.9    84.0    98.9    49.6
-            HtmlFor                      8.0    78.0    98.6    71.9
-            HtmlLambda                   5.8    74.0    99.7    60.0
-            HtmlText                     2.0    56.0    98.5     0.0
-            IntLiteral                  71.2    92.0    95.3     0.0
-            IntToFloat                  13.6    72.0    96.7    48.5
-            IntToString                 17.7    82.0    98.1    45.0
-            Lambda                     107.7    91.0    96.0    60.7
-            LessThan                     1.3    47.0    94.5    65.6
-            LessThanOrEqual              1.4    47.0    98.6    63.6
-            Match                       93.2    86.0    96.3    86.7
-            NumericAdd                  26.9    78.0    97.3    68.7
-            NumericMultiply             25.4    75.0    96.7    67.9
-            NumericNegation             26.3    77.0    97.3    54.7
-            NumericSubtract             26.8    81.0    97.2    66.4
-            OptionIsNone                 1.3    43.0    96.2    40.0
-            OptionIsSome                 1.2    44.0    99.2    43.2
-            OptionNone                 123.6    93.0    94.5     0.0
-            OptionSome                  69.0    87.0    94.4    27.1
-            Record                      94.5    61.0    94.9    27.2
-            StringConcat                18.0    76.0    98.3    48.0
-            StringIsEmpty                1.3    43.0    96.2    49.2
-            StringLiteral               62.9    93.0    94.8     0.0
-            Tuple                      746.1    90.0    95.2    48.1
-            TupleIndex                 466.2    90.0    94.9    69.3
+            Apply                       80.4    91.0    95.6    75.5
+            Array                      182.9    87.0    94.6    16.2
+            ArrayFromRange               5.1    77.0    97.4     0.0
+            ArrayIsEmpty                 1.1    43.0    96.3    32.7
+            ArrayLength                 11.1    80.0    98.0    53.5
+            BoolLiteral                 61.8    86.0    95.4     0.0
+            BoolNegation                 1.1    41.0    98.2    47.3
+            Call                         6.8    52.0   100.0    80.7
+            Enum                       123.5    67.0    95.0    21.2
+            Equals                       1.1    44.0   100.0    73.1
+            FieldAccess                  3.7    41.0    98.1    66.9
+            FloatLiteral                73.0    87.0    94.9     0.0
+            FloatToInt                  11.3    76.0    97.3    49.0
+            HtmlApply                    4.4    71.0    99.1    78.3
+            HtmlConcat                  34.5    87.0    99.7    35.4
+            HtmlElement                 20.7    81.0    99.7    49.7
+            HtmlEscape                  13.6    85.0    99.4    53.1
+            HtmlFor                      7.9    78.0    98.7    66.5
+            HtmlLambda                   5.0    73.0    99.6    61.3
+            HtmlText                     7.5    63.0    99.6     0.0
+            IntLiteral                  69.2    92.0    95.3     0.0
+            IntToFloat                  11.6    73.0    97.0    49.0
+            IntToString                 16.2    83.0    98.4    50.4
+            Lambda                      98.7    91.0    95.7    60.3
+            LessThan                     1.1    46.0    98.1    67.6
+            LessThanOrEqual              1.2    49.0    99.2    65.9
+            Match                       83.2    85.0    95.8    87.0
+            NumericAdd                  23.1    79.0    97.7    71.7
+            NumericMultiply             22.3    76.0    97.3    69.7
+            NumericNegation             23.4    77.0    98.0    57.0
+            NumericSubtract             23.5    80.0    97.6    70.3
+            OptionIsNone                 1.1    46.0    97.2    50.5
+            OptionIsSome                 1.0    48.0    99.0    57.6
+            OptionNone                 112.5    93.0    94.0     0.0
+            OptionSome                  62.1    87.0    93.9    25.4
+            Record                      82.0    61.0    94.6    23.8
+            StringConcat                16.4    76.0    98.4    52.7
+            StringIsEmpty                1.1    42.0    95.6    54.9
+            StringLiteral               58.4    93.0    94.6     0.0
+            Tuple                      676.8    90.0    94.9    47.3
+            TupleIndex                 421.2    90.0    94.6    69.3
         "#]]
         .assert_eq(&report);
     }

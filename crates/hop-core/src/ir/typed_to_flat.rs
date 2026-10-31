@@ -974,6 +974,7 @@ mod tests {
 
     use super::*;
     use crate::document::Document;
+    use crate::ir::flat_lint;
     use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::session::Session;
     use expect_test::{Expect, expect};
@@ -996,6 +997,8 @@ mod tests {
                 ..Default::default()
             },
         );
+        flat_lint::assert_well_typed(&flat);
+        flat_lint::assert_html_affine(&flat);
         let pages: String = pages.iter().map(|page| format!("{page}\n")).collect();
         expected.assert_eq(&format!("{flat}{pages}"));
     }
@@ -1811,6 +1814,62 @@ mod tests {
                   v8
                 }
                 page Test: body@f1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_forward_children_through_a_rest_and_read_html_once_in_each_arm() {
+        check(
+            indoc! {r#"
+                fn Callout(open: Bool, children: Html) -> Html {
+                  match open {
+                    true => <aside>{children}</aside>,
+                    false => <details>{children}</details>,
+                  }
+                }
+
+                fn Tip(...rest) -> Html {
+                  <Callout ...rest/>
+                }
+
+                page Test(open: Bool) {
+                  fn body() -> Html {
+                    <Tip open={open}>
+                      <b>x</b>
+                    </Tip>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn Callout@f1(open@v9: Bool, children@v10: Html) -> Html {
+                  let v15: Html = match v9 {
+                    true => {
+                      let v11: Html = concat(v10)
+                      let v12: Html = element("aside", {}, v11)
+                      v12
+                    }
+                    false => {
+                      let v13: Html = concat(v10)
+                      let v14: Html = element("details", {}, v13)
+                      v14
+                    }
+                  }
+                  v15
+                }
+                fn Tip@f0(open@v6: Bool, children@v7: Html) -> Html {
+                  let v8: Html = Callout@f1(v6, v7)
+                  v8
+                }
+                entrypoint fn body@f2(open@v0: Bool) -> Html {
+                  let v1: Html = text("x")
+                  let v2: Html = concat(v1)
+                  let v3: Html = element("b", {}, v2)
+                  let v4: Html = concat(v3)
+                  let v5: Html = Tip@f0(v0, v4)
+                  v5
+                }
+                page Test: body@f2
             "#]],
         );
     }

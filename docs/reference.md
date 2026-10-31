@@ -360,6 +360,37 @@ fn double(x: Int) -> Int {
 }
 ```
 
+A variable bound to an `Html` value is used at most once on every path through
+its scope. Using it a second time is a compile error:
+
+```hop
+let star = <b>*</b>;
+<p>{star}{star}</p> // error: Html value star is used more than once
+```
+
+Each arm of a [match expression](#match-expressions) is a path of its own, so
+every arm can use the variable once:
+
+```hop
+let flag = true;
+let star = <b>*</b>;
+match flag {
+  true => <p>{star}</p>,
+  false => <i>{star}</i>,
+}
+```
+
+The body of a [for expression](#for-expressions) evaluates once for each
+element, so a use in the body of a variable bound outside the `for` expression
+is a compile error:
+
+```hop
+let star = <b>*</b>;
+for _ in 1..=3 {
+  star // error: Html value star is bound outside the loop it is used in
+}
+```
+
 <a id="parenthesized-expressions"></a>
 
 ### Parenthesized expressions
@@ -1172,7 +1203,8 @@ SecondaryButton(type: "submit")            // <button class="secondary" type="su
 
 Exactly once means once in the source text, not once per evaluation: a spread
 in each arm of a `match` is a compile error, while a single spread inside a
-`for` body is allowed, and passes on the same arguments on every iteration.
+`for` body is allowed, and passes on the same arguments on every iteration,
+unless one of them is `Html`, as described below.
 
 Since the spread places its arguments at the end, a spread written before an
 attribute renders after it:
@@ -1273,6 +1305,26 @@ fn Warning(...rest) -> Html {
 <Tip><b>x</b></Tip> // <aside><b>x</b></aside>
 <Warning/>          // <aside><b>Warning</b></aside>
 <Warning></Warning> // error: Function Warning does not accept argument 'children'
+```
+
+A parameter that a rest parameter adds is bound outside every `for` body of
+its function, like the parameters the function declares. A spread inside a
+`for` body that adds a parameter of type `Html` therefore uses that
+[Html value](#variable-reference-expressions) in a loop it is bound outside of,
+which is a compile error:
+
+```hop
+fn Callout(children: Html) -> Html {
+  <aside>
+    {children}
+  </aside>
+}
+
+fn Tips(count: Int, ...rest) -> Html {
+  for _ in 1..=count {
+    <Callout ...rest/> // error: Html value children is bound outside the loop it is used in
+  }
+}
 ```
 
 Spreading rest parameters in a cycle is a compile error:

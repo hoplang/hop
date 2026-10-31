@@ -260,6 +260,20 @@ pub fn typecheck_call(
             continue;
         }
         if rest_spread.is_some() && forwarded_params.contains(&param.name) {
+            // The rest adds the parameter to the enclosing function, outside
+            // every loop of its body.
+            if param.typ == Type::HTML && var_env.in_loop() {
+                let Callee::Function { report_range, .. } = &callee else {
+                    unreachable!("an element has no parameters to forward");
+                };
+                errors.push(TypeError::new(
+                    TypeErrorKind::HtmlUsedInLoop {
+                        name: param.name.clone(),
+                    },
+                    DocumentRange::clone(report_range),
+                ));
+                failed = true;
+            }
             typed.push((
                 param.name.clone(),
                 TypedExpr::ForwardedParam {

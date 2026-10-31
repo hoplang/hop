@@ -17,6 +17,117 @@ use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 
+/// Panics unless every Html value is read at most once on each path and
+/// never from a loop body or a lambda body it is bound outside of. A
+/// closure that renders Html is not an Html value and is read freely. Only
+/// Html reads Html, which `assert_well_typed` checks, so only the Html of a
+/// block is walked.
+///
+/// Sets of names are vectors of flags indexed by the name's number, so
+/// that forking the scope at a match is a copy and joining it is a loop.
+pub fn assert_html_affine(program: &FlatProgram) {
+    let mut html = vec![false; program.value_ids.count()];
+    let html_functions = program
+        .functions
+        .iter()
+        .filter_map(|function| match function {
+            FlatFunctionDeclaration::Html(function) => Some(function),
+            FlatFunctionDeclaration::Data(_) => None,
+        });
+    for function in html_functions.clone() {
+        for param in &function.parameters {
+            if param.binder.typ == IrType::HTML {
+                html[param.binder.var.index()] = true;
+            }
+        }
+        collect_html(&function.body, &mut html);
+    }
+    for function in html_functions {
+        let mut scope = vec![false; html.len()];
+        for param in &function.parameters {
+            if html[param.binder.var.index()] {
+                scope[param.binder.var.index()] = true;
+            }
+        }
+        check_block(&function.body, scope, &html, &function.function);
+    }
+}
+
+fn collect_html(block: &FlatHtmlBlock, html: &mut [bool]) {
+    for binding in &block.html {
+        if binding.binder.typ == IrHtmlType::Html {
+            html[binding.binder.var.index()] = true;
+        }
+        match &binding.op {
+            FlatHtmlOp::Match(match_) => {
+                for arm in &match_.arms {
+                    collect_html(&arm.body, html);
+                }
+            }
+            FlatHtmlOp::For(for_) => collect_html(&for_.body, html),
+            FlatHtmlOp::Lambda(lambda) => {
+                for param in &lambda.parameters {
+                    if param.typ == IrType::HTML {
+                        html[param.var.index()] = true;
+                    }
+                }
+                collect_html(&lambda.body, html);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn check_block(
+    block: &FlatHtmlBlock,
+    mut scope: Vec<bool>,
+    html: &[bool],
+    function: &IrFunction,
+) -> Vec<bool> {
+    for binding in &block.html {
+        binding
+            .op
+            .for_each_operand(&mut |operand| read(operand, &mut scope, html, function));
+        match &binding.op {
+            FlatHtmlOp::Match(match_) => {
+                let mut after = scope.clone();
+                for arm in &match_.arms {
+                    let inner = check_block(&arm.body, scope.clone(), html, function);
+                    for (name, live) in after.iter_mut().zip(&inner) {
+                        *name = *name && *live;
+                    }
+                }
+                scope = after;
+            }
+            FlatHtmlOp::For(for_) => {
+                check_block(&for_.body, vec![false; html.len()], html, function);
+            }
+            FlatHtmlOp::Lambda(lambda) => {
+                let mut inner = vec![false; html.len()];
+                for param in &lambda.parameters {
+                    inner[param.var.index()] = html[param.var.index()];
+                }
+                check_block(&lambda.body, inner, html, function);
+            }
+            _ => {}
+        }
+        if html[binding.binder.var.index()] {
+            scope[binding.binder.var.index()] = true;
+        }
+    }
+    read(block.result, &mut scope, html, function);
+    scope
+}
+
+fn read(name: ValueId, scope: &mut [bool], html: &[bool], function: &IrFunction) {
+    if html[name.index()] {
+        assert!(
+            std::mem::replace(&mut scope[name.index()], false),
+            "{function} reads the Html value {name} when the path has used it or in a loop or lambda body it is bound outside of"
+        );
+    }
+}
+
 /// Panics unless every binding has the type its op produces from the types
 /// of its operands and every block produces the type its context expects.
 /// A name is read only after it is bound. Every value of a match subject's

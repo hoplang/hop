@@ -1270,11 +1270,13 @@ mod tests {
     fn should_error_when_html_is_too_large() {
         let program = FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| {
-                let mut html = t.text("x");
-                for _ in 0..24 {
-                    html = t.html_concat(vec![html, html]);
+                let mut string = t.str("x");
+                for _ in 0..23 {
+                    string = t.string_concat([string, string]);
                 }
-                html
+                let first = t.escape(string);
+                let second = t.escape(string);
+                t.html_concat(vec![first, second])
             })
             .build();
         let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
