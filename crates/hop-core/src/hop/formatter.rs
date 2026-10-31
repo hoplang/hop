@@ -502,6 +502,15 @@ fn format_attribute<'a>(
                 .append(arena.text("="))
                 .append(format_expr(arena, value, comments))
         }
+        ParsedAttribute::Expression { name, value, .. }
+            if matches!(value, ParsedExpr::Lambda { .. }) =>
+        {
+            arena
+                .text(name.as_str())
+                .append(arena.text("={"))
+                .append(format_expr(arena, value, comments))
+                .append(arena.text("}"))
+        }
         ParsedAttribute::Expression { name, value, .. } => arena
             .text(name.as_str())
             .append(arena.text("={"))
@@ -909,6 +918,20 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
             })
             .append(arena.text(")")),
         ParsedType::Named { name, .. } => arena.text(name.to_string()),
+        ParsedType::Function {
+            parameters, result, ..
+        } => arena
+            .text("fn(")
+            .append(
+                arena.intersperse(
+                    parameters
+                        .iter()
+                        .map(|parameter| format_type(arena, parameter)),
+                    arena.text(", "),
+                ),
+            )
+            .append(arena.text(") -> "))
+            .append(format_type(arena, result)),
     }
 }
 
@@ -981,6 +1004,39 @@ fn format_expr<'a>(
             })
             .append(arena.text(" in "))
             .append(format_loop_source(arena, source, comments))
+            .append(arena.text(" {"))
+            .append(
+                arena
+                    .hardline()
+                    .append(format_block_body(arena, body, comments))
+                    .nest(2),
+            )
+            .append(arena.hardline())
+            .append(arena.text("}")),
+        ParsedExpr::Lambda {
+            params,
+            return_type,
+            body,
+            ..
+        } => arena
+            .text("fn(")
+            .append(arena.intersperse(
+                params.iter().map(|param| {
+                    let name = arena.text(param.var_name.as_str());
+                    match &param.var_type {
+                        Some(var_type) => name
+                            .append(arena.text(": "))
+                            .append(format_type(arena, var_type)),
+                        None => name,
+                    }
+                }),
+                arena.text(", "),
+            ))
+            .append(arena.text(")"))
+            .append(match return_type {
+                Some(return_type) => arena.text(" -> ").append(format_type(arena, return_type)),
+                None => arena.nil(),
+            })
             .append(arena.text(" {"))
             .append(
                 arena
@@ -1546,6 +1602,37 @@ mod tests {
             );
             Ok(())
         });
+    }
+
+    #[test]
+    fn formats_function_types_and_lambdas() {
+        check(
+            indoc! {"
+                fn Main(labels: Array[String], row: fn(String,Int)->Html) -> Html {
+                  let double = fn(n:Int)->Int{n*2};
+                  <Rows labels={labels} row={fn(label,depth){ let n = double(depth); <li>{label}</li> }}/>
+                }
+            "},
+            expect![[r#"
+                fn Main(
+                  labels: Array[String],
+                  row: fn(String, Int) -> Html,
+                ) -> Html {
+                  let double = fn(n: Int) -> Int {
+                    n * 2
+                  };
+                  <Rows
+                    labels={labels}
+                    row={fn(label, depth) {
+                      let n = double(depth);
+                      <li>
+                        {label}
+                      </li>
+                    }}
+                  />
+                }
+            "#]],
+        );
     }
 
     #[test]

@@ -187,3 +187,41 @@ page Main {
             (text)
             (end_tag
               (tag_name))))))))
+
+================================================================================
+function types in parameters
+================================================================================
+
+fn f(row: fn(String, Int) -> Html, none: fn() -> Array[Int]) -> Html {
+  row("a", 1)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (function_type
+          (parameter_types
+            (type_identifier)
+            (type_identifier))
+          (type_identifier)))
+      (parameter
+        (identifier)
+        (function_type
+          (parameter_types)
+          (generic_type
+            (type_identifier)
+            (type_arguments
+              (type_identifier))))))
+    (type_identifier)
+    (block
+      (call_expression
+        (identifier)
+        (arguments
+          (string_literal
+            (string_content))
+          (integer_literal))))))

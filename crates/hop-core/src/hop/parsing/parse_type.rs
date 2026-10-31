@@ -58,6 +58,25 @@ pub fn parse_type(
             range: type_option.to(brackets),
         });
     }
+    if let Some(fn_keyword) = next_if_eq(iter, comments, errors, LangToken::Fn) {
+        let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
+        let (parameters, _) = parse_delimited_list(
+            iter,
+            comments,
+            errors,
+            LangTokenPair::Parens,
+            &left_paren,
+            &[LangToken::Arrow],
+            parse_type,
+        )?;
+        expect_token(iter, comments, errors, &LangToken::Arrow)?;
+        let result = parse_type(iter, comments, errors)?;
+        return Ok(ParsedType::Function {
+            range: fn_keyword.to(result.range().clone()),
+            parameters,
+            result: Box::new(result),
+        });
+    }
     if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
         let mut trailing_comma = false;
         let (elements, parens) = parse_delimited_list(

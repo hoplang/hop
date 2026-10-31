@@ -22,7 +22,7 @@ use crate::hop::typing::typecheck_expr::typecheck_expr;
 use crate::hop::typing::typed_module::{
     TypedFunctionDeclaration, TypedModule, TypedPageDeclaration, TypedParameter,
 };
-use crate::hop::typing::variable_scope::VariableScope;
+use crate::hop::typing::variable_scope::{FunctionScopeEntry, ScopeEntry, VariableScope};
 use crate::hover_annotation::HoverAnnotation;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
@@ -309,10 +309,8 @@ fn typecheck_module(
         collect_spreads(&page.body.body, &mut spreads);
         pair_rest_spread(None, spreads, errors);
     }
-    let type_env = TypeEnv {
-        names,
-        functions: resolve_rest_targets(&rest_targets, &declared, errors),
-    };
+    let settled = resolve_rest_targets(&rest_targets, &declared, errors);
+    let type_env = TypeEnv { names };
     for function in parsed_module.function_declarations() {
         let name = function.name.as_str();
         if type_env.names[name].definition_range != function.name_range {
@@ -320,7 +318,7 @@ fn typecheck_module(
         }
         // A function whose signature failed to resolve owns its name but has
         // nothing to export.
-        let Some(signature) = type_env.functions.get(name) else {
+        let Some(signature) = settled.get(name) else {
             continue;
         };
         module_exports.insert(
@@ -335,11 +333,25 @@ fn typecheck_module(
 
     // Phase 4
     //
-    // Typecheck bodies.
+    // Typecheck bodies. Every function the module declares or imports is in
+    // scope in each of them, beneath its variables.
+    let mut var_env = VariableScope::new();
+    for (name, entry) in &type_env.names {
+        if let NameKind::Function = entry.kind {
+            var_env
+                .declare_function(
+                    name.clone(),
+                    settled.get(name).cloned(),
+                    entry.definition_range.clone(),
+                )
+                .expect("a module name is declared once");
+        }
+    }
     let mut typed_function_declarations = Vec::new();
     for pending in pending_functions {
         typed_function_declarations.extend(typecheck_function_body(
             pending,
+            &mut var_env,
             registry,
             errors,
             &type_env,
@@ -352,6 +364,7 @@ fn typecheck_module(
     for page in parsed_module.page_declarations() {
         typed_pages.push(typecheck_page_declaration(
             page,
+            &mut var_env,
             registry,
             errors,
             &type_env,
@@ -567,6 +580,7 @@ fn check_declaration_body(
 
 fn typecheck_page_declaration(
     page: &ParsedPageDeclaration,
+    var_env: &mut VariableScope,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     type_env: &TypeEnv,
@@ -582,7 +596,6 @@ fn typecheck_page_declaration(
         ..
     } = page;
 
-    let mut var_env = VariableScope::new();
     let mut pushed_params = 0;
     let mut typed_params = Vec::new();
     let mut seen_param_names: HashSet<VarName> = HashSet::new();
@@ -604,9 +617,11 @@ fn typecheck_page_declaration(
             continue;
         };
 
-        if param_type == Type::HTML {
+        if let Type::Html(_) | Type::Function(_) = param_type {
             errors.push(TypeError::new(
-                TypeErrorKind::HtmlInPageParameter,
+                TypeErrorKind::NotAllowedInPageParameter {
+                    typ: param_type.clone(),
+                },
                 param.var_type.range().clone(),
             ));
         }
@@ -616,15 +631,18 @@ fn typecheck_page_declaration(
             typ: param_type.clone(),
             var_name: param.var_name.clone(),
         });
-        if var_env
-            .push(
-                param.var_name.clone(),
-                param_type.clone(),
+        match var_env.push(
+            param.var_name.clone(),
+            param_type.clone(),
+            param.var_name_range.clone(),
+        ) {
+            Ok(()) => pushed_params += 1,
+            Err(()) => errors.push(TypeError::new(
+                TypeErrorKind::VariableAlreadyDefined {
+                    name: param.var_name.clone(),
+                },
                 param.var_name_range.clone(),
-            )
-            .is_ok()
-        {
-            pushed_params += 1;
+            )),
         }
         validate_examples_annotation(&param.examples, &param_type, &param.var_name_range, errors);
 
@@ -640,7 +658,7 @@ fn typecheck_page_declaration(
             &head.body,
             None,
             &[],
-            &mut var_env,
+            var_env,
             type_env,
             registry,
             annotations,
@@ -653,7 +671,7 @@ fn typecheck_page_declaration(
         &body.body,
         None,
         &[],
-        &mut var_env,
+        var_env,
         type_env,
         registry,
         annotations,
@@ -705,7 +723,6 @@ fn create_function_signature<'a>(
 
     let type_env = TypeEnv {
         names: names.clone(),
-        functions: HashMap::new(),
     };
 
     for param in &function.params {
@@ -755,6 +772,15 @@ fn create_function_signature<'a>(
     }
 
     let return_type = resolve_type(&function.return_type, names, definition_links, errors)?;
+    if let Type::Function(_) = return_type {
+        errors.push(TypeError::new(
+            TypeErrorKind::FunctionReturnsFunction {
+                result: return_type,
+            },
+            function.return_type.range().clone(),
+        ));
+        return None;
+    }
 
     Some(PendingFunction {
         function,
@@ -774,6 +800,7 @@ fn create_function_signature<'a>(
 
 fn typecheck_function_body(
     pending: PendingFunction<'_>,
+    var_env: &mut VariableScope,
     registry: &TypeRegistry,
     errors: &mut Vec<TypeError>,
     type_env: &TypeEnv,
@@ -796,31 +823,41 @@ fn typecheck_function_body(
     } = function;
     let return_type = signature.return_type;
 
-    let mut var_env = VariableScope::new();
-    for (param, param_type) in &resolved_params {
-        let _ = var_env.push(
-            param.var_name.clone(),
-            param_type.clone(),
-            param.var_name_range.clone(),
-        );
-    }
-
     // The row of the settled signature holds the parameters the rest adds,
     // after the declared ones. A function that lost its name to an earlier
     // declaration has no settled signature of its own.
-    let forwarded: &[ParamEntry] = match type_env.functions.get(name.as_str()) {
-        Some(settled) if type_env.names[name.as_str()].definition_range == *name_range => {
-            &settled.row.fields[settled.declared..]
-        }
-        _ => &[],
+    let forwarded: Vec<ParamEntry> = match var_env.lookup(name.as_str()) {
+        Some(ScopeEntry::Function(FunctionScopeEntry {
+            signature: Some(settled),
+            range,
+        })) if range == name_range => settled.row.fields[settled.declared..].to_vec(),
+        _ => Vec::new(),
     };
+
+    let mut pushed_params = 0;
+    for (param, param_type) in &resolved_params {
+        match var_env.push(
+            param.var_name.clone(),
+            param_type.clone(),
+            param.var_name_range.clone(),
+        ) {
+            Ok(()) => pushed_params += 1,
+            Err(()) => errors.push(TypeError::new(
+                TypeErrorKind::VariableAlreadyDefined {
+                    name: param.var_name.clone(),
+                },
+                param.var_name_range.clone(),
+            )),
+        }
+    }
+
     let forwarded_names: Vec<VarName> = forwarded.iter().map(|p| p.name.clone()).collect();
 
     let typed_body = typecheck_expr(
         body,
         Some(&return_type),
         &forwarded_names,
-        &mut var_env,
+        var_env,
         type_env,
         registry,
         annotations,
@@ -829,7 +866,7 @@ fn typecheck_function_body(
         errors,
     );
 
-    for _ in 0..resolved_params.len() {
+    for _ in 0..pushed_params {
         let (name, entry) = var_env.pop();
         if !entry.accessed {
             errors.push(TypeError::new(
@@ -1006,6 +1043,14 @@ fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString
                 collect_names_in_type(element, out);
             }
         }
+        ParsedType::Function {
+            parameters, result, ..
+        } => {
+            for parameter in parameters {
+                collect_names_in_type(parameter, out);
+            }
+            collect_names_in_type(result, out);
+        }
         ParsedType::String { .. }
         | ParsedType::Bool { .. }
         | ParsedType::Int { .. }
@@ -1030,6 +1075,19 @@ fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
         ParsedExpr::Markup { markup } => collect_names_in_markup(markup, out),
         ParsedExpr::Let { binding, .. } => {
             if let Some(var_type) = &binding.var_type {
+                collect_names_in_type(var_type, out);
+            }
+        }
+        ParsedExpr::Lambda {
+            params,
+            return_type,
+            ..
+        } => {
+            for var_type in params
+                .iter()
+                .filter_map(|param| param.var_type.as_ref())
+                .chain(return_type)
+            {
                 collect_names_in_type(var_type, out);
             }
         }
@@ -1740,6 +1798,139 @@ mod tests {
                 3 |   for item in items {
                 4 |     <div class={ let item = x; item }>{ let x = item; x }</div>
                   |                                             ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_parameters_named_after_a_function() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn label(text: String) -> String {
+                  text
+                }
+                fn Main(label: String) -> Html {
+                  <></>
+                }
+                page Home(label: String) {
+                  fn body() -> Html {
+                    <></>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Variable label is already defined
+                  --> main.hop (line 4, col 9)
+                 3 | }
+                 4 | fn Main(label: String) -> Html {
+                   |         ^^^^^
+
+                error: Variable label is already defined
+                  --> main.hop (line 7, col 11)
+                 6 | }
+                 7 | page Home(label: String) {
+                   |           ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_bindings_named_after_an_imported_function() {
+        reject(
+            indoc! {r#"
+                -- other.hop --
+                pub fn shout(text: String) -> String {
+                  text
+                }
+                -- main.hop --
+                import other::shout
+                fn Main(items: Array[String], name: Option[String]) -> Html {
+                  let greeting = shout("hi");
+                  for shout in items {
+                    match name {
+                      Some(shout) => <>{greeting}</>,
+                      None => <></>,
+                    }
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Variable shout is already defined
+                  --> main.hop (line 4, col 7)
+                 3 |   let greeting = shout("hi");
+                 4 |   for shout in items {
+                   |       ^^^^^
+
+                error: Variable shout is already defined
+                  --> main.hop (line 6, col 12)
+                 5 |     match name {
+                 6 |       Some(shout) => <>{greeting}</>,
+                   |            ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_let_named_after_a_function() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn shout(text: String) -> String {
+                  text
+                }
+                fn Main() -> String {
+                  let shout = "hi";
+                  "done"
+                }
+            "#},
+            expect![[r#"
+                error: Variable shout is already defined
+                  --> main.hop (line 5, col 7)
+                4 | fn Main() -> String {
+                5 |   let shout = "hi";
+                  |       ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_function_used_as_a_value() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn label() -> String {
+                  "label"
+                }
+                fn Main() -> String {
+                  label
+                }
+            "#},
+            expect![[r#"
+                error: Function label cannot be used as a value
+                  --> main.hop (line 5, col 3)
+                4 | fn Main() -> String {
+                5 |   label
+                  |   ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_call_of_a_variable() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(label: String) -> String {
+                  label()
+                }
+            "#},
+            expect![[r#"
+                error: Variable label is not a function
+                  --> main.hop (line 2, col 3)
+                1 | fn Main(label: String) -> String {
+                2 |   label()
+                  |   ^^^^^
             "#]],
         );
     }
@@ -13592,5 +13783,397 @@ mod tests {
             );
             Ok(())
         });
+    }
+    #[test]
+    fn accepts_lambdas_passed_to_function_parameters() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Rows(labels: Array[String], row: fn(String, Int) -> Html) -> Html {
+                  <ul>
+                    {for label in labels {
+                      row(label, 1)
+                    }}
+                  </ul>
+                }
+                fn total(weight: fn(Int) -> Int) -> Int {
+                  weight(2)
+                }
+                fn Main(labels: Array[String]) -> Html {
+                  let double = fn(n: Int) -> Int { n * 2 };
+                  <Rows labels={labels} row={fn(label, depth) {
+                    <li>{label}{total(fn(n) { double(n) + depth }).to_string()}</li>
+                  }}/>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(labels: Array[String]) -> Html {
+                  let double = fn(n: Int) {
+                    (n * 2)
+                  } in Rows(
+                    labels: labels,
+                    row: fn(label: String, depth: Int) {
+                      element(
+                        tag: "li",
+                        attrs: [],
+                        children: concat(
+                          escape(label),
+                          escape(total(weight: fn(n: Int) { (double(n) + depth) }).to_string()),
+                        ),
+                      )
+                    },
+                  )
+                }
+
+                fn Rows(labels: Array[String], row: fn(String, Int) -> Html) -> Html {
+                  element(
+                    tag: "ul",
+                    attrs: [],
+                    children: concat(for label in labels { row(label, 1) }),
+                  )
+                }
+
+                fn total(weight: fn(Int) -> Int) -> Int {
+                  weight(2)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_lambda_parameter_without_a_type_or_a_context() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Int {
+                  let double = fn(n) { n * 2 };
+                  double(2)
+                }
+            "#},
+            expect![[r#"
+                error: The type of parameter n cannot be inferred
+                  --> main.hop (line 2, col 19)
+                1 | fn Main() -> Int {
+                2 |   let double = fn(n) { n * 2 };
+                  |                   ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_function_types_inside_other_types() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record Row {
+                  render: fn() -> Html,
+                }
+                fn Main(rows: Array[fn(Int) -> Int]) -> Html {
+                  let row = Some(fn(n: Int) { n });
+                  <></>
+                }
+            "#},
+            expect![[r#"
+                error: fn() -> Html is not allowed inside another type
+                  --> main.hop (line 2, col 11)
+                1 | record Row {
+                2 |   render: fn() -> Html,
+                  |           ^^^^^^^^^^^^
+
+                error: fn(Int) -> Int is not allowed inside another type
+                  --> main.hop (line 4, col 21)
+                3 | }
+                4 | fn Main(rows: Array[fn(Int) -> Int]) -> Html {
+                  |                     ^^^^^^^^^^^^^^
+
+                error: fn(Int) -> Int is not allowed inside another type
+                  --> main.hop (line 5, col 18)
+                4 | fn Main(rows: Array[fn(Int) -> Int]) -> Html {
+                5 |   let row = Some(fn(n: Int) { n });
+                  |                  ^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_functions_that_return_functions() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn curry() -> fn(Int) -> Int {
+                  fn(n: Int) { n }
+                }
+                fn Main(make: fn() -> fn() -> Html) -> Html {
+                  let add = fn(a: Int) { fn(b: Int) { a + b } };
+                  <></>
+                }
+            "#},
+            expect![[r#"
+                error: A function cannot return fn(Int) -> Int
+                  --> main.hop (line 1, col 15)
+                1 | fn curry() -> fn(Int) -> Int {
+                  |               ^^^^^^^^^^^^^^
+
+                error: A function cannot return fn() -> Html
+                  --> main.hop (line 4, col 15)
+                3 | }
+                4 | fn Main(make: fn() -> fn() -> Html) -> Html {
+                  |               ^^^^^^^^^^^^^^^^^^^^
+
+                error: A function cannot return fn(Int) -> Int
+                  --> main.hop (line 5, col 26)
+                4 | fn Main(make: fn() -> fn() -> Html) -> Html {
+                5 |   let add = fn(a: Int) { fn(b: Int) { a + b } };
+                  |                          ^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_functions_that_return_data_and_take_html() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(measure: fn(Html) -> Int) -> Html {
+                  let count = fn(content: Html, render: fn() -> Html) { 1 };
+                  <></>
+                }
+            "#},
+            expect![[r#"
+                error: fn(Html) -> Int returns Int and cannot take Html
+                  --> main.hop (line 1, col 18)
+                1 | fn Main(measure: fn(Html) -> Int) -> Html {
+                  |                  ^^^^^^^^^^^^^^^
+
+                warning: Unused variable content
+                  --> main.hop (line 2, col 18)
+                1 | fn Main(measure: fn(Html) -> Int) -> Html {
+                2 |   let count = fn(content: Html, render: fn() -> Html) { 1 };
+                  |                  ^^^^^^^
+
+                error: fn(Html, fn() -> Html) -> Int returns Int and cannot take Html
+                  --> main.hop (line 2, col 18)
+                1 | fn Main(measure: fn(Html) -> Int) -> Html {
+                2 |   let count = fn(content: Html, render: fn() -> Html) { 1 };
+                  |                  ^^^^^^^
+
+                warning: Unused variable render
+                  --> main.hop (line 2, col 33)
+                1 | fn Main(measure: fn(Html) -> Int) -> Html {
+                2 |   let count = fn(content: Html, render: fn() -> Html) { 1 };
+                  |                                 ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_page_parameter_of_a_function_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                page Home(render: fn() -> Html) {
+                  fn body() -> Html {
+                    render()
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: fn() -> Html is not allowed in page parameters
+                  --> main.hop (line 1, col 19)
+                1 | page Home(render: fn() -> Html) {
+                  |                   ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_match_that_produces_a_function() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(double: Bool) -> Int {
+                  let scale = match double {
+                    true => fn(n: Int) { n * 2 },
+                    false => fn(n: Int) { n },
+                  };
+                  scale(1)
+                }
+            "#},
+            expect![[r#"
+                error: A match cannot produce fn(Int) -> Int
+                  --> main.hop (line 3, col 13)
+                2 |   let scale = match double {
+                3 |     true => fn(n: Int) { n * 2 },
+                  |             ^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_used_in_a_lambda_it_is_bound_outside_of() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let star = <b>*</b>;
+                  let stars = fn() { star };
+                  stars()
+                }
+            "#},
+            expect![[r#"
+                error: Html value star is bound outside the lambda it is used in
+                  --> main.hop (line 3, col 22)
+                2 |   let star = <b>*</b>;
+                3 |   let stars = fn() { star };
+                  |                      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_html_parameters_of_a_lambda_used_once() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let wrap = fn(content: Html) { <p>{content}</p> };
+                  wrap(<b>*</b>)
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let wrap = fn(content: Html) {
+                    element(tag: "p", attrs: [], children: concat(content))
+                  } in wrap(element(tag: "b", attrs: [], children: concat(text("*"))))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_rest_spread_passing_on_html_in_a_lambda() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Callout(children: Html) -> Html {
+                  <aside>
+                    {children}
+                  </aside>
+                }
+                fn Tip(...rest) -> Html {
+                  let callout = fn() { <Callout ...rest/> };
+                  callout()
+                }
+            "#},
+            expect![[r#"
+                error: Html value children is bound outside the lambda it is used in
+                  --> main.hop (line 7, col 25)
+                6 | fn Tip(...rest) -> Html {
+                7 |   let callout = fn() { <Callout ...rest/> };
+                  |                         ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_applications_that_do_not_fit_the_function_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(render: fn(String, Int) -> Html) -> Html {
+                  <>
+                    {render(label: "a", depth: 1)}
+                    {render("a")}
+                    {render("a", "b")}
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: Variable render takes its arguments by position
+                  --> main.hop (line 3, col 6)
+                2 |   <>
+                3 |     {render(label: "a", depth: 1)}
+                  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                error: Function render expects 2 argument(s), got 1
+                  --> main.hop (line 4, col 6)
+                3 |     {render(label: "a", depth: 1)}
+                4 |     {render("a")}
+                  |      ^^^^^^^^^^^
+
+                error: Expected Int got String
+                  --> main.hop (line 5, col 18)
+                4 |     {render("a")}
+                5 |     {render("a", "b")}
+                  |                  ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_imports_used_only_in_lambda_annotations() {
+        accept(
+            indoc! {r#"
+                -- other.hop --
+                pub record Tag {
+                  name: String,
+                }
+                pub record Item {
+                  tag: Tag,
+                }
+                pub fn Show(render: fn(Item) -> Tag) -> Html {
+                  <>{render(Item {tag: Tag {name: "x"}}).name}</>
+                }
+                -- main.hop --
+                import other::Item
+                import other::Tag
+                import other::Show
+                fn Main() -> Html {
+                  <Show render={fn(item: Item) -> Tag { item.tag }}/>
+                }
+            "#},
+            expect![[r#"
+                -- other.hop --
+                fn Show(render: fn(Item) -> Tag) -> Html {
+                  concat(escape(render(Item {tag: Tag {name: "x"}}).name))
+                }
+
+                -- main.hop --
+                fn Main() -> Html {
+                  Show(render: fn(item: Item) { item.tag })
+                }
+
+                -- type registry --
+                record Item {
+                  tag: Tag,
+                }
+
+                record Tag {
+                  name: String,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_lambda_body_that_does_not_have_the_declared_result() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Int {
+                  let label = fn(n: Int) -> String { n };
+                  1
+                }
+            "#},
+            expect![[r#"
+                error: Expected String got Int
+                  --> main.hop (line 2, col 38)
+                1 | fn Main() -> Int {
+                2 |   let label = fn(n: Int) -> String { n };
+                  |                                      ^
+            "#]],
+        );
     }
 }

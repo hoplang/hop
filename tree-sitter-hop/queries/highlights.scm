@@ -18,6 +18,7 @@
 
 (parameter name: (identifier) @variable.parameter)
 (rest_parameter name: (identifier) @variable.parameter)
+(lambda_parameter name: (identifier) @variable.parameter)
 (named_argument name: (identifier) @variable.parameter)
 
 (function_declaration name: (identifier) @function)

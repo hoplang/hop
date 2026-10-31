@@ -136,6 +136,13 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
+    Lambda {
+        params: Vec<ParsedLambdaParameter>,
+        return_type: Option<ParsedType>,
+        body: Box<Self>,
+        range: DocumentRange,
+    },
+
     Markup {
         markup: Box<ParsedMarkup>,
     },
@@ -228,6 +235,19 @@ pub struct ParsedLetBinding {
     pub var_name_range: DocumentRange,
     pub var_type: Option<ParsedType>,
     pub value_expr: ParsedExpr,
+}
+
+/// A parameter of a lambda, whose type may be inferred.
+///
+/// ```text
+/// fn(item: Item) { item.label }
+///    ^^^^^^^^^^
+/// ```
+#[derive(Debug, Clone)]
+pub struct ParsedLambdaParameter {
+    pub var_name: VarName,
+    pub var_name_range: DocumentRange,
+    pub var_type: Option<ParsedType>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -516,6 +536,7 @@ impl ParsedExpr {
                 f(&binding.value_expr);
                 f(body);
             }
+            ParsedExpr::Lambda { body, .. } => f(body),
 
             ParsedExpr::Markup { .. }
             | ParsedExpr::VariableReference { .. }
@@ -570,7 +591,8 @@ impl ParsedExpr {
             | ParsedExpr::Match { .. }
             | ParsedExpr::For { .. }
             | ParsedExpr::Macro { .. }
-            | ParsedExpr::Call { .. } => false,
+            | ParsedExpr::Call { .. }
+            | ParsedExpr::Lambda { .. } => false,
         }
     }
 
@@ -594,7 +616,8 @@ impl ParsedExpr {
             | ParsedExpr::Option { range, .. }
             | ParsedExpr::Macro { range, .. }
             | ParsedExpr::Call { range, .. }
-            | ParsedExpr::Let { range, .. } => range,
+            | ParsedExpr::Let { range, .. }
+            | ParsedExpr::Lambda { range, .. } => range,
             ParsedExpr::Markup { markup } => markup.range(),
         }
     }
@@ -834,6 +857,40 @@ impl ParsedExpr {
                     .append(" in ")
                     .append(source.to_doc())
                     .append(" ")
+                    .append(body_doc)
+            }
+            ParsedExpr::Lambda {
+                params,
+                return_type,
+                body,
+                ..
+            } => {
+                let params_doc = BoxDoc::intersperse(
+                    params.iter().map(|param| {
+                        let name = BoxDoc::text(param.var_name.as_str());
+                        match &param.var_type {
+                            Some(var_type) => {
+                                name.append(BoxDoc::text(": ")).append(var_type.to_doc())
+                            }
+                            None => name,
+                        }
+                    }),
+                    BoxDoc::text(", "),
+                );
+                let return_doc = match return_type {
+                    Some(return_type) => BoxDoc::text(" -> ").append(return_type.to_doc()),
+                    None => BoxDoc::nil(),
+                };
+                // A let body prints its own braces.
+                let body_doc = match body.as_ref() {
+                    ParsedExpr::Let { .. } => body.to_doc(),
+                    _ => braced_doc(vec![body.to_doc()]),
+                };
+                BoxDoc::text("fn(")
+                    .append(params_doc)
+                    .append(BoxDoc::text(")"))
+                    .append(return_doc)
+                    .append(BoxDoc::text(" "))
                     .append(body_doc)
             }
             ParsedExpr::Let { .. } => {

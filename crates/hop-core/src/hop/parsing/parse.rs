@@ -63,8 +63,8 @@ pub fn parse(document: Document, errors: &mut Vec<ParseError>) -> ParsedModule {
         match declaration {
             Ok(declaration) => declarations.push(declaration),
             Err(reported) => {
-                parse_helpers::skip_to(&mut iter, reported, |token| {
-                    parse_helpers::DECLARATION_KEYWORDS.contains(token)
+                parse_helpers::skip_to(&mut iter, reported, |_, iter| {
+                    parse_helpers::at_declaration(iter)
                 });
             }
         }
@@ -291,9 +291,9 @@ fn parse_page_declaration(
     let left_brace = match left_brace {
         Ok(left_brace) => left_brace,
         Err(reported) => {
-            parse_helpers::skip_to(iter, reported, |token| {
+            parse_helpers::skip_to(iter, reported, |token, iter| {
                 matches!(token, LangToken::LeftBrace | LangToken::RightBrace)
-                    || parse_helpers::DECLARATION_KEYWORDS.contains(token)
+                    || parse_helpers::at_declaration(iter)
             });
             match parse_helpers::next_if_eq(iter, comments, errors, LangToken::LeftBrace) {
                 // Recovery succeeded
@@ -434,9 +434,9 @@ fn parse_function_declaration(
     let left_brace = match left_brace {
         Ok(left_brace) => left_brace,
         Err(reported) => {
-            parse_helpers::skip_to(iter, reported, |token| {
+            parse_helpers::skip_to(iter, reported, |token, iter| {
                 matches!(token, LangToken::LeftBrace | LangToken::RightBrace)
-                    || parse_helpers::DECLARATION_KEYWORDS.contains(token)
+                    || parse_helpers::at_declaration(iter)
             });
             match parse_helpers::next_if_eq(iter, comments, errors, LangToken::LeftBrace) {
                 // Recovery succeeded
@@ -637,9 +637,8 @@ fn parse_examples_annotation(
                 let reported = errors.emit(ParseErrorKind::UnknownAnnotation { name }, name_range);
                 // Skip the whole annotation, whatever it holds, so that the
                 // caller's skip stops at the `]` rather than at a `)` inside.
-                parse_helpers::skip_to(iter, reported, |token| {
-                    *token == LangToken::RightBracket
-                        || parse_helpers::DECLARATION_KEYWORDS.contains(token)
+                parse_helpers::skip_to(iter, reported, |token, iter| {
+                    *token == LangToken::RightBracket || parse_helpers::at_declaration(iter)
                 });
                 return Err(reported);
             }
@@ -3384,6 +3383,100 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(nothing: (), rows: Array[()]) -> Html {
+                  element(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_function_types() {
+        accept(
+            indoc! {"
+                fn Main(row: fn(String, Int) -> Html, none: fn() -> Int, nested: fn(fn(Int) -> Int,) -> Html) -> Html {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                fn Main(row: fn(String, Int) -> Html, none: fn() -> Int, nested: fn(fn(Int) -> Int) -> Html) -> Html {
+                  element(
+                    tag: "div",
+                    attrs: [],
+                    children: [],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_lambdas() {
+        accept(
+            indoc! {"
+                fn Main(labels: Array[String]) -> Html {
+                    let double = fn(n: Int) -> Int { n * 2 };
+                    let none = fn() { 1 };
+                    <Rows labels={labels} row={fn(label, depth: Int,) {
+                        let n = double(depth);
+                        <li>{label}</li>
+                    }}/>
+                }
+            "},
+            expect![[r#"
+                fn Main(labels: Array[String]) -> Html {
+                  {
+                    let double = fn(n: Int) -> Int {
+                      n * 2,
+                    };
+                    let none = fn() { 1 };
+                    Rows(
+                      attrs: [
+                        labels: labels,
+                        row: fn(label, depth: Int) {
+                          let n = double(depth);
+                          element(
+                            tag: "li",
+                            attrs: [],
+                            children: [
+                              interpolate(label),
+                            ],
+                          )
+                        },
+                      ],
+                    )
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_lambda_without_a_body_and_resumes_at_the_next_declaration() {
+        reject(
+            indoc! {"
+                fn Main() -> Html {
+                    f(fn(x: Int), 1)
+                }
+                fn Other() -> Html {
+                    <div></div>
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token '{' but got ','
+                1 | fn Main() -> Html {
+                2 |     f(fn(x: Int), 1)
+                  |                 ^
+                -- ast --
+                fn Main() -> Html {
+                  f(1)
+                }
+
+                fn Other() -> Html {
                   element(
                     tag: "div",
                     attrs: [],

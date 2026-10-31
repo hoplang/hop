@@ -38,6 +38,11 @@ pub enum ParsedType {
         name: TypeName,
         range: DocumentRange,
     },
+    Function {
+        parameters: Vec<ParsedType>,
+        result: Box<ParsedType>,
+        range: DocumentRange,
+    },
 }
 
 impl ParsedType {
@@ -51,7 +56,8 @@ impl ParsedType {
             | ParsedType::Array { range, .. }
             | ParsedType::Option { range, .. }
             | ParsedType::Tuple { range, .. }
-            | ParsedType::Named { range, .. } => range,
+            | ParsedType::Named { range, .. }
+            | ParsedType::Function { range, .. } => range,
         }
     }
 
@@ -83,6 +89,15 @@ impl ParsedType {
                 })
                 .append(BoxDoc::text(")")),
             ParsedType::Named { name, .. } => BoxDoc::text(name.to_string()),
+            ParsedType::Function {
+                parameters, result, ..
+            } => BoxDoc::text("fn(")
+                .append(BoxDoc::intersperse(
+                    parameters.iter().map(|parameter| parameter.to_doc()),
+                    BoxDoc::text(", "),
+                ))
+                .append(BoxDoc::text(") -> "))
+                .append(result.to_doc()),
         }
     }
 }

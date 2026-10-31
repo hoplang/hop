@@ -18,8 +18,11 @@ use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
-use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
+use crate::ir::ir_type::{
+    IrDataType, IrHtmlSignature, IrHtmlType, IrType, IrValueSignature, IrValueType,
+};
 use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -51,11 +54,14 @@ use super::ir_parameter::IrParameter;
 /// per such list, a function without one at most once, and a function no
 /// page reaches not at all.
 ///
+/// A lambda compiles to a Lambda whose parameters are bound to fresh names,
+/// and an application of a variable to an Apply of its name.
+///
 /// Html is never part of another type, so no value depends on Html, and
-/// the Html in an expression that computes a value is erased. A function
-/// that returns a value has no parameter for Html, a call to it passes no
-/// argument for one, and a let of Html whose body computes a value is its
-/// body.
+/// what renders Html, Html or a function that returns it, is erased in an
+/// expression that computes a value. A function that returns a value has
+/// no parameter that renders Html, a call to it passes no argument for one,
+/// and a let of what renders Html whose body does not is its body.
 pub fn typed_to_flat(
     pages: Vec<TypedPageDeclaration>,
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
@@ -232,7 +238,7 @@ impl<'a> Compiler<'a> {
         for param in &decl.params {
             // What the function computes does not depend on Html, so only
             // the erased parts of its body read the parameter.
-            if decl.return_type != Type::HTML && param.var_type == Type::HTML {
+            if decl.return_type != Type::HTML && param.var_type.renders_html() {
                 continue;
             }
             let var = self.bind(&param.var_name);
@@ -279,6 +285,7 @@ impl<'a> Compiler<'a> {
                 return_type: lower_data_type(self.registry, return_type),
                 body: self.compile_data_block(&decl.body),
             }),
+            Type::Function(_) => unreachable!("a function returns data or Html"),
         };
         self.pop_scope();
         self.params.clear();
@@ -363,13 +370,12 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    /// Bind `op` to a fresh name of type `typ`, which is data, in the block
-    /// being compiled, and return the name.
+    /// Bind `op` to a fresh name of type `typ`, which is a value, in the
+    /// block being compiled, and return the name.
     fn push(&mut self, typ: Type, op: FlatDataOp) -> ValueId {
-        let Type::Data(typ) = typ else {
-            unreachable!("an op of a value produces data");
+        let IrType::Value(typ) = lower_type(self.registry, &typ) else {
+            unreachable!("an op of a value produces a value");
         };
-        let typ = IrValueType::Data(lower_data_type(self.registry, &typ));
         let name = self.value_id_counter.next();
         self.bindings.push(FlatDataBinding {
             binder: IrBinder { var: name, typ },
@@ -381,12 +387,15 @@ impl<'a> Compiler<'a> {
     /// Bind `op` to a fresh name of type Html in the block being compiled,
     /// and return the name.
     fn push_html(&mut self, op: FlatHtmlOp) -> ValueId {
+        self.bind_html(IrHtmlType::Html, op)
+    }
+
+    /// Bind `op` to a fresh name of type `typ` in the block being compiled,
+    /// and return the name.
+    fn bind_html(&mut self, typ: IrHtmlType, op: FlatHtmlOp) -> ValueId {
         let name = self.value_id_counter.next();
         self.html.push(FlatHtmlBinding {
-            binder: IrBinder {
-                var: name,
-                typ: IrHtmlType::Html,
-            },
+            binder: IrBinder { var: name, typ },
             op,
         });
         name
@@ -723,10 +732,11 @@ impl<'a> Compiler<'a> {
             } => {
                 // The typechecker orders the arguments as the callee
                 // declares its parameters. A callee that returns a value has
-                // no parameter for Html, so its Html arguments are erased.
+                // no parameter that renders Html, so such arguments are
+                // erased.
                 let mut compiled_args: Vec<ValueId> = args
                     .iter()
-                    .filter(|(_, value)| typ == Type::HTML || value.typ() != Type::HTML)
+                    .filter(|(_, value)| typ == Type::HTML || !value.typ().renders_html())
                     .map(|(_, value)| self.compile_expr(value))
                     .collect();
                 // The attributes supplied to the callee's rest select the
@@ -784,10 +794,8 @@ impl<'a> Compiler<'a> {
                 }
                 FlatDataOp::Call(function, compiled_args)
             }
-            // A let of Html whose body computes a value is its body, since
-            // only the erased parts of the body read the variable.
             TypedExpr::Let { value, body, .. }
-                if typ != Type::HTML && value.typ() == Type::HTML =>
+                if !typ.renders_html() && value.typ().renders_html() =>
             {
                 return self.compile_expr(body);
             }
@@ -840,6 +848,52 @@ impl<'a> Compiler<'a> {
                 let body = self.compile_html_block(body);
                 self.pop_scope();
                 return self.push_html(FlatHtmlOp::For(IrFor { var, array, body }));
+            }
+            TypedExpr::Lambda { params, body, .. } => {
+                self.push_scope();
+                let parameters: Vec<IrBinder<IrType>> = params
+                    .iter()
+                    .map(|(name, typ)| IrBinder {
+                        var: self.bind(name),
+                        typ: lower_type(self.registry, typ),
+                    })
+                    .collect();
+                if typ.renders_html() {
+                    let body = self.compile_html_block(body);
+                    self.pop_scope();
+                    let IrType::Html(binder_type) = lower_type(self.registry, &typ) else {
+                        unreachable!("a lambda that renders Html is Html");
+                    };
+                    return self.bind_html(
+                        binder_type,
+                        FlatHtmlOp::Lambda(IrLambda { parameters, body }),
+                    );
+                }
+                let body = self.compile_data_block(body);
+                self.pop_scope();
+                FlatDataOp::Lambda(IrLambda {
+                    parameters: parameters
+                        .into_iter()
+                        .map(|binder| {
+                            let IrType::Value(typ) = binder.typ else {
+                                unreachable!("a lambda that computes a value takes values only");
+                            };
+                            IrBinder {
+                                var: binder.var,
+                                typ,
+                            }
+                        })
+                        .collect(),
+                    body,
+                })
+            }
+            TypedExpr::Apply { callee, args, .. } => {
+                let closure = self.resolve(callee);
+                let args = args.iter().map(|arg| self.compile_expr(arg)).collect();
+                if typ == Type::HTML {
+                    return self.push_html(FlatHtmlOp::Apply(closure, args));
+                }
+                FlatDataOp::Apply(closure, args)
             }
             TypedExpr::ArrayLength { array } => {
                 FlatDataOp::Data(IrDataOp::ArrayLength(self.compile_expr(array)))
@@ -942,6 +996,29 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
     match typ {
         Type::Data(data) => IrType::Value(IrValueType::Data(lower_data_type(registry, data))),
         Type::Html(_) => IrType::Html(IrHtmlType::Html),
+        Type::Function(function) => match function.result.as_ref() {
+            Type::Html(_) => IrType::Html(IrHtmlType::Function(IrHtmlSignature {
+                parameters: function
+                    .parameters
+                    .iter()
+                    .map(|parameter| lower_type(registry, parameter))
+                    .collect(),
+            })),
+            Type::Data(result) => IrType::Value(IrValueType::Function(IrValueSignature {
+                parameters: function
+                    .parameters
+                    .iter()
+                    .map(|parameter| match lower_type(registry, parameter) {
+                        IrType::Value(parameter) => parameter,
+                        IrType::Html(_) => {
+                            unreachable!("a function that returns data takes no Html")
+                        }
+                    })
+                    .collect(),
+                result: lower_data_type(registry, result),
+            })),
+            Type::Function(_) => unreachable!("a function returns data or Html"),
+        },
     }
 }
 
@@ -1746,6 +1823,115 @@ mod tests {
                   v4
                 }
                 page Test: body@f2
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_lambdas_and_their_applications() {
+        check(
+            indoc! {r#"
+                fn Rows(labels: Array[String], row: fn(String) -> Html) -> Html {
+                  <ul>
+                    {for label in labels {
+                      row(label)
+                    }}
+                  </ul>
+                }
+
+                page Test(labels: Array[String], scale: Int) {
+                  fn body() -> Html {
+                    let times = fn(n: Int) { n * scale };
+                    <Rows labels={labels} row={fn(label) {
+                      <li>{label}{times(2).to_string()}</li>
+                    }}/>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn Rows@f0(labels@v15: Array[String], row@v16: (String) -> Html) -> Html {
+                  let v19: Html = for v17: String in v15 {
+                    let v18: Html = v16(v17)
+                    v18
+                  }
+                  let v20: Html = concat(v19)
+                  let v21: Html = element("ul", {}, v20)
+                  v21
+                }
+                entrypoint fn body@f1(labels@v0: Array[String], scale@v1: Int) -> Html {
+                  let v4: (Int) -> Int = fn(v2: Int) {
+                    let v3: Int = v2 * v1
+                    v3
+                  }
+                  let v13: (String) -> Html = fn(v5: String) {
+                    let v7: Int = 2
+                    let v8: Int = v4(v7)
+                    let v9: String = v8.to_string()
+                    let v6: Html = escape(v5)
+                    let v10: Html = escape(v9)
+                    let v11: Html = concat(v6, v10)
+                    let v12: Html = element("li", {}, v11)
+                    v12
+                  }
+                  let v14: Html = Rows@f0(v0, v13)
+                  v14
+                }
+                page Test: body@f1
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_erase_the_html_lambdas_of_a_function_that_returns_a_value() {
+        check(
+            indoc! {r#"
+                fn width(icon: fn() -> Html, scale: fn(Int) -> Int, n: Int) -> Int {
+                  let wrap = fn(content: Html) { <b>{content}{icon()}</b> };
+                  match n <= 0 {
+                    true => scale(2),
+                    false => width(fn() { wrap(<i>*</i>) }, scale, n - 1),
+                  }
+                }
+
+                page Test(n: Int) {
+                  fn body() -> Html {
+                    <p>{width(fn() { <i>*</i> }, fn(m) { m + n }, 3).to_string()}</p>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn width@f0(scale@v10: (Int) -> Int, n@v11: Int) -> Int {
+                  let v12: Int = 0
+                  let v13: Bool = v11 <= v12
+                  let v19: Int = match v13 {
+                    true => {
+                      let v14: Int = 2
+                      let v15: Int = v10(v14)
+                      v15
+                    }
+                    false => {
+                      let v16: Int = 1
+                      let v17: Int = v11 - v16
+                      let v18: Int = width@f0(v10, v17)
+                      v18
+                    }
+                  }
+                  v19
+                }
+                entrypoint fn body@f1(n@v0: Int) -> Html {
+                  let v3: (Int) -> Int = fn(v1: Int) {
+                    let v2: Int = v1 + v0
+                    v2
+                  }
+                  let v4: Int = 3
+                  let v5: Int = width@f0(v3, v4)
+                  let v6: String = v5.to_string()
+                  let v7: Html = escape(v6)
+                  let v8: Html = concat(v7)
+                  let v9: Html = element("p", {}, v8)
+                  v9
+                }
+                page Test: body@f1
             "#]],
         );
     }

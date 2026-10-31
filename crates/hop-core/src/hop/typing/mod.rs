@@ -10,6 +10,7 @@ mod type_registry;
 mod typecheck;
 mod typecheck_call;
 mod typecheck_expr;
+mod typecheck_lambda;
 mod typecheck_macro;
 mod typecheck_markup;
 mod typecheck_match;

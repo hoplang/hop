@@ -337,3 +337,45 @@ fn f() -> Int {
                 (wildcard_pattern))
               (tuple_pattern))
             (integer_literal)))))))
+
+================================================================================
+lambdas with and without parameter types
+================================================================================
+
+fn f() -> Html {
+  <Rows row={fn(label, depth: Int) -> Html { let n = depth; <li>{label}</li> }}/>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (element
+        (self_closing_tag
+          (function_name)
+          (attribute
+            (attribute_name)
+            (interpolation
+              (lambda_expression
+                (lambda_parameters
+                  (lambda_parameter
+                    (identifier))
+                  (lambda_parameter
+                    (identifier)
+                    (type_identifier)))
+                (type_identifier)
+                (block
+                  (let_statement
+                    (identifier)
+                    (identifier))
+                  (element
+                    (start_tag
+                      (tag_name))
+                    (interpolation
+                      (identifier))
+                    (end_tag
+                      (tag_name))))))))))))

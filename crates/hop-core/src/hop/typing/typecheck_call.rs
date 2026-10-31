@@ -1,8 +1,9 @@
-use super::type_env::{ParamEntry, Row, Tail, TypeEnv};
+use super::type_env::{FunctionSignature, ParamEntry, Row, Tail, TypeEnv};
 use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
+use super::typecheck_lambda::typecheck_apply;
 use super::typed_expr::TypedExpr;
-use super::variable_scope::VariableScope;
+use super::variable_scope::{FunctionScopeEntry, ScopeEntry, VariableScope};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
@@ -104,23 +105,74 @@ pub fn typecheck_call(
     asset_references: &mut Vec<AssetReference>,
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
+    let function: Option<(FunctionSignature, DocumentRange)>;
     let element_row;
     let (row, declared, target) = match &callee {
         Callee::Function {
             name, name_range, ..
         } => {
-            let Some(signature) = type_env.functions.get(name.as_str()) else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::UndefinedFunction {
-                        name: FunctionName::clone(name),
-                    },
-                    DocumentRange::clone(name_range),
-                ));
-                return None;
+            function = match var_env.lookup(name.as_str()) {
+                Some(ScopeEntry::Function(FunctionScopeEntry {
+                    signature: Some(signature),
+                    range,
+                })) => Some((signature.clone(), range.clone())),
+                Some(ScopeEntry::Variable(variable)) => {
+                    let typ = variable.typ.clone();
+                    let var_name = VarName::new(name.to_cheap_string())
+                        .expect("a variable has a variable name");
+                    definition_links.push(DefinitionLink {
+                        use_range: DocumentRange::clone(name_range),
+                        definition_range: variable.range.clone(),
+                    });
+                    annotations.push(HoverAnnotation::VarName {
+                        range: DocumentRange::clone(name_range),
+                        typ: typ.clone(),
+                        var_name: var_name.clone(),
+                    });
+                    let Type::Function(function) = typ else {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::NotAFunction {
+                                name: FunctionName::clone(name),
+                            },
+                            DocumentRange::clone(name_range),
+                        ));
+                        return None;
+                    };
+                    let Callee::Function { report_range, .. } = callee else {
+                        unreachable!("the callee is a function");
+                    };
+                    return typecheck_apply(
+                        var_name,
+                        function,
+                        arguments,
+                        report_range,
+                        forwarded_params,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        errors,
+                    );
+                }
+                Some(ScopeEntry::Function(FunctionScopeEntry {
+                    signature: None, ..
+                }))
+                | None => {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::UndefinedFunction {
+                            name: FunctionName::clone(name),
+                        },
+                        DocumentRange::clone(name_range),
+                    ));
+                    return None;
+                }
             };
+            let (signature, definition_range) = function.as_ref().expect("the function was found");
             definition_links.push(DefinitionLink {
                 use_range: DocumentRange::clone(name_range),
-                definition_range: type_env.names[name.as_str()].definition_range.clone(),
+                definition_range: definition_range.clone(),
             });
             (
                 &signature.row,
@@ -129,6 +181,7 @@ pub fn typecheck_call(
             )
         }
         Callee::Element { element, .. } => {
+            function = None;
             element_row = Row {
                 fields: Vec::new(),
                 tail: Tail::Element {
@@ -261,14 +314,17 @@ pub fn typecheck_call(
         }
         if rest_spread.is_some() && forwarded_params.contains(&param.name) {
             // The rest adds the parameter to the enclosing function, outside
-            // every loop of its body.
-            if param.typ == Type::HTML && var_env.in_loop() {
+            // every loop and lambda of its body.
+            if param.typ == Type::HTML
+                && let Some(body) = var_env.outermost_body()
+            {
                 let Callee::Function { report_range, .. } = &callee else {
                     unreachable!("an element has no parameters to forward");
                 };
                 errors.push(TypeError::new(
-                    TypeErrorKind::HtmlUsedInLoop {
+                    TypeErrorKind::HtmlUsedOutside {
                         name: param.name.clone(),
+                        body,
                     },
                     DocumentRange::clone(report_range),
                 ));
@@ -430,7 +486,9 @@ pub fn typecheck_call(
     };
     match callee {
         Callee::Function { name, .. } => {
-            let signature = &type_env.functions[name.as_str()];
+            let (signature, definition_range) = function
+                .as_ref()
+                .expect("a function callee has its signature");
             let args = row
                 .fields
                 .iter()
@@ -461,10 +519,7 @@ pub fn typecheck_call(
 
             Some(TypedExpr::Call {
                 function_name: name.clone(),
-                module: type_env.names[name.as_str()]
-                    .definition_range
-                    .document_id()
-                    .clone(),
+                module: definition_range.document_id().clone(),
                 args,
                 rest,
                 typ: signature.return_type.clone(),

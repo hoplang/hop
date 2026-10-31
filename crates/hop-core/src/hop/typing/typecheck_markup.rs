@@ -10,7 +10,7 @@ use crate::hop::typing::typecheck_call::{
     Argument, CallArguments, Callee, NamedArgument, typecheck_call,
 };
 use crate::hop::typing::typecheck_expr::typecheck_expr;
-use crate::hop::typing::variable_scope::VariableScope;
+use crate::hop::typing::variable_scope::{FunctionScopeEntry, ScopeEntry, VariableScope};
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
 use crate::symbols::attribute_name::AttributeName;
@@ -145,13 +145,14 @@ pub fn typecheck_markup(
             // The end tag names the function as much as the start tag does,
             // so it links to the declaration even when the call fails.
             if let Some(closing_range) = function_name_closing_range
-                && type_env.functions.contains_key(function_name.as_str())
+                && let Some(ScopeEntry::Function(FunctionScopeEntry {
+                    signature: Some(_),
+                    range,
+                })) = var_env.lookup(function_name.as_str())
             {
                 definition_links.push(DefinitionLink {
                     use_range: closing_range.clone(),
-                    definition_range: type_env.names[function_name.as_str()]
-                        .definition_range
-                        .clone(),
+                    definition_range: range.clone(),
                 });
             }
             let call = call?;

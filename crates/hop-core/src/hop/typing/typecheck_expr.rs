@@ -5,10 +5,11 @@ use super::r#type::{DataType, Type};
 use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_call::{Argument, CallArguments, Callee, NamedArgument, typecheck_call};
+use super::typecheck_lambda::typecheck_lambda;
 use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join};
 use super::typecheck_markup::typecheck_markup;
 use super::typecheck_match::typecheck_match;
-use super::variable_scope::{HtmlMisuse, VariableScope};
+use super::variable_scope::{HtmlMisuse, RepeatedBody, ScopeEntry, VariableScope};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
@@ -40,6 +41,25 @@ pub fn typecheck_expr(
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
     match parsed_expr {
+        ParsedExpr::Lambda {
+            params,
+            return_type,
+            body,
+            ..
+        } => typecheck_lambda(
+            params,
+            return_type.as_ref(),
+            body,
+            expected_type,
+            forwarded_params,
+            var_env,
+            type_env,
+            registry,
+            annotations,
+            definition_links,
+            asset_references,
+            errors,
+        ),
         ParsedExpr::Markup { markup } => typecheck_markup(
             markup,
             forwarded_params,
@@ -54,8 +74,8 @@ pub fn typecheck_expr(
 
         ParsedExpr::VariableReference {
             value: var_name, ..
-        } => {
-            if let Some(entry) = var_env.lookup(var_name) {
+        } => match var_env.lookup(var_name.as_str()) {
+            Some(ScopeEntry::Variable(entry)) => {
                 let typ = entry.typ.clone();
                 annotations.push(HoverAnnotation::VarName {
                     range: parsed_expr.range().clone(),
@@ -72,7 +92,7 @@ pub fn typecheck_expr(
                     let name = var_name.clone();
                     let kind = match misuse {
                         HtmlMisuse::Again => TypeErrorKind::HtmlUsedAgain { name },
-                        HtmlMisuse::InLoop => TypeErrorKind::HtmlUsedInLoop { name },
+                        HtmlMisuse::Outside(body) => TypeErrorKind::HtmlUsedOutside { name, body },
                     };
                     errors.push(TypeError::new(kind, parsed_expr.range().clone()));
                 }
@@ -80,7 +100,21 @@ pub fn typecheck_expr(
                     value: var_name.clone(),
                     typ,
                 })
-            } else {
+            }
+            Some(ScopeEntry::Function(entry)) => {
+                definition_links.push(DefinitionLink {
+                    use_range: parsed_expr.range().clone(),
+                    definition_range: entry.range.clone(),
+                });
+                errors.push(TypeError::new(
+                    TypeErrorKind::FunctionUsedAsValue {
+                        name: var_name.clone(),
+                    },
+                    parsed_expr.range().clone(),
+                ));
+                None
+            }
+            None => {
                 errors.push(TypeError::new(
                     TypeErrorKind::UndefinedVariable {
                         name: var_name.clone(),
@@ -89,7 +123,7 @@ pub fn typecheck_expr(
                 ));
                 None
             }
-        }
+        },
         ParsedExpr::BoolLiteral { value, .. } => Some(TypedExpr::BoolLiteral { value: *value }),
         ParsedExpr::StringLiteral { value, .. } => {
             let value = value
@@ -487,12 +521,15 @@ pub fn typecheck_expr(
                 if typed_elements.len() != elements.len() {
                     return None;
                 }
-                let Type::Data(elem_type) = first_type? else {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::HtmlInData,
-                        elements[0].range().clone(),
-                    ));
-                    return None;
+                let elem_type = match first_type? {
+                    Type::Data(elem_type) => elem_type,
+                    typ @ (Type::Html(_) | Type::Function(_)) => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::NotData { typ },
+                            elements[0].range().clone(),
+                        ));
+                        return None;
+                    }
                 };
                 Some(TypedExpr::Array {
                     elements: typed_elements,
@@ -534,8 +571,8 @@ pub fn typecheck_expr(
             for (typed_element, element) in typed_elements.iter().zip(elements) {
                 match typed_element.typ() {
                     Type::Data(element_type) => element_types.push(element_type),
-                    Type::Html(_) => errors.push(TypeError::new(
-                        TypeErrorKind::HtmlInData,
+                    typ @ (Type::Html(_) | Type::Function(_)) => errors.push(TypeError::new(
+                        TypeErrorKind::NotData { typ },
                         element.range().clone(),
                     )),
                 }
@@ -926,12 +963,15 @@ pub fn typecheck_expr(
                     asset_references,
                     errors,
                 )?;
-                let Type::Data(inner_type) = typed_inner.typ() else {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::HtmlInData,
-                        inner_expr.range().clone(),
-                    ));
-                    return None;
+                let inner_type = match typed_inner.typ() {
+                    Type::Data(inner_type) => inner_type,
+                    typ @ (Type::Html(_) | Type::Function(_)) => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::NotData { typ },
+                            inner_expr.range().clone(),
+                        ));
+                        return None;
+                    }
                 };
                 Some(TypedExpr::Option {
                     value: Some(Box::new(typed_inner)),
@@ -1182,7 +1222,7 @@ pub fn typecheck_expr(
             } else {
                 false
             };
-            var_env.enter_loop();
+            var_env.enter(RepeatedBody::Loop);
             let typed_body = typecheck_expr(
                 body,
                 Some(&Type::HTML),
@@ -1195,7 +1235,7 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             );
-            var_env.exit_loop();
+            var_env.exit();
             if pushed {
                 let (name, entry) = var_env.pop();
                 if !entry.accessed {
@@ -1516,7 +1556,7 @@ mod tests {
         let type_env = module.type_env();
 
         let decl_range = DocumentCursor::new(test_module(), String::new()).eof_range();
-        let mut env = VariableScope::new();
+        let mut env = module.scope();
         for (var_name, ty) in env_vars {
             let _ = env.push(
                 VarName::parse(var_name).unwrap(),

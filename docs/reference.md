@@ -90,6 +90,7 @@ Type ::= "Bool"
        | "Option" "[" Type "]"
        | "(" ( Type ( "," Type )* ","? )? ")"
        | UppercaseIdentifier
+       | "fn" "(" ( Type ( "," Type )* ","? )? ")" "->" Type
 ```
 
 An `UppercaseIdentifier` names a [record](#record-declarations) or
@@ -106,15 +107,29 @@ Option[T]     None, Some(v)
 (T1, T2, …)   (v1, v2, …)
 ```
 
-The types other than `Html` are data types. Only a data type can be the
-element type of an array or an option, an element type of a tuple, or the type
-of a field of a [record](#record-declarations) or an
-[enum](#enum-declarations). `Html` in one of these places is a compile error,
-and so is an expression whose type would have `Html` in one of them:
+A function type `fn(T1, T2, …) -> R` is the type of a
+[lambda](#lambda-expressions) that takes arguments of the types `T1, T2, …` and
+evaluates to a value of type `R`. A function type whose result is a function
+type is a compile error, and so is one whose result is a data type and that
+takes `Html` or a function type whose result is `Html`:
 
 ```hop
-let badge = Some(<b>new</b>); // error: Html is not allowed inside another type
-let rows: Array[Html] = [];   // error: Html is not allowed inside another type
+fn Rows(row: fn(String, Int) -> Html) -> Html {
+  row("a", 1)
+}
+```
+
+The types other than `Html` and the function types are data types. Only a data type can be the
+element type of an array or an option, an element type of a tuple, or the type
+of a field of a [record](#record-declarations) or an
+[enum](#enum-declarations). `Html` or a function type in one of these
+places is a compile error, and so is an expression whose type would have one in
+one of them:
+
+```hop
+let badge = Some(<b>new</b>);         // error: Html is not allowed inside another type
+let rows: Array[Html] = [];           // error: Html is not allowed inside another type
+let doubles = [fn(n: Int) { n * 2 }]; // error: fn(Int) -> Int is not allowed inside another type
 ```
 
 <a id="expressions"></a>
@@ -146,6 +161,7 @@ Expr ::= LiteralExpr
        | BlockExpr
        | MatchExpr
        | ForExpr
+       | LambdaExpr
        | MarkupExpr
 ```
 
@@ -391,6 +407,15 @@ for _ in 1..=3 {
 }
 ```
 
+The body of a [lambda expression](#lambda-expressions) evaluates once for each
+application, so a use in the body of an `Html` value bound outside the lambda
+is a compile error too:
+
+```hop
+let star = <b>*</b>;
+let stars = fn() { star }; // error: Html value star is bound outside the lambda it is used in
+```
+
 <a id="parenthesized-expressions"></a>
 
 ### Parenthesized expressions
@@ -443,6 +468,21 @@ calling function adds, as in `f(x: a, ...rest)`.
 
 A function with an uppercase name can also be called by a
 [markup call](#markup-call-expressions).
+
+When `f` is a variable of a [function type](#types), the call applies the
+[lambda](#lambda-expressions) that `f` is bound to, and has the result type of
+the function type. It passes its arguments by position, one for each parameter
+of the function type. Passing them by name is a compile error, and so is a
+call of a variable of any other type:
+
+```hop
+let double = fn(n: Int) { n * 2 };
+double(4)    // 8
+double(n: 4) // error: Variable double takes its arguments by position
+
+let label = "Name";
+label() // error: Variable label is not a function
+```
 
 <a id="macro-expressions"></a>
 
@@ -682,7 +722,7 @@ The subject has type `Bool`, `Option[T]`, a tuple type, or a record or enum
 type, and a subject of any other type is a compile error. So is a pattern that
 does not have the type of the subject. The expressions of all arms have the
 same type, which is the type of the `match` expression, and arms of different
-types are a compile error.
+types are a compile error. So are arms of a function type.
 
 A subject that is a [record](#record-expressions) or
 [enum expression](#enum-expressions) with fields is a compile error unless it is
@@ -921,6 +961,47 @@ for name in ["Alice", "Bob"] { <li>{name}</li> } // <li>Alice</li><li>Bob</li>
 for i in 1..=3 { <b>{i.to_string()}</b> }        // <b>1</b><b>2</b><b>3</b>
 for tag in "a, b" { <br/> }                      // error: Expected Array[...] got String
 for _ in 1..=3 { "*" }                           // error: Expected Html got String
+```
+
+<a id="lambda-expressions"></a>
+
+### Lambda expressions
+
+A lambda expression `fn(x, …) { … }` evaluates to a lambda, which a
+[call](#call-expressions) applies to arguments, one for each parameter: the
+application evaluates the body with each parameter bound to its argument. The
+body can use the variables in scope where the lambda is written. The type of
+the lambda is the [function type](#types) of its parameters and its body.
+
+```ebnf
+LambdaExpr  ::= "fn" "(" ( LambdaParam ( "," LambdaParam )* ","? )? ")" ( "->" Type )? BlockExpr
+LambdaParam ::= LowercaseIdentifier ( ":" Type )?
+```
+
+A parameter `x: T` has type `T`. A parameter `x` without a type takes it from
+the context, when the lambda is an argument for a parameter or a let binding
+with a type annotation, and that type is a function type with as many
+parameters as the lambda: `x` has the type at its position. A parameter without
+a type in any other context is a compile error. With `-> R` after the
+parameters, a body that does not have type `R` is a compile error.
+
+```hop
+fn twice(step: fn(Int) -> Int, n: Int) -> Int {
+  step(step(n))
+}
+
+let offset = 1;
+twice(fn(n) { n + offset }, 3) // 5
+
+let triple = fn(n) { n * 3 };  // error: The type of parameter n cannot be inferred
+```
+
+A lambda whose type breaks the rules for function types is a compile error, as
+is a lambda whose body uses an `Html` value bound outside it, which is
+explained under [variable references](#variable-reference-expressions):
+
+```hop
+let add = fn(a: Int) { fn(b: Int) { a + b } }; // error: A function cannot return fn(Int) -> Int
 ```
 
 <a id="markup-expressions"></a>
@@ -1307,11 +1388,11 @@ fn Warning(...rest) -> Html {
 <Warning></Warning> // error: Function Warning does not accept argument 'children'
 ```
 
-A parameter that a rest parameter adds is bound outside every `for` body of
-its function, like the parameters the function declares. A spread inside a
-`for` body that adds a parameter of type `Html` therefore uses that
-[Html value](#variable-reference-expressions) in a loop it is bound outside of,
-which is a compile error:
+A parameter that a rest parameter adds is bound outside every `for` body and
+lambda body of its function, like the parameters the function declares. A
+spread inside a `for` body or a lambda body that adds a parameter of type
+`Html` therefore uses that [Html value](#variable-reference-expressions) in a
+body it is bound outside of, which is a compile error:
 
 ```hop
 fn Callout(children: Html) -> Html {
@@ -1502,6 +1583,14 @@ fn answer() -> Int {
 }
 ```
 
+A return type that is a [function type](#types) is a compile error:
+
+```hop
+fn adder() -> fn(Int) -> Int { // error: A function cannot return fn(Int) -> Int
+  fn(n: Int) { n + 1 }
+}
+```
+
 A [call](#call-expressions) that leaves out an optional parameter passes its
 fallback value in its place:
 
@@ -1578,7 +1667,8 @@ page Home {
 ```
 
 A page parameter of type `Html` is a compile error, for
-[XSS safety](#xss-safety).
+[XSS safety](#xss-safety), and so is a page parameter of a
+[function type](#types).
 
 <a id="rendering"></a>
 

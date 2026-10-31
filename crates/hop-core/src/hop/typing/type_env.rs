@@ -72,7 +72,4 @@ pub struct TypeEnv {
     /// Every name declared or imported in the module. A module has one
     /// namespace: a type, a page and a function cannot share a name.
     pub names: HashMap<CheapString, Name>,
-    /// Settled signatures for the names of kind `Function`, imported and
-    /// local.
-    pub functions: HashMap<CheapString, FunctionSignature>,
 }

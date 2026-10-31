@@ -132,7 +132,13 @@ module.exports = grammar({
 
     rest_parameter: ($) => seq("...", field("name", $.identifier)),
 
-    _type: ($) => choice($.generic_type, $.tuple_type, $.type_identifier),
+    _type: ($) =>
+      choice(
+        $.generic_type,
+        $.tuple_type,
+        $.function_type,
+        $.type_identifier,
+      ),
 
     generic_type: ($) =>
       seq(
@@ -143,6 +149,14 @@ module.exports = grammar({
     type_arguments: ($) => seq("[", commaSep1($._type), "]"),
 
     tuple_type: ($) => seq("(", commaSep($._type), ")"),
+
+    function_type: ($) =>
+      seq(
+        "fn",
+        field("parameters", alias($.tuple_type, $.parameter_types)),
+        "->",
+        field("return_type", $._type),
+      ),
 
     // Permissive: the parser requires a trailing expression and allows `let`
     // only before it. Both are optional here so that a block stays parseable
@@ -181,6 +195,7 @@ module.exports = grammar({
         $.macro_invocation,
         $.match_expression,
         $.for_expression,
+        $.lambda_expression,
         $._markup,
       ),
 
@@ -304,6 +319,22 @@ module.exports = grammar({
         "in",
         field("value", choice($._expression, $.range_expression)),
         field("body", $.block),
+      ),
+
+    lambda_expression: ($) =>
+      seq(
+        "fn",
+        field("parameters", $.lambda_parameters),
+        optional(seq("->", field("return_type", $._type))),
+        field("body", $.block),
+      ),
+
+    lambda_parameters: ($) => seq("(", commaSep($.lambda_parameter), ")"),
+
+    lambda_parameter: ($) =>
+      seq(
+        field("name", $.identifier),
+        optional(seq(":", field("type", $._type))),
       ),
 
     // A range is only ever the subject of a `for`, so it is not an

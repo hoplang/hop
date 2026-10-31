@@ -7,6 +7,7 @@ use crate::hop::typing::type_env::{
 };
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::type_registry_builder::{Ty, TypeRegistryBuilder, test_module};
+use crate::hop::typing::variable_scope::VariableScope;
 use crate::symbols::var_name::VarName;
 
 fn var_name(name: &str) -> VarName {
@@ -111,9 +112,8 @@ impl TestModule {
         let decl_range = DocumentCursor::new(test_module(), String::new()).eof_range();
         let mut type_env = TypeEnv {
             names: type_names(&self.registry),
-            functions: Default::default(),
         };
-        for (name, signature) in &self.functions {
+        for name in self.functions.keys() {
             type_env.names.insert(
                 name.to_cheap_string(),
                 Name {
@@ -122,11 +122,25 @@ impl TestModule {
                     import_range: None,
                 },
             );
-            type_env
-                .functions
-                .insert(name.to_cheap_string(), signature.clone());
         }
         type_env
+    }
+
+    /// The scope of a body of a module that declares these functions,
+    /// before any variable is bound.
+    pub fn scope(&self) -> VariableScope {
+        let decl_range = DocumentCursor::new(test_module(), String::new()).eof_range();
+        let mut scope = VariableScope::new();
+        for (name, signature) in &self.functions {
+            scope
+                .declare_function(
+                    name.to_cheap_string(),
+                    Some(signature.clone()),
+                    decl_range.clone(),
+                )
+                .expect("a test function is declared once");
+        }
+        scope
     }
 }
 

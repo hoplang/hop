@@ -9,10 +9,19 @@ use crate::symbols::type_name::TypeName;
 pub enum Type {
     Data(DataType),
     Html(HtmlType),
+    Function(FunctionType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HtmlType;
+
+/// The type of a lambda. The result is data or Html, never a function, and
+/// a function whose result is data takes no parameter that renders Html.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionType {
+    pub parameters: Vec<Type>,
+    pub result: Box<Type>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataType {
@@ -70,11 +79,21 @@ impl Type {
         Type::Data(DataType::Option(Box::new(element)))
     }
 
-    /// The data type of this type, or None for Html.
+    /// The data type of this type, or None for Html and functions.
     pub fn as_data(&self) -> Option<&DataType> {
         match self {
             Type::Data(data) => Some(data),
-            Type::Html(_) => None,
+            Type::Html(_) | Type::Function(_) => None,
+        }
+    }
+
+    /// Whether this is Html or a function whose result is Html. What a
+    /// value computes never depends on such a type.
+    pub fn renders_html(&self) -> bool {
+        match self {
+            Type::Data(_) => false,
+            Type::Html(_) => true,
+            Type::Function(function) => function.result.renders_html(),
         }
     }
 
@@ -97,7 +116,8 @@ impl Type {
                 DataType::Bool | DataType::Option(_) | DataType::Tuple(_) | DataType::Named { .. },
             ) => true,
             Type::Data(DataType::String | DataType::Int | DataType::Float | DataType::Array(_))
-            | Type::Html(_) => false,
+            | Type::Html(_)
+            | Type::Function(_) => false,
         }
     }
 }
@@ -166,6 +186,13 @@ impl<'a> Type {
         match self {
             Type::Data(data) => data.to_doc(),
             Type::Html(_) => BoxDoc::text("Html"),
+            Type::Function(function) => BoxDoc::text("fn(")
+                .append(BoxDoc::intersperse(
+                    function.parameters.iter().map(Type::to_doc),
+                    BoxDoc::text(", "),
+                ))
+                .append(BoxDoc::text(") -> "))
+                .append(function.result.to_doc()),
         }
     }
 }

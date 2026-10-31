@@ -178,10 +178,18 @@ pub fn typecheck_match(
     if !compiles || typed_bodies.len() != arms.len() {
         return None;
     }
+    let typ = result_type?;
+    if let Type::Function(_) = typ {
+        errors.push(TypeError::new(
+            TypeErrorKind::MatchProducesFunction { typ },
+            arms[0].body.range().clone(),
+        ));
+        return None;
+    }
 
     Some(TypedExpr::Match {
         subject: Box::new(typed_subject),
         arms: typed_patterns.into_iter().zip(typed_bodies).collect(),
-        typ: result_type?,
+        typ,
     })
 }

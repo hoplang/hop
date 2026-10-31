@@ -14,8 +14,9 @@ use super::parse_helpers::{
 use super::parse_markup;
 use super::parse_type::parse_type;
 use super::parsed_expr::{
-    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer, ParsedLetBinding,
-    ParsedLoopSource, ParsedMatchArm, ParsedNamedArgument, ParsedPattern, ParsedUnaryOp,
+    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer, ParsedLambdaParameter,
+    ParsedLetBinding, ParsedLoopSource, ParsedMatchArm, ParsedNamedArgument, ParsedPattern,
+    ParsedUnaryOp,
 };
 use super::token::LangToken;
 use super::tokenize_expr::{next, peek, peek2, peek3};
@@ -402,6 +403,8 @@ pub fn parse_primary(
         parse_match(iter, comments, errors, match_range)?
     } else if let Some(for_range) = next_if_eq(iter, comments, errors, LangToken::For) {
         parse_for(iter, comments, errors, for_range)?
+    } else if let Some(fn_range) = next_if_eq(iter, comments, errors, LangToken::Fn) {
+        parse_lambda(iter, comments, errors, fn_range)?
     } else if let Some(some_range) = next_if_eq(iter, comments, errors, LangToken::Some) {
         let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
         let (value, parens) = parse_delimited(
@@ -791,6 +794,49 @@ fn parse_for(
         source: Box::new(source),
         body: Box::new(body),
         range: for_range.to(braces),
+    })
+}
+
+fn parse_lambda(
+    iter: &mut DocumentCursor,
+    comments: &mut Vec<DocumentRange>,
+    errors: &mut Vec<ParseError>,
+    fn_range: DocumentRange,
+) -> Result<ParsedExpr, ErrorEmitted> {
+    let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
+    let (params, _) = parse_delimited_list(
+        iter,
+        comments,
+        errors,
+        LangTokenPair::Parens,
+        &left_paren,
+        &[LangToken::Arrow, LangToken::LeftBrace],
+        |iter, comments, errors| {
+            let (name, var_name_range) = expect_identifier(iter, comments, errors)?;
+            let var_type = if next_if_eq(iter, comments, errors, LangToken::Colon).is_some() {
+                Some(parse_type(iter, comments, errors)?)
+            } else {
+                None
+            };
+            Ok(ParsedLambdaParameter {
+                var_name: VarName::new(name).or_emit(errors, &var_name_range)?,
+                var_name_range,
+                var_type,
+            })
+        },
+    )?;
+    let return_type = if next_if_eq(iter, comments, errors, LangToken::Arrow).is_some() {
+        Some(parse_type(iter, comments, errors)?)
+    } else {
+        None
+    };
+    let left_brace = expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
+    let (body, braces) = parse_block(iter, comments, errors, &left_brace)?;
+    Ok(ParsedExpr::Lambda {
+        params,
+        return_type,
+        body: Box::new(body),
+        range: fn_range.to(braces),
     })
 }
 

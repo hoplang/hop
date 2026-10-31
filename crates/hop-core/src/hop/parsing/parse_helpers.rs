@@ -2,12 +2,12 @@ use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
 
 use super::token::LangToken;
-use super::tokenize_expr::{next, peek};
+use super::tokenize_expr::{next, peek, peek2};
 use crate::hop::parsing::parse_error::{Emit, ErrorEmitted, ParseError, ParseErrorKind};
 
 /// The tokens that start a declaration, at which skipping over unexpected
 /// tokens at the top level stops.
-pub const DECLARATION_KEYWORDS: &[LangToken] = &[
+const DECLARATION_KEYWORDS: &[LangToken] = &[
     LangToken::Pub,
     LangToken::Import,
     LangToken::Record,
@@ -45,18 +45,29 @@ pub fn next_if_eq(
     }
 }
 
-/// Skip tokens until one that satisfies `stop`, or end of input. Takes the
-/// proof that whatever made the tokens unparseable was reported, and lexes
-/// into a discard buffer, so that skipping reports nothing itself.
+/// Whether the next token starts a declaration. A `fn` followed by `(`
+/// starts a lambda instead.
+pub fn at_declaration(iter: &DocumentCursor) -> bool {
+    match peek(iter) {
+        Some((LangToken::Fn, _)) => !matches!(peek2(iter), Some((LangToken::LeftParen, _))),
+        Some((token, _)) => DECLARATION_KEYWORDS.contains(&token),
+        None => false,
+    }
+}
+
+/// Skip tokens until one that satisfies `stop`, or end of input. `stop`
+/// sees the token and the cursor before it. Takes the proof that whatever
+/// made the tokens unparseable was reported, and lexes into a discard
+/// buffer, so that skipping reports nothing itself.
 pub fn skip_to(
     iter: &mut DocumentCursor,
     _reported: ErrorEmitted,
-    stop: impl Fn(&LangToken) -> bool,
+    stop: impl Fn(&LangToken, &DocumentCursor) -> bool,
 ) {
     let mut comments = Vec::new();
     let mut errors = Vec::new();
     while let Some((token, _)) = peek(iter) {
-        if stop(&token) {
+        if stop(&token, iter) {
             break;
         }
         next(iter, &mut comments, &mut errors);
@@ -171,8 +182,8 @@ where
     if let Err(reported) = delimited {
         // Skip whatever could not be parsed, and the right delimiter with
         // it, so that the caller resumes after the delimited part.
-        skip_to(iter, reported, |token| {
-            RIGHT_DELIMITERS.contains(token) || DECLARATION_KEYWORDS.contains(token)
+        skip_to(iter, reported, |token, iter| {
+            RIGHT_DELIMITERS.contains(token) || at_declaration(iter)
         });
         next_if_eq(iter, comments, errors, pair.right_delimiter());
     }
@@ -204,10 +215,8 @@ where
         &mut Vec<ParseError>,
     ) -> Result<T, ErrorEmitted>,
 {
-    let ends_list = |token: &LangToken| {
-        RIGHT_DELIMITERS.contains(token)
-            || DECLARATION_KEYWORDS.contains(token)
-            || stops.contains(token)
+    let ends_list = |token: &LangToken, iter: &DocumentCursor| {
+        RIGHT_DELIMITERS.contains(token) || stops.contains(token) || at_declaration(iter)
     };
     let mut items = Vec::new();
     // The list ended on a token that cannot close it, and the failure that
@@ -217,7 +226,7 @@ where
     // Every pass either breaks or consumes at least one token: a comma, or
     // the unexpected token that stands where a comma should be.
     loop {
-        if peek(iter).is_none_or(|(token, _)| ends_list(&token)) {
+        if peek(iter).is_none_or(|(token, _)| ends_list(&token, iter)) {
             break;
         }
         let failed = match parse(iter, comments, errors) {
@@ -233,7 +242,7 @@ where
         let Some((actual, actual_range)) = peek(iter) else {
             break;
         };
-        if ends_list(&actual) {
+        if ends_list(&actual, iter) {
             failed_on_end = failed.filter(|_| actual != pair.right_delimiter());
             break;
         }
@@ -248,8 +257,8 @@ where
                 actual_range,
             )
         });
-        skip_to(iter, reported, |token| {
-            *token == LangToken::Comma || ends_list(token)
+        skip_to(iter, reported, |token, iter| {
+            *token == LangToken::Comma || ends_list(token, iter)
         });
         if next_if_eq(iter, comments, errors, LangToken::Comma).is_some() {
             continue;

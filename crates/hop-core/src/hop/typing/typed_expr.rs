@@ -219,6 +219,20 @@ pub enum TypedExpr {
     /// relative to the project root.
     Asset { path: RootRelativeFilePath },
 
+    /// A lambda, e.g. fn(x: Int) { x * 2 }. Its type is a function.
+    Lambda {
+        params: Vec<(VarName, Type)>,
+        body: Box<Self>,
+        typ: Type,
+    },
+
+    /// An application of a function value bound to a variable, e.g. f(1, 2)
+    Apply {
+        callee: VarName,
+        args: Vec<Self>,
+        typ: Type,
+    },
+
     /// A call expression, e.g. foo(1, 2)
     Call {
         function_name: FunctionName,
@@ -329,6 +343,8 @@ impl TypedExpr {
             | TypedExpr::Let { typ, .. }
             | TypedExpr::For { typ, .. }
             | TypedExpr::OptionUnwrapOr { typ, .. }
+            | TypedExpr::Lambda { typ, .. }
+            | TypedExpr::Apply { typ, .. }
             | TypedExpr::Call { typ, .. } => typ.clone(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Type::FLOAT,
@@ -716,6 +732,26 @@ impl TypedExpr {
             TypedExpr::Asset { path } => BoxDoc::text("asset!(\"/")
                 .append(BoxDoc::text(path.as_str()))
                 .append(BoxDoc::text("\")")),
+            TypedExpr::Lambda { params, body, .. } => BoxDoc::text("fn(")
+                .append(BoxDoc::intersperse(
+                    params.iter().map(|(name, typ)| {
+                        BoxDoc::text(name.as_str())
+                            .append(BoxDoc::text(": "))
+                            .append(typ.to_doc())
+                    }),
+                    BoxDoc::text(", "),
+                ))
+                .append(BoxDoc::text(") {"))
+                .append(BoxDoc::line().append(body.to_doc()).nest(2))
+                .append(BoxDoc::line())
+                .append(BoxDoc::text("}")),
+            TypedExpr::Apply { callee, args, .. } => BoxDoc::text(callee.as_str())
+                .append(BoxDoc::text("("))
+                .append(BoxDoc::intersperse(
+                    args.iter().map(TypedExpr::to_doc),
+                    BoxDoc::text(", "),
+                ))
+                .append(BoxDoc::text(")")),
             TypedExpr::Call {
                 function_name,
                 args,

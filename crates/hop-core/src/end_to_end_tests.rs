@@ -18738,4 +18738,410 @@ mod tests {
             "#]],
         );
     }
+    #[test]
+    #[ignore]
+    fn lambda_renders_each_row_with_a_captured_value() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Rows(labels: Array[String], row: fn(String, Html) -> Html) -> Html {
+                  <ul>
+                    {for label in labels {
+                      row(label, <i>{label}</i>)
+                    }}
+                  </ul>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    let suffix = "!";
+                    <Rows labels={["a", "b"]} row={fn(label, icon) {
+                      <li>{icon}{label}{suffix}</li>
+                    }}/>
+                  }
+                }
+            "#},
+            "<ul><li><i>a</i>a!</li><li><i>b</i>b!</li></ul>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Rows@f0(labels@v12: Array[String], row@v13: (String, () -> Html) -> Html) -> Html {
+                  write("<ul>")
+                  for v14: String in v12 {
+                    let v22: () -> Html = fn() {
+                      write("<i>")
+                      write_string(v14)
+                      write("</i>")
+                    }
+                    write_apply v13(v14, v22)
+                  }
+                  write("</ul>")
+                }
+                page Test() {
+                  let v1: String = "a"
+                  let v2: String = "b"
+                  let v3: Array[String] = [v1, v2]
+                  let v10: (String, () -> Html) -> Html = fn(v4: String, v5: () -> Html) {
+                    write("<li>")
+                    write_apply v5()
+                    write_string(v4)
+                    write("!</li>")
+                  }
+                  write_function Rows@f0(v3, v10)
+                }
+                -- ir (optimized) --
+                page Test() {
+                  let v1: String = "a"
+                  let v2: String = "b"
+                  let v3: Array[String] = [v1, v2]
+                  write("<ul>")
+                  for v22: String in v3 {
+                    write("<li><i>")
+                    write_string(v22)
+                    write("</i>")
+                    write_string(v22)
+                    write("!</li>")
+                  }
+                  write("</ul>")
+                }
+                -- expected output --
+                <ul><li><i>a</i>a!</li><li><i>b</i>b!</li></ul>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn lambda_passed_through_a_recursive_function() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn sum(n: Int, weight: fn(Int) -> Int) -> Int {
+                  match n <= 0 {
+                    true => 0,
+                    false => weight(n) + sum(n - 1, weight),
+                  }
+                }
+
+                fn Countdown(n: Int, item: fn(Int) -> Html) -> Html {
+                  match n <= 0 {
+                    true => <></>,
+                    false => <>{item(n)}<Countdown n={n - 1} item={item}/></>,
+                  }
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    let scale = 10;
+                    <>
+                      {sum(3, fn(n) { n * scale }).to_string()}
+                      <Countdown n={3} item={fn(n) { <b>{n.to_string()}</b> }}/>
+                    </>
+                  }
+                }
+            "#},
+            "60<b>3</b><b>2</b><b>1</b>",
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Countdown@f1(n@v28: Int, item@v29: (Int) -> Html) -> Html {
+                  let v30: Int = 0
+                  let v31: Bool = v28 <= v30
+                  match v31 {
+                    true => {
+                    }
+                    false => {
+                      let v34: Int = 1
+                      let v35: Int = v28 - v34
+                      write_apply v29(v28)
+                      write_function Countdown@f1(v35, v29)
+                    }
+                  }
+                }
+                fn sum@f0(n@v17: Int, weight@v18: (Int) -> Int) -> Int {
+                  let v19: Int = 0
+                  let v20: Bool = v17 <= v19
+                  let v39: Int = match v20 {
+                    true => {
+                      let v21: Int = 0
+                      v21
+                    }
+                    false => {
+                      let v22: Int = v18(v17)
+                      let v23: Int = 1
+                      let v24: Int = v17 - v23
+                      let v25: Int = sum@f0(v24, v18)
+                      let v26: Int = v22 + v25
+                      v26
+                    }
+                  }
+                  v39
+                }
+                page Test() {
+                  let v0: Int = 10
+                  let v1: Int = 3
+                  let v4: (Int) -> Int = fn(v2: Int) {
+                    let v3: Int = v2 * v0
+                    v3
+                  }
+                  let v5: Int = sum@f0(v1, v4)
+                  let v6: String = v5.to_string()
+                  let v8: Int = 3
+                  let v14: (Int) -> Html = fn(v9: Int) {
+                    let v10: String = v9.to_string()
+                    write("<b>")
+                    write_string(v10)
+                    write("</b>")
+                  }
+                  write_string(v6)
+                  write_function Countdown@f1(v8, v14)
+                }
+                -- ir (optimized) --
+                fn Countdown@f1(n@v28: Int, item@v29: (Int) -> Html) -> Html {
+                  let v30: Int = 0
+                  let v31: Bool = v28 <= v30
+                  match v31 {
+                    true => {
+                    }
+                    false => {
+                      let v34: Int = 1
+                      let v35: Int = v28 - v34
+                      write_apply v29(v28)
+                      write_function Countdown@f1(v35, v29)
+                    }
+                  }
+                }
+                fn sum@f0(n@v17: Int, weight@v18: (Int) -> Int) -> Int {
+                  let v19: Int = 0
+                  let v20: Bool = v17 <= v19
+                  let v39: Int = match v20 {
+                    true => {
+                      let v21: Int = 0
+                      v21
+                    }
+                    false => {
+                      let v22: Int = v18(v17)
+                      let v23: Int = 1
+                      let v24: Int = v17 - v23
+                      let v25: Int = sum@f0(v24, v18)
+                      let v26: Int = v22 + v25
+                      v26
+                    }
+                  }
+                  v39
+                }
+                page Test() {
+                  let v0: Int = 10
+                  let v1: Int = 3
+                  let v4: (Int) -> Int = fn(v2: Int) {
+                    let v3: Int = v2 * v0
+                    v3
+                  }
+                  let v5: Int = sum@f0(v1, v4)
+                  let v6: String = v5.to_string()
+                  let v8: Int = 3
+                  let v14: (Int) -> Html = fn(v9: Int) {
+                    let v10: String = v9.to_string()
+                    write("<b>")
+                    write_string(v10)
+                    write("</b>")
+                  }
+                  write_string(v6)
+                  write_function Countdown@f1(v8, v14)
+                }
+                -- expected output --
+                60<b>3</b><b>2</b><b>1</b>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn lambda_through_a_rest_specialization() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                fn Item(label: String, mark: fn(String) -> Html, ...rest) -> Html {
+                  <li ...rest>{mark(label)}</li>
+                }
+
+                fn Bullet(...rest) -> Html {
+                  <Item ...rest/>
+                }
+
+                page Test() {
+                  fn body() -> Html {
+                    <ul>
+                      <Bullet label="x" class="a" mark={fn(text) { <em>{text}</em> }}/>
+                      <Bullet label="y" mark={fn(text) { <>{text}</> }}/>
+                    </ul>
+                  }
+                }
+            "#},
+            r#"<ul><li class="a"><em>x</em></li><li>y</li></ul>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                fn Bullet@f0(label@v16: String, mark@v17: (String) -> Html, class@v18: String) -> Html {
+                  write_function Item@f2(v16, v17, v18)
+                }
+                fn Bullet@f1(label@v20: String, mark@v21: (String) -> Html) -> Html {
+                  write_function Item@f3(v20, v21)
+                }
+                fn Item@f2(label@v23: String, mark@v24: (String) -> Html, class@v25: String) -> Html {
+                  write("<li class=\"")
+                  write_string(v25)
+                  write("\">")
+                  write_apply v24(v23)
+                  write("</li>")
+                }
+                fn Item@f3(label@v29: String, mark@v30: (String) -> Html) -> Html {
+                  write("<li>")
+                  write_apply v30(v29)
+                  write("</li>")
+                }
+                page Test() {
+                  let v0: String = "x"
+                  let v6: String = "a"
+                  let v8: String = "y"
+                  let v5: (String) -> Html = fn(v1: String) {
+                    write("<em>")
+                    write_string(v1)
+                    write("</em>")
+                  }
+                  let v12: (String) -> Html = fn(v9: String) {
+                    write_string(v9)
+                  }
+                  write("<ul>")
+                  write_function Bullet@f0(v0, v5, v6)
+                  write_function Bullet@f1(v8, v12)
+                  write("</ul>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  write("<ul><li class=\"a\"><em>x</em></li><li>y</li></ul>")
+                }
+                -- expected output --
+                <ul><li class="a"><em>x</em></li><li>y</li></ul>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn lambda_bound_by_let_and_applied_in_a_loop() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                page Test() {
+                  fn body() -> Html {
+                    let wrap = fn(content: Html, n: Int) -> Html {
+                      <p class={n.to_string()}>{content}</p>
+                    };
+                    <div>
+                      {for n in 1..=2 {
+                        wrap(<b>{n.to_string()}</b>, n * 2)
+                      }}
+                    </div>
+                  }
+                }
+            "#},
+            r#"<div><p class="2"><b>1</b></p><p class="4"><b>2</b></p></div>"#,
+            expect![[r#"
+                -- ir (unoptimized) --
+                page Test() {
+                  let v6: Int = 1
+                  let v7: Int = 2
+                  let v8: Array[Int] = v6..=v7
+                  let v5: (() -> Html, Int) -> Html = fn(v0: () -> Html, v1: Int) {
+                    let v2: String = v1.to_string()
+                    write("<p class=\"")
+                    write_string(v2)
+                    write("\">")
+                    write_apply v0()
+                    write("</p>")
+                  }
+                  write("<div>")
+                  for v9: Int in v8 {
+                    let v10: String = v9.to_string()
+                    let v14: Int = 2
+                    let v15: Int = v9 * v14
+                    let v20: () -> Html = fn() {
+                      write("<b>")
+                      write_string(v10)
+                      write("</b>")
+                    }
+                    write_apply v5(v20, v15)
+                  }
+                  write("</div>")
+                }
+                -- ir (optimized) --
+                page Test() {
+                  let v6: Int = 1
+                  let v7: Int = 2
+                  let v8: Array[Int] = v6..=v7
+                  write("<div>")
+                  for v9: Int in v8 {
+                    let v10: String = v9.to_string()
+                    let v14: Int = 2
+                    let v15: Int = v9 * v14
+                    let v20: String = v15.to_string()
+                    write("<p class=\"")
+                    write_string(v20)
+                    write("\"><b>")
+                    write_string(v10)
+                    write("</b></p>")
+                  }
+                  write("</div>")
+                }
+                -- expected output --
+                <div><p class="2"><b>1</b></p><p class="4"><b>2</b></p></div>
+                -- eval (unoptimized) --
+                OK
+                -- eval (optimized) --
+                OK
+                -- ts (unoptimized) --
+                OK
+                -- rust (unoptimized) --
+                OK
+                -- ts (optimized) --
+                OK
+                -- rust (optimized) --
+                OK
+            "#]],
+        );
+    }
 }

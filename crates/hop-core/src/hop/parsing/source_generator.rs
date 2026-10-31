@@ -270,10 +270,11 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
         Array,
         Option,
         Tuple,
+        Function,
     }
     let mut kinds = vec![P::Scalar, P::Named];
     if depth > 0 {
-        kinds.extend([P::Array, P::Option, P::Tuple]);
+        kinds.extend([P::Array, P::Option, P::Tuple, P::Function]);
     }
     match u.choose(&kinds)? {
         P::Scalar => out.push_str(u.choose(&["Int", "String", "Bool", "Float", "Html"])?),
@@ -292,6 +293,15 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
             out.push('(');
             list(u, 0..=3, out, |u, _, out| type_(u, depth - 1, out))?;
             out.push(')');
+        }
+        P::Function => {
+            out.push_str("fn(");
+            list(u, 0..=3, out, |u, _, out| type_(u, depth - 1, out))?;
+            out.push(')');
+            ws(u, out)?;
+            out.push_str("->");
+            ws(u, out)?;
+            type_(u, depth - 1, out)?;
         }
     }
     Ok(())
@@ -383,6 +393,7 @@ fn primary(
         Some,
         Match,
         For,
+        Lambda,
         Markup,
         EnumFields,
         Record,
@@ -407,6 +418,7 @@ fn primary(
             P::Some,
             P::Match,
             P::For,
+            P::Lambda,
             P::Markup,
         ]);
         if !restrictions.forbid_record_expressions {
@@ -530,6 +542,27 @@ fn primary(
             if u.arbitrary()? {
                 out.push_str("..=");
                 expr(u, depth - 1, BEFORE_BRACE, out)?;
+            }
+            out.push_str(" {");
+            ws(u, out)?;
+            block_body(u, depth - 1, out)?;
+            ws(u, out)?;
+            out.push('}');
+        }
+        P::Lambda => {
+            out.push_str("fn(");
+            list(u, 0..=3, out, |u, _, out| {
+                out.push_str(u.choose(VAR_NAMES)?);
+                if u.arbitrary()? {
+                    out.push_str(": ");
+                    type_(u, 2, out)?;
+                }
+                Ok(())
+            })?;
+            out.push(')');
+            if u.arbitrary()? {
+                out.push_str(" -> ");
+                type_(u, 2, out)?;
             }
             out.push_str(" {");
             ws(u, out)?;

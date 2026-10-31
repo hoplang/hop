@@ -1,6 +1,7 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
+use crate::hop::typing::variable_scope::RepeatedBody;
 use crate::hop::typing::{DataType, Type, TypedPattern};
 use crate::html::HtmlElementKind;
 use crate::root_relative_path::RootRelativePathError;
@@ -120,11 +121,21 @@ pub enum TypeErrorKind {
     #[error("Fallback values must be constant")]
     FallbackValueMustBeConstant,
 
-    #[error("Html is not allowed in page parameters")]
-    HtmlInPageParameter,
+    #[error("{typ} is not allowed in page parameters")]
+    NotAllowedInPageParameter { typ: Type },
 
-    #[error("Html is not allowed inside another type")]
-    HtmlInData,
+    #[error("{typ} is not allowed inside another type")]
+    NotData { typ: Type },
+
+    #[error("A function cannot return {result}")]
+    FunctionReturnsFunction { result: Type },
+
+    #[error("{typ} returns {result} and cannot take {parameter}")]
+    DataFunctionTakesHtml {
+        typ: Type,
+        result: Type,
+        parameter: Type,
+    },
 
     // Named types print without their module, so two different types can
     // print the same.
@@ -275,8 +286,8 @@ pub enum TypeErrorKind {
     #[error("Html value {name} is used more than once")]
     HtmlUsedAgain { name: VarName },
 
-    #[error("Html value {name} is bound outside the loop it is used in")]
-    HtmlUsedInLoop { name: VarName },
+    #[error("Html value {name} is bound outside the {body} it is used in")]
+    HtmlUsedOutside { name: VarName, body: RepeatedBody },
 
     #[error("Variable {name} is bound more than once in the pattern")]
     DuplicatePatternBinding { name: VarName },
@@ -349,6 +360,21 @@ pub enum TypeErrorKind {
 
     #[error("Function {name} is not defined")]
     UndefinedFunction { name: FunctionName },
+
+    #[error("Variable {name} is not a function")]
+    NotAFunction { name: FunctionName },
+
+    #[error("Variable {name} takes its arguments by position")]
+    NamedArgumentsToFunctionValue { name: VarName },
+
+    #[error("The type of parameter {name} cannot be inferred")]
+    LambdaParameterNeedsType { name: VarName },
+
+    #[error("A match cannot produce {typ}")]
+    MatchProducesFunction { typ: Type },
+
+    #[error("Function {name} cannot be used as a value")]
+    FunctionUsedAsValue { name: VarName },
 
     #[error("Function {name} expects {expected} argument(s), got {found}")]
     FunctionArgumentCountMismatch {
