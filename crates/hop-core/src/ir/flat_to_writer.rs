@@ -18,6 +18,7 @@ use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_page::IrPage;
+use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
@@ -35,13 +36,15 @@ use crate::symbols::type_name::TypeName;
 /// the argument of a call for an Html parameter. Html is read at most once
 /// on each path and never from a loop body it is bound outside of, so Html
 /// read once in each arm of a match is written in each, and Html that
-/// nothing reads is not written at all. The Html a call passes for an Html
-/// parameter renders into a buffer of its own as an HtmlLiteral, which the
-/// function writes wherever it reads the parameter. Html that only writes
-/// an Html parameter passes the buffer of that parameter on. A string
-/// constant or concat that only escapes and
-/// attribute values read is escaped now, part by part, and a bool constant
-/// that only presences read settles whether its attributes render.
+/// nothing reads is not written at all. An Html parameter takes a closure
+/// without parameters that writes the Html, and the function applies it
+/// where it reads the parameter, which it does at most once on each path
+/// and never in a loop, so the Html is never held. The Html a call passes
+/// for an Html parameter becomes such a closure, except Html that only
+/// applies one, which passes that closure on. A string constant or concat
+/// that only escapes and attribute values read is escaped now, part by
+/// part, and a bool constant that only presences read settles whether its
+/// attributes render.
 ///
 /// Html is never part of another type and a function that returns a value
 /// has no Html parameter, so no value reads Html. Panics if one does all the
@@ -51,8 +54,8 @@ use crate::symbols::type_name::TypeName;
 /// application produces one. Such a closure outlives everything that reads
 /// it, so a backend can have every closure borrow the names it captures. A
 /// lambda becomes a let at the start of its block, with the body a function
-/// that writes or returns would have. Its Html parameters are buffers, as those of a
-/// function are.
+/// that writes or returns would have. Its Html parameters take closures, as
+/// those of a function do.
 ///
 /// A match compiles to a decision tree. A switch of the tree becomes a
 /// Writer switch on the part of the subject it tests, a record or tuple the
@@ -159,6 +162,18 @@ fn write(out: &mut Vec<WriterStmt>, content: &str) {
     out.push(WriterStmt::Write(content.to_string()));
 }
 
+/// The Writer type of a parameter, where Html is a closure without
+/// parameters that writes it, in the signatures of closures as well.
+fn parameter_type(typ: &IrType) -> IrType {
+    match typ {
+        IrType::Html(IrHtmlType::Html) => IrType::html_function([]),
+        IrType::Html(IrHtmlType::Function(signature)) => {
+            IrType::html_function(signature.parameters.iter().map(parameter_type))
+        }
+        IrType::Value(_) => typ.clone(),
+    }
+}
+
 /// What reads a name.
 #[derive(Clone, Copy)]
 enum Reader {
@@ -185,8 +200,9 @@ struct Lowerer<'a> {
     /// Every Html binding of the program, by name, to write it where it is
     /// read.
     html: HashMap<ValueId, &'a FlatHtmlBinding>,
-    /// The Html parameters of every function. Html is never part of another
-    /// type, so these are the only names of Html that no binding binds.
+    /// The Html parameters of every function and lambda, which take a
+    /// closure that writes the Html. Html is never part of another type, so
+    /// these are the only names of Html that no binding binds.
     html_parameters: HashSet<ValueId>,
     /// The type of each parameter, loop variable and binding of a pattern
     /// of data, which no value binding binds.
@@ -214,8 +230,8 @@ impl<'a> Lowerer<'a> {
             || (self.html.get(&name)).is_some_and(|binding| binding.binder.typ == IrHtmlType::Html)
     }
 
-    // An Html parameter is a buffer, and the type of a parameter of data is
-    // what a match on it needs.
+    // An Html parameter takes a closure, and the type of a parameter of data
+    // is what a match on it needs.
     fn analyze_parameter(&mut self, binder: &IrBinder<IrType>) {
         match &binder.typ {
             IrType::Value(IrValueType::Data(typ)) => {
@@ -464,7 +480,15 @@ impl<'a> Lowerer<'a> {
                 self.write_block(&function.body, &mut statements);
                 WriterFunctionDeclaration {
                     function: function.function.clone(),
-                    parameters: function.parameters.clone(),
+                    parameters: (function.parameters.iter())
+                        .map(|param| IrParameter {
+                            name: param.name.clone(),
+                            binder: IrBinder {
+                                var: param.binder.var,
+                                typ: parameter_type(&param.binder.typ),
+                            },
+                        })
+                        .collect(),
                     return_type: IrType::HTML,
                     body: WriterFunctionBody::Writes(statements),
                 }
@@ -548,9 +572,10 @@ impl<'a> Lowerer<'a> {
             .collect()
     }
 
-    /// The names a call passes. The Html for an Html parameter renders into
-    /// a buffer, bound by a let appended to `lets`, except Html that only
-    /// writes an Html parameter, which passes that parameter's buffer.
+    /// The names a call passes. The Html for an Html parameter becomes a
+    /// closure that writes it, bound by a let appended to `lets`, except Html
+    /// that only applies a closure without parameters, which passes that
+    /// closure on.
     fn lower_args(&mut self, args: &[ValueId], lets: &mut Vec<WriterBinding>) -> Vec<ValueId> {
         let mut names = Vec::new();
         for arg in args {
@@ -560,16 +585,20 @@ impl<'a> Lowerer<'a> {
             }
             let mut body = Vec::new();
             self.write_html(*arg, &mut body);
-            let name = if let [WriterStmt::WriteHtml(parameter)] = body.as_slice() {
-                *parameter
-            } else {
-                let name = self.value_ids.next();
-                lets.push(WriterBinding {
-                    name,
-                    typ: IrType::HTML,
-                    op: WriterOp::HtmlLiteral(body),
-                });
-                name
+            let name = match body.as_slice() {
+                [WriterStmt::WriteApply(closure, args)] if args.is_empty() => *closure,
+                _ => {
+                    let name = self.value_ids.next();
+                    lets.push(WriterBinding {
+                        name,
+                        typ: IrType::html_function([]),
+                        op: WriterOp::Lambda(IrLambda {
+                            parameters: Vec::new(),
+                            body: WriterFunctionBody::Writes(body),
+                        }),
+                    });
+                    name
+                }
             };
             names.push(name);
         }
@@ -890,12 +919,17 @@ impl<'a> Lowerer<'a> {
             let FlatHtmlOp::Lambda(lambda) = &binding.op else {
                 continue;
             };
-            let parameters = self.bind_parameters(&lambda.parameters);
+            let parameters = (self.bind_parameters(&lambda.parameters).into_iter())
+                .map(|param| IrBinder {
+                    var: param.var,
+                    typ: parameter_type(&param.typ),
+                })
+                .collect();
             let mut statements = Vec::new();
             self.write_block(&lambda.body, &mut statements);
             out.push(WriterStmt::Let(WriterBinding {
                 name: self.bind(binding.binder.var),
-                typ: IrType::Html(binding.binder.typ.clone()),
+                typ: parameter_type(&IrType::Html(binding.binder.typ.clone())),
                 op: WriterOp::Lambda(IrLambda {
                     parameters,
                     body: WriterFunctionBody::Writes(statements),
@@ -928,11 +962,11 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Write the Html that `html` names: the buffer of an Html parameter,
-    /// or the writes of the op of its binding.
+    /// Write the Html that `html` names: an application of the closure an
+    /// Html parameter takes, or the writes of the op of its binding.
     fn write_html(&mut self, html: ValueId, out: &mut Vec<WriterStmt>) {
         if self.html_parameters.contains(&html) {
-            out.push(WriterStmt::WriteHtml(self.name(html)));
+            out.push(WriterStmt::WriteApply(self.name(html), Vec::new()));
             return;
         }
         let binding = *self
@@ -1415,7 +1449,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_the_html_a_closure_takes_into_a_buffer() {
+    fn passes_the_html_a_closure_takes_as_a_closure() {
         check_program(
             FlatProgramBuilder::new()
                 .function_with_types(
@@ -1472,7 +1506,7 @@ mod tests {
                 }
 
                 -- writer --
-                fn Wrap@f0(n@v0: Int, wrap@v1: (Html) -> Html) -> Html {
+                fn Wrap@f0(n@v0: Int, wrap@v1: (() -> Html) -> Html) -> Html {
                   let v2: Int = 0
                   let v3: Bool = v0 <= v2
                   match v3 {
@@ -1482,7 +1516,7 @@ mod tests {
                     false => {
                       let v5: Int = 1
                       let v6: Int = v0 - v5
-                      let v15: Html = html {
+                      let v15: () -> Html = fn() {
                         write_function Wrap@f0(v6, v1)
                       }
                       write_apply v1(v15)
@@ -1491,9 +1525,9 @@ mod tests {
                 }
                 page Test() {
                   let v13: Int = 2
-                  let v12: (Html) -> Html = fn(v10: Html) {
+                  let v12: (() -> Html) -> Html = fn(v10: () -> Html) {
                     write("<b>")
-                    write_html(v10)
+                    write_apply v10()
                     write("</b>")
                   }
                   write_function Wrap@f0(v13, v12)
@@ -1853,7 +1887,6 @@ mod tests {
                     WriterStmt::Let(let_) => self.let_(let_),
                     WriterStmt::Write(_)
                     | WriterStmt::WriteString(_)
-                    | WriterStmt::WriteHtml(_)
                     | WriterStmt::WriteFunction(..)
                     | WriterStmt::WriteApply(..) => {}
                     WriterStmt::HtmlFor(IrFor { var, body, .. }) => {
@@ -1879,7 +1912,6 @@ mod tests {
             self.bind(let_.name);
             match &let_.op {
                 WriterOp::Data(_) | WriterOp::Call(..) | WriterOp::Apply(..) => {}
-                WriterOp::HtmlLiteral(stmts) => self.stmts(stmts),
                 WriterOp::Match(switch) => self.switch(switch, Self::value_block),
                 WriterOp::Lambda(lambda) => {
                     for param in &lambda.parameters {
@@ -2206,7 +2238,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_markup_passed_to_a_recursive_function_into_a_buffer_and_passes_a_slot_on() {
+    fn passes_markup_to_a_recursive_function_as_a_closure_and_passes_it_on() {
         check(
             indoc! {r#"
                 fn Nest(depth: Int, children: Html) -> Html {
@@ -2251,7 +2283,7 @@ mod tests {
                 }
 
                 -- writer --
-                fn Nest@f0(depth@v7: Int, children@v8: Html) -> Html {
+                fn Nest@f0(depth@v7: Int, children@v8: () -> Html) -> Html {
                   let v9: Int = 0
                   let v10: Bool = v9 < v7
                   match v10 {
@@ -2263,13 +2295,13 @@ mod tests {
                       write("</div>")
                     }
                     false => {
-                      write_html(v8)
+                      write_apply v8()
                     }
                   }
                 }
                 page Test(name@v0: String) {
                   let v1: Int = 2
-                  let v18: Html = html {
+                  let v18: () -> Html = fn() {
                     write("<b>")
                     write_string(v0)
                     write("</b>")

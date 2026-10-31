@@ -50,11 +50,6 @@ pub trait Transpiler {
         arena: &'a Arena<'a>,
         name: ValueId,
     ) -> Doc<'a>;
-    fn transpile_write_html_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        name: ValueId,
-    ) -> Doc<'a>;
     fn transpile_write_function_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -87,7 +82,6 @@ pub trait Transpiler {
             WriterStmt::Let(let_) => self.transpile_let_statement(arena, let_),
             WriterStmt::Write(content) => self.transpile_write_statement(arena, content),
             WriterStmt::WriteString(name) => self.transpile_write_string_statement(arena, *name),
-            WriterStmt::WriteHtml(name) => self.transpile_write_html_statement(arena, *name),
             WriterStmt::WriteFunction(function, args) => {
                 self.transpile_write_function_statement(arena, function, args)
             }
@@ -119,7 +113,6 @@ pub trait Transpiler {
     fn transpile_string_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_float_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_int_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
-    fn transpile_html_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a>;
     fn transpile_array_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -170,7 +163,7 @@ pub trait Transpiler {
     fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrType) -> Doc<'a> {
         match t {
             IrType::Value(IrValueType::Data(data)) => self.transpile_data_type(arena, data),
-            IrType::Html(IrHtmlType::Html) => self.transpile_html_type(arena),
+            IrType::Html(IrHtmlType::Html) => unreachable!("Html is written, never held"),
             IrType::Value(IrValueType::Function(signature)) => {
                 self.transpile_value_function_type(arena, signature)
             }
@@ -201,7 +194,6 @@ pub trait Transpiler {
         field: &'a FieldName,
     ) -> Doc<'a>;
     fn transpile_string_literal<'a>(&mut self, arena: &'a Arena<'a>, value: &'a str) -> Doc<'a>;
-    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStmt]) -> Doc<'a>;
     fn transpile_bool_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a>;
     fn transpile_float_literal<'a>(&mut self, arena: &'a Arena<'a>, value: f64) -> Doc<'a>;
     fn transpile_int_literal<'a>(&mut self, arena: &'a Arena<'a>, value: i32) -> Doc<'a>;
@@ -513,7 +505,6 @@ pub trait Transpiler {
             WriterOp::Call(function, args) => {
                 self.transpile_function_call_value(arena, function, args)
             }
-            WriterOp::HtmlLiteral(body) => self.transpile_html(arena, body),
             WriterOp::Match(match_) => self.transpile_match_value(arena, match_),
             WriterOp::Lambda(lambda) => self.transpile_lambda(arena, lambda, typ),
             WriterOp::Apply(closure, args) => self.transpile_apply(arena, *closure, args),

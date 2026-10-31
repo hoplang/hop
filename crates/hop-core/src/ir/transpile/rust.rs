@@ -65,8 +65,6 @@ enum NaturalForm {
 pub struct RustTranspiler {
     /// Tracks whether escape_html function is used during transpilation
     needs_escape_html: bool,
-    /// Tracks whether Html type is used during transpilation
-    needs_html: bool,
     /// Field positions carrying `Box` indirection.
     /// We box in both directions for mutually recursive types.
     boxed_edges: HashSet<(TypeName, TypeName)>,
@@ -80,7 +78,6 @@ impl RustTranspiler {
     pub fn new() -> Self {
         Self {
             needs_escape_html: false,
-            needs_html: false,
             boxed_edges: HashSet::new(),
             types: IrTypeDeclarations::default(),
             names: HashMap::new(),
@@ -153,7 +150,6 @@ impl RustTranspiler {
                 | IrDataOp::IntToFloat(_),
             )
             | WriterOp::Call(..)
-            | WriterOp::HtmlLiteral(_)
             | WriterOp::Match(_)
             | WriterOp::Lambda(_)
             | WriterOp::Apply(..) => NaturalForm::Temporary,
@@ -456,10 +452,7 @@ impl RustTranspiler {
             IrType::Value(IrValueType::Data(IrDataType::String)) => arena.text("&str"),
             IrType::Value(IrValueType::Data(IrDataType::Float)) => arena.text("f64"),
             IrType::Value(IrValueType::Data(IrDataType::Int)) => arena.text("i32"),
-            IrType::Html(IrHtmlType::Html) => {
-                self.needs_html = true;
-                arena.text("&Html")
-            }
+            IrType::Html(IrHtmlType::Html) => unreachable!("Html is written, never held"),
             IrType::Value(IrValueType::Data(IrDataType::Array(elem))) => arena
                 .text("&[")
                 .append(self.transpile_data_type(arena, elem))
@@ -668,7 +661,6 @@ impl Transpiler for RustTranspiler {
 
     fn transpile_program(&mut self, program: &WriterProgram) -> String {
         self.needs_escape_html = false;
-        self.needs_html = false;
         self.boxed_edges = Self::compute_boxed_edges(&program.types);
         self.types = program.types.clone();
         self.names.clear();
@@ -797,20 +789,6 @@ impl Transpiler for RustTranspiler {
                 arena.hardline(),
             );
             result = escape_fn
-                .append(arena.hardline())
-                .append(arena.hardline())
-                .append(result);
-        }
-
-        if self.needs_html {
-            let fragment = arena.intersperse(
-                [
-                    arena.text("#[derive(Clone, Debug)]"),
-                    arena.text("pub struct Html(String);"),
-                ],
-                arena.hardline(),
-            );
-            result = fragment
                 .append(arena.hardline())
                 .append(arena.hardline())
                 .append(result);
@@ -1017,18 +995,6 @@ impl Transpiler for RustTranspiler {
             .text("write_escaped_html(")
             .append(self.name_ref(arena, name))
             .append(arena.text(", output);"))
-    }
-
-    fn transpile_write_html_statement<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        name: ValueId,
-    ) -> Doc<'a> {
-        arena
-            .text("output.push_str(&")
-            .append(arena.text(name_ident(name)))
-            .append(arena.text(".0"))
-            .append(arena.text(");"))
     }
 
     fn transpile_for_statement<'a>(
@@ -1282,11 +1248,6 @@ impl Transpiler for RustTranspiler {
         arena.text("i32")
     }
 
-    fn transpile_html_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
-        self.needs_html = true;
-        arena.text("Html")
-    }
-
     fn transpile_array_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -1462,27 +1423,6 @@ impl Transpiler for RustTranspiler {
             .text("\"")
             .append(arena.text(self.escape_string(value)))
             .append(arena.text("\""))
-    }
-
-    fn transpile_html<'a>(&mut self, arena: &'a Arena<'a>, body: &'a [WriterStmt]) -> Doc<'a> {
-        self.needs_html = true;
-        arena
-            .text("{")
-            .append(
-                arena
-                    .nil()
-                    .append(arena.hardline())
-                    .append(arena.text("let mut buf: String = String::new();"))
-                    .append(arena.hardline())
-                    .append(arena.text("let mut output: &mut String = &mut buf;"))
-                    .append(arena.hardline())
-                    .append(self.transpile_statements(arena, body))
-                    .append(arena.hardline())
-                    .append(arena.text("Html(buf)"))
-                    .nest(4),
-            )
-            .append(arena.hardline())
-            .append(arena.text("}"))
     }
 
     fn transpile_bool_literal<'a>(&mut self, arena: &'a Arena<'a>, value: bool) -> Doc<'a> {
@@ -2292,12 +2232,9 @@ mod tests {
                     fn write(self, output: &mut String);
                 }
 
-                #[derive(Clone, Debug)]
-                pub struct Html(String);
-
                 pub struct Test {}
 
-                fn render_wrap_0(output: &mut String, v_0: i32, v_1: &dyn Fn(&mut String, &Html)) {
+                fn render_wrap_0(output: &mut String, v_0: i32, v_1: &dyn Fn(&mut String, &dyn Fn(&mut String))) {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_0 <= v_2;
                     if v_3 {
@@ -2305,11 +2242,8 @@ mod tests {
                     } else {
                         let v_5: i32 = 1_i32;
                         let v_6: i32 = v_0.wrapping_sub(v_5);
-                        let v_15: Html = {
-                            let mut buf: String = String::new();
-                            let mut output: &mut String = &mut buf;
+                        let v_15 = |output: &mut String| {
                             render_wrap_0(output, v_6, v_1);
-                            Html(buf)
                         };
                         v_1(&mut *output, &v_15);
                     }
@@ -2324,9 +2258,9 @@ mod tests {
 
                     fn write(self, output: &mut String) {
                         let v_13: i32 = 2_i32;
-                        let v_12 = |output: &mut String, v_10: &Html| {
+                        let v_12 = |output: &mut String, v_10: &dyn Fn(&mut String)| {
                             output.push_str("<b>");
-                            output.push_str(&v_10.0);
+                            v_10(&mut *output);
                             output.push_str("</b>");
                         };
                         render_wrap_0(output, v_13, &v_12);
@@ -2355,6 +2289,87 @@ mod tests {
         let writer = flat_to_writer(flat, &pages, None);
         let output = RustTranspiler::new().transpile_program(&writer);
         expected.assert_eq(&output);
+    }
+
+    #[test]
+    fn html_passed_to_a_recursive_function() {
+        check(
+            indoc! {r#"
+                fn Nest(depth: Int, children: Html) -> Html {
+                  match depth > 0 {
+                    true => <div><Nest depth={depth - 1}>{children}</Nest></div>,
+                    false => children,
+                  }
+                }
+
+                page Test(name: String) {
+                  fn body() -> Html {
+                    <Nest depth={2}>
+                      <b>{name}</b>
+                    </Nest>
+                  }
+                }
+            "#},
+            expect![[r#"
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, dead_code, clippy::all)]
+
+                pub trait View {
+                    fn render(self) -> String;
+                    fn write(self, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                pub struct Test {
+                    pub name: String,
+                }
+
+                fn render_nest_0(output: &mut String, v_7: i32, v_8: &dyn Fn(&mut String)) {
+                    let v_9: i32 = 0_i32;
+                    let v_10: bool = v_9 < v_7;
+                    if v_10 {
+                        let v_11: i32 = 1_i32;
+                        let v_12: i32 = v_7.wrapping_sub(v_11);
+                        output.push_str("<div>");
+                        render_nest_0(output, v_12, v_8);
+                        output.push_str("</div>");
+                    } else {
+                        v_8(&mut *output);
+                    }
+                }
+
+                impl View for Test {
+                    fn render(self) -> String {
+                        let mut output: String = String::new();
+                        self.write(&mut output);
+                        output
+                    }
+
+                    fn write(self, output: &mut String) {
+                        let Test { name: v_0 } = self;
+                        let v_1: i32 = 2_i32;
+                        let v_18 = |output: &mut String| {
+                            output.push_str("<b>");
+                            write_escaped_html(&v_0, output);
+                            output.push_str("</b>");
+                        };
+                        render_nest_0(output, v_1, &v_18);
+                    }
+                }
+            "#]],
+        );
     }
 
     #[test]

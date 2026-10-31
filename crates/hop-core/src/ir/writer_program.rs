@@ -18,9 +18,8 @@ use super::ir_parameter::IrParameter;
 ///
 /// The form the backends consume. A body is a sequence of statements that write
 /// to the ambient buffer, with the values they need bound by lets along the
-/// way. Html is written rather than held, except where a call passes it or it
-/// is read more than once, and then an HtmlLiteral renders it into a buffer
-/// of its own.
+/// way. Html is written, never held: an Html parameter takes a closure
+/// without parameters that writes the Html, and the function applies it.
 ///
 /// Every name is bound once in the program, by a parameter, a let, a loop or
 /// an arm of a match, so a name identifies its binding.
@@ -80,8 +79,6 @@ pub enum WriterStmt {
     Write(String),
     /// Write a String name, escaped.
     WriteString(ValueId),
-    /// Write an Html name as it is.
-    WriteHtml(ValueId),
     /// Invoke an Html function, which writes to the same buffer. The
     /// arguments follow the function's parameters, one for each.
     WriteFunction(IrFunction, Vec<ValueId>),
@@ -98,8 +95,6 @@ pub enum WriterStmt {
 pub enum WriterOp {
     Data(IrDataOp),
     Call(IrFunction, Vec<ValueId>),
-    /// Html as a value: the statements render into a fresh buffer.
-    HtmlLiteral(Vec<WriterStmt>),
     /// A match over a value that is not Html. Each arm produces the value.
     Match(IrSwitch<WriterBlock>),
     // A closure whose body is that of a function that writes or returns,
@@ -138,14 +133,13 @@ impl WriterBinding {
 }
 
 impl WriterStmt {
-    /// An HtmlFor, a Match or a let holding a literal spans lines, every
-    /// other statement is one line.
+    /// An HtmlFor, a Match or a let holding a Match or a Lambda spans
+    /// lines, every other statement is one line.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             WriterStmt::Let(let_) => let_.to_doc(),
             WriterStmt::Write(content) => BoxDoc::text(format!("write({content:?})")),
             WriterStmt::WriteString(name) => BoxDoc::text(format!("write_string({name})")),
-            WriterStmt::WriteHtml(name) => BoxDoc::text(format!("write_html({name})")),
             WriterStmt::WriteFunction(function, args) => {
                 let args = args
                     .iter()
@@ -164,7 +158,7 @@ impl WriterStmt {
 }
 
 impl WriterOp {
-    /// An HtmlLiteral or a Match spans lines, every other op is one line.
+    /// A Match or a Lambda spans lines, every other op is one line.
     pub fn to_doc(&self) -> BoxDoc<'_> {
         match self {
             WriterOp::Data(op) => op.to_doc(),
@@ -176,10 +170,6 @@ impl WriterOp {
                     .join(", ");
                 BoxDoc::text(format!("{function}({args})"))
             }
-            WriterOp::HtmlLiteral(body) => BoxDoc::text("html {")
-                .append(stmts_to_doc(body).nest(2))
-                .append(BoxDoc::line())
-                .append(BoxDoc::text("}")),
             WriterOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
             WriterOp::Lambda(lambda) => lambda.to_doc(WriterFunctionBody::to_doc),
             WriterOp::Apply(closure, args) => {

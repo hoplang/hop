@@ -2049,19 +2049,19 @@ mod tests {
             r#"<button class="p-2" data-foo="bar">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(class@v5: String, children@v6: Html, data-foo@v7: String) -> Html {
+                fn Button@f0(class@v5: String, children@v6: () -> Html, data-foo@v7: String) -> Html {
                   write("<button class=\"")
                   write_string(v5)
                   write("\" data-foo=\"")
                   write_string(v7)
                   write("\">")
-                  write_html(v6)
+                  write_apply v6()
                   write("</button>")
                 }
                 page Test() {
                   let v0: String = "p-2"
                   let v3: String = "bar"
-                  let v10: Html = html {
+                  let v10: () -> Html = fn() {
                     write("Hi")
                   }
                   write_function Button@f0(v0, v10, v3)
@@ -2114,16 +2114,16 @@ mod tests {
             r#"<button class="builtin" data-x="y">Hi</button>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(children@v4: Html, data-x@v5: String) -> Html {
+                fn Button@f0(children@v4: () -> Html, data-x@v5: String) -> Html {
                   write("<button class=\"builtin\" data-x=\"")
                   write_string(v5)
                   write("\">")
-                  write_html(v4)
+                  write_apply v4()
                   write("</button>")
                 }
                 page Test() {
                   let v2: String = "y"
-                  let v9: Html = html {
+                  let v9: () -> Html = fn() {
                     write("Hi")
                   }
                   write_function Button@f0(v9, v2)
@@ -2748,19 +2748,19 @@ mod tests {
             r#"<div>deep</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Bar@f1(children@v5: Html) -> Html {
+                fn Bar@f1(children@v5: () -> Html) -> Html {
                   write_function Foo@f2(v5)
                 }
-                fn Baz@f0(children@v3: Html) -> Html {
+                fn Baz@f0(children@v3: () -> Html) -> Html {
                   write_function Bar@f1(v3)
                 }
-                fn Foo@f2(children@v7: Html) -> Html {
+                fn Foo@f2(children@v7: () -> Html) -> Html {
                   write("<div>")
-                  write_html(v7)
+                  write_apply v7()
                   write("</div>")
                 }
                 page Test() {
-                  let v10: Html = html {
+                  let v10: () -> Html = fn() {
                     write("deep")
                   }
                   write_function Baz@f0(v10)
@@ -2895,19 +2895,19 @@ mod tests {
             r#"<div class="primary">click</div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Button@f0(children@v4: Html, class@v5: String) -> Html {
+                fn Button@f0(children@v4: () -> Html, class@v5: String) -> Html {
                   write_function Foo@f1(v4, v5)
                 }
-                fn Foo@f1(children@v8: Html, class@v9: String) -> Html {
+                fn Foo@f1(children@v8: () -> Html, class@v9: String) -> Html {
                   write("<div class=\"")
                   write_string(v9)
                   write("\">")
-                  write_html(v8)
+                  write_apply v8()
                   write("</div>")
                 }
                 page Test() {
                   let v2: String = "primary"
-                  let v12: Html = html {
+                  let v12: () -> Html = fn() {
                     write("click")
                   }
                   write_function Button@f0(v12, v2)
@@ -13322,16 +13322,16 @@ mod tests {
             r#"<div class="card"><h2>Hello</h2><p>world</p></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v6: String, children@v7: Html) -> Html {
+                fn Card@f0(title@v6: String, children@v7: () -> Html) -> Html {
                   write("<div class=\"card\"><h2>")
                   write_string(v6)
                   write("</h2>")
-                  write_html(v7)
+                  write_apply v7()
                   write("</div>")
                 }
                 page Test() {
                   let v0: String = "Hello"
-                  let v14: Html = html {
+                  let v14: () -> Html = fn() {
                     write("<p>world</p>")
                   }
                   write_function Card@f0(v0, v14)
@@ -13391,18 +13391,18 @@ mod tests {
             r#"<div class="outer"><div class="inner"><p>hello</p></div></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f1(children@v11: Html) -> Html {
+                fn Inner@f1(children@v11: () -> Html) -> Html {
                   write("<div class=\"inner\">")
-                  write_html(v11)
+                  write_apply v11()
                   write("</div>")
                 }
-                fn Outer@f0(children@v5: Html) -> Html {
+                fn Outer@f0(children@v5: () -> Html) -> Html {
                   write("<div class=\"outer\">")
                   write_function Inner@f1(v5)
                   write("</div>")
                 }
                 page Test() {
-                  let v15: Html = html {
+                  let v15: () -> Html = fn() {
                     write("<p>hello</p>")
                   }
                   write_function Outer@f0(v15)
@@ -13483,14 +13483,14 @@ mod tests {
                   write_string(v10)
                   write("</h1></header>")
                 }
-                fn Layout@f2(children@v21: Html) -> Html {
+                fn Layout@f2(children@v21: () -> Html) -> Html {
                   write("<div class=\"layout\">")
-                  write_html(v21)
+                  write_apply v21()
                   write("</div>")
                 }
                 page Test() {
                   let v0: String = "Welcome"
-                  let v25: Html = html {
+                  let v25: () -> Html = fn() {
                     write_function Header@f0(v0)
                     write("<main><p>Hello world</p></main>")
                     write_function Footer@f1()
@@ -14186,16 +14186,16 @@ mod tests {
             r#"<div class="card"><h2>Hello</h2></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v3: String, children@v4: Html) -> Html {
+                fn Card@f0(title@v3: String, children@v4: () -> Html) -> Html {
                   write("<div class=\"card\"><h2>")
                   write_string(v3)
                   write("</h2>")
-                  write_html(v4)
+                  write_apply v4()
                   write("</div>")
                 }
                 page Test() {
                   let v0: String = "Hello"
-                  let v11: Html = html {
+                  let v11: () -> Html = fn() {
                   }
                   write_function Card@f0(v0, v11)
                 }
@@ -14255,21 +14255,21 @@ mod tests {
             r#"<div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>"#,
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(title@v10: String, children@v11: Html) -> Html {
+                fn Card@f0(title@v10: String, children@v11: () -> Html) -> Html {
                   write("<div class=\"card\"><h2>")
                   write_string(v10)
                   write("</h2>")
-                  write_html(v11)
+                  write_apply v11()
                   write("</div>")
                 }
                 page Test() {
                   let v0: String = "With"
                   let v6: String = "Without"
-                  let v18: Html = html {
+                  let v18: () -> Html = fn() {
                     write("<p>body</p>")
                   }
                   write_function Card@f0(v0, v18)
-                  let v19: Html = html {
+                  let v19: () -> Html = fn() {
                   }
                   write_function Card@f0(v6, v19)
                 }
@@ -15533,7 +15533,7 @@ mod tests {
             "<div><div><b>x</b></div></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Nest@f0(depth@v6: Int, children@v7: Html) -> Html {
+                fn Nest@f0(depth@v6: Int, children@v7: () -> Html) -> Html {
                   let v8: Int = 0
                   let v9: Bool = v8 < v6
                   match v9 {
@@ -15545,19 +15545,19 @@ mod tests {
                       write("</div>")
                     }
                     false => {
-                      write_html(v7)
+                      write_apply v7()
                     }
                   }
                 }
                 page Test() {
                   let v0: Int = 2
-                  let v17: Html = html {
+                  let v17: () -> Html = fn() {
                     write("<b>x</b>")
                   }
                   write_function Nest@f0(v0, v17)
                 }
                 -- ir (optimized) --
-                fn Nest@f0(depth@v6: Int, children@v7: Html) -> Html {
+                fn Nest@f0(depth@v6: Int, children@v7: () -> Html) -> Html {
                   let v8: Int = 0
                   let v9: Bool = v8 < v6
                   match v9 {
@@ -15569,13 +15569,13 @@ mod tests {
                       write("</div>")
                     }
                     false => {
-                      write_html(v7)
+                      write_apply v7()
                     }
                   }
                 }
                 page Test() {
                   let v0: Int = 2
-                  let v17: Html = html {
+                  let v17: () -> Html = fn() {
                     write("<b>x</b>")
                   }
                   write_function Nest@f0(v0, v17)
@@ -15624,13 +15624,13 @@ mod tests {
             "<div><b>hi</b></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Foo@f0(children@v5: Html) -> Html {
+                fn Foo@f0(children@v5: () -> Html) -> Html {
                   write("<div>")
-                  write_html(v5)
+                  write_apply v5()
                   write("</div>")
                 }
                 page Test() {
-                  let v8: Html = html {
+                  let v8: () -> Html = fn() {
                     write("<b>hi</b>")
                   }
                   write_function Foo@f0(v8)
@@ -15688,18 +15688,18 @@ mod tests {
             "<section><em>z</em></section>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Inner@f1(children@v8: Html) -> Html {
+                fn Inner@f1(children@v8: () -> Html) -> Html {
                   write("<em>")
-                  write_html(v8)
+                  write_apply v8()
                   write("</em>")
                 }
-                fn Outer@f0(children@v3: Html) -> Html {
+                fn Outer@f0(children@v3: () -> Html) -> Html {
                   write("<section>")
                   write_function Inner@f1(v3)
                   write("</section>")
                 }
                 page Test() {
-                  let v11: Html = html {
+                  let v11: () -> Html = fn() {
                     write("z")
                   }
                   write_function Outer@f0(v11)
@@ -18108,13 +18108,13 @@ mod tests {
             "<div><span>hello</span></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn wrap@f0(children@v5: Html) -> Html {
+                fn wrap@f0(children@v5: () -> Html) -> Html {
                   write("<div>")
-                  write_html(v5)
+                  write_apply v5()
                   write("</div>")
                 }
                 page Test() {
-                  let v8: Html = html {
+                  let v8: () -> Html = fn() {
                     write("<span>hello</span>")
                   }
                   write_function wrap@f0(v8)
@@ -18160,13 +18160,13 @@ mod tests {
             "<div><span>hello</span></div>",
             expect![[r#"
                 -- ir (unoptimized) --
-                fn Card@f0(slot@v4: Html) -> Html {
+                fn Card@f0(slot@v4: () -> Html) -> Html {
                   write("<div>")
-                  write_html(v4)
+                  write_apply v4()
                   write("</div>")
                 }
                 page Test() {
-                  let v7: Html = html {
+                  let v7: () -> Html = fn() {
                     write("<span>hello</span>")
                   }
                   write_function Card@f0(v7)

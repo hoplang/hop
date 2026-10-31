@@ -82,16 +82,16 @@ impl IrType {
             result,
         }))
     }
+}
+
+impl IrType {
+    pub const HTML: IrType = IrType::Html(IrHtmlType::Html);
 
     pub fn html_function(parameters: impl IntoIterator<Item = IrType>) -> IrType {
         IrType::Html(IrHtmlType::Function(IrHtmlSignature {
             parameters: parameters.into_iter().collect(),
         }))
     }
-}
-
-impl IrType {
-    pub const HTML: IrType = IrType::Html(IrHtmlType::Html);
 
     pub fn as_data(&self) -> Option<&IrDataType> {
         match self {
