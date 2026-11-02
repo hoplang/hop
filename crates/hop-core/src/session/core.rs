@@ -11,11 +11,10 @@ use crate::hop::format;
 use crate::hop::parsing::{ParseError, ParsedModule, parse};
 use crate::hop::typing::{Export, TypeError, TypeRegistry, TypedModule, typecheck};
 use crate::hover_annotation::HoverAnnotation;
-use crate::ir;
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::ir_page::IrPage;
 use crate::ir::{
-    DocumentShell, TailwindInjection, Transpiler, flat_to_writer, optimize_flat, typed_to_flat,
+    DocumentShell, TailwindInjection, flat_to_writer, optimize_flat, transpile, typed_to_flat,
 };
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
@@ -246,10 +245,7 @@ impl Session {
         };
         let writer = flat_to_writer(flat, &pages, Some(&shell));
 
-        match target {
-            TargetLanguage::Typescript => ir::TsTranspiler::new().transpile_program(&writer),
-            TargetLanguage::Rust => ir::RustTranspiler::new().transpile_program(&writer),
-        }
+        transpile(target, &writer)
     }
 
     pub(crate) fn compile_flat(

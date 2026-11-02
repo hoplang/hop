@@ -1,11 +1,11 @@
 use crate::asset_path_rewriter::AssetPathRewriter;
+use crate::config::TargetLanguage;
 use crate::document::Document;
 use crate::document_annotator::DocumentAnnotator;
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::flat_evaluator;
-use crate::ir::transpile::{RustTranspiler, Transpiler, TsTranspiler};
-use crate::ir::{flat_to_writer, optimize_flat};
+use crate::ir::{flat_to_writer, optimize_flat, transpile};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::session::Session;
@@ -244,8 +244,7 @@ fn check_with_asset_path_rewriter(
     output.push_str("-- eval (optimized) --\nOK\n");
 
     // Test unoptimized version
-    let mut ts_transpiler = TsTranspiler::new();
-    let ts_code = ts_transpiler.transpile_program(&unoptimized_program);
+    let ts_code = transpile(TargetLanguage::Typescript, &unoptimized_program);
     if let Err(e) = typecheck_typescript(&ts_code) {
         panic!(
             "TypeScript typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -266,8 +265,7 @@ fn check_with_asset_path_rewriter(
     );
     output.push_str("-- ts (unoptimized) --\nOK\n");
 
-    let mut rust_transpiler = RustTranspiler::new();
-    let rust_code = rust_transpiler.transpile_program(&unoptimized_program);
+    let rust_code = transpile(TargetLanguage::Rust, &unoptimized_program);
     if let Err(e) = typecheck_rust(&rust_code) {
         panic!(
             "Rust typecheck failed (unoptimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -289,7 +287,7 @@ fn check_with_asset_path_rewriter(
     output.push_str("-- rust (unoptimized) --\nOK\n");
 
     // Test optimized version
-    let ts_code = ts_transpiler.transpile_program(&optimized_program);
+    let ts_code = transpile(TargetLanguage::Typescript, &optimized_program);
     if let Err(e) = typecheck_typescript(&ts_code) {
         panic!(
             "TypeScript typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -310,7 +308,7 @@ fn check_with_asset_path_rewriter(
     );
     output.push_str("-- ts (optimized) --\nOK\n");
 
-    let rust_code = rust_transpiler.transpile_program(&optimized_program);
+    let rust_code = transpile(TargetLanguage::Rust, &optimized_program);
     if let Err(e) = typecheck_rust(&rust_code) {
         panic!(
             "Rust typecheck failed (optimized):\n{}\n\nIR:\n{}\nGenerated code:\n{}",
@@ -368,7 +366,7 @@ mod tests {
             };
             let program = flat_to_writer(optimize_flat(program), &pages, None);
             let ir = program.to_string();
-            let ts_code = TsTranspiler::new().transpile_program(&program);
+            let ts_code = transpile(TargetLanguage::Typescript, &program);
             if let Err(e) = typecheck_typescript(&ts_code) {
                 panic!(
                     "TypeScript typecheck failed:\n{e}\n\nFlat:\n{flat}\nIR:\n{ir}\nCode:\n{ts_code}"
@@ -411,7 +409,7 @@ mod tests {
             };
             let program = flat_to_writer(optimize_flat(program), &pages, None);
             let ir = program.to_string();
-            let rust_code = RustTranspiler::new().transpile_program(&program);
+            let rust_code = transpile(TargetLanguage::Rust, &program);
             let rust_output = execute_rust(&rust_code).unwrap_or_else(|e| {
                 panic!("Rust failed:\n{e}\n\nFlat:\n{flat}\nIR:\n{ir}\nCode:\n{rust_code}")
             });

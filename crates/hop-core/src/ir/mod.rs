@@ -30,10 +30,10 @@ pub mod flat_program_generator;
 pub mod ir_type_declarations_builder;
 
 pub mod runtime;
-pub mod transpile;
+mod transpile;
 
 pub use document_shell::{DocumentShell, TailwindInjection};
 pub use flat_optimizer::optimize_flat;
 pub use flat_to_writer::flat_to_writer;
-pub use transpile::{RustTranspiler, Transpiler, TsTranspiler};
+pub use transpile::transpile;
 pub use typed_to_flat::typed_to_flat;
