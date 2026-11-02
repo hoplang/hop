@@ -1057,10 +1057,6 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // RECORD EXPRESSION                                                     //
-    ///////////////////////////////////////////////////////////////////////////
-
     #[test]
     fn accepts_record_expression_with_single_field() {
         accept(
@@ -1309,10 +1305,6 @@ mod tests {
         );
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // FRAGMENT                                                              //
-    ///////////////////////////////////////////////////////////////////////////
-
     #[test]
     fn accepts_empty_fragment() {
         accept(
@@ -1322,10 +1314,6 @@ mod tests {
             "#]],
         );
     }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // COMMENTS                                                              //
-    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn accepts_comments_in_expression() {
@@ -1356,10 +1344,6 @@ mod tests {
             "#]],
         );
     }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // EXPRESSIONS                                                           //
-    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn rejects_expr_when_array_bracket_is_unmatched() {
@@ -1713,10 +1697,6 @@ mod tests {
             "#]],
         );
     }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // METHOD CALLS                                                          //
-    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn accepts_simple_method_call() {
@@ -2561,10 +2541,6 @@ mod tests {
         );
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // NUMERIC NEGATION                                                      //
-    ///////////////////////////////////////////////////////////////////////////
-
     #[test]
     fn accepts_negative_integer_literal() {
         accept(
@@ -2757,10 +2733,6 @@ mod tests {
         );
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // ENUM EXPRESSION                                                       //
-    ///////////////////////////////////////////////////////////////////////////
-
     #[test]
     fn accepts_enum_expression() {
         accept(
@@ -2882,10 +2854,6 @@ mod tests {
         );
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // ENUM EXPRESSION (BRACE SYNTAX)                                        //
-    ///////////////////////////////////////////////////////////////////////////
-
     #[test]
     fn accepts_enum_expression_with_braces_single_field() {
         accept(
@@ -2915,10 +2883,6 @@ mod tests {
             "#]],
         );
     }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // OPTION EXPRESSION                                                     //
-    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn accepts_some_with_string_literal() {
@@ -3025,10 +2989,6 @@ mod tests {
             "#]],
         );
     }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // MATCH EXPRESSION                                                      //
-    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn accepts_match_expression_with_single_arm() {
@@ -3184,7 +3144,6 @@ mod tests {
 
     #[test]
     fn accepts_match_with_empty_braces_pattern() {
-        // Empty braces are accepted but normalized away
         accept(
             "match point { Point::XY{} => 0 }",
             expect![[r#"
@@ -3291,8 +3250,6 @@ mod tests {
 
     #[test]
     fn accepts_match_with_parenthesized_pattern() {
-        // Parentheses around a single pattern without a trailing comma group
-        // the pattern instead of making a 1-tuple
         accept(
             "match maybe { (Some(x)) => x, (_) => 0 }",
             expect![[r#"
@@ -3332,10 +3289,6 @@ mod tests {
             "#]],
         );
     }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // FOR EXPRESSION                                                        //
-    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn accepts_for_expression_over_array() {
@@ -3478,10 +3431,6 @@ mod tests {
         );
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // MACRO EXPRESSION                                                      //
-    ///////////////////////////////////////////////////////////////////////////
-
     #[test]
     fn accepts_join_macro_with_no_args() {
         accept(
@@ -3557,10 +3506,6 @@ mod tests {
             "#]],
         );
     }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // METHOD CALLS ON LITERALS AND PARENTHESIZED EXPRESSIONS                //
-    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn accepts_method_call_on_integer_literal() {
@@ -3642,9 +3587,6 @@ mod tests {
         );
     }
 
-    // Field access (not method calls) on literals - parser should accept,
-    // type checker will reject invalid combinations
-
     #[test]
     fn accepts_field_access_on_int_literal() {
         accept(
@@ -3674,8 +3616,6 @@ mod tests {
             "#]],
         );
     }
-
-    // Record and enum expressions with postfix access
 
     #[test]
     fn accepts_field_access_on_record_expression() {
@@ -3707,8 +3647,6 @@ mod tests {
         );
     }
 
-    // Option expressions with postfix access
-
     #[test]
     fn accepts_method_call_on_some() {
         accept(
@@ -3739,8 +3677,6 @@ mod tests {
         );
     }
 
-    // Precedence verification - method calls bind tighter than binary ops
-
     #[test]
     fn accepts_method_call_with_higher_precedence_than_addition() {
         accept(
@@ -3760,10 +3696,6 @@ mod tests {
             "#]],
         );
     }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // FUNCTION CALL                                                         //
-    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn accepts_function_call_with_no_arguments() {
