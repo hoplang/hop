@@ -466,6 +466,7 @@ impl<'a> Checker<'a> {
                     .all(|attribute| match attribute {
                         IrAttribute::Value(name) => self.typ(*name).is(&IrType::STRING),
                         IrAttribute::Presence(name) => self.typ(*name).is(&IrType::BOOL),
+                        IrAttribute::Constant(_) => true,
                     });
                 html && attributes && self.typ(element.children).is(&IrType::HTML)
             }

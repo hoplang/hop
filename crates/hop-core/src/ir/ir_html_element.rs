@@ -1,5 +1,6 @@
 use indexmap::IndexMap;
 
+use crate::document::CheapString;
 use crate::html::HtmlElementKind;
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
@@ -20,6 +21,9 @@ pub enum IrAttribute {
     Value(ValueId),
     /// Must name a Bool.
     Presence(ValueId),
+    /// Rendered as written, the value escaped, or the bare name when there
+    /// is none.
+    Constant(Option<CheapString>),
 }
 
 impl<Children> IrHtmlElement<Children> {
@@ -28,6 +32,7 @@ impl<Children> IrHtmlElement<Children> {
         for attribute in self.attributes.values() {
             match attribute {
                 IrAttribute::Value(name) | IrAttribute::Presence(name) => f(*name),
+                IrAttribute::Constant(_) => {}
             }
         }
     }
@@ -38,6 +43,7 @@ impl<Children> IrHtmlElement<Children> {
         for attribute in self.attributes.values_mut() {
             match attribute {
                 IrAttribute::Value(name) | IrAttribute::Presence(name) => f(name),
+                IrAttribute::Constant(_) => {}
             }
         }
     }

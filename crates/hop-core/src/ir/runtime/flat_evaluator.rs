@@ -346,6 +346,10 @@ fn evaluate_html_op<'a>(
                             });
                         }
                     }
+                    IrAttribute::Constant(value) => rendered.push(HtmlAttribute {
+                        name: name.clone(),
+                        value: value.as_ref().map(|value| value.as_str().into()),
+                    }),
                 }
             }
             let children = if element.is_void() {

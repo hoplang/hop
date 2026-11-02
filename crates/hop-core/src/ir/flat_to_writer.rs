@@ -43,8 +43,7 @@ use crate::symbols::type_name::TypeName;
 /// for an Html parameter becomes such a closure, except Html that only
 /// applies one, which passes that closure on. A string constant or concat
 /// that only escapes and attribute values read is escaped now, part by
-/// part, and a bool constant that only presences read settles whether its
-/// attributes render.
+/// part.
 ///
 /// Html is never part of another type and a function that returns a value
 /// has no Html parameter, so no value reads Html. Panics if one does all the
@@ -180,8 +179,6 @@ enum Reader {
     /// An escape or an attribute value. A constant String read here is
     /// escaped now.
     Escaped,
-    /// A presence. A constant Bool read here settles the attribute.
-    Presence,
     /// A part of the named String concat. Folded along with the concat.
     ConcatPart(ValueId),
     /// The subject of a match that no arm binds as a whole. A tuple or
@@ -338,8 +335,9 @@ impl<'a> Lowerer<'a> {
                                 self.read(*value, Reader::Escaped);
                             }
                             IrAttribute::Presence(present) => {
-                                self.read(*present, Reader::Presence);
+                                self.read(*present, Reader::Value);
                             }
+                            IrAttribute::Constant(_) => {}
                         }
                     }
                 }
@@ -384,9 +382,8 @@ impl<'a> Lowerer<'a> {
 
     /// Whether the binding is written or folded where it is read, rather
     /// than bound to its name: a string constant or concat that only
-    /// escapes, attribute values and folded concats read, a bool constant
-    /// that only presences read, or a tuple or record that only matches
-    /// read, none of them binding it as a whole.
+    /// escapes, attribute values and folded concats read, or a tuple or
+    /// record that only matches read, none of them binding it as a whole.
     fn folded(&self, name: ValueId) -> bool {
         let (Some(readers), Some(binding)) = (self.readers.get(&name), self.bindings.get(&name))
         else {
@@ -397,12 +394,9 @@ impl<'a> Lowerer<'a> {
                 readers.iter().all(|reader| match reader {
                     Reader::Escaped => true,
                     Reader::ConcatPart(concat) => self.folded(*concat),
-                    Reader::Presence | Reader::TakenApart | Reader::Value => false,
+                    Reader::TakenApart | Reader::Value => false,
                 })
             }
-            FlatDataOp::Data(IrDataOp::BoolLiteral(_)) => readers
-                .iter()
-                .all(|reader| matches!(reader, Reader::Presence)),
             FlatDataOp::Data(IrDataOp::Tuple(_) | IrDataOp::Record(..)) => readers
                 .iter()
                 .all(|reader| matches!(reader, Reader::TakenApart)),
@@ -1042,27 +1036,21 @@ impl<'a> Lowerer<'a> {
                     self.write_escaped(*value, &mut unit);
                     write(&mut unit, "\"");
                 }
-                // A folded condition settles now whether the attribute
-                // renders.
                 IrAttribute::Presence(present) => {
-                    if self.folded(*present) {
-                        match &self.bindings[present].op {
-                            FlatDataOp::Data(IrDataOp::BoolLiteral(true)) => {
-                                write(&mut unit, &format!(" {}", name.as_str()));
-                            }
-                            FlatDataOp::Data(IrDataOp::BoolLiteral(false)) => {}
-                            op => unreachable!("a folded presence is a constant, not {op:?}"),
-                        }
-                    } else {
-                        let mut true_body = Vec::new();
-                        write(&mut true_body, &format!(" {}", name.as_str()));
-                        unit.push(WriterStmt::Match(IrSwitch::Bool {
-                            subject: self.name(*present),
-                            true_body,
-                            false_body: Vec::new(),
-                        }));
-                    }
+                    let mut true_body = Vec::new();
+                    write(&mut true_body, &format!(" {}", name.as_str()));
+                    unit.push(WriterStmt::Match(IrSwitch::Bool {
+                        subject: self.name(*present),
+                        true_body,
+                        false_body: Vec::new(),
+                    }));
                 }
+                IrAttribute::Constant(Some(value)) => {
+                    let mut escaped = String::new();
+                    write_escaped_html(value.as_str(), &mut escaped);
+                    write(&mut unit, &format!(" {}=\"{escaped}\"", name.as_str()));
+                }
+                IrAttribute::Constant(None) => write(&mut unit, &format!(" {}", name.as_str())),
             }
         }
         write(&mut unit, ">");
@@ -1589,12 +1577,9 @@ mod tests {
             expect![[r#"
                 -- flat --
                 entrypoint fn body@f0(id@v0: String, flag@v1: Bool) -> Html {
-                  let v2: String = "a<b"
-                  let v3: Bool = true
-                  let v4: Bool = false
                   let v5: Html = concat()
-                  let v6: Html = element("input", {disabled: v3, required: v4, checked: v1}, v5)
-                  let v8: Html = element("div", {class: v2, id: v0}, v6)
+                  let v6: Html = element("input", {disabled, checked: v1}, v5)
+                  let v8: Html = element("div", {class: "a<b", id: v0}, v6)
                   v8
                 }
 
@@ -1782,9 +1767,8 @@ mod tests {
                   let v2: (Bool, Option[String]) = (v0, v1)
                   let v11: Html = match v2 {
                     (true, Some(v3: String)) => {
-                      let v4: String = "member"
                       let v5: Html = escape(v3)
-                      let v7: Html = element("p", {class: v4}, v5)
+                      let v7: Html = element("p", {class: "member"}, v5)
                       v7
                     }
                     _ => {

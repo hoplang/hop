@@ -63,7 +63,6 @@ impl FlatFunctionDeclaration {
         }
     }
 
-    #[cfg(test)]
     pub fn entrypoint(&self) -> bool {
         match self {
             FlatFunctionDeclaration::Data(function) => function.entrypoint,
@@ -323,13 +322,18 @@ impl fmt::Display for FlatHtmlOp {
             FlatHtmlOp::Text(content) => write!(f, "text({:?})", content.as_str()),
             FlatHtmlOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),
             FlatHtmlOp::Escape(string) => write!(f, "escape({string})"),
-            // The attributes in braces, each as its name and the name it reads.
             FlatHtmlOp::Element(element) => {
                 write!(f, "element({:?}, {{", element.element.as_str())?;
                 for (i, (name, attribute)) in element.attributes.iter().enumerate() {
-                    let (IrAttribute::Value(value) | IrAttribute::Presence(value)) = attribute;
                     let sep = if i > 0 { ", " } else { "" };
-                    write!(f, "{sep}{}: {value}", name.as_str())?;
+                    write!(f, "{sep}{}", name.as_str())?;
+                    match attribute {
+                        IrAttribute::Value(value) | IrAttribute::Presence(value) => {
+                            write!(f, ": {value}")?;
+                        }
+                        IrAttribute::Constant(Some(value)) => write!(f, ": {:?}", value.as_str())?,
+                        IrAttribute::Constant(None) => {}
+                    }
                 }
                 write!(f, "}}, {})", element.children)
             }

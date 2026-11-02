@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::document::CheapString;
 use crate::hop::typing::{Constructor, Pattern};
+use crate::html::write_escaped_html;
 use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
     FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
@@ -10,6 +11,7 @@ use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
+use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_type::{IrDataType, IrType, IrValueType};
@@ -30,6 +32,10 @@ use crate::symbols::field_name::FieldName;
 ///   empty constants and merges adjacent constants. An html concat takes
 ///   the parts of a nested concat as its own. A concat of one part is that
 ///   part.
+/// - An escape of a constant String without a carriage return is text. An
+///   attribute whose value is a constant String or whose presence is a
+///   constant true is a constant attribute, and one whose presence is a
+///   constant false goes.
 /// - An application of a lambda bound earlier in the body runs a copy of
 ///   the lambda's body in place of the application, with fresh names, and
 ///   what reads a parameter reads the argument.
@@ -405,6 +411,41 @@ impl Evaluator<'_> {
                 self.concats.insert(name, flattened.clone());
                 FlatHtmlOp::Concat(flattened)
             }
+            FlatHtmlOp::Escape(string) => match self.values.get(&string) {
+                // TODO: Fold a literal with a carriage return too, once the
+                // escapes of the evaluator and of the TypeScript and Rust
+                // backends write it as &#13;.
+                Some(IrDataOp::StringLiteral(value)) if !value.as_str().contains('\r') => {
+                    let mut markup = String::new();
+                    write_escaped_html(value.as_str(), &mut markup);
+                    FlatHtmlOp::Text(CheapString::new(markup))
+                }
+                _ => FlatHtmlOp::Escape(string),
+            },
+            FlatHtmlOp::Element(mut element) => {
+                let values = &self.values;
+                element.attributes.retain(|_, attribute| {
+                    !matches!(attribute, IrAttribute::Presence(present)
+                        if matches!(values.get(present), Some(IrDataOp::BoolLiteral(false))))
+                });
+                for attribute in element.attributes.values_mut() {
+                    let constant = match attribute {
+                        IrAttribute::Value(value) => match values.get(value) {
+                            Some(IrDataOp::StringLiteral(value)) => Some(Some(value.clone())),
+                            _ => None,
+                        },
+                        IrAttribute::Presence(present) => match values.get(present) {
+                            Some(IrDataOp::BoolLiteral(true)) => Some(None),
+                            _ => None,
+                        },
+                        IrAttribute::Constant(_) => None,
+                    };
+                    if let Some(constant) = constant {
+                        *attribute = IrAttribute::Constant(constant);
+                    }
+                }
+                FlatHtmlOp::Element(element)
+            }
             op => op,
         };
         html.push(FlatHtmlBinding { binder, op });
@@ -767,7 +808,7 @@ mod tests {
                   let v14: Int = add(v0, v1)
                   let v8: String = "11"
                   let v10: String = v14.to_string()
-                  let v9: Html = escape(v8)
+                  let v9: Html = text("11")
                   let v11: Html = escape(v10)
                   let v12: Html = concat(v9, v11)
                   v12
@@ -1168,7 +1209,7 @@ mod tests {
                   let v0: String = "Hello, "
                   let v1: String = "World"
                   let v4: String = "Hello, World"
-                  let v3: Html = escape(v4)
+                  let v3: Html = text("Hello, World")
                   v3
                 }
             "#]],
@@ -1303,7 +1344,7 @@ mod tests {
                 entrypoint fn Test@f0() -> Html {
                   let v0: String = "x"
                   let v1: Option[String] = Some(v0)
-                  let v3: Html = escape(v0)
+                  let v3: Html = text("x")
                   v3
                 }
             "#]],
@@ -1371,6 +1412,175 @@ mod tests {
                   let v2: Bool = true
                   let v3: Html = text("same")
                   v3
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_an_escaped_literal_into_text() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [], Ty::Html, |t| {
+                    t.html_concat([t.text("a "), t.escape(t.str("<b>")), t.text(" c")])
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0() -> Html {
+                  let v1: String = "<b>"
+                  let v0: Html = text("a ")
+                  let v2: Html = escape(v1)
+                  let v3: Html = text(" c")
+                  let v4: Html = concat(v0, v2, v3)
+                  v4
+                }
+
+                -- after --
+                entrypoint fn Test@f0() -> Html {
+                  let v1: String = "<b>"
+                  let v0: Html = text("a ")
+                  let v2: Html = text("&lt;b&gt;")
+                  let v3: Html = text(" c")
+                  let v4: Html = concat(v0, v2, v3)
+                  v4
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_keep_an_escaped_literal_with_a_carriage_return() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [], Ty::Html, |t| t.escape(t.str("a\rb")))
+                .build(),
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: String = "a\rb"
+                  let v1: Html = escape(v0)
+                  v1
+                }
+
+                -- after --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: String = "a\rb"
+                  let v1: Html = escape(v0)
+                  v1
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_literal_attributes_into_constants() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [], Ty::Html, |t| {
+                    t.element(
+                        "p",
+                        [
+                            t.attr_value("class", t.str("note")),
+                            t.attr_presence("hidden", t.bool(true)),
+                            t.attr_presence("open", t.bool(false)),
+                        ],
+                        t.text("text"),
+                    )
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: String = "note"
+                  let v1: Bool = true
+                  let v2: Bool = false
+                  let v3: Html = text("text")
+                  let v4: Html = element("p", {class: v0, hidden: v1, open: v2}, v3)
+                  v4
+                }
+
+                -- after --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: String = "note"
+                  let v1: Bool = true
+                  let v2: Bool = false
+                  let v3: Html = text("text")
+                  let v4: Html = element("p", {class: "note", hidden}, v3)
+                  v4
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_an_escape_of_a_string_the_pass_makes_constant() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [], Ty::Html, |t| {
+                    let name = t.str("x");
+                    let greeting = t.string_concat([t.str("hi "), name]);
+                    t.html_concat([t.escape(name), t.escape(greeting)])
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: String = "x"
+                  let v1: String = "hi "
+                  let v2: String = string_concat(v1, v0)
+                  let v3: Html = escape(v0)
+                  let v4: Html = escape(v2)
+                  let v5: Html = concat(v3, v4)
+                  v5
+                }
+
+                -- after --
+                entrypoint fn Test@f0() -> Html {
+                  let v0: String = "x"
+                  let v1: String = "hi "
+                  let v6: String = "hi x"
+                  let v3: Html = text("x")
+                  let v4: Html = text("hi x")
+                  let v5: Html = concat(v3, v4)
+                  v5
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_fold_a_literal_bound_outside_a_loop_into_its_body() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [("items", Ty::array(Ty::Int))], Ty::Html, |t| {
+                    let label = t.str("row");
+                    t.html_for_unbound(t.param("items"), |t| {
+                        t.element("li", [t.attr_value("title", label)], t.escape(label))
+                    })
+                })
+                .build(),
+            expect![[r#"
+                -- before --
+                entrypoint fn Test@f0(items@v0: Array[Int]) -> Html {
+                  let v1: String = "row"
+                  let v4: Html = for _ in v0 {
+                    let v2: Html = escape(v1)
+                    let v3: Html = element("li", {title: v1}, v2)
+                    v3
+                  }
+                  v4
+                }
+
+                -- after --
+                entrypoint fn Test@f0(items@v0: Array[Int]) -> Html {
+                  let v1: String = "row"
+                  let v4: Html = for _ in v0 {
+                    let v2: Html = text("row")
+                    let v3: Html = element("li", {title: "row"}, v2)
+                    v3
+                  }
+                  v4
                 }
             "#]],
         );

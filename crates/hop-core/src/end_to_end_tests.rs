@@ -591,10 +591,6 @@ mod tests {
                   }
                 }
                 -- ir (optimized) --
-                fn spin@f0() -> Bool {
-                  let v19: Bool = spin@f0()
-                  v19
-                }
                 page Test() {
                   write("noyes")
                 }
@@ -15378,7 +15374,7 @@ mod tests {
                       }
                     }
                   }
-                  write_string(v1)
+                  write("hello")
                 }
                 -- expected output --
                 [hello]hello

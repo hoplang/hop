@@ -1,12 +1,13 @@
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::flat_transform;
 
-/// Optimize the program: inline every call that can be, then in every body
-/// evaluate what is constant and drop the bindings nothing reads.
+/// Optimize the program.
 pub fn optimize_flat(program: FlatProgram) -> FlatProgram {
     let program = flat_transform::inline_function_calls(program);
     let program = flat_transform::perform_partial_evaluation(program);
-    flat_transform::eliminate_dead_bindings(program)
+    let program = flat_transform::eliminate_dead_bindings(program);
+    let program = flat_transform::eliminate_unreachable_functions(program);
+    program
 }
 
 #[cfg(test)]
@@ -242,8 +243,7 @@ mod tests {
 
                 -- after --
                 entrypoint fn Test@f1() -> Html {
-                  let v4: String = "42"
-                  let v5: Html = escape(v4)
+                  let v5: Html = text("42")
                   v5
                 }
             "#]],
