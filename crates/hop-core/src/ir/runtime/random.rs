@@ -12,7 +12,7 @@ use std::rc::Rc;
 /// steers toward the shortest terminating value instead.
 const MAX_DEPTH: usize = 8;
 
-fn random_word(rng: &mut impl Rng) -> Value<'static> {
+fn random_word(rng: &mut impl Rng) -> Value {
     const WORDS: &[&str] = &["foo", "bar", "baz"];
     Value::String(WORDS[rng.random_range(0..WORDS.len())].into())
 }
@@ -85,7 +85,7 @@ fn enum_variants<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrV
 /// Panics if the type has no finite values at all, e.g. a record whose
 /// fields require the record itself, or if it is the type of a closure,
 /// which no entrypoint takes.
-pub fn random_value(rng: &mut impl Rng, ty: &IrType, types: &IrTypeDeclarations) -> Value<'static> {
+pub fn random_value(rng: &mut impl Rng, ty: &IrType, types: &IrTypeDeclarations) -> Value {
     match ty {
         IrType::Value(IrValueType::Data(data)) => {
             random_value_at_depth(rng, data, types, 0, &mut Vec::new())
@@ -110,7 +110,7 @@ fn random_value_at_depth(
     types: &IrTypeDeclarations,
     depth: usize,
     visiting: &mut Vec<TypeName>,
-) -> Value<'static> {
+) -> Value {
     if depth == MAX_DEPTH && !can_construct(ty, types, &mut Vec::new()) {
         panic!("cannot generate a value for infinitely recursive type {ty}");
     }
@@ -132,7 +132,7 @@ fn generate(
     types: &IrTypeDeclarations,
     depth: usize,
     visiting: &mut Vec<TypeName>,
-) -> Value<'static> {
+) -> Value {
     match ty {
         IrDataType::String => random_word(rng),
         IrDataType::Bool => Value::Bool(rng.random_bool(0.5)),

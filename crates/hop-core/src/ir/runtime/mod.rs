@@ -1,3 +1,4 @@
+pub mod bound;
 pub mod bounded_vec;
 pub mod eval_error;
 pub mod flat_evaluator;

@@ -343,7 +343,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
 pub fn random_entrypoint_args(
     program: &FlatProgram,
     rng: &mut impl Rng,
-) -> Vec<(IrFunction, HashMap<AttributeName, Value<'static>>)> {
+) -> Vec<(IrFunction, HashMap<AttributeName, Value>)> {
     program
         .functions
         .iter()

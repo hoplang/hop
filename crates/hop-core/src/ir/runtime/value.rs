@@ -1,12 +1,7 @@
 use std::rc::Rc;
 
-use rpds::HashTrieMap;
-
 use crate::hop::typing::{Constructor, Pattern};
-use crate::ir::flat_program::{FlatDataBlock, FlatHtmlBlock};
-use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::IrPattern;
-use crate::ir::ir_type::{IrType, IrValueType};
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::html_node::Html;
 use crate::ir::value_id::ValueId;
@@ -19,35 +14,20 @@ pub const MAX_STRING_LENGTH: usize = 10_000_000;
 
 /// Runtime value for the evaluator.
 #[derive(Debug, Clone)]
-pub enum Value<'a> {
+pub enum Value {
     String(Rc<str>),
     Html(Html),
     Bool(bool),
     Int(i32),
     Float(f64),
-    Array(Rc<BoundedVec<Value<'a>, MAX_ARRAY_LENGTH>>),
-    Tuple(Rc<[Value<'a>]>),
-    Record(Rc<[(FieldName, Value<'a>)]>),
-    Option(Option<Rc<Value<'a>>>),
-    Enum(TypeName, Rc<[(FieldName, Value<'a>)]>),
-    Closure(Rc<Closure<'a>>),
+    Array(Rc<BoundedVec<Value, MAX_ARRAY_LENGTH>>),
+    Tuple(Rc<[Value]>),
+    Record(Rc<[(FieldName, Value)]>),
+    Option(Option<Rc<Value>>),
+    Enum(TypeName, Rc<[(FieldName, Value)]>),
 }
 
-// A closure: its lambda, and the names in scope where the lambda was
-// evaluated.
-#[derive(Debug)]
-pub struct Closure<'a> {
-    pub lambda: Lambda<'a>,
-    pub env: HashTrieMap<ValueId, Value<'a>>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Lambda<'a> {
-    Data(&'a IrLambda<IrValueType, FlatDataBlock>),
-    Html(&'a IrLambda<IrType, FlatHtmlBlock>),
-}
-
-impl<'a> Value<'a> {
+impl Value {
     /// Panics if the value is not a String.
     pub fn unwrap_string(self) -> Rc<str> {
         match self {
@@ -105,7 +85,7 @@ impl<'a> Value<'a> {
     }
 
     /// Panics if the value is not an Array.
-    pub fn as_array(&self) -> &[Value<'a>] {
+    pub fn as_array(&self) -> &[Value] {
         match self {
             Value::Array(arr) => arr,
             _ => panic!("Expected an Array value, found {self:?}"),
@@ -113,7 +93,7 @@ impl<'a> Value<'a> {
     }
 
     /// Panics if the value is not a Tuple.
-    pub fn as_tuple(&self) -> &[Value<'a>] {
+    pub fn as_tuple(&self) -> &[Value] {
         match self {
             Value::Tuple(elements) => elements,
             _ => panic!("Expected a Tuple value, found {self:?}"),
@@ -121,7 +101,7 @@ impl<'a> Value<'a> {
     }
 
     /// Panics if the value is not a Record.
-    pub fn as_record(&self) -> &[(FieldName, Value<'a>)] {
+    pub fn as_record(&self) -> &[(FieldName, Value)] {
         match self {
             Value::Record(rec) => rec,
             _ => panic!("Expected a Record value, found {self:?}"),
@@ -129,24 +109,17 @@ impl<'a> Value<'a> {
     }
 
     /// Panics if the value is not an Option.
-    pub fn as_option(&self) -> Option<&Value<'a>> {
+    pub fn as_option(&self) -> Option<&Value> {
         match self {
             Value::Option(opt) => opt.as_deref(),
             _ => panic!("Expected an Option value, found {self:?}"),
         }
     }
 
-    pub fn as_closure(&self) -> &Closure<'a> {
-        match self {
-            Value::Closure(closure) => closure,
-            _ => panic!("Expected a Closure value, found {self:?}"),
-        }
-    }
-
     /// Whether the value matches the pattern. Each binding of a pattern
     /// that matches is pushed to `bound` with the part of the value it
     /// binds. Panics if the value does not have the pattern's type.
-    pub fn matches(&self, pattern: &IrPattern, bound: &mut Vec<(ValueId, Value<'a>)>) -> bool {
+    pub fn matches(&self, pattern: &IrPattern, bound: &mut Vec<(ValueId, Value)>) -> bool {
         let (constructor, args, fields) = match pattern {
             Pattern::Wildcard => return true,
             Pattern::Binding(binder) => {
@@ -159,8 +132,7 @@ impl<'a> Value<'a> {
                 fields,
             } => (constructor, args, fields),
         };
-        let field_matches = |values: &[(FieldName, Value<'a>)],
-                             bound: &mut Vec<(ValueId, Value<'a>)>| {
+        let field_matches = |values: &[(FieldName, Value)], bound: &mut Vec<(ValueId, Value)>| {
             fields.iter().all(|field| {
                 let (_, value) = values
                     .iter()

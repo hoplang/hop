@@ -12,12 +12,15 @@ use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
+use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_page::IrPage;
+use crate::ir::ir_type::{IrType, IrValueType};
+use crate::ir::runtime::bound::Bound;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::html_node::{Html, HtmlAttribute, HtmlNode};
-use crate::ir::runtime::value::{Closure, Lambda, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value};
+use crate::ir::runtime::value::{MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value};
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
@@ -39,14 +42,27 @@ const STRING_LENGTH_LIMIT_ERROR: EvalError = EvalError::StringLengthLimit {
     limit: MAX_STRING_LENGTH,
 };
 
+struct Closure<'a> {
+    lambda: Lambda<'a>,
+    env: Env<'a>,
+}
+
+#[derive(Clone, Copy)]
+enum Lambda<'a> {
+    Data(&'a IrLambda<IrValueType, FlatDataBlock>),
+    Html(&'a IrLambda<IrType, FlatHtmlBlock>),
+}
+
+type Env<'a> = HashTrieMap<ValueId, Bound<Closure<'a>>>;
+
 /// Evaluate a page from the entrypoint functions it points at, each called with
 /// the arguments named by the page's parameters. With a shell, the page
 /// renders as a whole document, the shell around its head and its body.
-pub fn evaluate_page<'a>(
-    program: &'a FlatProgram,
+pub fn evaluate_page(
+    program: &FlatProgram,
     pages: &[IrPage],
     page_name: &TypeName,
-    args: HashMap<AttributeName, Value<'a>>,
+    args: HashMap<AttributeName, Value>,
     shell: Option<&DocumentShell>,
 ) -> Result<String, EvalError> {
     let page = pages
@@ -81,11 +97,11 @@ pub fn evaluate_page<'a>(
 
 /// Evaluate a function called from outside the program, on the arguments
 /// named by its parameters.
-pub fn evaluate_entrypoint<'a>(
-    program: &'a FlatProgram,
+pub fn evaluate_entrypoint(
+    program: &FlatProgram,
     function: &IrFunction,
-    mut args: HashMap<AttributeName, Value<'a>>,
-) -> Result<Value<'a>, EvalError> {
+    mut args: HashMap<AttributeName, Value>,
+) -> Result<Value, EvalError> {
     let decl = program
         .functions
         .iter()
@@ -99,7 +115,7 @@ pub fn evaluate_entrypoint<'a>(
                 function: function.clone(),
                 param: param.name().clone(),
             })?;
-        values.push(value);
+        values.push(Bound::Value(value));
     }
     evaluate_function(&program.functions, function, values, 0, &mut 0)
 }
@@ -110,10 +126,10 @@ pub fn evaluate_entrypoint<'a>(
 fn evaluate_function<'a>(
     functions: &'a [FlatFunctionDeclaration],
     function: &IrFunction,
-    args: Vec<Value<'a>>,
+    args: Vec<Bound<Closure<'a>>>,
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
+) -> Result<Value, EvalError> {
     if depth >= MAX_CALL_DEPTH {
         return Err(EvalError::CallDepthLimit {
             limit: MAX_CALL_DEPTH,
@@ -152,37 +168,37 @@ fn evaluate_function<'a>(
 /// scope again when it returns.
 fn evaluate_data_block<'a>(
     block: &'a FlatDataBlock,
-    env: &HashTrieMap<ValueId, Value<'a>>,
+    env: &Env<'a>,
     functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
+) -> Result<Value, EvalError> {
     let mut env = env.clone();
     evaluate_data_bindings(&block.bindings, &mut env, functions, depth, op_count)?;
-    Ok(env[&block.result].clone())
+    Ok(env[&block.result].as_value().clone())
 }
 
 /// Evaluate the values and then the Html in order and produce the result,
 /// leaving `env` as it is like `evaluate_data_block`.
 fn evaluate_html_block<'a>(
     block: &'a FlatHtmlBlock,
-    env: &HashTrieMap<ValueId, Value<'a>>,
+    env: &Env<'a>,
     functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
+) -> Result<Value, EvalError> {
     let mut env = env.clone();
     evaluate_data_bindings(&block.bindings, &mut env, functions, depth, op_count)?;
     for binding in &block.html {
         let value = evaluate_html_op(&binding.op, &env, functions, depth, op_count)?;
         env.insert_mut(binding.binder.var, value);
     }
-    Ok(env[&block.result].clone())
+    Ok(env[&block.result].as_value().clone())
 }
 
 fn evaluate_data_bindings<'a>(
     bindings: &'a [FlatDataBinding],
-    env: &mut HashTrieMap<ValueId, Value<'a>>,
+    env: &mut Env<'a>,
     functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
@@ -195,21 +211,21 @@ fn evaluate_data_bindings<'a>(
             });
         }
         let value = match &binding.op {
-            FlatDataOp::Data(op) => evaluate_data_op(op, env)?,
-            FlatDataOp::Call(function, args) => {
-                evaluate_call(function, args, env, functions, depth, op_count)?
-            }
+            FlatDataOp::Data(op) => Bound::Value(evaluate_data_op(op, env)?),
+            FlatDataOp::Call(function, args) => Bound::Value(evaluate_call(
+                function, args, env, functions, depth, op_count,
+            )?),
             FlatDataOp::Match(match_) => {
                 let (body, env) = enter_arm(match_, env);
-                evaluate_data_block(body, &env, functions, depth, op_count)?
+                Bound::Value(evaluate_data_block(body, &env, functions, depth, op_count)?)
             }
-            FlatDataOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
+            FlatDataOp::Lambda(lambda) => Bound::Closure(Rc::new(Closure {
                 lambda: Lambda::Data(lambda),
                 env: env.clone(),
             })),
-            FlatDataOp::Apply(closure, args) => {
-                evaluate_apply(*closure, args, env, functions, depth, op_count)?
-            }
+            FlatDataOp::Apply(closure, args) => Bound::Value(evaluate_apply(
+                *closure, args, env, functions, depth, op_count,
+            )?),
         };
         env.insert_mut(binding.binder.var, value);
     }
@@ -219,11 +235,11 @@ fn evaluate_data_bindings<'a>(
 fn evaluate_call<'a>(
     function: &IrFunction,
     args: &[ValueId],
-    env: &HashTrieMap<ValueId, Value<'a>>,
+    env: &Env<'a>,
     functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
+) -> Result<Value, EvalError> {
     let values = args.iter().map(|arg| env[arg].clone()).collect();
     evaluate_function(functions, function, values, depth, op_count)
 }
@@ -234,11 +250,11 @@ fn evaluate_call<'a>(
 fn evaluate_apply<'a>(
     closure: ValueId,
     args: &[ValueId],
-    env: &HashTrieMap<ValueId, Value<'a>>,
+    env: &Env<'a>,
     functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
+) -> Result<Value, EvalError> {
     if depth >= MAX_CALL_DEPTH {
         return Err(EvalError::CallDepthLimit {
             limit: MAX_CALL_DEPTH,
@@ -264,11 +280,8 @@ fn evaluate_apply<'a>(
 
 /// The body of the first arm the subject matches, with `env` extended by
 /// the names its pattern binds.
-fn enter_arm<'a, B>(
-    match_: &'a IrMatch<B>,
-    env: &HashTrieMap<ValueId, Value<'a>>,
-) -> (&'a B, HashTrieMap<ValueId, Value<'a>>) {
-    let subject = &env[&match_.subject];
+fn enter_arm<'a, B>(match_: &'a IrMatch<B>, env: &Env<'a>) -> (&'a B, Env<'a>) {
+    let subject = env[&match_.subject].as_value();
     let (arm, bound) = match_
         .arms
         .iter()
@@ -281,35 +294,35 @@ fn enter_arm<'a, B>(
         .unwrap();
     let mut env = env.clone();
     for (name, value) in bound {
-        env.insert_mut(name, value);
+        env.insert_mut(name, Bound::Value(value));
     }
     (&arm.body, env)
 }
 
 fn evaluate_html_op<'a>(
     op: &'a FlatHtmlOp,
-    env: &HashTrieMap<ValueId, Value<'a>>,
+    env: &Env<'a>,
     functions: &'a [FlatFunctionDeclaration],
     depth: usize,
     op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
+) -> Result<Bound<Closure<'a>>, EvalError> {
     *op_count += 1;
     if *op_count > MAX_OP_COUNT {
         return Err(EvalError::OpCountLimit {
             limit: MAX_OP_COUNT,
         });
     }
-    Ok(match op {
+    Ok(Bound::Value(match op {
         FlatHtmlOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.to_string()))?),
 
         FlatHtmlOp::Escape(string) => Value::Html(Html::new(HtmlNode::Escape(
-            env[string].clone().unwrap_string(),
+            env[string].as_value().clone().unwrap_string(),
         ))?),
 
         FlatHtmlOp::Concat(parts) => Value::Html(Html::new(HtmlNode::Concat(
             parts
                 .iter()
-                .map(|part| env[part].clone().unwrap_html())
+                .map(|part| env[part].as_value().clone().unwrap_html())
                 .collect(),
         ))?),
 
@@ -323,10 +336,10 @@ fn evaluate_html_op<'a>(
                 match attribute {
                     IrAttribute::Value(value) => rendered.push(HtmlAttribute {
                         name: name.clone(),
-                        value: Some(env[value].clone().unwrap_string()),
+                        value: Some(env[value].as_value().clone().unwrap_string()),
                     }),
                     IrAttribute::Presence(present) => {
-                        if env[present].as_bool() {
+                        if env[present].as_value().as_bool() {
                             rendered.push(HtmlAttribute {
                                 name: name.clone(),
                                 value: None,
@@ -338,7 +351,7 @@ fn evaluate_html_op<'a>(
             let children = if element.is_void() {
                 Html::empty()
             } else {
-                env[children].clone().unwrap_html()
+                env[children].as_value().clone().unwrap_html()
             };
             Value::Html(Html::new(HtmlNode::Element {
                 element: element.clone(),
@@ -358,10 +371,10 @@ fn evaluate_html_op<'a>(
 
         FlatHtmlOp::For(IrFor { var, array, body }) => {
             let mut parts = Vec::new();
-            for item in env[array].as_array() {
+            for item in env[array].as_value().as_array() {
                 let mut env = env.clone();
                 if let Some(binder) = var {
-                    env.insert_mut(binder.var, item.clone());
+                    env.insert_mut(binder.var, Bound::Value(item.clone()));
                 }
                 let part = evaluate_html_block(body, &env, functions, depth, op_count)?;
                 parts.push(part.unwrap_html());
@@ -369,113 +382,129 @@ fn evaluate_html_op<'a>(
             Value::Html(Html::new(HtmlNode::Concat(parts))?)
         }
 
-        FlatHtmlOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
-            lambda: Lambda::Html(lambda),
-            env: env.clone(),
-        })),
+        FlatHtmlOp::Lambda(lambda) => {
+            return Ok(Bound::Closure(Rc::new(Closure {
+                lambda: Lambda::Html(lambda),
+                env: env.clone(),
+            })));
+        }
 
         FlatHtmlOp::Apply(closure, args) => {
             evaluate_apply(*closure, args, env, functions, depth, op_count)?
         }
-    })
+    }))
 }
 
-fn evaluate_data_op<'a>(
-    op: &IrDataOp,
-    env: &HashTrieMap<ValueId, Value<'a>>,
-) -> Result<Value<'a>, EvalError> {
+fn evaluate_data_op(op: &IrDataOp, env: &Env<'_>) -> Result<Value, EvalError> {
     Ok(match op {
         IrDataOp::StringLiteral(value) => Value::String(value.as_str().into()),
         IrDataOp::IntLiteral(value) => Value::Int(*value),
         IrDataOp::FloatLiteral(value) => Value::Float(*value),
         IrDataOp::BoolLiteral(value) => Value::Bool(*value),
         IrDataOp::FieldAccess(record, field) => {
-            let record = env[record].as_record();
+            let record = env[record].as_value().as_record();
             let (_, value) = record.iter().find(|(name, _)| name == field).unwrap();
             value.clone()
         }
-        IrDataOp::TupleIndex(tuple, index) => env[tuple].as_tuple()[*index].clone(),
+        IrDataOp::TupleIndex(tuple, index) => env[tuple].as_value().as_tuple()[*index].clone(),
         IrDataOp::Array(elements) => Value::Array(Rc::new(
-            BoundedVec::new(elements.iter().map(|e| env[e].clone()))
+            BoundedVec::new(elements.iter().map(|e| env[e].as_value().clone()))
                 .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
         )),
         IrDataOp::Tuple(elements) => {
-            Value::Tuple(elements.iter().map(|e| env[e].clone()).collect())
+            Value::Tuple(elements.iter().map(|e| env[e].as_value().clone()).collect())
         }
         IrDataOp::Record(fields) => Value::Record(
             fields
                 .iter()
-                .map(|(name, value)| (name.clone(), env[value].clone()))
+                .map(|(name, value)| (name.clone(), env[value].as_value().clone()))
                 .collect(),
         ),
         IrDataOp::Enum(variant_name, fields) => Value::Enum(
             variant_name.clone(),
             fields
                 .iter()
-                .map(|(name, value)| (name.clone(), env[value].clone()))
+                .map(|(name, value)| (name.clone(), env[value].as_value().clone()))
                 .collect(),
         ),
-        IrDataOp::OptionSome(inner) => Value::Option(Some(Rc::new(env[inner].clone()))),
+        IrDataOp::OptionSome(inner) => Value::Option(Some(Rc::new(env[inner].as_value().clone()))),
         IrDataOp::OptionNone => Value::Option(None),
         IrDataOp::StringConcat(parts) => {
-            let length: usize = parts.iter().map(|part| env[part].as_str().len()).sum();
+            let length: usize = parts
+                .iter()
+                .map(|part| env[part].as_value().as_str().len())
+                .sum();
             if length > MAX_STRING_LENGTH {
                 return Err(STRING_LENGTH_LIMIT_ERROR);
             }
             Value::String(
                 parts
                     .iter()
-                    .map(|part| env[part].as_str())
+                    .map(|part| env[part].as_value().as_str())
                     .collect::<String>()
                     .into(),
             )
         }
-        IrDataOp::NumericAdd(left, right) => match &env[left] {
-            Value::Int(left) => Value::Int(left.wrapping_add(env[right].as_int())),
-            left => Value::Float(left.as_float() + env[right].as_float()),
+        IrDataOp::NumericAdd(left, right) => match env[left].as_value() {
+            Value::Int(left) => Value::Int(left.wrapping_add(env[right].as_value().as_int())),
+            left => Value::Float(left.as_float() + env[right].as_value().as_float()),
         },
-        IrDataOp::NumericSubtract(left, right) => match &env[left] {
-            Value::Int(left) => Value::Int(left.wrapping_sub(env[right].as_int())),
-            left => Value::Float(left.as_float() - env[right].as_float()),
+        IrDataOp::NumericSubtract(left, right) => match env[left].as_value() {
+            Value::Int(left) => Value::Int(left.wrapping_sub(env[right].as_value().as_int())),
+            left => Value::Float(left.as_float() - env[right].as_value().as_float()),
         },
-        IrDataOp::NumericMultiply(left, right) => match &env[left] {
-            Value::Int(left) => Value::Int(left.wrapping_mul(env[right].as_int())),
-            left => Value::Float(left.as_float() * env[right].as_float()),
+        IrDataOp::NumericMultiply(left, right) => match env[left].as_value() {
+            Value::Int(left) => Value::Int(left.wrapping_mul(env[right].as_value().as_int())),
+            left => Value::Float(left.as_float() * env[right].as_value().as_float()),
         },
         IrDataOp::Equals(left, right) => {
-            let right = &env[right];
-            match &env[left] {
+            let right = env[right].as_value();
+            match env[left].as_value() {
                 Value::Bool(left) => Value::Bool(*left == right.as_bool()),
                 Value::String(left) => Value::Bool(**left == *right.as_str()),
                 Value::Int(left) => Value::Bool(*left == right.as_int()),
                 left => Value::Bool(left.as_float() == right.as_float()),
             }
         }
-        IrDataOp::LessThan(left, right) => match &env[left] {
-            Value::Int(left) => Value::Bool(*left < env[right].as_int()),
-            left => Value::Bool(left.as_float() < env[right].as_float()),
+        IrDataOp::LessThan(left, right) => match env[left].as_value() {
+            Value::Int(left) => Value::Bool(*left < env[right].as_value().as_int()),
+            left => Value::Bool(left.as_float() < env[right].as_value().as_float()),
         },
-        IrDataOp::LessThanOrEqual(left, right) => match &env[left] {
-            Value::Int(left) => Value::Bool(*left <= env[right].as_int()),
-            left => Value::Bool(left.as_float() <= env[right].as_float()),
+        IrDataOp::LessThanOrEqual(left, right) => match env[left].as_value() {
+            Value::Int(left) => Value::Bool(*left <= env[right].as_value().as_int()),
+            left => Value::Bool(left.as_float() <= env[right].as_value().as_float()),
         },
         IrDataOp::ArrayFromRange(left, right) => Value::Array(Rc::new(
-            BoundedVec::new((env[left].as_int()..=env[right].as_int()).map(Value::Int))
-                .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
+            BoundedVec::new(
+                (env[left].as_value().as_int()..=env[right].as_value().as_int()).map(Value::Int),
+            )
+            .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
         )),
-        IrDataOp::NumericNegation(operand) => match &env[operand] {
+        IrDataOp::NumericNegation(operand) => match env[operand].as_value() {
             Value::Int(value) => Value::Int(value.wrapping_neg()),
             operand => Value::Float(-operand.as_float()),
         },
-        IrDataOp::BoolNegation(operand) => Value::Bool(!env[operand].as_bool()),
-        IrDataOp::ArrayLength(operand) => Value::Int(env[operand].as_array().len() as i32),
-        IrDataOp::ArrayIsEmpty(operand) => Value::Bool(env[operand].as_array().is_empty()),
-        IrDataOp::StringIsEmpty(operand) => Value::Bool(env[operand].as_str().is_empty()),
-        IrDataOp::OptionIsSome(operand) => Value::Bool(env[operand].as_option().is_some()),
-        IrDataOp::OptionIsNone(operand) => Value::Bool(env[operand].as_option().is_none()),
-        IrDataOp::IntToString(operand) => Value::String(env[operand].as_int().to_string().into()),
-        IrDataOp::FloatToInt(operand) => Value::Int(env[operand].as_float() as i32),
-        IrDataOp::IntToFloat(operand) => Value::Float(env[operand].as_int() as f64),
+        IrDataOp::BoolNegation(operand) => Value::Bool(!env[operand].as_value().as_bool()),
+        IrDataOp::ArrayLength(operand) => {
+            Value::Int(env[operand].as_value().as_array().len() as i32)
+        }
+        IrDataOp::ArrayIsEmpty(operand) => {
+            Value::Bool(env[operand].as_value().as_array().is_empty())
+        }
+        IrDataOp::StringIsEmpty(operand) => {
+            Value::Bool(env[operand].as_value().as_str().is_empty())
+        }
+        IrDataOp::OptionIsSome(operand) => {
+            Value::Bool(env[operand].as_value().as_option().is_some())
+        }
+        IrDataOp::OptionIsNone(operand) => {
+            Value::Bool(env[operand].as_value().as_option().is_none())
+        }
+        IrDataOp::IntToString(operand) => {
+            Value::String(env[operand].as_value().as_int().to_string().into())
+        }
+        IrDataOp::FloatToInt(operand) => Value::Int(env[operand].as_value().as_float() as i32),
+        IrDataOp::IntToFloat(operand) => Value::Float(env[operand].as_value().as_int() as f64),
     })
 }
 
@@ -515,11 +544,11 @@ mod tests {
 
     fn check(
         program: FlatProgram,
-        args: impl FnOnce(&ValueBuilder<'_>) -> Vec<(&'static str, Value<'static>)>,
+        args: impl FnOnce(&ValueBuilder<'_>) -> Vec<(&'static str, Value)>,
         expected: Expect,
     ) {
         let before = program.to_string();
-        let args: HashMap<AttributeName, Value<'_>> = args(&ValueBuilder::new(&program.types))
+        let args: HashMap<AttributeName, Value> = args(&ValueBuilder::new(&program.types))
             .into_iter()
             .map(|(name, value)| (AttributeName::parse(name).unwrap(), value))
             .collect();
