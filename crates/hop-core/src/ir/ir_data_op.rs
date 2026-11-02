@@ -1,5 +1,6 @@
-use pretty::BoxDoc;
+use std::fmt;
 
+use crate::display::{join, write_tuple};
 use crate::document::CheapString;
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
@@ -157,84 +158,54 @@ impl IrDataOp {
             }
         }
     }
+}
 
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+impl fmt::Display for IrDataOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            IrDataOp::StringLiteral(value) => BoxDoc::text(format!("{:?}", value.as_str())),
-            IrDataOp::IntLiteral(value) => BoxDoc::text(value.to_string()),
-            IrDataOp::FloatLiteral(value) => BoxDoc::text(value.to_string()),
-            IrDataOp::BoolLiteral(value) => BoxDoc::text(value.to_string()),
-            IrDataOp::FieldAccess(record, field) => {
-                BoxDoc::text(format!("{record}.{}", field.as_str()))
+            IrDataOp::StringLiteral(value) => write!(f, "{:?}", value.as_str()),
+            IrDataOp::IntLiteral(value) => write!(f, "{value}"),
+            IrDataOp::FloatLiteral(value) => write!(f, "{value}"),
+            IrDataOp::BoolLiteral(value) => write!(f, "{value}"),
+            IrDataOp::FieldAccess(record, field) => write!(f, "{record}.{}", field.as_str()),
+            IrDataOp::TupleIndex(tuple, index) => write!(f, "{tuple}.{index}"),
+            IrDataOp::Array(elements) => write!(f, "[{}]", join(elements, ", ")),
+            IrDataOp::Tuple(elements) => write_tuple(f, elements),
+            IrDataOp::Enum(variant_name, fields) if fields.is_empty() => {
+                f.write_str(variant_name.as_str())
             }
-            IrDataOp::TupleIndex(tuple, index) => BoxDoc::text(format!("{tuple}.{index}")),
-            IrDataOp::Array(elements) => {
-                let elements = elements
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                BoxDoc::text(format!("[{elements}]"))
-            }
-            IrDataOp::Tuple(elements) => {
-                let joined = elements
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                if elements.len() == 1 {
-                    BoxDoc::text(format!("({joined},)"))
-                } else {
-                    BoxDoc::text(format!("({joined})"))
+            // Each field as its name and the name it reads.
+            IrDataOp::Record(fields) | IrDataOp::Enum(_, fields) => {
+                if let IrDataOp::Enum(variant_name, _) = self {
+                    write!(f, "{} ", variant_name.as_str())?;
                 }
-            }
-            IrDataOp::Record(fields) => {
-                let fields = fields
-                    .iter()
-                    .map(|(name, value)| format!("{}: {value}", name.as_str()))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                BoxDoc::text(format!("{{{fields}}}"))
-            }
-            IrDataOp::Enum(variant_name, fields) => {
-                if fields.is_empty() {
-                    BoxDoc::text(variant_name.as_str())
-                } else {
-                    let fields = fields
-                        .iter()
-                        .map(|(name, value)| format!("{}: {value}", name.as_str()))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    BoxDoc::text(format!("{} {{{fields}}}", variant_name.as_str()))
+                f.write_str("{")?;
+                for (i, (name, value)) in fields.iter().enumerate() {
+                    let sep = if i > 0 { ", " } else { "" };
+                    write!(f, "{sep}{}: {value}", name.as_str())?;
                 }
+                f.write_str("}")
             }
-            IrDataOp::OptionSome(value) => BoxDoc::text(format!("Some({value})")),
-            IrDataOp::OptionNone => BoxDoc::text("None"),
-            IrDataOp::StringConcat(parts) => {
-                let parts = parts
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                BoxDoc::text(format!("concat({parts})"))
-            }
-            IrDataOp::NumericAdd(left, right) => BoxDoc::text(format!("{left} + {right}")),
-            IrDataOp::NumericSubtract(left, right) => BoxDoc::text(format!("{left} - {right}")),
-            IrDataOp::NumericMultiply(left, right) => BoxDoc::text(format!("{left} * {right}")),
-            IrDataOp::Equals(left, right) => BoxDoc::text(format!("{left} == {right}")),
-            IrDataOp::LessThan(left, right) => BoxDoc::text(format!("{left} < {right}")),
-            IrDataOp::LessThanOrEqual(left, right) => BoxDoc::text(format!("{left} <= {right}")),
-            IrDataOp::ArrayFromRange(left, right) => BoxDoc::text(format!("{left}..={right}")),
-            IrDataOp::NumericNegation(operand) => BoxDoc::text(format!("-{operand}")),
-            IrDataOp::BoolNegation(operand) => BoxDoc::text(format!("!{operand}")),
-            IrDataOp::ArrayLength(operand) => BoxDoc::text(format!("{operand}.len()")),
-            IrDataOp::ArrayIsEmpty(operand) => BoxDoc::text(format!("{operand}.is_empty()")),
-            IrDataOp::StringIsEmpty(operand) => BoxDoc::text(format!("{operand}.is_empty()")),
-            IrDataOp::OptionIsSome(operand) => BoxDoc::text(format!("{operand}.is_some()")),
-            IrDataOp::OptionIsNone(operand) => BoxDoc::text(format!("{operand}.is_none()")),
-            IrDataOp::IntToString(operand) => BoxDoc::text(format!("{operand}.to_string()")),
-            IrDataOp::FloatToInt(operand) => BoxDoc::text(format!("{operand}.to_int()")),
-            IrDataOp::IntToFloat(operand) => BoxDoc::text(format!("{operand}.to_float()")),
+            IrDataOp::OptionSome(value) => write!(f, "Some({value})"),
+            IrDataOp::OptionNone => f.write_str("None"),
+            IrDataOp::StringConcat(parts) => write!(f, "string_concat({})", join(parts, ", ")),
+            IrDataOp::NumericAdd(left, right) => write!(f, "add({left}, {right})"),
+            IrDataOp::NumericSubtract(left, right) => write!(f, "sub({left}, {right})"),
+            IrDataOp::NumericMultiply(left, right) => write!(f, "mul({left}, {right})"),
+            IrDataOp::Equals(left, right) => write!(f, "eq({left}, {right})"),
+            IrDataOp::LessThan(left, right) => write!(f, "lt({left}, {right})"),
+            IrDataOp::LessThanOrEqual(left, right) => write!(f, "lt_eq({left}, {right})"),
+            IrDataOp::ArrayFromRange(left, right) => write!(f, "{left}..={right}"),
+            IrDataOp::NumericNegation(operand) => write!(f, "neg({operand})"),
+            IrDataOp::BoolNegation(operand) => write!(f, "not({operand})"),
+            IrDataOp::ArrayLength(operand) => write!(f, "{operand}.len()"),
+            IrDataOp::ArrayIsEmpty(operand) => write!(f, "{operand}.is_empty()"),
+            IrDataOp::StringIsEmpty(operand) => write!(f, "{operand}.is_empty()"),
+            IrDataOp::OptionIsSome(operand) => write!(f, "{operand}.is_some()"),
+            IrDataOp::OptionIsNone(operand) => write!(f, "{operand}.is_none()"),
+            IrDataOp::IntToString(operand) => write!(f, "{operand}.to_string()"),
+            IrDataOp::FloatToInt(operand) => write!(f, "{operand}.to_int()"),
+            IrDataOp::IntToFloat(operand) => write!(f, "{operand}.to_float()"),
         }
     }
 }

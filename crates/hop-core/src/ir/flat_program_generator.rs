@@ -1887,16 +1887,6 @@ mod tests {
             16,
             128,
             expect![[r#"
-                enum E0 {
-                  W0,
-                  W1 { f0: (Array[String], Float, Option[E1]) },
-                }
-
-                enum E1 {
-                  W0,
-                  W1 { f0: () },
-                }
-
                 record R0 {
                   f0: Bool,
                   f1: Array[()],
@@ -1906,6 +1896,16 @@ mod tests {
                 record R1 {
                   f0: ((), Option[R1]),
                   f1: (Option[E1], Float),
+                }
+
+                enum E0 {
+                  W0,
+                  W1 {f0: (Array[String], Float, Option[E1])},
+                }
+
+                enum E1 {
+                  W0,
+                  W1 {f0: ()},
                 }
 
                 fn C0@f0(p0@v0: (Option[Bool], (R0, String, Bool)) -> (E1,), p1@v1: ((Array[E0]) -> (R1,), (Int) -> Html) -> Html, p2@v2: E1, p3@v3: Float, p4@v4: R1, p5@v5: E0) -> Html {
@@ -1930,12 +1930,12 @@ mod tests {
             128,
             expect![[r#"
                 enum E0 {
-                  W0 { f0: Float },
-                  W1 { f0: Bool },
+                  W0 {f0: Float},
+                  W1 {f0: Bool},
                 }
 
                 enum E1 {
-                  W0 { f0: Option[Option[Float]], f1: Int },
+                  W0 {f0: Option[Option[Float]], f1: Int},
                   W1,
                 }
 
@@ -1993,15 +1993,15 @@ mod tests {
                         let v37: Int = match v0 {
                           true => {
                             let v33: Int = -2147483648
-                            let v34: Int = v33 + v1
-                            let v35: Int = v1 * v34
+                            let v34: Int = add(v33, v1)
+                            let v35: Int = mul(v1, v34)
                             v35
                           }
                           v36: Bool => {
                             v1
                           }
                         }
-                        let v38: Int = v37 - v1
+                        let v38: Int = sub(v37, v1)
                         v38
                       }
                     }

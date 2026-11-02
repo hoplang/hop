@@ -1,5 +1,6 @@
-use pretty::BoxDoc;
+use std::fmt::{self, Display};
 
+use crate::display::{join, write_tuple};
 use crate::hop::typing::r#type::Type;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -61,84 +62,52 @@ pub enum Constructor {
     Tuple,
 }
 
-impl Constructor {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+impl Display for Constructor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Constructor::EnumVariant {
                 type_name,
                 variant_name,
-            } => BoxDoc::text(type_name.as_str().to_string())
-                .append(BoxDoc::text("::"))
-                .append(BoxDoc::text(variant_name.as_str())),
-            Constructor::BoolTrue => BoxDoc::text("true"),
-            Constructor::BoolFalse => BoxDoc::text("false"),
-            Constructor::OptionSome => BoxDoc::text("Some"),
-            Constructor::OptionNone => BoxDoc::text("None"),
-            Constructor::Record { type_name } => BoxDoc::text(type_name.as_str().to_string()),
-            Constructor::Tuple => BoxDoc::nil(),
+            } => write!(f, "{}::{}", type_name.as_str(), variant_name.as_str()),
+            Constructor::BoolTrue => f.write_str("true"),
+            Constructor::BoolFalse => f.write_str("false"),
+            Constructor::OptionSome => f.write_str("Some"),
+            Constructor::OptionNone => f.write_str("None"),
+            Constructor::Record { type_name } => f.write_str(type_name.as_str()),
+            Constructor::Tuple => Ok(()),
         }
     }
 }
 
-impl TypedPattern {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+impl Display for TypedField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.name.as_str(), self.pattern)
+    }
+}
+
+impl Display for TypedPattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            TypedPattern::Constructor {
+                constructor: Constructor::Tuple,
+                args,
+                ..
+            } => write_tuple(f, args),
             TypedPattern::Constructor {
                 constructor,
                 args,
                 fields,
             } => {
-                let base = constructor.to_doc();
-                if matches!(constructor, Constructor::Tuple) {
-                    // Tuple pattern: (x, _)
-                    BoxDoc::text("(")
-                        .append(BoxDoc::intersperse(
-                            args.iter().map(|a| a.to_doc()),
-                            BoxDoc::text(", "),
-                        ))
-                        .append(if args.len() == 1 {
-                            BoxDoc::text(",")
-                        } else {
-                            BoxDoc::nil()
-                        })
-                        .append(BoxDoc::text(")"))
-                } else if !fields.is_empty() {
-                    // Record pattern: User {name: x, age: y}
-                    let fields_doc = BoxDoc::intersperse(
-                        fields.iter().map(|field| {
-                            if let TypedPattern::Binding(binder) = &field.pattern {
-                                if binder.var.as_str() == field.name.as_str() {
-                                    return BoxDoc::text(field.name.as_str());
-                                }
-                            }
-                            BoxDoc::text(field.name.as_str())
-                                .append(BoxDoc::text(": "))
-                                .append(field.pattern.to_doc())
-                        }),
-                        BoxDoc::text(", "),
-                    );
-                    base.append(BoxDoc::text(" {"))
-                        .append(fields_doc)
-                        .append(BoxDoc::text("}"))
+                if !fields.is_empty() {
+                    write!(f, "{constructor} {{{}}}", join(fields, ", "))
                 } else if args.is_empty() {
-                    base
+                    write!(f, "{constructor}")
                 } else {
-                    // Positional args (Option Some, etc.)
-                    let args_doc =
-                        BoxDoc::intersperse(args.iter().map(|a| a.to_doc()), BoxDoc::text(", "));
-                    base.append(BoxDoc::text("("))
-                        .append(args_doc)
-                        .append(BoxDoc::text(")"))
+                    write!(f, "{constructor}({})", join(args, ", "))
                 }
             }
-            TypedPattern::Wildcard => BoxDoc::text("_"),
-            TypedPattern::Binding(binder) => BoxDoc::text(binder.var.as_str()),
+            TypedPattern::Wildcard => f.write_str("_"),
+            TypedPattern::Binding(binder) => f.write_str(binder.var.as_str()),
         }
-    }
-}
-
-impl std::fmt::Display for TypedPattern {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(80))
     }
 }

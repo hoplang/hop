@@ -1126,7 +1126,7 @@ mod tests {
         accept(
             "Point {x: a + b, y: c * 2}",
             expect![[r#"
-                Point {x: a + b, y: c * 2}
+                Point {x: add(a, b), y: mul(c, 2)}
             "#]],
         );
     }
@@ -1287,7 +1287,9 @@ mod tests {
                 match x {User {...y} => "a"}
                                ^^^
                 -- ast --
-                match x {User => "a"}
+                match x {
+                  User => "a",
+                }
             "#]],
         );
     }
@@ -1320,7 +1322,7 @@ mod tests {
         accept(
             "x // this is a comment\n== y",
             expect![[r#"
-                x == y
+                eq(x, y)
             "#]],
         );
     }
@@ -1330,7 +1332,7 @@ mod tests {
         accept(
             "// leading comment\nx + // middle\ny // trailing",
             expect![[r#"
-                x + y
+                add(x, y)
             "#]],
         );
     }
@@ -1520,7 +1522,10 @@ mod tests {
         accept(
             "match (a, b) { (true, _) => 0, (false, _) => 1 }",
             expect![[r#"
-                match (a, b) {(true, _) => 0, (false, _) => 1}
+                match (a, b) {
+                  (true, _) => 0,
+                  (false, _) => 1,
+                }
             "#]],
         );
     }
@@ -1633,7 +1638,7 @@ mod tests {
         accept(
             "a == b == c",
             expect![[r#"
-                a == b == c
+                eq(eq(a, b), c)
             "#]],
         );
     }
@@ -1643,7 +1648,7 @@ mod tests {
         accept(
             "user.name == admin.name",
             expect![[r#"
-                user.name == admin.name
+                eq(user.name, admin.name)
             "#]],
         );
     }
@@ -1653,7 +1658,7 @@ mod tests {
         accept(
             "x <= y",
             expect![[r#"
-                x <= y
+                lt_eq(x, y)
             "#]],
         );
     }
@@ -1663,7 +1668,7 @@ mod tests {
         accept(
             "a <= b <= c",
             expect![[r#"
-                a <= b <= c
+                lt_eq(lt_eq(a, b), c)
             "#]],
         );
     }
@@ -1673,7 +1678,7 @@ mod tests {
         accept(
             "x >= y",
             expect![[r#"
-                x >= y
+                gt_eq(x, y)
             "#]],
         );
     }
@@ -1683,7 +1688,7 @@ mod tests {
         accept(
             "a >= b >= c",
             expect![[r#"
-                a >= b >= c
+                gt_eq(gt_eq(a, b), c)
             "#]],
         );
     }
@@ -1833,12 +1838,7 @@ mod tests {
         accept(
             r#"Foo(id: "x", "aria-label": "Save", "for": "email", "xlink:href": "/a")"#,
             expect![[r#"
-                Foo(
-                  id: "x",
-                  "aria-label": "Save",
-                  "for": "email",
-                  "xlink:href": "/a",
-                )
+                Foo(id: "x", "aria-label": "Save", "for": "email", "xlink:href": "/a")
             "#]],
         );
     }
@@ -2043,7 +2043,7 @@ mod tests {
         accept(
             "x.foo() == y.bar()",
             expect![[r#"
-                x.foo() == y.bar()
+                eq(x.foo(), y.bar())
             "#]],
         );
     }
@@ -2053,7 +2053,7 @@ mod tests {
         accept(
             "x.valid() && y.ready()",
             expect![[r#"
-                x.valid() && y.ready()
+                and(x.valid(), y.ready())
             "#]],
         );
     }
@@ -2106,7 +2106,7 @@ mod tests {
         accept(
             "42 + 3.14",
             expect![[r#"
-                42 + 3.14
+                add(42, 3.14)
             "#]],
         );
     }
@@ -2116,7 +2116,7 @@ mod tests {
         accept(
             "(x == y)",
             expect![[r#"
-                x == y
+                eq(x, y)
             "#]],
         );
     }
@@ -2136,7 +2136,7 @@ mod tests {
         accept(
             r#""guest" == user.role"#,
             expect![[r#"
-                "guest" == user.role
+                eq("guest", user.role)
             "#]],
         );
     }
@@ -2146,7 +2146,7 @@ mod tests {
         accept(
             "x == y",
             expect![[r#"
-                x == y
+                eq(x, y)
             "#]],
         );
     }
@@ -2176,7 +2176,7 @@ mod tests {
         accept(
             r#""apple" == "orange""#,
             expect![[r#"
-                "apple" == "orange"
+                eq("apple", "orange")
             "#]],
         );
     }
@@ -2186,7 +2186,7 @@ mod tests {
         accept(
             r#"user.name == "admin""#,
             expect![[r#"
-                user.name == "admin"
+                eq(user.name, "admin")
             "#]],
         );
     }
@@ -2206,7 +2206,7 @@ mod tests {
         accept(
             "  user . name   ==   admin . name  ",
             expect![[r#"
-                user.name == admin.name
+                eq(user.name, admin.name)
             "#]],
         );
     }
@@ -2256,7 +2256,7 @@ mod tests {
         accept(
             "[[1 == [1 == 2], [] == []], [3, 4]]",
             expect![[r#"
-                [[1 == [1 == 2], [] == []], [3, 4]]
+                [[eq(1, [eq(1, 2)]), eq([], [])], [3, 4]]
             "#]],
         );
     }
@@ -2296,7 +2296,7 @@ mod tests {
         accept(
             "[\n\tuser.name,\n\t!user.disabled,\n]",
             expect![[r#"
-                [user.name, !user.disabled]
+                [user.name, not(user.disabled)]
             "#]],
         );
     }
@@ -2306,7 +2306,7 @@ mod tests {
         accept(
             r#""hello" + "world""#,
             expect![[r#"
-                "hello" + "world"
+                add("hello", "world")
             "#]],
         );
     }
@@ -2316,7 +2316,7 @@ mod tests {
         accept(
             r#""hello" + " " + "world""#,
             expect![[r#"
-                "hello" + " " + "world"
+                add(add("hello", " "), "world")
             "#]],
         );
     }
@@ -2326,7 +2326,7 @@ mod tests {
         accept(
             r#"greeting + " " + name"#,
             expect![[r#"
-                greeting + " " + name
+                add(add(greeting, " "), name)
             "#]],
         );
     }
@@ -2336,7 +2336,7 @@ mod tests {
         accept(
             r#"user.first_name + " " + user.last_name"#,
             expect![[r#"
-                user.first_name + " " + user.last_name
+                add(add(user.first_name, " "), user.last_name)
             "#]],
         );
     }
@@ -2346,7 +2346,7 @@ mod tests {
         accept(
             "x != y",
             expect![[r#"
-                x != y
+                not_eq(x, y)
             "#]],
         );
     }
@@ -2356,7 +2356,7 @@ mod tests {
         accept(
             r#""hello" != "world""#,
             expect![[r#"
-                "hello" != "world"
+                not_eq("hello", "world")
             "#]],
         );
     }
@@ -2366,7 +2366,7 @@ mod tests {
         accept(
             "a != b != c",
             expect![[r#"
-                a != b != c
+                not_eq(not_eq(a, b), c)
             "#]],
         );
     }
@@ -2376,7 +2376,7 @@ mod tests {
         accept(
             "a == b != c",
             expect![[r#"
-                a == b != c
+                not_eq(eq(a, b), c)
             "#]],
         );
     }
@@ -2386,7 +2386,7 @@ mod tests {
         accept(
             "a && b",
             expect![[r#"
-                a && b
+                and(a, b)
             "#]],
         );
     }
@@ -2396,7 +2396,7 @@ mod tests {
         accept(
             "a && b && c",
             expect![[r#"
-                a && b && c
+                and(and(a, b), c)
             "#]],
         );
     }
@@ -2406,7 +2406,7 @@ mod tests {
         accept(
             "a && b == c",
             expect![[r#"
-                a && b == c
+                and(a, eq(b, c))
             "#]],
         );
     }
@@ -2416,7 +2416,7 @@ mod tests {
         accept(
             "a == b && c != d",
             expect![[r#"
-                a == b && c != d
+                and(eq(a, b), not_eq(c, d))
             "#]],
         );
     }
@@ -2426,7 +2426,7 @@ mod tests {
         accept(
             "x > y && a <= b",
             expect![[r#"
-                x > y && a <= b
+                and(gt(x, y), lt_eq(a, b))
             "#]],
         );
     }
@@ -2436,7 +2436,7 @@ mod tests {
         accept(
             "!a && !b",
             expect![[r#"
-                !a && !b
+                and(not(a), not(b))
             "#]],
         );
     }
@@ -2446,7 +2446,7 @@ mod tests {
         accept(
             "a || b",
             expect![[r#"
-                a || b
+                or(a, b)
             "#]],
         );
     }
@@ -2456,7 +2456,7 @@ mod tests {
         accept(
             "a || b || c",
             expect![[r#"
-                a || b || c
+                or(or(a, b), c)
             "#]],
         );
     }
@@ -2466,7 +2466,7 @@ mod tests {
         accept(
             "a || b == c",
             expect![[r#"
-                a || b == c
+                or(a, eq(b, c))
             "#]],
         );
     }
@@ -2476,7 +2476,7 @@ mod tests {
         accept(
             "a && b || c",
             expect![[r#"
-                a && b || c
+                or(and(a, b), c)
             "#]],
         );
     }
@@ -2486,7 +2486,7 @@ mod tests {
         accept(
             "a || b && c || d",
             expect![[r#"
-                a || b && c || d
+                or(or(a, and(b, c)), d)
             "#]],
         );
     }
@@ -2496,7 +2496,7 @@ mod tests {
         accept(
             "x > y && a || b < c",
             expect![[r#"
-                x > y && a || b < c
+                or(and(gt(x, y), a), lt(b, c))
             "#]],
         );
     }
@@ -2506,7 +2506,7 @@ mod tests {
         accept(
             "!a || !b",
             expect![[r#"
-                !a || !b
+                or(not(a), not(b))
             "#]],
         );
     }
@@ -2516,7 +2516,7 @@ mod tests {
         accept(
             "x + y == z",
             expect![[r#"
-                x + y == z
+                eq(add(x, y), z)
             "#]],
         );
     }
@@ -2526,7 +2526,7 @@ mod tests {
         accept(
             "x + y > z && enabled",
             expect![[r#"
-                x + y > z && enabled
+                and(gt(add(x, y), z), enabled)
             "#]],
         );
     }
@@ -2536,7 +2536,7 @@ mod tests {
         accept(
             "x + y + z",
             expect![[r#"
-                x + y + z
+                add(add(x, y), z)
             "#]],
         );
     }
@@ -2566,7 +2566,7 @@ mod tests {
         accept(
             "-x",
             expect![[r#"
-                -x
+                neg(x)
             "#]],
         );
     }
@@ -2576,7 +2576,7 @@ mod tests {
         accept(
             "--5",
             expect![[r#"
-                --5
+                neg(-5)
             "#]],
         );
     }
@@ -2586,7 +2586,7 @@ mod tests {
         accept(
             "-(a + b)",
             expect![[r#"
-                -(a + b)
+                neg(add(a, b))
             "#]],
         );
     }
@@ -2596,7 +2596,7 @@ mod tests {
         accept(
             "x + -y",
             expect![[r#"
-                x + -y
+                add(x, neg(y))
             "#]],
         );
     }
@@ -2606,7 +2606,7 @@ mod tests {
         accept(
             "x - -y",
             expect![[r#"
-                x - -y
+                sub(x, neg(y))
             "#]],
         );
     }
@@ -2616,7 +2616,7 @@ mod tests {
         accept(
             "-5 < x",
             expect![[r#"
-                -5 < x
+                lt(-5, x)
             "#]],
         );
     }
@@ -2656,7 +2656,7 @@ mod tests {
         accept(
             "--2147483648",
             expect![[r#"
-                --2147483648
+                neg(-2147483648)
             "#]],
         );
     }
@@ -2666,7 +2666,7 @@ mod tests {
         accept(
             "(-2147483648).abs()",
             expect![[r#"
-                (-2147483648).abs()
+                -2147483648.abs()
             "#]],
         );
     }
@@ -2748,7 +2748,7 @@ mod tests {
         accept(
             "Color::Red == Color::Green",
             expect![[r#"
-                Color::Red == Color::Green
+                eq(Color::Red, Color::Green)
             "#]],
         );
     }
@@ -2824,7 +2824,7 @@ mod tests {
         accept(
             r#"Outcome::Success {value: x + 1}"#,
             expect![[r#"
-                Outcome::Success {value: x + 1}
+                Outcome::Success {value: add(x, 1)}
             "#]],
         );
     }
@@ -2919,7 +2919,7 @@ mod tests {
         accept(
             "Some(a + b)",
             expect![[r#"
-                Some(a + b)
+                Some(add(a, b))
             "#]],
         );
     }
@@ -2997,7 +2997,9 @@ mod tests {
                 match color {Color::Red => "red"}
             "#},
             expect![[r#"
-                match color {Color::Red => "red"}
+                match color {
+                  Color::Red => "red",
+                }
             "#]],
         );
     }
@@ -3032,7 +3034,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                match color {Color::Red => "red", Color::Blue => "blue"}
+                match color {
+                  Color::Red => "red",
+                  Color::Blue => "blue",
+                }
             "#]],
         );
     }
@@ -3066,7 +3071,10 @@ mod tests {
             "#},
             expect![[r#"
                 match outer {
-                  Outer::A => match inner {Inner::X => 1, Inner::Y => 2},
+                  Outer::A => match inner {
+                    Inner::X => 1,
+                    Inner::Y => 2,
+                  },
                   Outer::B => 3,
                 }
             "#]],
@@ -3089,8 +3097,8 @@ mod tests {
             "match result { Outcome::Success{value: v} => v, Outcome::Failure{message: m} => m }",
             expect![[r#"
                 match result {
-                  Outcome::Success{value: v} => v,
-                  Outcome::Failure{message: m} => m,
+                  Outcome::Success {value: v} => v,
+                  Outcome::Failure {message: m} => m,
                 }
             "#]],
         );
@@ -3101,7 +3109,9 @@ mod tests {
         accept(
             "match event { Event::Click{x: a, y: b} => a + b }",
             expect![[r#"
-                match event {Event::Click{x: a, y: b} => a + b}
+                match event {
+                  Event::Click {x: a, y: b} => add(a, b),
+                }
             "#]],
         );
     }
@@ -3112,7 +3122,7 @@ mod tests {
             "match maybe { Maybe::Just{value: v} => v, Maybe::Nothing => 0 }",
             expect![[r#"
                 match maybe {
-                  Maybe::Just{value: v} => v,
+                  Maybe::Just {value: v} => v,
                   Maybe::Nothing => 0,
                 }
             "#]],
@@ -3124,7 +3134,10 @@ mod tests {
         accept(
             "match result { Outcome::Success{data: Some(x)} => x, _ => 0 }",
             expect![[r#"
-                match result {Outcome::Success{data: Some(x)} => x, _ => 0}
+                match result {
+                  Outcome::Success {data: Some(x)} => x,
+                  _ => 0,
+                }
             "#]],
         );
     }
@@ -3135,8 +3148,8 @@ mod tests {
             "match result { Outcome::Success{value: _} => 1, Outcome::Failure{message: _} => 0 }",
             expect![[r#"
                 match result {
-                  Outcome::Success{value: _} => 1,
-                  Outcome::Failure{message: _} => 0,
+                  Outcome::Success {value: _} => 1,
+                  Outcome::Failure {message: _} => 0,
                 }
             "#]],
         );
@@ -3147,7 +3160,9 @@ mod tests {
         accept(
             "match point { Point::XY{} => 0 }",
             expect![[r#"
-                match point {Point::XY => 0}
+                match point {
+                  Point::XY => 0,
+                }
             "#]],
         );
     }
@@ -3157,9 +3172,9 @@ mod tests {
         accept(
             r#"match path == "" { true => git_ref, _ => git_ref + " - " + path }"#,
             expect![[r#"
-                match path == "" {
+                match eq(path, "") {
                   true => git_ref,
-                  _ => git_ref + " - " + path,
+                  _ => add(add(git_ref, " - "), path),
                 }
             "#]],
         );
@@ -3171,8 +3186,8 @@ mod tests {
             "match result { Outcome::Success{value} => value, Outcome::Failure{message} => message }",
             expect![[r#"
                 match result {
-                  Outcome::Success{value} => value,
-                  Outcome::Failure{message} => message,
+                  Outcome::Success {value: value} => value,
+                  Outcome::Failure {message: message} => message,
                 }
             "#]],
         );
@@ -3183,7 +3198,9 @@ mod tests {
         accept(
             "match user { User{name, age} => name }",
             expect![[r#"
-                match user {User{name, age} => name}
+                match user {
+                  User {name: name, age: age} => name,
+                }
             "#]],
         );
     }
@@ -3193,7 +3210,9 @@ mod tests {
         accept(
             "match event { Event::Click{x, y: b} => x + b }",
             expect![[r#"
-                match event {Event::Click{x, y: b} => x + b}
+                match event {
+                  Event::Click {x: x, y: b} => add(x, b),
+                }
             "#]],
         );
     }
@@ -3203,7 +3222,10 @@ mod tests {
         accept(
             "match pair { (true, x) => x, (false, _) => 0 }",
             expect![[r#"
-                match pair {(true, x) => x, (false, _) => 0}
+                match pair {
+                  (true, x) => x,
+                  (false, _) => 0,
+                }
             "#]],
         );
     }
@@ -3213,7 +3235,10 @@ mod tests {
         accept(
             "match pair { ((a, b), Some((c, _))) => a, _ => 0 }",
             expect![[r#"
-                match pair {((a, b), Some((c, _))) => a, _ => 0}
+                match pair {
+                  ((a, b), Some((c, _))) => a,
+                  _ => 0,
+                }
             "#]],
         );
     }
@@ -3223,7 +3248,9 @@ mod tests {
         accept(
             "match single { (x,) => x }",
             expect![[r#"
-                match single {(x,) => x}
+                match single {
+                  (x,) => x,
+                }
             "#]],
         );
     }
@@ -3233,7 +3260,9 @@ mod tests {
         accept(
             "match unit { () => 0 }",
             expect![[r#"
-                match unit {() => 0}
+                match unit {
+                  () => 0,
+                }
             "#]],
         );
     }
@@ -3243,7 +3272,9 @@ mod tests {
         accept(
             "match pair { (a, b,) => a }",
             expect![[r#"
-                match pair {(a, b) => a}
+                match pair {
+                  (a, b) => a,
+                }
             "#]],
         );
     }
@@ -3253,7 +3284,10 @@ mod tests {
         accept(
             "match maybe { (Some(x)) => x, (_) => 0 }",
             expect![[r#"
-                match maybe {Some(x) => x, _ => 0}
+                match maybe {
+                  Some(x) => x,
+                  _ => 0,
+                }
             "#]],
         );
     }
@@ -3295,7 +3329,9 @@ mod tests {
         accept(
             "for item in items { item }",
             expect![[r#"
-                for item in items { item }
+                for item in items {
+                  item
+                }
             "#]],
         );
     }
@@ -3305,7 +3341,9 @@ mod tests {
         accept(
             "for item in [1, 2, 3] { item }",
             expect![[r#"
-                for item in [1, 2, 3] { item }
+                for item in [1, 2, 3] {
+                  item
+                }
             "#]],
         );
     }
@@ -3315,7 +3353,9 @@ mod tests {
         accept(
             "for i in 1..=n { i }",
             expect![[r#"
-                for i in 1..=n { i }
+                for i in 1..=n {
+                  i
+                }
             "#]],
         );
     }
@@ -3325,7 +3365,9 @@ mod tests {
         accept(
             "for _ in items { x }",
             expect![[r#"
-                for _ in items { x }
+                for _ in items {
+                  x
+                }
             "#]],
         );
     }
@@ -3336,8 +3378,7 @@ mod tests {
             "for item in items { let name = item.name; name }",
             expect![[r#"
                 for item in items {
-                  let name = item.name;
-                  name
+                  let name = item.name in name
                 }
             "#]],
         );
@@ -3348,7 +3389,11 @@ mod tests {
         accept(
             "for row in rows { for cell in row { cell } }",
             expect![[r#"
-                for row in rows { for cell in row { cell } }
+                for row in rows {
+                  for cell in row {
+                    cell
+                  }
+                }
             "#]],
         );
     }
@@ -3359,7 +3404,9 @@ mod tests {
             "match x { Some(items) => for item in items { item }, None => <></> }",
             expect![[r#"
                 match x {
-                  Some(items) => for item in items { item },
+                  Some(items) => for item in items {
+                    item
+                  },
                   None => fragment(),
                 }
             "#]],
@@ -3552,7 +3599,7 @@ mod tests {
         accept(
             "(x + y).to_string()",
             expect![[r#"
-                (x + y).to_string()
+                add(x, y).to_string()
             "#]],
         );
     }
@@ -3562,7 +3609,7 @@ mod tests {
         accept(
             "(x.to_float() + 0.5).to_string().length()",
             expect![[r#"
-                (x.to_float() + 0.5).to_string().length()
+                add(x.to_float(), 0.5).to_string().length()
             "#]],
         );
     }
@@ -3682,7 +3729,7 @@ mod tests {
         accept(
             "1 + 2.to_string()",
             expect![[r#"
-                1 + 2.to_string()
+                add(1, 2.to_string())
             "#]],
         );
     }
@@ -3692,7 +3739,7 @@ mod tests {
         accept(
             "x * y.field",
             expect![[r#"
-                x * y.field
+                mul(x, y.field)
             "#]],
         );
     }
@@ -3732,12 +3779,8 @@ mod tests {
         accept(
             "{ let a = 1; let b = a + 1; a + b }",
             expect![[r#"
-            {
-              let a = 1;
-              let b = a + 1;
-              a + b
-            }
-        "#]],
+                let a = 1 in let b = add(a, 1) in add(a, b)
+            "#]],
         );
     }
 
@@ -3746,11 +3789,8 @@ mod tests {
         accept(
             "{ let a: Int = 1; a }",
             expect![[r#"
-            {
-              let a: Int = 1;
-              a
-            }
-        "#]],
+                let a: Int = 1 in a
+            "#]],
         );
     }
 
@@ -3760,10 +3800,7 @@ mod tests {
             "match x { Some(t) => { let s = t; s }, None => \"\" }",
             expect![[r#"
                 match x {
-                  Some(t) => {
-                    let s = t;
-                    s
-                  },
+                  Some(t) => let s = t in s,
                   None => "",
                 }
             "#]],
@@ -3775,22 +3812,14 @@ mod tests {
         accept(
             "1 + { let a = 2; a }",
             expect![[r#"
-            1 + {
-              let a = 2;
-              a
-            }
-        "#]],
+                add(1, let a = 2 in a)
+            "#]],
         );
         accept(
             "f({ let a = 2; a })",
             expect![[r#"
-            f(
-              {
-                let a = 2;
-                a
-              },
-            )
-        "#]],
+                f(let a = 2 in a)
+            "#]],
         );
     }
 
@@ -3799,14 +3828,8 @@ mod tests {
         accept(
             "{ let x = { let a = 1; a }; x }",
             expect![[r#"
-            {
-              let x = {
-                let a = 1;
-                a
-              };
-              x
-            }
-        "#]],
+                let x = let a = 1 in a in x
+            "#]],
         );
     }
 
@@ -3856,7 +3879,9 @@ mod tests {
                 match x { Some(t) => let s = t; s, None => "" }
                                      ^^^
                 -- ast --
-                match x {None => ""}
+                match x {
+                  None => "",
+                }
             "#]],
         );
     }
@@ -3879,7 +3904,7 @@ mod tests {
         accept(
             "foo(x + 1, bar(y))",
             expect![[r#"
-                foo(x + 1, bar(y))
+                foo(add(x, 1), bar(y))
             "#]],
         );
     }
@@ -3899,7 +3924,7 @@ mod tests {
         accept(
             "foo(1) + foo(2)",
             expect![[r#"
-                foo(1) + foo(2)
+                add(foo(1), foo(2))
             "#]],
         );
     }

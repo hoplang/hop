@@ -1,5 +1,6 @@
-use pretty::BoxDoc;
+use std::fmt::{self, Write};
 
+use crate::display::Indent;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_type::IrDataType;
 use crate::ir::value_id::ValueId;
@@ -14,14 +15,18 @@ pub struct IrFor<Body> {
 }
 
 impl<Body> IrFor<Body> {
-    pub fn to_doc<'a>(&'a self, body_to_doc: impl Fn(&'a Body) -> BoxDoc<'a>) -> BoxDoc<'a> {
-        let var = match &self.var {
-            Some(binder) => binder.to_string(),
-            None => "_".to_string(),
-        };
-        BoxDoc::text(format!("for {var} in {} {{", self.array))
-            .append(body_to_doc(&self.body).nest(2))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("}"))
+    /// The loop head, then the body, which starts with a line break and is
+    /// indented.
+    pub fn write(
+        &self,
+        w: &mut dyn Write,
+        write_body: impl Fn(&Body, &mut dyn Write) -> fmt::Result,
+    ) -> fmt::Result {
+        match &self.var {
+            Some(binder) => write!(w, "for {binder} in {} {{", self.array)?,
+            None => write!(w, "for _ in {} {{", self.array)?,
+        }
+        write_body(&self.body, &mut Indent::new(w))?;
+        w.write_str("\n}")
     }
 }

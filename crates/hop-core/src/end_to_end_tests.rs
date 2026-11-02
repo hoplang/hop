@@ -659,7 +659,7 @@ mod tests {
                   let v13: String = match v2 {
                     Some(v12: String) => {
                       let v4: String = " "
-                      let v5: String = concat(v12, v4)
+                      let v5: String = string_concat(v12, v4)
                       v5
                     }
                     None => {
@@ -945,7 +945,7 @@ mod tests {
                   for v3: Count in v2 {
                     let v13: Int = v3.n
                     let v5: Int = 57
-                    let v6: Bool = v13 == v5
+                    let v6: Bool = eq(v13, v5)
                     match v6 {
                       true => {
                         write("eq")
@@ -963,7 +963,7 @@ mod tests {
                   for v3: Count in v2 {
                     let v13: Int = v3.n
                     let v5: Int = 57
-                    let v6: Bool = v13 == v5
+                    let v6: Bool = eq(v13, v5)
                     match v6 {
                       true => {
                         write("eq")
@@ -1182,12 +1182,12 @@ mod tests {
                 }
                 fn Second@f1(n@v6: Int, title@v7: String) -> Html {
                   let v9: Int = 0
-                  let v10: Bool = v9 < v6
+                  let v10: Bool = lt(v9, v6)
                   write_function Leaf@f2(v7)
                   match v10 {
                     true => {
                       let v11: Int = 1
-                      let v12: Int = v6 - v11
+                      let v12: Int = sub(v6, v11)
                       let v13: String = "d"
                       write_function First@f0(v12, v13)
                     }
@@ -1206,14 +1206,14 @@ mod tests {
                 }
                 fn Second@f1(n@v6: Int, title@v7: String) -> Html {
                   let v9: Int = 0
-                  let v10: Bool = v9 < v6
+                  let v10: Bool = lt(v9, v6)
                   write("<div>")
                   write_string(v7)
                   write("</div>")
                   match v10 {
                     true => {
                       let v11: Int = 1
-                      let v12: Int = v6 - v11
+                      let v12: Int = sub(v6, v11)
                       let v13: String = "d"
                       write_function First@f0(v12, v13)
                     }
@@ -2603,7 +2603,7 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Card@f1(count@v4: Int) -> Html {
                   let v5: Int = 0
-                  let v6: Bool = v5 < v4
+                  let v6: Bool = lt(v5, v4)
                   match v6 {
                     true => {
                       write("<div>positive</div>")
@@ -2674,7 +2674,7 @@ mod tests {
                 -- ir (unoptimized) --
                 fn A@f1(count@v6: Int, data-foo@v7: String) -> Html {
                   let v8: Int = 0
-                  let v9: Bool = v8 < v6
+                  let v9: Bool = lt(v8, v6)
                   write("<div data-foo=\"")
                   write_string(v7)
                   write("\">")
@@ -3694,7 +3694,7 @@ mod tests {
                 -- ir (unoptimized) --
                 fn A@f1(tabindex@v6: Int, data-x@v7: String) -> Html {
                   let v8: Int = 0
-                  let v9: Bool = v8 < v6
+                  let v9: Bool = lt(v8, v6)
                   write("<div data-x=\"")
                   write_string(v7)
                   write("\">")
@@ -4330,15 +4330,15 @@ mod tests {
                   let v0: String = ""
                   let v1: String = "main"
                   let v2: String = ""
-                  let v3: Bool = v0 == v2
+                  let v3: Bool = eq(v0, v2)
                   let v10: String = match v3 {
                     true => {
                       v1
                     }
                     false => {
                       let v4: String = " - "
-                      let v5: String = concat(v1, v4)
-                      let v6: String = concat(v5, v0)
+                      let v5: String = string_concat(v1, v4)
+                      let v6: String = string_concat(v5, v0)
                       v6
                     }
                   }
@@ -4620,33 +4620,33 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0: Float = 10000000000
-                  let v1: Float = v0 * v0
-                  let v2: Float = v1 * v0
-                  let v3: Float = v2 * v0
-                  let v4: Float = v3 * v0
-                  let v5: Float = v4 * v0
-                  let v6: Float = v5 * v0
-                  let v7: Float = v6 * v0
-                  let v8: Float = v7 * v0
-                  let v9: Float = v8 * v0
-                  let v10: Float = v9 * v9
-                  let v11: Float = v10 * v9
-                  let v12: Float = v11 * v9
+                  let v1: Float = mul(v0, v0)
+                  let v2: Float = mul(v1, v0)
+                  let v3: Float = mul(v2, v0)
+                  let v4: Float = mul(v3, v0)
+                  let v5: Float = mul(v4, v0)
+                  let v6: Float = mul(v5, v0)
+                  let v7: Float = mul(v6, v0)
+                  let v8: Float = mul(v7, v0)
+                  let v9: Float = mul(v8, v0)
+                  let v10: Float = mul(v9, v9)
+                  let v11: Float = mul(v10, v9)
+                  let v12: Float = mul(v11, v9)
                   let v13: Float = 0
-                  let v14: Float = v12 * v13
-                  let v15: Bool = v14 == v14
-                  let v16: Bool = v14 == v14
-                  let v17: Bool = !v16
-                  let v18: Bool = v14 < v14
-                  let v19: Bool = v14 <= v14
-                  let v20: Bool = v14 < v14
-                  let v21: Bool = v14 <= v14
-                  let v22: Bool = v14 < v12
-                  let v23: Float = -v12
-                  let v24: Bool = v23 < v14
+                  let v14: Float = mul(v12, v13)
+                  let v15: Bool = eq(v14, v14)
+                  let v16: Bool = eq(v14, v14)
+                  let v17: Bool = not(v16)
+                  let v18: Bool = lt(v14, v14)
+                  let v19: Bool = lt_eq(v14, v14)
+                  let v20: Bool = lt(v14, v14)
+                  let v21: Bool = lt_eq(v14, v14)
+                  let v22: Bool = lt(v14, v12)
+                  let v23: Float = neg(v12)
+                  let v24: Bool = lt(v23, v14)
                   let v25: Int = v14.to_int()
                   let v26: Int = 0
-                  let v27: Bool = v25 == v26
+                  let v27: Bool = eq(v25, v26)
                   match v27 {
                     true => {
                       match v24 {
@@ -4765,23 +4765,23 @@ mod tests {
                   let v0: Int = 2147483647
                   let v1: Int = -2147483648
                   let v2: Int = 1
-                  let v3: Int = v0 + v2
-                  let v4: Bool = v3 == v1
+                  let v3: Int = add(v0, v2)
+                  let v4: Bool = eq(v3, v1)
                   let v5: Int = 1
-                  let v6: Int = v1 - v5
-                  let v7: Bool = v6 == v0
-                  let v8: Int = -v1
-                  let v9: Bool = v8 == v1
+                  let v6: Int = sub(v1, v5)
+                  let v7: Bool = eq(v6, v0)
+                  let v8: Int = neg(v1)
+                  let v9: Bool = eq(v8, v1)
                   let v10: Int = 2
-                  let v11: Int = v0 * v10
+                  let v11: Int = mul(v0, v10)
                   let v12: Int = -2
-                  let v13: Bool = v11 == v12
-                  let v14: Int = v0 * v0
+                  let v13: Bool = eq(v11, v12)
+                  let v14: Int = mul(v0, v0)
                   let v15: Int = 1
-                  let v16: Bool = v14 == v15
+                  let v16: Bool = eq(v14, v15)
                   let v17: Int = -1
-                  let v18: Int = v1 * v17
-                  let v19: Bool = v18 == v1
+                  let v18: Int = mul(v1, v17)
+                  let v19: Bool = eq(v18, v1)
                   match v19 {
                     true => {
                       match v16 {
@@ -4890,18 +4890,18 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0: Float = 10000000000
-                  let v1: Float = v0 * v0
-                  let v2: Float = v1 * v0
-                  let v3: Float = v2 * v0
-                  let v4: Float = v3 * v0
-                  let v5: Float = v4 * v0
-                  let v6: Float = v5 * v0
-                  let v7: Float = v6 * v0
-                  let v8: Float = v7 * v0
-                  let v9: Float = v8 * v0
-                  let v10: Float = v9 * v9
-                  let v11: Float = v10 * v9
-                  let v12: Float = v11 * v9
+                  let v1: Float = mul(v0, v0)
+                  let v2: Float = mul(v1, v0)
+                  let v3: Float = mul(v2, v0)
+                  let v4: Float = mul(v3, v0)
+                  let v5: Float = mul(v4, v0)
+                  let v6: Float = mul(v5, v0)
+                  let v7: Float = mul(v6, v0)
+                  let v8: Float = mul(v7, v0)
+                  let v9: Float = mul(v8, v0)
+                  let v10: Float = mul(v9, v9)
+                  let v11: Float = mul(v10, v9)
+                  let v12: Float = mul(v11, v9)
                   let v13: Float = 5
                   let v14: Float = 3.7
                   let v15: Float = -2.9
@@ -4912,36 +4912,36 @@ mod tests {
                   let v20: Float = -0.5
                   let v21: Int = v13.to_int()
                   let v22: Int = 5
-                  let v23: Bool = v21 == v22
+                  let v23: Bool = eq(v21, v22)
                   let v24: Int = v14.to_int()
                   let v25: Int = 3
-                  let v26: Bool = v24 == v25
+                  let v26: Bool = eq(v24, v25)
                   let v27: Int = v15.to_int()
                   let v28: Int = -2
-                  let v29: Bool = v27 == v28
+                  let v29: Bool = eq(v27, v28)
                   let v30: Int = v12.to_int()
                   let v31: Int = 2147483647
-                  let v32: Bool = v30 == v31
-                  let v33: Float = -v12
+                  let v32: Bool = eq(v30, v31)
+                  let v33: Float = neg(v12)
                   let v34: Int = v33.to_int()
                   let v35: Int = -2147483648
-                  let v36: Bool = v34 == v35
+                  let v36: Bool = eq(v34, v35)
                   let v37: Int = v16.to_int()
                   let v38: Int = 2147483647
-                  let v39: Bool = v37 == v38
+                  let v39: Bool = eq(v37, v38)
                   let v40: Int = v17.to_int()
                   let v41: Int = 2147483647
-                  let v42: Bool = v40 == v41
+                  let v42: Bool = eq(v40, v41)
                   let v43: Int = v18.to_int()
                   let v44: Int = -2147483648
-                  let v45: Bool = v43 == v44
+                  let v45: Bool = eq(v43, v44)
                   let v46: Int = v19.to_int()
                   let v47: Int = -2147483648
-                  let v48: Bool = v46 == v47
+                  let v48: Bool = eq(v46, v47)
                   let v49: Int = v20.to_int()
                   let v50: String = v49.to_string()
                   let v51: String = "0"
-                  let v52: Bool = v50 == v51
+                  let v52: Bool = eq(v50, v51)
                   match v52 {
                     true => {
                       match v48 {
@@ -5078,21 +5078,21 @@ mod tests {
                   let v1: Float = -inf
                   let v2: Int = -2147483648
                   let v3: Float = 0
-                  let v4: Float = v0 * v3
+                  let v4: Float = mul(v0, v3)
                   let v5: Float = 0
-                  let v6: Bool = v5 < v0
+                  let v6: Bool = lt(v5, v0)
                   let v7: Float = 2
-                  let v8: Float = v0 * v7
-                  let v9: Bool = v8 == v0
+                  let v8: Float = mul(v0, v7)
+                  let v9: Bool = eq(v8, v0)
                   let v10: Float = 0
-                  let v11: Bool = v1 < v10
+                  let v11: Bool = lt(v1, v10)
                   let v12: Float = 2
-                  let v13: Float = v1 * v12
-                  let v14: Bool = v13 == v1
+                  let v13: Float = mul(v1, v12)
+                  let v14: Bool = eq(v13, v1)
                   let v15: Int = 1
-                  let v16: Int = v2 - v15
+                  let v16: Int = sub(v2, v15)
                   let v17: Int = 2147483647
-                  let v18: Bool = v16 == v17
+                  let v18: Bool = eq(v16, v17)
                   let v25: Int = 0
                   let v26: Int = 1
                   let v27: Array[Int] = v25..=v26
@@ -5134,10 +5134,10 @@ mod tests {
                   }
                   for v28: Int in v27 {
                     let v29: Float = v28.to_float()
-                    let v30: Float = v4 + v29
-                    let v31: Float = v4 + v29
-                    let v32: Bool = v30 == v31
-                    let v33: Bool = !v32
+                    let v30: Float = add(v4, v29)
+                    let v31: Float = add(v4, v29)
+                    let v32: Bool = eq(v30, v31)
+                    let v33: Bool = not(v32)
                     match v33 {
                       true => {
                         write("ok")
@@ -5157,10 +5157,10 @@ mod tests {
                   write("ok")
                   for v28: Int in v27 {
                     let v29: Float = v28.to_float()
-                    let v30: Float = v4 + v29
-                    let v31: Float = v4 + v29
-                    let v32: Bool = v30 == v31
-                    let v33: Bool = !v32
+                    let v30: Float = add(v4, v29)
+                    let v31: Float = add(v4, v29)
+                    let v32: Bool = eq(v30, v31)
+                    let v33: Bool = not(v32)
                     match v33 {
                       true => {
                         write("ok")
@@ -5229,10 +5229,10 @@ mod tests {
                   let v0: Int = 2147483647
                   let v1: Int = -2147483648
                   let v2: Int = 1
-                  let v3: Int = v0 - v2
+                  let v3: Int = sub(v0, v2)
                   let v4: Array[Int] = v3..=v0
                   let v11: Int = 1
-                  let v12: Int = v1 + v11
+                  let v12: Int = add(v1, v11)
                   let v13: Array[Int] = v1..=v12
                   let v20: Int = 3
                   let v21: Int = 1
@@ -5463,7 +5463,7 @@ mod tests {
                 -- ir (unoptimized) --
                 page Test() {
                   let v0: Bool = true
-                  let v5: Bool = !v0
+                  let v5: Bool = not(v0)
                   match v0 {
                     true => {
                       write("Visible")
@@ -6318,9 +6318,9 @@ mod tests {
                 page Test() {
                   let v0: String = "foo"
                   let v1: String = "bar"
-                  let v2: String = concat(v0, v1)
+                  let v2: String = string_concat(v0, v1)
                   let v3: String = "foobar"
-                  let v4: Bool = v2 == v3
+                  let v4: Bool = eq(v2, v3)
                   match v4 {
                     true => {
                       write("equals")
@@ -6378,10 +6378,10 @@ mod tests {
                 page Test() {
                   let v0: Int = 3
                   let v1: Int = 5
-                  let v2: Bool = v0 < v1
+                  let v2: Bool = lt(v0, v1)
                   let v7: Int = 10
                   let v8: Int = 2
-                  let v9: Bool = v7 < v8
+                  let v9: Bool = lt(v7, v8)
                   match v2 {
                     true => {
                       write("3 &lt; 5")
@@ -6440,7 +6440,7 @@ mod tests {
                 page Test() {
                   let v0: Float = 1.5
                   let v1: Float = 2.5
-                  let v2: Bool = v0 < v1
+                  let v2: Bool = lt(v0, v1)
                   match v2 {
                     true => {
                       write("1.5 &lt; 2.5")
@@ -6505,7 +6505,7 @@ mod tests {
                   let v3: String = v2.name
                   let v5: Int = v2.age
                   let v6: Int = 30
-                  let v7: Bool = v5 == v6
+                  let v7: Bool = eq(v5, v6)
                   write_string(v3)
                   match v7 {
                     true => {
@@ -6750,9 +6750,9 @@ mod tests {
                 page Test() {
                   let v0: Int = 3
                   let v1: Int = 7
-                  let v2: Int = v0 + v1
+                  let v2: Int = add(v0, v1)
                   let v3: Int = 10
-                  let v4: Bool = v2 == v3
+                  let v4: Bool = eq(v2, v3)
                   match v4 {
                     true => {
                       write("correct")
@@ -6806,9 +6806,9 @@ mod tests {
                 page Test() {
                   let v0: Int = 10
                   let v1: Int = 3
-                  let v2: Int = v0 - v1
+                  let v2: Int = sub(v0, v1)
                   let v3: Int = 7
-                  let v4: Bool = v2 == v3
+                  let v4: Bool = eq(v2, v3)
                   match v4 {
                     true => {
                       write("correct")
@@ -6862,9 +6862,9 @@ mod tests {
                 page Test() {
                   let v0: Int = 4
                   let v1: Int = 5
-                  let v2: Int = v0 * v1
+                  let v2: Int = mul(v0, v1)
                   let v3: Int = 20
-                  let v4: Bool = v2 == v3
+                  let v4: Bool = eq(v2, v3)
                   match v4 {
                     true => {
                       write("correct")
@@ -7050,13 +7050,13 @@ mod tests {
                 page Test() {
                   let v0: Int = 3
                   let v1: Int = 5
-                  let v2: Bool = v0 <= v1
+                  let v2: Bool = lt_eq(v0, v1)
                   let v7: Int = 5
                   let v8: Int = 5
-                  let v9: Bool = v7 <= v8
+                  let v9: Bool = lt_eq(v7, v8)
                   let v14: Int = 7
                   let v15: Int = 5
-                  let v16: Bool = v14 <= v15
+                  let v16: Bool = lt_eq(v14, v15)
                   match v2 {
                     true => {
                       write("A")
@@ -8339,7 +8339,7 @@ mod tests {
                   let v2: Array[String] = [v0, v1]
                   let v3: Int = v2.len()
                   let v4: Int = 2
-                  let v5: Bool = v3 == v4
+                  let v5: Bool = eq(v3, v4)
                   match v5 {
                     true => {
                       write("has two")
@@ -8394,7 +8394,7 @@ mod tests {
                   let v1: Array[String] = [v0]
                   let v2: Int = v1.len()
                   let v3: Int = 5
-                  let v4: Bool = v2 < v3
+                  let v4: Bool = lt(v2, v3)
                   match v4 {
                     true => {
                       write("less than 5")
@@ -9151,7 +9151,7 @@ mod tests {
                 page Test() {
                   let v0: Int = 1
                   let v1: Int = 2
-                  let v2: Int = v0 + v1
+                  let v2: Int = add(v0, v1)
                   let v3: String = v2.to_string()
                   write_string(v3)
                 }
@@ -10595,12 +10595,12 @@ mod tests {
                 fn Countdown@f0(delete@v2: Int) -> Html {
                   let v3: String = v2.to_string()
                   let v5: Int = 0
-                  let v6: Bool = v5 < v2
+                  let v6: Bool = lt(v5, v2)
                   write_string(v3)
                   match v6 {
                     true => {
                       let v7: Int = 1
-                      let v8: Int = v2 - v7
+                      let v8: Int = sub(v2, v7)
                       write_function Countdown@f0(v8)
                     }
                     false => {
@@ -10615,12 +10615,12 @@ mod tests {
                 fn Countdown@f0(delete@v2: Int) -> Html {
                   let v3: String = v2.to_string()
                   let v5: Int = 0
-                  let v6: Bool = v5 < v2
+                  let v6: Bool = lt(v5, v2)
                   write_string(v3)
                   match v6 {
                     true => {
                       let v7: Int = 1
-                      let v8: Int = v2 - v7
+                      let v8: Int = sub(v2, v7)
                       write_function Countdown@f0(v8)
                     }
                     false => {
@@ -10677,12 +10677,12 @@ mod tests {
                 fn Countdown@f0(type@v2: Int) -> Html {
                   let v3: String = v2.to_string()
                   let v5: Int = 0
-                  let v6: Bool = v5 < v2
+                  let v6: Bool = lt(v5, v2)
                   write_string(v3)
                   match v6 {
                     true => {
                       let v7: Int = 1
-                      let v8: Int = v2 - v7
+                      let v8: Int = sub(v2, v7)
                       write_function Countdown@f0(v8)
                     }
                     false => {
@@ -10697,12 +10697,12 @@ mod tests {
                 fn Countdown@f0(type@v2: Int) -> Html {
                   let v3: String = v2.to_string()
                   let v5: Int = 0
-                  let v6: Bool = v5 < v2
+                  let v6: Bool = lt(v5, v2)
                   write_string(v3)
                   match v6 {
                     true => {
                       let v7: Int = 1
-                      let v8: Int = v2 - v7
+                      let v8: Int = sub(v2, v7)
                       write_function Countdown@f0(v8)
                     }
                     false => {
@@ -11198,9 +11198,9 @@ mod tests {
                 page Test() {
                   let v0: String = "hello"
                   let v1: String = " "
-                  let v2: String = concat(v0, v1)
+                  let v2: String = string_concat(v0, v1)
                   let v3: String = "world"
-                  let v4: String = concat(v2, v3)
+                  let v4: String = string_concat(v2, v3)
                   let v5: Greeting = {message: v4}
                   let v6: String = v5.message
                   write_string(v6)
@@ -13890,10 +13890,10 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Offset@f0(dx@v3: Int, scale@v4: Float) -> Html {
                   let v5: Int = 3
-                  let v6: Int = v3 * v5
+                  let v6: Int = mul(v3, v5)
                   let v7: String = v6.to_string()
                   let v10: Float = 2
-                  let v11: Float = v4 * v10
+                  let v11: Float = mul(v4, v10)
                   let v12: Int = v11.to_int()
                   let v13: String = v12.to_string()
                   write("<div>")
@@ -14639,7 +14639,7 @@ mod tests {
                   let v0: Option[Bool] = None
                   let v1: Bool = true
                   let v2: Bool = v0.is_none()
-                  let v3: Bool = v1 == v2
+                  let v3: Bool = eq(v1, v2)
                   match v3 {
                     true => {
                       write("x")
@@ -14802,7 +14802,7 @@ mod tests {
                   let v1: Bool = v0.is_empty()
                   let v2: String = "b"
                   let v3: Bool = v2.is_empty()
-                  let v4: Bool = v1 == v3
+                  let v4: Bool = eq(v1, v3)
                   match v4 {
                     true => {
                       write("x")
@@ -14969,7 +14969,7 @@ mod tests {
                 fn RenderItem@f0(item@v10: Item) -> Html {
                   match v10 {
                     Item::Todo {label@v25: String, done@v26: Bool} => {
-                      let v17: Bool = !v26
+                      let v17: Bool = not(v26)
                       match v26 {
                         true => {
                           write("[x]")
@@ -15072,7 +15072,7 @@ mod tests {
                   match v12 {
                     TimeAgo::MinutesAgo {count@v36: Int} => {
                       let v14: Int = 1
-                      let v15: Bool = v36 == v14
+                      let v15: Bool = eq(v36, v14)
                       match v15 {
                         true => {
                           write("1 minute ago")
@@ -15086,7 +15086,7 @@ mod tests {
                     }
                     TimeAgo::HoursAgo {count@v37: Int} => {
                       let v25: Int = 1
-                      let v26: Bool = v37 == v25
+                      let v26: Bool = eq(v37, v25)
                       match v26 {
                         true => {
                           write("1 hour ago")
@@ -15535,11 +15535,11 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Nest@f0(depth@v6: Int, children@v7: () -> Html) -> Html {
                   let v8: Int = 0
-                  let v9: Bool = v8 < v6
+                  let v9: Bool = lt(v8, v6)
                   match v9 {
                     true => {
                       let v10: Int = 1
-                      let v11: Int = v6 - v10
+                      let v11: Int = sub(v6, v10)
                       write("<div>")
                       write_function Nest@f0(v11, v7)
                       write("</div>")
@@ -15559,11 +15559,11 @@ mod tests {
                 -- ir (optimized) --
                 fn Nest@f0(depth@v6: Int, children@v7: () -> Html) -> Html {
                   let v8: Int = 0
-                  let v9: Bool = v8 < v6
+                  let v9: Bool = lt(v8, v6)
                   match v9 {
                     true => {
                       let v10: Int = 1
-                      let v11: Int = v6 - v10
+                      let v11: Int = sub(v6, v10)
                       write("<div>")
                       write_function Nest@f0(v11, v7)
                       write("</div>")
@@ -15755,14 +15755,14 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Nest@f0(n@v3: Int, id@v4: String) -> Html {
                   let v5: Int = 0
-                  let v6: Bool = v5 < v3
+                  let v6: Bool = lt(v5, v3)
                   write("<div id=\"")
                   write_string(v4)
                   write("\">")
                   match v6 {
                     true => {
                       let v7: Int = 1
-                      let v8: Int = v3 - v7
+                      let v8: Int = sub(v3, v7)
                       write_function Nest@f1(v8)
                     }
                     false => {
@@ -15772,12 +15772,12 @@ mod tests {
                 }
                 fn Nest@f1(n@v14: Int) -> Html {
                   let v15: Int = 0
-                  let v16: Bool = v15 < v14
+                  let v16: Bool = lt(v15, v14)
                   write("<div>")
                   match v16 {
                     true => {
                       let v17: Int = 1
-                      let v18: Int = v14 - v17
+                      let v18: Int = sub(v14, v17)
                       write_function Nest@f1(v18)
                     }
                     false => {
@@ -15793,12 +15793,12 @@ mod tests {
                 -- ir (optimized) --
                 fn Nest@f1(n@v14: Int) -> Html {
                   let v15: Int = 0
-                  let v16: Bool = v15 < v14
+                  let v16: Bool = lt(v15, v14)
                   write("<div>")
                   match v16 {
                     true => {
                       let v17: Int = 1
-                      let v18: Int = v14 - v17
+                      let v18: Int = sub(v14, v17)
                       write_function Nest@f1(v18)
                     }
                     false => {
@@ -15858,12 +15858,12 @@ mod tests {
                 fn Countdown@f0(n@v2: Int) -> Html {
                   let v3: String = v2.to_string()
                   let v5: Int = 0
-                  let v6: Bool = v5 < v2
+                  let v6: Bool = lt(v5, v2)
                   write_string(v3)
                   match v6 {
                     true => {
                       let v7: Int = 1
-                      let v8: Int = v2 - v7
+                      let v8: Int = sub(v2, v7)
                       write_function Countdown@f0(v8)
                     }
                     false => {
@@ -15878,12 +15878,12 @@ mod tests {
                 fn Countdown@f0(n@v2: Int) -> Html {
                   let v3: String = v2.to_string()
                   let v5: Int = 0
-                  let v6: Bool = v5 < v2
+                  let v6: Bool = lt(v5, v2)
                   write_string(v3)
                   match v6 {
                     true => {
                       let v7: Int = 1
-                      let v8: Int = v2 - v7
+                      let v8: Int = sub(v2, v7)
                       write_function Countdown@f0(v8)
                     }
                     false => {
@@ -15945,7 +15945,7 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Loop@f0(n@v4: Int, label@v5: Option[String]) -> Html {
                   let v12: Int = 0
-                  let v13: Bool = v12 < v4
+                  let v13: Bool = lt(v12, v4)
                   match v5 {
                     Some(v20: String) => {
                       write_string(v20)
@@ -15957,7 +15957,7 @@ mod tests {
                   match v13 {
                     true => {
                       let v14: Int = 1
-                      let v15: Int = v4 - v14
+                      let v15: Int = sub(v4, v14)
                       write_function Loop@f0(v15, v5)
                     }
                     false => {
@@ -15973,7 +15973,7 @@ mod tests {
                 -- ir (optimized) --
                 fn Loop@f0(n@v4: Int, label@v5: Option[String]) -> Html {
                   let v12: Int = 0
-                  let v13: Bool = v12 < v4
+                  let v13: Bool = lt(v12, v4)
                   match v5 {
                     Some(v20: String) => {
                       write_string(v20)
@@ -15985,7 +15985,7 @@ mod tests {
                   match v13 {
                     true => {
                       let v14: Int = 1
-                      let v15: Int = v4 - v14
+                      let v15: Int = sub(v4, v14)
                       write_function Loop@f0(v15, v5)
                     }
                     false => {
@@ -16136,9 +16136,9 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Even@f0(n@v2: Int) -> Html {
                   let v3: Int = 0
-                  let v4: Bool = v2 == v3
+                  let v4: Bool = eq(v2, v3)
                   let v9: Int = 0
-                  let v10: Bool = v9 < v2
+                  let v10: Bool = lt(v9, v2)
                   match v4 {
                     true => {
                       write("even")
@@ -16149,7 +16149,7 @@ mod tests {
                   match v10 {
                     true => {
                       let v11: Int = 1
-                      let v12: Int = v2 - v11
+                      let v12: Int = sub(v2, v11)
                       write_function Odd@f1(v12)
                     }
                     false => {
@@ -16158,9 +16158,9 @@ mod tests {
                 }
                 fn Odd@f1(n@v17: Int) -> Html {
                   let v18: Int = 0
-                  let v19: Bool = v17 == v18
+                  let v19: Bool = eq(v17, v18)
                   let v24: Int = 0
-                  let v25: Bool = v24 < v17
+                  let v25: Bool = lt(v24, v17)
                   match v19 {
                     true => {
                       write("odd")
@@ -16171,7 +16171,7 @@ mod tests {
                   match v25 {
                     true => {
                       let v26: Int = 1
-                      let v27: Int = v17 - v26
+                      let v27: Int = sub(v17, v26)
                       write_function Even@f0(v27)
                     }
                     false => {
@@ -16185,9 +16185,9 @@ mod tests {
                 -- ir (optimized) --
                 fn Even@f0(n@v2: Int) -> Html {
                   let v3: Int = 0
-                  let v4: Bool = v2 == v3
+                  let v4: Bool = eq(v2, v3)
                   let v9: Int = 0
-                  let v10: Bool = v9 < v2
+                  let v10: Bool = lt(v9, v2)
                   match v4 {
                     true => {
                       write("even")
@@ -16198,7 +16198,7 @@ mod tests {
                   match v10 {
                     true => {
                       let v11: Int = 1
-                      let v12: Int = v2 - v11
+                      let v12: Int = sub(v2, v11)
                       write_function Odd@f1(v12)
                     }
                     false => {
@@ -16207,9 +16207,9 @@ mod tests {
                 }
                 fn Odd@f1(n@v17: Int) -> Html {
                   let v18: Int = 0
-                  let v19: Bool = v17 == v18
+                  let v19: Bool = eq(v17, v18)
                   let v24: Int = 0
-                  let v25: Bool = v24 < v17
+                  let v25: Bool = lt(v24, v17)
                   match v19 {
                     true => {
                       write("odd")
@@ -16220,7 +16220,7 @@ mod tests {
                   match v25 {
                     true => {
                       let v26: Int = 1
-                      let v27: Int = v17 - v26
+                      let v27: Int = sub(v17, v26)
                       write_function Even@f0(v27)
                     }
                     false => {
@@ -16617,7 +16617,7 @@ mod tests {
                   let v3: Array[Int] = [v0, v1, v2]
                   for v4: Int in v3 {
                     let v5: Int = 1
-                    let v6: Bool = v5 < v4
+                    let v6: Bool = lt(v5, v4)
                     match v6 {
                       true => {
                         let v7: String = v4.to_string()
@@ -16636,7 +16636,7 @@ mod tests {
                   let v3: Array[Int] = [v0, v1, v2]
                   for v4: Int in v3 {
                     let v5: Int = 1
-                    let v6: Bool = v5 < v4
+                    let v6: Bool = lt(v5, v4)
                     match v6 {
                       true => {
                         let v7: String = v4.to_string()
@@ -16691,7 +16691,7 @@ mod tests {
                   let v2: Array[String] = [v0, v1]
                   for v3: String in v2 {
                     let v4: String = "a"
-                    let v5: Bool = v3 == v4
+                    let v5: Bool = eq(v3, v4)
                     match v5 {
                       true => {
                         write_string(v3)
@@ -16708,7 +16708,7 @@ mod tests {
                   let v2: Array[String] = [v0, v1]
                   for v3: String in v2 {
                     let v4: String = "a"
-                    let v5: Bool = v3 == v4
+                    let v5: Bool = eq(v3, v4)
                     match v5 {
                       true => {
                         write_string(v3)
@@ -16762,7 +16762,7 @@ mod tests {
                   let v2: Array[Float] = [v0, v1]
                   for v3: Float in v2 {
                     let v4: Float = 2
-                    let v5: Bool = v4 < v3
+                    let v5: Bool = lt(v4, v3)
                     match v5 {
                       true => {
                         write("big")
@@ -16779,7 +16779,7 @@ mod tests {
                   let v2: Array[Float] = [v0, v1]
                   for v3: Float in v2 {
                     let v4: Float = 2
-                    let v5: Bool = v4 < v3
+                    let v5: Bool = lt(v4, v3)
                     match v5 {
                       true => {
                         write("big")
@@ -16931,7 +16931,7 @@ mod tests {
                   let v2: Array[String] = [v0, v1]
                   for v3: String in v2 {
                     let v4: String = "a"
-                    let v5: Bool = v3 == v4
+                    let v5: Bool = eq(v3, v4)
                     match v5 {
                       true => {
                         write_function Show@f0(v3)
@@ -16948,7 +16948,7 @@ mod tests {
                   let v2: Array[String] = [v0, v1]
                   for v3: String in v2 {
                     let v4: String = "a"
-                    let v5: Bool = v3 == v4
+                    let v5: Bool = eq(v3, v4)
                     match v5 {
                       true => {
                         write("<span>")
@@ -17273,7 +17273,7 @@ mod tests {
                   let v1: Math = {x: v0}
                   let v2: Int = 5
                   let v3: Int = v1.x
-                  let v4: Int = v3 * v2
+                  let v4: Int = mul(v3, v2)
                   let v5: String = v4.to_string()
                   write_string(v5)
                 }
@@ -17799,7 +17799,7 @@ mod tests {
                 -- ir (unoptimized) --
                 fn label@f0(prefix@v6: String, count@v7: Int) -> String {
                   let v8: String = v7.to_string()
-                  let v9: String = concat(v6, v8)
+                  let v9: String = string_concat(v6, v8)
                   v9
                 }
                 page Test() {
@@ -17859,7 +17859,7 @@ mod tests {
                 -- ir (unoptimized) --
                 fn label@f0(prefix@v20: String, count@v21: Int) -> String {
                   let v22: String = v21.to_string()
-                  let v23: String = concat(v20, v22)
+                  let v23: String = string_concat(v20, v22)
                   v23
                 }
                 page Test() {
@@ -17962,7 +17962,7 @@ mod tests {
                 }
                 fn foo@f1(x@v17: Int) -> Int {
                   let v18: Int = 10
-                  let v19: Int = v17 + v18
+                  let v19: Int = add(v17, v18)
                   v19
                 }
                 page Test() {
@@ -18706,7 +18706,7 @@ mod tests {
                 -- ir (unoptimized) --
                 fn label@f0(prefix@v6: String, count@v7: Int) -> String {
                   let v8: String = v7.to_string()
-                  let v9: String = concat(v6, v8)
+                  let v9: String = string_concat(v6, v8)
                   v9
                 }
                 page Test() {
@@ -18856,13 +18856,13 @@ mod tests {
                 -- ir (unoptimized) --
                 fn Countdown@f1(n@v28: Int, item@v29: (Int) -> Html) -> Html {
                   let v30: Int = 0
-                  let v31: Bool = v28 <= v30
+                  let v31: Bool = lt_eq(v28, v30)
                   match v31 {
                     true => {
                     }
                     false => {
                       let v34: Int = 1
-                      let v35: Int = v28 - v34
+                      let v35: Int = sub(v28, v34)
                       write_apply v29(v28)
                       write_function Countdown@f1(v35, v29)
                     }
@@ -18870,7 +18870,7 @@ mod tests {
                 }
                 fn sum@f0(n@v17: Int, weight@v18: (Int) -> Int) -> Int {
                   let v19: Int = 0
-                  let v20: Bool = v17 <= v19
+                  let v20: Bool = lt_eq(v17, v19)
                   let v39: Int = match v20 {
                     true => {
                       let v21: Int = 0
@@ -18879,9 +18879,9 @@ mod tests {
                     false => {
                       let v22: Int = v18(v17)
                       let v23: Int = 1
-                      let v24: Int = v17 - v23
+                      let v24: Int = sub(v17, v23)
                       let v25: Int = sum@f0(v24, v18)
-                      let v26: Int = v22 + v25
+                      let v26: Int = add(v22, v25)
                       v26
                     }
                   }
@@ -18891,7 +18891,7 @@ mod tests {
                   let v0: Int = 10
                   let v1: Int = 3
                   let v4: (Int) -> Int = fn(v2: Int) {
-                    let v3: Int = v2 * v0
+                    let v3: Int = mul(v2, v0)
                     v3
                   }
                   let v5: Int = sum@f0(v1, v4)
@@ -18909,13 +18909,13 @@ mod tests {
                 -- ir (optimized) --
                 fn Countdown@f1(n@v28: Int, item@v29: (Int) -> Html) -> Html {
                   let v30: Int = 0
-                  let v31: Bool = v28 <= v30
+                  let v31: Bool = lt_eq(v28, v30)
                   match v31 {
                     true => {
                     }
                     false => {
                       let v34: Int = 1
-                      let v35: Int = v28 - v34
+                      let v35: Int = sub(v28, v34)
                       write_apply v29(v28)
                       write_function Countdown@f1(v35, v29)
                     }
@@ -18923,7 +18923,7 @@ mod tests {
                 }
                 fn sum@f0(n@v17: Int, weight@v18: (Int) -> Int) -> Int {
                   let v19: Int = 0
-                  let v20: Bool = v17 <= v19
+                  let v20: Bool = lt_eq(v17, v19)
                   let v39: Int = match v20 {
                     true => {
                       let v21: Int = 0
@@ -18932,9 +18932,9 @@ mod tests {
                     false => {
                       let v22: Int = v18(v17)
                       let v23: Int = 1
-                      let v24: Int = v17 - v23
+                      let v24: Int = sub(v17, v23)
                       let v25: Int = sum@f0(v24, v18)
-                      let v26: Int = v22 + v25
+                      let v26: Int = add(v22, v25)
                       v26
                     }
                   }
@@ -18944,7 +18944,7 @@ mod tests {
                   let v0: Int = 10
                   let v1: Int = 3
                   let v4: (Int) -> Int = fn(v2: Int) {
-                    let v3: Int = v2 * v0
+                    let v3: Int = mul(v2, v0)
                     v3
                   }
                   let v5: Int = sum@f0(v1, v4)
@@ -19098,7 +19098,7 @@ mod tests {
                   for v9: Int in v8 {
                     let v10: String = v9.to_string()
                     let v14: Int = 2
-                    let v15: Int = v9 * v14
+                    let v15: Int = mul(v9, v14)
                     let v20: () -> Html = fn() {
                       write("<b>")
                       write_string(v10)
@@ -19117,7 +19117,7 @@ mod tests {
                   for v9: Int in v8 {
                     let v10: String = v9.to_string()
                     let v14: Int = 2
-                    let v15: Int = v9 * v14
+                    let v15: Int = mul(v9, v14)
                     let v20: String = v15.to_string()
                     write("<p class=\"")
                     write_string(v20)

@@ -663,7 +663,9 @@ mod tests {
             "#},
             expect![[r#"
                 fn f() -> Int {
-                  match Color::Red {Color::Red => 1}
+                  match Color::Red {
+                    Color::Red => 1,
+                  }
                 }
             "#]],
         );
@@ -681,7 +683,9 @@ mod tests {
             "#},
             expect![[r#"
                 fn f() -> Int {
-                  for x in Color::Red { x }
+                  for x in Color::Red {
+                    x
+                  }
                 }
             "#]],
         );
@@ -705,7 +709,9 @@ mod tests {
                   |         ^^^^^^^^^^^^^^^^^^^^^^^^
                 -- ast --
                 fn f() -> Int {
-                  match Point::XY {x: 1, y: 2} {_ => 1}
+                  match Point::XY {x: 1, y: 2} {
+                    _ => 1,
+                  }
                 }
             "#]],
         );
@@ -729,7 +735,9 @@ mod tests {
                   |            ^^^^^^^^^^^^^^
                 -- ast --
                 fn f(p: Point) -> Int {
-                  for x in Point {...p} { x }
+                  for x in Point {...p} {
+                    x
+                  }
                 }
             "#]],
         );
@@ -753,7 +761,9 @@ mod tests {
                   |         ^^^^^^^^^^^^^^
                 -- ast --
                 fn f() -> Int {
-                  match Point {x: 1}.x {_ => 1}
+                  match Point {x: 1}.x {
+                    _ => 1,
+                  }
                 }
             "#]],
         );
@@ -780,9 +790,9 @@ mod tests {
                   |                               ^^^^^^^^^^^^^^
                 -- ast --
                 fn f() -> Int {
-                  for x in Point {x: 1}.x..=Point {
-                    x: 2,
-                  }.x { 1 }
+                  for x in Point {x: 1}.x..=Point {x: 2}.x {
+                    1
+                  }
                 }
             "#]],
         );
@@ -800,7 +810,9 @@ mod tests {
             "#},
             expect![[r#"
                 fn f() -> Int {
-                  match Point {x: 1} {_ => 1}
+                  match Point {x: 1} {
+                    _ => 1,
+                  }
                 }
             "#]],
         );
@@ -818,10 +830,9 @@ mod tests {
             "#},
             expect![[r#"
                 fn f() -> Int {
-                  match g(
-                    Point {x: 1},
-                    [Color::Red {a: 1}],
-                  ) {_ => 1}
+                  match g(Point {x: 1}, [Color::Red {a: 1}]) {
+                    _ => 1,
+                  }
                 }
             "#]],
         );
@@ -909,7 +920,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [interpolate(children)],
+                    children: [
+                      interpolate(children),
+                    ],
                   )
                 }
             "#]],
@@ -927,14 +940,13 @@ mod tests {
             "},
             expect![[r#"
                 fn Greeting(first: String, last: String) -> Html {
-                  {
-                    let name = first + " " + last;
-                    element(
-                      tag: "h1",
-                      attrs: [],
-                      children: [interpolate(name)],
-                    )
-                  }
+                  let name = add(add(first, " "), last) in element(
+                    tag: "h1",
+                    attrs: [],
+                    children: [
+                      interpolate(name),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -953,18 +965,10 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [
-                      class: {
-                        let base = "btn";
-                        base
-                      },
+                      class: let base = "btn" in base,
                     ],
                     children: [
-                      interpolate(
-                        {
-                          let b = a + 1;
-                          b
-                        },
-                      ),
+                      interpolate(let b = add(a, 1) in b),
                     ],
                   )
                 }
@@ -990,15 +994,11 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(a: Int) -> Html {
-                  match {
-                    let n = a;
-                    n == 1
-                  } {
-                    true => match {
-                      let m = a;
-                      m == 1
-                    } {
-                      true => fragment(text("one")),
+                  match let n = a in eq(n, 1) {
+                    true => match let m = a in eq(m, 1) {
+                      true => fragment(
+                        text("one"),
+                      ),
                       false => fragment(),
                     },
                     false => fragment(),
@@ -1040,7 +1040,9 @@ mod tests {
                   element(
                     tag: "button",
                     attrs: [],
-                    children: [interpolate(label)],
+                    children: [
+                      interpolate(label),
+                    ],
                   )
                 }
             "#]],
@@ -1063,7 +1065,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("hi")],
+                      children: [
+                        text("hi"),
+                      ],
                     )
                   }
                 }
@@ -1090,7 +1094,9 @@ mod tests {
                 import other::Foo
 
                 fn Main() -> Html {
-                  Foo(attrs: [])
+                  Foo(
+                    attrs: [],
+                  )
                 }
             "#]],
         );
@@ -1182,7 +1188,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [text("hello")],
+                    children: [
+                      text("hello"),
+                    ],
                   )
                 }
             "#]],
@@ -1202,7 +1210,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [interpolate(name)],
+                    children: [
+                      interpolate(name),
+                    ],
                   )
                 }
             "#]],
@@ -1225,7 +1235,9 @@ mod tests {
             "#},
             expect![[r#"
                 fn Button(label: String, disabled?: Bool = false) -> Html {
-                  fragment(interpolate(label))
+                  fragment(
+                    interpolate(label),
+                  )
                 }
             "#]],
         );
@@ -1270,23 +1282,21 @@ mod tests {
 
                 fn Main(i: Array[S]) -> Html {
                   fragment(
-                    interpolate(
-                      for j in i {
-                        for k in j.s.t {
-                          match k {
-                            true => fragment(),
-                            false => fragment(),
-                          },
-                        },
-                      },
-                    ),
-                    interpolate(
-                      for p in i {
-                        for k in p.s.t {
-                          for item in k { fragment() },
-                        },
-                      },
-                    ),
+                    interpolate(for j in i {
+                      for k in j.s.t {
+                        match k {
+                          true => fragment(),
+                          false => fragment(),
+                        }
+                      }
+                    }),
+                    interpolate(for p in i {
+                      for k in p.s.t {
+                        for item in k {
+                          fragment()
+                        }
+                      }
+                    }),
                   )
                 }
             "#]],
@@ -1308,16 +1318,25 @@ mod tests {
                 fn Main() -> Html {
                   element(
                     tag: "form",
-                    attrs: [id: "form"],
+                    attrs: [
+                      id: "form",
+                    ],
                     children: [
                       element(
                         tag: "input",
-                        attrs: [type: "text", required],
+                        attrs: [
+                          type: "text",
+                          required,
+                        ],
                       ),
                       element(
                         tag: "button",
-                        attrs: [type: "submit"],
-                        children: [text("Send")],
+                        attrs: [
+                          type: "submit",
+                        ],
+                        children: [
+                          text("Send"),
+                        ],
                       ),
                     ],
                   )
@@ -1340,12 +1359,16 @@ mod tests {
                     element(
                       tag: "p",
                       attrs: [],
-                      children: [text("one")],
+                      children: [
+                        text("one"),
+                      ],
                     ),
                     element(
                       tag: "p",
                       attrs: [],
-                      children: [text("two")],
+                      children: [
+                        text("two"),
+                      ],
                     ),
                   )
                 }
@@ -1380,7 +1403,9 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    fragment(text("one")),
+                    fragment(
+                      text("one"),
+                    ),
                     text("two"),
                   )
                 }
@@ -1401,7 +1426,11 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [fragment(text("one"))],
+                    children: [
+                      fragment(
+                        text("one"),
+                      ),
+                    ],
                   )
                 }
             "#]],
@@ -1418,7 +1447,9 @@ mod tests {
             "},
             expect![[r#"
                 fn Main() -> Html {
-                  fragment(text("one"))
+                  fragment(
+                    text("one"),
+                  )
                 }
             "#]],
         );
@@ -1443,7 +1474,9 @@ mod tests {
                   element(
                     tag: "script",
                     attrs: [],
-                    children: [text("<>")],
+                    children: [
+                      text("<>"),
+                    ],
                   )
                 }
             "#]],
@@ -1462,7 +1495,9 @@ mod tests {
                 fn Main() -> Html {
                   element(
                     tag: "script",
-                    attrs: [src: "/app.js"],
+                    attrs: [
+                      src: "/app.js",
+                    ],
                     children: [],
                   )
                 }
@@ -1483,7 +1518,9 @@ mod tests {
                 fn Main() -> Html {
                   element(
                     tag: "script",
-                    attrs: [src: "/app.js"],
+                    attrs: [
+                      src: "/app.js",
+                    ],
                     children: [],
                   )
                 }
@@ -1510,7 +1547,9 @@ mod tests {
                   element(
                     tag: "script",
                     attrs: [],
-                    children: [text("alert(1)")],
+                    children: [
+                      text("alert(1)"),
+                    ],
                   )
                 }
             "#]],
@@ -1714,13 +1753,19 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [interpolate(title)],
+                    children: [
+                      interpolate(title),
+                    ],
                   )
                 }
 
                 page Home() {
                   fn body() -> Html {
-                    Card(attrs: [title: "hi"])
+                    Card(
+                      attrs: [
+                        title: "hi",
+                      ],
+                    )
                   }
                 }
             "#]],
@@ -2061,7 +2106,9 @@ mod tests {
                   |     ^^
                 -- ast --
                 fn Main() -> Html {
-                  fragment(text("one"))
+                  fragment(
+                    text("one"),
+                  )
                 }
             "#]],
         );
@@ -2155,9 +2202,18 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    element(tag: "hr", attrs: []),
-                    element(tag: "br", attrs: []),
-                    element(tag: "input", attrs: []),
+                    element(
+                      tag: "hr",
+                      attrs: [],
+                    ),
+                    element(
+                      tag: "br",
+                      attrs: [],
+                    ),
+                    element(
+                      tag: "input",
+                      attrs: [],
+                    ),
                   )
                 }
             "#]],
@@ -2188,7 +2244,9 @@ mod tests {
                       element(
                         tag: "br",
                         attrs: [],
-                        children: [text("two")],
+                        children: [
+                          text("two"),
+                        ],
                       ),
                     ],
                   )
@@ -2218,9 +2276,18 @@ mod tests {
 
                 fn Main() -> Html {
                   fragment(
-                    element(tag: "hr", attrs: []),
-                    element(tag: "br", attrs: []),
-                    element(tag: "input", attrs: []),
+                    element(
+                      tag: "hr",
+                      attrs: [],
+                    ),
+                    element(
+                      tag: "br",
+                      attrs: [],
+                    ),
+                    element(
+                      tag: "input",
+                      attrs: [],
+                    ),
                   )
                 }
 
@@ -2244,7 +2311,9 @@ mod tests {
                 fn Main() -> Html {
                   element(
                     tag: "div",
-                    attrs: [foo],
+                    attrs: [
+                      foo,
+                    ],
                     children: [],
                   )
                 }
@@ -2263,7 +2332,10 @@ mod tests {
                   |                                ^^^^^^^^
                 -- ast --
                 fn Main() -> Html {
-                  element(tag: "input", attrs: [])
+                  element(
+                    tag: "input",
+                    attrs: [],
+                  )
                 }
             "#]],
         );
@@ -2420,7 +2492,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [text("text")],
+                    children: [
+                      text("text"),
+                    ],
                   )
                 }
             "#]],
@@ -2483,7 +2557,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [interpolate(data)],
+                    children: [
+                      interpolate(data),
+                    ],
                   )
                 }
             "#]],
@@ -2515,7 +2591,9 @@ mod tests {
                       href: user.url,
                       class: user.theme,
                     ],
-                    children: [text("Link")],
+                    children: [
+                      text("Link"),
+                    ],
                   )
                 }
             "#]],
@@ -2564,7 +2642,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [text("Content")],
+                    children: [
+                      text("Content"),
+                    ],
                   )
                 }
             "#]],
@@ -2588,7 +2668,9 @@ mod tests {
                   |        ^^^
                 -- ast --
                 fn Main() -> Html {
-                  Foo(attrs: [])
+                  Foo(
+                    attrs: [],
+                  )
                 }
             "#]],
         );
@@ -2608,8 +2690,12 @@ mod tests {
             expect![[r#"
                 fn Main(p: String) -> Html {
                   fragment(
-                    Foo(attrs: []),
-                    Foo(attrs: []),
+                    Foo(
+                      attrs: [],
+                    ),
+                    Foo(
+                      attrs: [],
+                    ),
                   )
                 }
             "#]],
@@ -2634,6 +2720,7 @@ mod tests {
             "#},
             expect![[r#"
                 import foo::Foo
+
                 import bar::Bar
 
                 record Data {
@@ -2642,8 +2729,16 @@ mod tests {
 
                 fn Main(data: Data) -> Html {
                   fragment(
-                    Foo(attrs: [a: data]),
-                    Bar(attrs: [b: data.user]),
+                    Foo(
+                      attrs: [
+                        a: data,
+                      ],
+                    ),
+                    Bar(
+                      attrs: [
+                        b: data.user,
+                      ],
+                    ),
                   )
                 }
             "#]],
@@ -2664,8 +2759,10 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Item content")],
-                    ),
+                      children: [
+                        text("Item content"),
+                      ],
+                    )
                   }
                 }
             "#]],
@@ -2686,8 +2783,10 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [interpolate(v)],
-                    ),
+                      children: [
+                        interpolate(v),
+                      ],
+                    )
                   }
                 }
             "#]],
@@ -2705,7 +2804,9 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   for i in 0..=5 {
-                    fragment(interpolate(i)),
+                    fragment(
+                      interpolate(i),
+                    )
                   }
                 }
             "#]],
@@ -2723,7 +2824,9 @@ mod tests {
             expect![[r#"
                 fn Main(start: Int, end: Int) -> Html {
                   for x in start..=end {
-                    fragment(interpolate(x)),
+                    fragment(
+                      interpolate(x),
+                    )
                   }
                 }
             "#]],
@@ -2740,8 +2843,10 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(count: Int) -> Html {
-                  for i in 1..=count + 1 {
-                    fragment(interpolate(i)),
+                  for i in 1..=add(count, 1) {
+                    fragment(
+                      interpolate(i),
+                    )
                   }
                 }
             "#]],
@@ -2759,7 +2864,9 @@ mod tests {
             expect![[r#"
                 fn Main(items: Array[String]) -> Html {
                   for _ in items {
-                    fragment(text("item")),
+                    fragment(
+                      text("item"),
+                    )
                   }
                 }
             "#]],
@@ -2777,7 +2884,9 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   for _ in 0..=5 {
-                    fragment(text("item")),
+                    fragment(
+                      text("item"),
+                    )
                   }
                 }
             "#]],
@@ -2795,7 +2904,9 @@ mod tests {
             expect![[r#"
                 fn Main(start: Int, end: Int) -> Html {
                   for _ in start..=end {
-                    fragment(text("item")),
+                    fragment(
+                      text("item"),
+                    )
                   }
                 }
             "#]],
@@ -2818,8 +2929,10 @@ mod tests {
                     element(
                       tag: "span",
                       attrs: [],
-                      children: [text(".")],
-                    ),
+                      children: [
+                        text("."),
+                      ],
+                    )
                   }
                 }
             "#]],
@@ -2845,18 +2958,15 @@ mod tests {
                     tag: "ul",
                     attrs: [],
                     children: [
-                      interpolate(
-                        for item in items {
-                          let name = item.name;
-                          element(
-                            tag: "li",
-                            attrs: [],
-                            children: [
-                              interpolate(name),
-                            ],
-                          )
-                        },
-                      ),
+                      interpolate(for item in items {
+                        let name = item.name in element(
+                          tag: "li",
+                          attrs: [],
+                          children: [
+                            interpolate(name),
+                          ],
+                        )
+                      }),
                     ],
                   )
                 }
@@ -2883,7 +2993,7 @@ mod tests {
                           children: [
                             interpolate(item.name),
                           ],
-                        ),
+                        )
                       },
                     ],
                   )
@@ -2907,7 +3017,9 @@ mod tests {
                 fn Main(x: Bool, data: Array[String]) -> Html {
                   match x {
                     true => for d in data {
-                      fragment(interpolate(d)),
+                      fragment(
+                        interpolate(d),
+                      )
                     },
                     false => fragment(),
                   }
@@ -2967,7 +3079,9 @@ mod tests {
                   element(
                     tag: "my-widget",
                     attrs: [],
-                    children: [text("hi")],
+                    children: [
+                      text("hi"),
+                    ],
                   )
                 }
             "#]],
@@ -2997,7 +3111,9 @@ mod tests {
                 fn Main() -> Html {
                   element(
                     tag: "div",
-                    attrs: [class: "navbar"],
+                    attrs: [
+                      class: "navbar",
+                    ],
                     children: [
                       element(
                         tag: "svg",
@@ -3051,7 +3167,9 @@ mod tests {
                             children: [
                               element(
                                 tag: "a",
-                                attrs: [href: "/"],
+                                attrs: [
+                                  href: "/",
+                                ],
                                 children: [
                                   text("Home"),
                                 ],
@@ -3080,7 +3198,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [interpolate(data)],
+                    children: [
+                      interpolate(data),
+                    ],
                   )
                 }
             "#]],
@@ -3112,7 +3232,9 @@ mod tests {
                     element(
                       tag: "h1",
                       attrs: [],
-                      children: [text("Hello World")],
+                      children: [
+                        text("Hello World"),
+                      ],
                     ),
                     element(
                       tag: "p",
@@ -3141,8 +3263,10 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [interpolate(item)],
-                    ),
+                      children: [
+                        interpolate(item),
+                      ],
+                    )
                   }
                 }
             "#]],
@@ -3284,27 +3408,24 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(labels: Array[String]) -> Html {
-                  {
-                    let double = fn(n: Int) -> Int {
-                      n * 2,
-                    };
-                    let none = fn() { 1 };
-                    Rows(
-                      attrs: [
-                        labels: labels,
-                        row: fn(label, depth: Int) {
-                          let n = double(depth);
-                          element(
-                            tag: "li",
-                            attrs: [],
-                            children: [
-                              interpolate(label),
-                            ],
-                          )
-                        },
-                      ],
-                    )
-                  }
+                  let double = fn(n: Int) -> Int {
+                    mul(n, 2)
+                  } in let none = fn() {
+                    1
+                  } in Rows(
+                    attrs: [
+                      labels: labels,
+                      row: fn(label, depth: Int) {
+                        let n = double(depth) in element(
+                          tag: "li",
+                          attrs: [],
+                          children: [
+                            interpolate(label),
+                          ],
+                        )
+                      },
+                    ],
+                  )
                 }
             "#]],
         );
@@ -3379,18 +3500,16 @@ mod tests {
                           interpolate(section.title),
                         ],
                       ),
-                      interpolate(
-                        for item in section.items {
-                          element(
-                            tag: "div",
-                            attrs: [],
-                            children: [
-                              interpolate(item),
-                            ],
-                          ),
-                        },
-                      ),
-                    ),
+                      interpolate(for item in section.items {
+                        element(
+                          tag: "div",
+                          attrs: [],
+                          children: [
+                            interpolate(item),
+                          ],
+                        )
+                      }),
+                    )
                   }
                 }
             "#]],
@@ -3486,7 +3605,9 @@ mod tests {
                   element(
                     tag: "h2",
                     attrs: [],
-                    children: [interpolate(title)],
+                    children: [
+                      interpolate(title),
+                    ],
                   )
                 }
             "#]],
@@ -3507,7 +3628,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [text("Empty:")],
+                    children: [
+                      text("Empty:"),
+                    ],
                   )
                 }
             "#]],
@@ -3525,9 +3648,7 @@ mod tests {
                     attrs: [],
                     children: [
                       text("Status: "),
-                      interpolate(
-                        user.profile.status == "active",
-                      ),
+                      interpolate(eq(user.profile.status, "active")),
                     ],
                   )
                 }
@@ -3851,12 +3972,10 @@ mod tests {
 
                 fn Main(color: Color) -> Html {
                   fragment(
-                    interpolate(
-                      match color {
-                        Color::Red => "red",
-                        Color::Blue => "blue",
-                      },
-                    ),
+                    interpolate(match color {
+                      Color::Red => "red",
+                      Color::Blue => "blue",
+                    }),
                   )
                 }
             "#]],
@@ -3921,13 +4040,11 @@ mod tests {
 
                 fn Main(status: Status) -> Html {
                   fragment(
-                    interpolate(
-                      match status {
-                        Status::Active => "active",
-                        Status::Inactive => "inactive",
-                        Status::Pending => "pending",
-                      },
-                    ),
+                    interpolate(match status {
+                      Status::Active => "active",
+                      Status::Inactive => "inactive",
+                      Status::Pending => "pending",
+                    }),
                   )
                 }
             "#]],
@@ -3947,7 +4064,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [interpolate(name)],
+                    children: [
+                      interpolate(name),
+                    ],
                   )
                 }
             "#]],
@@ -3967,7 +4086,9 @@ mod tests {
                   element(
                     tag: "span",
                     attrs: [],
-                    children: [interpolate(count)],
+                    children: [
+                      interpolate(count),
+                    ],
                   )
                 }
             "#]],
@@ -4007,7 +4128,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [interpolate(name)],
+                    children: [
+                      interpolate(name),
+                    ],
                   )
                 }
             "#]],
@@ -4023,12 +4146,11 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Main(items?: Array[String] = [
-                  "a",
-                  "b",
-                ]) -> Html {
+                fn Main(items?: Array[String] = ["a", "b"]) -> Html {
                   for item in items {
-                    fragment(interpolate(item)),
+                    fragment(
+                      interpolate(item),
+                    )
                   }
                 }
             "#]],
@@ -4050,10 +4172,7 @@ mod tests {
                   timeout: Int,
                 }
 
-                fn Main(config?: Config = Config {
-                  debug: false,
-                  timeout: 30,
-                }) -> Html {
+                fn Main(config?: Config = Config {debug: false, timeout: 30}) -> Html {
                   element(
                     tag: "div",
                     attrs: [],
@@ -4160,10 +4279,7 @@ mod tests {
                 }
             "},
             expect![[r#"
-                fn Main(offsets?: Array[Int] = [
-                  1,
-                  2,
-                ]) -> Html {
+                fn Main(offsets?: Array[Int] = [1, 2]) -> Html {
                   element(
                     tag: "div",
                     attrs: [],
@@ -4258,17 +4374,17 @@ mod tests {
             "#},
             expect![[r#"
                 enum Outcome {
-                  Success { value: Int },
-                  Failure { message: String },
+                  Success {value: Int},
+                  Failure {message: String},
                 }
 
                 fn Main(r: Outcome) -> Html {
                   match r {
-                    Outcome::Success{value: v} => fragment(
+                    Outcome::Success {value: v} => fragment(
                       text("Success: "),
                       interpolate(v),
                     ),
-                    Outcome::Failure{message: m} => fragment(
+                    Outcome::Failure {message: m} => fragment(
                       text("Error: "),
                       interpolate(m),
                     ),
@@ -4292,13 +4408,13 @@ mod tests {
             "#},
             expect![[r#"
                 enum Status {
-                  Active { name: String },
+                  Active {name: String},
                   Inactive,
                 }
 
                 fn Main() -> Html {
                   match Status::Active {name: "test"} {
-                    Status::Active{name: n} => fragment(
+                    Status::Active {name: n} => fragment(
                       interpolate(n),
                     ),
                     Status::Inactive => fragment(
@@ -4322,19 +4438,15 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  {
-                    let a: Int = 1;
-                    let b: Int = 2;
-                    element(
-                      tag: "div",
-                      attrs: [],
-                      children: [
-                        interpolate(a),
-                        text(" + "),
-                        interpolate(b),
-                      ],
-                    )
-                  }
+                  let a: Int = 1 in let b: Int = 2 in element(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      interpolate(a),
+                      text(" + "),
+                      interpolate(b),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -4352,19 +4464,15 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  {
-                    let first: String = "Hello";
-                    let second: String = "World";
-                    element(
-                      tag: "div",
-                      attrs: [],
-                      children: [
-                        interpolate(first),
-                        text(" "),
-                        interpolate(second),
-                      ],
-                    )
-                  }
+                  let first: String = "Hello" in let second: String = "World" in element(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      interpolate(first),
+                      text(" "),
+                      interpolate(second),
+                    ],
+                  )
                 }
             "#]],
         );
@@ -4390,18 +4498,12 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    interpolate(
-                      {
-                        let a: String = "Hello";
-                        fragment(interpolate(a))
-                      },
-                    ),
-                    interpolate(
-                      {
-                        let b: String = "World";
-                        fragment(interpolate(b))
-                      },
-                    ),
+                    interpolate(let a: String = "Hello" in fragment(
+                      interpolate(a),
+                    )),
+                    interpolate(let b: String = "World" in fragment(
+                      interpolate(b),
+                    )),
                   )
                 }
             "#]],
@@ -4428,21 +4530,18 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("First")],
+                      children: [
+                        text("First"),
+                      ],
                     ),
-                    interpolate(
-                      {
-                        let name: String = "World";
-                        element(
-                          tag: "div",
-                          attrs: [],
-                          children: [
-                            text("Hello "),
-                            interpolate(name),
-                          ],
-                        )
-                      },
-                    ),
+                    interpolate(let name: String = "World" in element(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        text("Hello "),
+                        interpolate(name),
+                      ],
+                    )),
                   )
                 }
             "#]],
@@ -4466,23 +4565,20 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    interpolate(
-                      {
-                        let name: String = "World";
-                        element(
-                          tag: "div",
-                          attrs: [],
-                          children: [
-                            text("Hello "),
-                            interpolate(name),
-                          ],
-                        )
-                      },
-                    ),
+                    interpolate(let name: String = "World" in element(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        text("Hello "),
+                        interpolate(name),
+                      ],
+                    )),
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Last")],
+                      children: [
+                        text("Last"),
+                      ],
                     ),
                   )
                 }
@@ -4520,7 +4616,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Hello")],
+                      children: [
+                        text("Hello"),
+                      ],
                     )
                   }
                 }
@@ -4575,13 +4673,19 @@ mod tests {
                   element(
                     tag: "h1",
                     attrs: [],
-                    children: [interpolate(title)],
+                    children: [
+                      interpolate(title),
+                    ],
                   )
                 }
 
                 page Index(title: String) {
                   fn body() -> Html {
-                    Header(attrs: [title: title])
+                    Header(
+                      attrs: [
+                        title: title,
+                      ],
+                    )
                   }
                 }
             "#]],
@@ -4610,7 +4714,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Index")],
+                      children: [
+                        text("Index"),
+                      ],
                     )
                   }
                 }
@@ -4620,7 +4726,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("About")],
+                      children: [
+                        text("About"),
+                      ],
                     )
                   }
                 }
@@ -4778,7 +4886,9 @@ mod tests {
                     element(
                       tag: "title",
                       attrs: [],
-                      children: [text("My page")],
+                      children: [
+                        text("My page"),
+                      ],
                     )
                   }
                   fn body() -> Html {
@@ -4812,7 +4922,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Hello")],
+                      children: [
+                        text("Hello"),
+                      ],
                     )
                   }
                 }
@@ -4866,7 +4978,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Hello")],
+                      children: [
+                        text("Hello"),
+                      ],
                     )
                   }
                 }
@@ -4899,7 +5013,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Hello")],
+                      children: [
+                        text("Hello"),
+                      ],
                     )
                   }
                 }
@@ -4929,7 +5045,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [interpolate(name)],
+                      children: [
+                        interpolate(name),
+                      ],
                     )
                   }
                 }
@@ -4959,7 +5077,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Hello")],
+                      children: [
+                        text("Hello"),
+                      ],
                     )
                   }
                 }
@@ -4989,7 +5109,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Hello")],
+                      children: [
+                        text("Hello"),
+                      ],
                     )
                   }
                 }
@@ -5019,7 +5141,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Hello")],
+                      children: [
+                        text("Hello"),
+                      ],
                     )
                   }
                 }
@@ -5090,7 +5214,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Hello")],
+                      children: [
+                        text("Hello"),
+                      ],
                     )
                   }
                 }
@@ -5155,14 +5281,18 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Hello")],
+                      children: [
+                        text("Hello"),
+                      ],
                     )
                   }
                   fn head() -> Html {
                     element(
                       tag: "title",
                       attrs: [],
-                      children: [text("My page")],
+                      children: [
+                        text("My page"),
+                      ],
                     )
                   }
                 }
@@ -5210,7 +5340,9 @@ mod tests {
                       true => element(
                         tag: "div",
                         attrs: [],
-                        children: [text("Visible")],
+                        children: [
+                          text("Visible"),
+                        ],
                       ),
                       false => fragment(),
                     }
@@ -5237,8 +5369,10 @@ mod tests {
                       element(
                         tag: "div",
                         attrs: [],
-                        children: [interpolate(item)],
-                      ),
+                        children: [
+                          interpolate(item),
+                        ],
+                      )
                     }
                   }
                 }
@@ -5260,17 +5394,14 @@ mod tests {
             expect![[r#"
                 page Index() {
                   fn body() -> Html {
-                    {
-                      let name: String = "World";
-                      element(
-                        tag: "div",
-                        attrs: [],
-                        children: [
-                          text("Hello "),
-                          interpolate(name),
-                        ],
-                      )
-                    }
+                    let name: String = "World" in element(
+                      tag: "div",
+                      attrs: [],
+                      children: [
+                        text("Hello "),
+                        interpolate(name),
+                      ],
+                    )
                   }
                 }
             "#]],
@@ -5298,12 +5429,20 @@ mod tests {
                       tag: "div",
                       attrs: [],
                       children: [
-                        element(tag: "br", attrs: []),
+                        element(
+                          tag: "br",
+                          attrs: [],
+                        ),
                         element(
                           tag: "input",
-                          attrs: [type: "text"],
+                          attrs: [
+                            type: "text",
+                          ],
                         ),
-                        element(tag: "hr", attrs: []),
+                        element(
+                          tag: "hr",
+                          attrs: [],
+                        ),
                       ],
                     )
                   }
@@ -5328,7 +5467,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [interpolate(name)],
+                      children: [
+                        interpolate(name),
+                      ],
                     )
                   }
                 }
@@ -5356,12 +5497,16 @@ mod tests {
                       Some(s) => element(
                         tag: "div",
                         attrs: [],
-                        children: [interpolate(s)],
+                        children: [
+                          interpolate(s),
+                        ],
                       ),
                       None => element(
                         tag: "div",
                         attrs: [],
-                        children: [text("No value")],
+                        children: [
+                          text("No value"),
+                        ],
                       ),
                     }
                   }
@@ -5397,7 +5542,9 @@ mod tests {
                   element(
                     tag: "h1",
                     attrs: [],
-                    children: [interpolate(title)],
+                    children: [
+                      interpolate(title),
+                    ],
                   )
                 }
 
@@ -5405,7 +5552,9 @@ mod tests {
                   element(
                     tag: "p",
                     attrs: [],
-                    children: [text("Copyright 2024")],
+                    children: [
+                      text("Copyright 2024"),
+                    ],
                   )
                 }
 
@@ -5415,13 +5564,21 @@ mod tests {
                       tag: "div",
                       attrs: [],
                       children: [
-                        Header(attrs: [title: title]),
+                        Header(
+                          attrs: [
+                            title: title,
+                          ],
+                        ),
                         element(
                           tag: "main",
                           attrs: [],
-                          children: [text("Content")],
+                          children: [
+                            text("Content"),
+                          ],
                         ),
-                        Footer(attrs: []),
+                        Footer(
+                          attrs: [],
+                        ),
                       ],
                     )
                   }
@@ -5453,7 +5610,9 @@ mod tests {
                   element(
                     tag: "h1",
                     attrs: [],
-                    children: [text("Header")],
+                    children: [
+                      text("Header"),
+                    ],
                   )
                 }
 
@@ -5462,7 +5621,9 @@ mod tests {
                     element(
                       tag: "div",
                       attrs: [],
-                      children: [text("Index")],
+                      children: [
+                        text("Index"),
+                      ],
                     )
                   }
                 }
@@ -5471,7 +5632,9 @@ mod tests {
                   element(
                     tag: "p",
                     attrs: [],
-                    children: [text("Footer")],
+                    children: [
+                      text("Footer"),
+                    ],
                   )
                 }
             "#]],
@@ -5647,7 +5810,9 @@ mod tests {
                 fn Foo(class: String, ...rest) -> Html {
                   element(
                     tag: "div",
-                    attrs: [...rest],
+                    attrs: [
+                      ...rest,
+                    ],
                     children: [],
                   )
                 }
@@ -5672,7 +5837,9 @@ mod tests {
                 fn Foo(a: String, b: String, ...rest) -> Html {
                   element(
                     tag: "div",
-                    attrs: [...rest],
+                    attrs: [
+                      ...rest,
+                    ],
                     children: [],
                   )
                 }
@@ -5701,7 +5868,9 @@ mod tests {
                 fn Foo(...a) -> Html {
                   element(
                     tag: "div",
-                    attrs: [...a],
+                    attrs: [
+                      ...a,
+                    ],
                     children: [],
                   )
                 }
@@ -5721,7 +5890,9 @@ mod tests {
                 fn Foo(...rest) -> Html {
                   element(
                     tag: "button",
-                    attrs: [...rest],
+                    attrs: [
+                      ...rest,
+                    ],
                     children: [],
                   )
                 }
@@ -5739,7 +5910,12 @@ mod tests {
             "#},
             expect![[r#"
                 fn Bar(...rest) -> Html {
-                  Foo(attrs: [...rest], children: [])
+                  Foo(
+                    attrs: [
+                      ...rest,
+                    ],
+                    children: [],
+                  )
                 }
             "#]],
         );
@@ -5816,7 +5992,7 @@ mod tests {
             "},
             expect![[r#"
                 fn foo(x: Int) -> Int {
-                  x + 10
+                  add(x, 10)
                 }
 
                 fn Foo() -> Html {
@@ -5824,13 +6000,11 @@ mod tests {
                     tag: "div",
                     attrs: [],
                     children: [
-                      interpolate(
-                        for x in 0..=foo(10) {
-                          fragment(
-                            interpolate(x.to_string()),
-                          ),
-                        },
-                      ),
+                      interpolate(for x in 0..=foo(10) {
+                        fragment(
+                          interpolate(x.to_string()),
+                        )
+                      }),
                       interpolate(foo(10)),
                     ],
                   )
@@ -5907,6 +6081,7 @@ mod tests {
             "},
             expect![[r#"
                 import other::nested::foo
+
                 import lib::Button
 
                 fn bar() -> Int {
@@ -6063,7 +6238,10 @@ mod tests {
                 fn Foo(class: String, ...rest) -> Html {
                   element(
                     tag: "div",
-                    attrs: [class: class, ...rest],
+                    attrs: [
+                      class: class,
+                      ...rest,
+                    ],
                     children: [],
                   )
                 }
@@ -6117,7 +6295,9 @@ mod tests {
                 fn Foo(class: String, ...rest) -> Html {
                   element(
                     tag: "div",
-                    attrs: [...rest],
+                    attrs: [
+                      ...rest,
+                    ],
                     children: [],
                   )
                 }
@@ -6138,7 +6318,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [text("hello")],
+                    children: [
+                      text("hello"),
+                    ],
                   )
                 }
             "#]],
@@ -6178,13 +6360,13 @@ mod tests {
                       tag: "div",
                       attrs: [],
                       children: [
-                        interpolate(
-                          element(
-                            tag: "span",
-                            attrs: [],
-                            children: [text("hello")],
-                          ),
-                        ),
+                        interpolate(element(
+                          tag: "span",
+                          attrs: [],
+                          children: [
+                            text("hello"),
+                          ],
+                        )),
                       ],
                     )
                   }
@@ -6210,23 +6392,19 @@ mod tests {
                       tag: "div",
                       attrs: [],
                       children: [
-                        interpolate(
-                          element(
-                            tag: "span",
-                            attrs: [],
-                            children: [
-                              interpolate(
-                                element(
-                                  tag: "b",
-                                  attrs: [],
-                                  children: [
-                                    text("hello"),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                        interpolate(element(
+                          tag: "span",
+                          attrs: [],
+                          children: [
+                            interpolate(element(
+                              tag: "b",
+                              attrs: [],
+                              children: [
+                                text("hello"),
+                              ],
+                            )),
+                          ],
+                        )),
                       ],
                     )
                   }
@@ -6252,18 +6430,20 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [interpolate(children)],
+                    children: [
+                      interpolate(children),
+                    ],
                   )
                 }
 
                 fn card() -> Html {
-                  wrap(
-                    element(
-                      tag: "span",
-                      attrs: [],
-                      children: [text("hello")],
-                    ),
-                  )
+                  wrap(element(
+                    tag: "span",
+                    attrs: [],
+                    children: [
+                      text("hello"),
+                    ],
+                  ))
                 }
             "#]],
         );
@@ -6279,18 +6459,19 @@ mod tests {
             "},
             expect![[r#"
                 fn cards() -> Array[Html] {
-                  [
-                    element(
-                      tag: "div",
-                      attrs: [],
-                      children: [text("a")],
-                    ),
-                    element(
-                      tag: "div",
-                      attrs: [],
-                      children: [text("b")],
-                    ),
-                  ]
+                  [element(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      text("a"),
+                    ],
+                  ), element(
+                    tag: "div",
+                    attrs: [],
+                    children: [
+                      text("b"),
+                    ],
+                  )]
                 }
             "#]],
         );
@@ -6313,12 +6494,16 @@ mod tests {
                     true => element(
                       tag: "b",
                       attrs: [],
-                      children: [text("yes")],
+                      children: [
+                        text("yes"),
+                      ],
                     ),
                     false => element(
                       tag: "i",
                       attrs: [],
-                      children: [text("no")],
+                      children: [
+                        text("no"),
+                      ],
                     ),
                   }
                 }
@@ -6345,7 +6530,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [interpolate(slot)],
+                    children: [
+                      interpolate(slot),
+                    ],
                   )
                 }
 
@@ -6356,7 +6543,9 @@ mod tests {
                         slot: element(
                           tag: "span",
                           attrs: [],
-                          children: [text("hello")],
+                          children: [
+                            text("hello"),
+                          ],
                         ),
                       ],
                     )
@@ -6380,7 +6569,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [text("hello")],
+                    children: [
+                      text("hello"),
+                    ],
                   )
                 }
             "#]],
@@ -6443,11 +6634,11 @@ mod tests {
             "},
             expect![[r#"
                 fn check(a: Int, b: Int, c: Int, d: Int) -> Bool {
-                  a < b && c > d
+                  and(lt(a, b), gt(c, d))
                 }
 
                 fn at_most(a: Int, b: Int) -> Bool {
-                  a <= b
+                  lt_eq(a, b)
                 }
             "#]],
         );
@@ -6567,8 +6758,13 @@ mod tests {
                 fn Main() -> Html {
                   element(
                     tag: "div",
-                    attrs: [class: "a", id: "b"],
-                    children: [text("hi")],
+                    attrs: [
+                      class: "a",
+                      id: "b",
+                    ],
+                    children: [
+                      text("hi"),
+                    ],
                   )
                 }
             "#]],
@@ -6593,8 +6789,12 @@ mod tests {
                 fn Main() -> Html {
                   element(
                     tag: "div",
-                    attrs: [class: "a"],
-                    children: [text("hi")],
+                    attrs: [
+                      class: "a",
+                    ],
+                    children: [
+                      text("hi"),
+                    ],
                   )
                 }
             "#]],
@@ -6624,12 +6824,16 @@ mod tests {
                 fn Main() -> Html {
                   element(
                     tag: "div",
-                    attrs: [class: "a"],
+                    attrs: [
+                      class: "a",
+                    ],
                     children: [
                       element(
                         tag: "span",
                         attrs: [],
-                        children: [text("hi")],
+                        children: [
+                          text("hi"),
+                        ],
                       ),
                     ],
                   )
@@ -6710,7 +6914,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [text("hi")],
+                    children: [
+                      text("hi"),
+                    ],
                   )
                 }
             "#]],
@@ -6733,7 +6939,11 @@ mod tests {
                   |         ^^^
                 -- ast --
                 fn Main() -> Html {
-                  Card(attrs: [title: "a"])
+                  Card(
+                    attrs: [
+                      title: "a",
+                    ],
+                  )
                 }
             "#]],
         );
@@ -6763,7 +6973,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [text("hi")],
+                    children: [
+                      text("hi"),
+                    ],
                   )
                 }
             "#]],
@@ -6794,7 +7006,9 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [],
-                    children: [text("hi")],
+                    children: [
+                      text("hi"),
+                    ],
                   )
                 }
             "#]],

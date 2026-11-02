@@ -1,7 +1,6 @@
 use core::fmt;
 
-use pretty::BoxDoc;
-
+use crate::display::{join, write_tuple};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 
@@ -165,7 +164,16 @@ impl DataType {
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
+        match self {
+            Type::Data(data) => write!(f, "{data}"),
+            Type::Html(html) => write!(f, "{html}"),
+            Type::Function(function) => write!(
+                f,
+                "fn({}) -> {}",
+                join(&function.parameters, ", "),
+                function.result
+            ),
+        }
     }
 }
 
@@ -177,54 +185,15 @@ impl fmt::Display for HtmlType {
 
 impl fmt::Display for DataType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
-    }
-}
-
-impl<'a> Type {
-    pub fn to_doc(&'a self) -> BoxDoc<'a> {
         match self {
-            Type::Data(data) => data.to_doc(),
-            Type::Html(_) => BoxDoc::text("Html"),
-            Type::Function(function) => BoxDoc::text("fn(")
-                .append(BoxDoc::intersperse(
-                    function.parameters.iter().map(Type::to_doc),
-                    BoxDoc::text(", "),
-                ))
-                .append(BoxDoc::text(") -> "))
-                .append(function.result.to_doc()),
-        }
-    }
-}
-
-impl<'a> DataType {
-    pub fn to_doc(&'a self) -> BoxDoc<'a> {
-        match self {
-            DataType::String => BoxDoc::text("String"),
-            DataType::Float => BoxDoc::text("Float"),
-            DataType::Int => BoxDoc::text("Int"),
-            DataType::Bool => BoxDoc::text("Bool"),
-            DataType::Array(elem_type) => BoxDoc::nil()
-                .append(BoxDoc::text("Array["))
-                .append(elem_type.to_doc())
-                .append(BoxDoc::text("]")),
-            DataType::Option(elem_type) => BoxDoc::nil()
-                .append(BoxDoc::text("Option["))
-                .append(elem_type.to_doc())
-                .append(BoxDoc::text("]")),
-            DataType::Tuple(elements) => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::intersperse(
-                    elements.iter().map(|element| element.to_doc()),
-                    BoxDoc::text(", "),
-                ))
-                .append(if elements.len() == 1 {
-                    BoxDoc::text(",")
-                } else {
-                    BoxDoc::nil()
-                })
-                .append(BoxDoc::text(")")),
-            DataType::Named { name, .. } => BoxDoc::text(name.as_str()),
+            DataType::String => f.write_str("String"),
+            DataType::Float => f.write_str("Float"),
+            DataType::Int => f.write_str("Int"),
+            DataType::Bool => f.write_str("Bool"),
+            DataType::Array(element) => write!(f, "Array[{element}]"),
+            DataType::Option(element) => write!(f, "Option[{element}]"),
+            DataType::Tuple(elements) => write_tuple(f, elements),
+            DataType::Named { name, .. } => f.write_str(name.as_str()),
         }
     }
 }

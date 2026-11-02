@@ -1338,7 +1338,7 @@ mod tests {
                 entrypoint fn body@f0(a@v0: Bool, b@v1: Bool) -> Html {
                   let v4: Bool = match v0 {
                     true => {
-                      let v2: Bool = !v1
+                      let v2: Bool = not(v1)
                       v2
                     }
                     false => {
@@ -1352,7 +1352,7 @@ mod tests {
                       v9
                     }
                     false => {
-                      let v10: Bool = !v1
+                      let v10: Bool = not(v1)
                       v10
                     }
                   }
@@ -1641,11 +1641,11 @@ mod tests {
             expect![[r#"
                 fn Nest@f0(depth@v3: Int, id@v4: String) -> Html {
                   let v5: Int = 0
-                  let v6: Bool = v5 < v3
+                  let v6: Bool = lt(v5, v3)
                   let v12: Html = match v6 {
                     true => {
                       let v7: Int = 1
-                      let v8: Int = v3 - v7
+                      let v8: Int = sub(v3, v7)
                       let v9: String = "inner"
                       let v10: Html = Nest@f1(v8, v9)
                       v10
@@ -1661,11 +1661,11 @@ mod tests {
                 }
                 fn Nest@f1(depth@v15: Int, class@v16: String) -> Html {
                   let v17: Int = 0
-                  let v18: Bool = v17 < v15
+                  let v18: Bool = lt(v17, v15)
                   let v24: Html = match v18 {
                     true => {
                       let v19: Int = 1
-                      let v20: Int = v15 - v19
+                      let v20: Int = sub(v15, v19)
                       let v21: String = "inner"
                       let v22: Html = Nest@f1(v20, v21)
                       v22
@@ -1792,12 +1792,12 @@ mod tests {
                   let v7: Int = width@f1(v6)
                   let v8: String = " "
                   let v9: String = v7.to_string()
-                  let v10: String = concat(v5, v8, v9)
+                  let v10: String = string_concat(v5, v8, v9)
                   v10
                 }
                 fn width@f1(n@v11: Int) -> Int {
                   let v12: Int = 0
-                  let v13: Bool = v11 <= v12
+                  let v13: Bool = lt_eq(v11, v12)
                   let v20: Int = match v13 {
                     true => {
                       let v14: Int = 0
@@ -1805,10 +1805,10 @@ mod tests {
                     }
                     false => {
                       let v15: Int = 1
-                      let v16: Int = v11 - v15
+                      let v16: Int = sub(v11, v15)
                       let v17: Int = width@f1(v16)
                       let v18: Int = 2
-                      let v19: Int = v17 + v18
+                      let v19: Int = add(v17, v18)
                       v19
                     }
                   }
@@ -1859,7 +1859,7 @@ mod tests {
                 }
                 entrypoint fn body@f1(labels@v0: Array[String], scale@v1: Int) -> Html {
                   let v4: (Int) -> Int = fn(v2: Int) {
-                    let v3: Int = v2 * v1
+                    let v3: Int = mul(v2, v1)
                     v3
                   }
                   let v13: (String) -> Html = fn(v5: String) {
@@ -1901,7 +1901,7 @@ mod tests {
             expect![[r#"
                 fn width@f0(scale@v10: (Int) -> Int, n@v11: Int) -> Int {
                   let v12: Int = 0
-                  let v13: Bool = v11 <= v12
+                  let v13: Bool = lt_eq(v11, v12)
                   let v19: Int = match v13 {
                     true => {
                       let v14: Int = 2
@@ -1910,7 +1910,7 @@ mod tests {
                     }
                     false => {
                       let v16: Int = 1
-                      let v17: Int = v11 - v16
+                      let v17: Int = sub(v11, v16)
                       let v18: Int = width@f0(v10, v17)
                       v18
                     }
@@ -1919,7 +1919,7 @@ mod tests {
                 }
                 entrypoint fn body@f1(n@v0: Int) -> Html {
                   let v3: (Int) -> Int = fn(v1: Int) {
-                    let v2: Int = v1 + v0
+                    let v2: Int = add(v1, v0)
                     v2
                   }
                   let v4: Int = 3
@@ -1963,7 +1963,7 @@ mod tests {
             expect![[r#"
                 fn width@f0(n@v9: Int) -> Int {
                   let v10: Int = 0
-                  let v11: Bool = v9 <= v10
+                  let v11: Bool = lt_eq(v9, v10)
                   let v18: Int = match v11 {
                     true => {
                       let v12: Int = 0
@@ -1971,10 +1971,10 @@ mod tests {
                     }
                     false => {
                       let v13: Int = 1
-                      let v14: Int = v9 - v13
+                      let v14: Int = sub(v9, v13)
                       let v15: Int = width@f0(v14)
                       let v16: Int = 2
-                      let v17: Int = v15 + v16
+                      let v17: Int = add(v15, v16)
                       v17
                     }
                   }

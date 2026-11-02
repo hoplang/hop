@@ -1,7 +1,8 @@
-use std::fmt::{self, Display};
+use std::fmt::{self, Display, Write};
 
-use super::parsed_markup::{ParsedMarkup, braced_doc};
+use super::parsed_markup::ParsedMarkup;
 use super::parsed_type::ParsedType;
+use crate::display::{Indent, join, write_tuple};
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::uncooked_string::UncookedString;
 use crate::symbols::attribute_name::AttributeName;
@@ -9,8 +10,6 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-
-use pretty::BoxDoc;
 
 #[derive(Debug, Clone)]
 pub enum ParsedExpr {
@@ -204,18 +203,6 @@ pub enum ParsedLoopSource {
     RangeInclusive { start: ParsedExpr, end: ParsedExpr },
 }
 
-impl ParsedLoopSource {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            ParsedLoopSource::Array(expr) => expr.to_doc(),
-            ParsedLoopSource::RangeInclusive { start, end } => start
-                .to_doc()
-                .append(BoxDoc::text("..="))
-                .append(end.to_doc()),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ParsedFieldInitializer {
     pub name: FieldName,
@@ -359,75 +346,6 @@ impl ParsedPattern {
             | ParsedPattern::Record { range, .. }
             | ParsedPattern::Tuple { range, .. } => range,
         }
-    }
-
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let (base, fields) = match self {
-            ParsedPattern::Wildcard { .. } => return BoxDoc::text("_"),
-            ParsedPattern::Binding { name, .. } => return BoxDoc::text(name.as_str()),
-            ParsedPattern::BoolTrue { .. } => return BoxDoc::text("true"),
-            ParsedPattern::BoolFalse { .. } => return BoxDoc::text("false"),
-            ParsedPattern::OptionNone { .. } => return BoxDoc::text("None"),
-            ParsedPattern::OptionSome { inner, .. } => {
-                return BoxDoc::text("Some(")
-                    .append(inner.to_doc())
-                    .append(BoxDoc::text(")"));
-            }
-            // Tuple pattern: (x, _)
-            ParsedPattern::Tuple { args, .. } => {
-                return BoxDoc::text("(")
-                    .append(BoxDoc::intersperse(
-                        args.iter().map(|a| a.to_doc()),
-                        BoxDoc::text(", "),
-                    ))
-                    .append(if args.len() == 1 {
-                        BoxDoc::text(",")
-                    } else {
-                        BoxDoc::nil()
-                    })
-                    .append(BoxDoc::text(")"));
-            }
-            ParsedPattern::EnumVariant {
-                type_name,
-                variant_name,
-                fields,
-                ..
-            } => (
-                BoxDoc::text(type_name.as_str().to_string())
-                    .append(BoxDoc::text("::"))
-                    .append(BoxDoc::text(variant_name.as_str())),
-                fields,
-            ),
-            ParsedPattern::Record {
-                type_name, fields, ..
-            } => (BoxDoc::text(type_name.as_str().to_string()), fields),
-        };
-        if fields.is_empty() {
-            return base;
-        }
-        // Field patterns: User {name: x, age: y}
-        let fields_doc = BoxDoc::intersperse(
-            fields.iter().map(|(name, _, pat)| {
-                if let ParsedPattern::Binding { name: var_name, .. } = pat {
-                    if var_name.as_str() == name.as_str() {
-                        return BoxDoc::text(name.as_str());
-                    }
-                }
-                BoxDoc::text(name.as_str())
-                    .append(BoxDoc::text(": "))
-                    .append(pat.to_doc())
-            }),
-            BoxDoc::text(", "),
-        );
-        base.append(BoxDoc::text("{"))
-            .append(fields_doc)
-            .append(BoxDoc::text("}"))
-    }
-}
-
-impl std::fmt::Display for ParsedPattern {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(80))
     }
 }
 
@@ -643,147 +561,127 @@ impl ParsedExpr {
             _ => u8::MAX,
         }
     }
+}
 
-    /// Converts this expression to a doc, adding parentheses if it does not
-    /// bind tightly enough for the operand slot it is placed in.
-    fn to_doc_in_slot(&self, slot_binding_power: u8) -> BoxDoc<'_> {
-        if self.binding_power() < slot_binding_power {
-            BoxDoc::text("(")
-                .append(self.to_doc())
-                .append(BoxDoc::text(")"))
-        } else {
-            self.to_doc()
+impl Display for ParsedPattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let fields = match self {
+            ParsedPattern::Wildcard { .. } => return f.write_str("_"),
+            ParsedPattern::Binding { name, .. } => return f.write_str(name.as_str()),
+            ParsedPattern::BoolTrue { .. } => return f.write_str("true"),
+            ParsedPattern::BoolFalse { .. } => return f.write_str("false"),
+            ParsedPattern::OptionNone { .. } => return f.write_str("None"),
+            ParsedPattern::OptionSome { inner, .. } => return write!(f, "Some({inner})"),
+            ParsedPattern::Tuple { args, .. } => return write_tuple(f, args),
+            ParsedPattern::EnumVariant {
+                type_name,
+                variant_name,
+                fields,
+                ..
+            } => {
+                write!(f, "{}::{}", type_name.as_str(), variant_name.as_str())?;
+                fields
+            }
+            ParsedPattern::Record {
+                type_name, fields, ..
+            } => {
+                f.write_str(type_name.as_str())?;
+                fields
+            }
+        };
+        if fields.is_empty() {
+            return Ok(());
+        }
+        // Field patterns: User {name: x, age: y}
+        f.write_str(" {")?;
+        for (i, (name, _, pattern)) in fields.iter().enumerate() {
+            let sep = if i > 0 { ", " } else { "" };
+            write!(f, "{sep}{}: {pattern}", name.as_str())?;
+        }
+        f.write_str("}")
+    }
+}
+
+impl Display for ParsedLoopSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParsedLoopSource::Array(expr) => write!(f, "{expr}"),
+            ParsedLoopSource::RangeInclusive { start, end } => write!(f, "{start}..={end}"),
         }
     }
+}
 
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+/// Markup, matches, blocks and the bodies of loops and lambdas span lines,
+/// every other expression is one line.
+impl Display for ParsedExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ParsedExpr::VariableReference { value, .. } => BoxDoc::text(value.as_str()),
-            ParsedExpr::FieldAccess {
-                record: object,
-                field,
-                ..
-            } => object
-                .to_doc_in_slot(Self::POSTFIX_BINDING_POWER)
-                .append(BoxDoc::text("."))
-                .append(BoxDoc::text(field.as_str())),
+            ParsedExpr::VariableReference { value, .. } => f.write_str(value.as_str()),
+            ParsedExpr::FieldAccess { record, field, .. } => {
+                write!(f, "{record}.{}", field.as_str())
+            }
             ParsedExpr::MethodCall {
                 receiver,
                 method,
                 args,
                 ..
-            } => {
-                let callee = receiver
-                    .to_doc_in_slot(Self::POSTFIX_BINDING_POWER)
-                    .append(BoxDoc::text("."))
-                    .append(BoxDoc::text(method.as_str()));
-                if args.is_empty() {
-                    callee.append(BoxDoc::text("()"))
-                } else {
-                    callee
-                        .append(BoxDoc::text("("))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    args.iter().map(|arg| arg.to_doc()),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text(")"))
-                }
-            }
-            ParsedExpr::StringLiteral { value, .. } => BoxDoc::text(format!("\"{}\"", value)),
-            ParsedExpr::BoolLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            ParsedExpr::IntLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            ParsedExpr::FloatLiteral { value, .. } => BoxDoc::text(value.to_string()),
-            ParsedExpr::Array { elements, .. } => {
-                if elements.is_empty() {
-                    BoxDoc::text("[]")
-                } else {
-                    BoxDoc::text("[")
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    elements.iter().map(|e| e.to_doc()),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("]"))
-                }
-            }
-            ParsedExpr::Tuple { elements, .. } => BoxDoc::text("(")
-                .append(
-                    BoxDoc::line_()
-                        .append(BoxDoc::intersperse(
-                            elements.iter().map(|e| e.to_doc()),
-                            BoxDoc::text(",").append(BoxDoc::line()),
-                        ))
-                        .append(if elements.len() == 1 {
-                            BoxDoc::text(",")
-                        } else {
-                            BoxDoc::text(",").flat_alt(BoxDoc::nil())
-                        })
-                        .append(BoxDoc::line_())
-                        .nest(2)
-                        .group(),
-                )
-                .append(BoxDoc::text(")")),
+            } => write!(f, "{receiver}.{}({})", method.as_str(), join(args, ", ")),
+            ParsedExpr::StringLiteral { value, .. } => write!(f, "\"{value}\""),
+            ParsedExpr::BoolLiteral { value, .. } => write!(f, "{value}"),
+            ParsedExpr::IntLiteral { value, .. } => write!(f, "{value}"),
+            ParsedExpr::FloatLiteral { value, .. } => write!(f, "{value}"),
+            ParsedExpr::Array { elements, .. } => write!(f, "[{}]", join(elements, ", ")),
+            ParsedExpr::Tuple { elements, .. } => write_tuple(f, elements),
             ParsedExpr::Record {
                 type_name,
                 fields,
                 spread,
                 ..
             } => {
-                if fields.is_empty() && spread.is_none() {
-                    BoxDoc::text(type_name.as_str()).append(BoxDoc::text(" {}"))
-                } else {
-                    // The spread is canonicalized to first position.
-                    let entries = spread
-                        .iter()
-                        .map(|subject| BoxDoc::text("...").append(subject.to_doc()))
-                        .chain(fields.iter().map(|field| {
-                            BoxDoc::text(field.name.as_str())
-                                .append(BoxDoc::text(": "))
-                                .append(field.value.to_doc())
-                        }));
-                    BoxDoc::text(type_name.as_str())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    entries,
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
+                write!(f, "{} {{", type_name.as_str())?;
+                // The spread is canonicalized to first position.
+                let mut sep = "";
+                if let Some(subject) = spread {
+                    write!(f, "...{subject}")?;
+                    sep = ", ";
                 }
+                for field in fields {
+                    write!(f, "{sep}{}: {}", field.name.as_str(), field.value)?;
+                    sep = ", ";
+                }
+                f.write_str("}")
             }
+            // Operators print as calls, so the nesting shows without
+            // parentheses.
             ParsedExpr::Unary {
                 operator, operand, ..
-            } => BoxDoc::text(operator.as_str())
-                .append(operand.to_doc_in_slot(Self::PREFIX_BINDING_POWER)),
+            } => {
+                let name = match operator {
+                    ParsedUnaryOp::LogicalNot => "not",
+                    ParsedUnaryOp::Minus => "neg",
+                };
+                write!(f, "{name}({operand})")
+            }
             ParsedExpr::Binary {
                 left,
                 operator,
                 right,
                 ..
             } => {
-                let (left_power, right_power) = operator.binding_power();
-                left.to_doc_in_slot(left_power)
-                    .append(BoxDoc::text(format!(" {} ", operator)))
-                    .append(right.to_doc_in_slot(right_power))
+                let name = match operator {
+                    ParsedBinaryOp::Eq => "eq",
+                    ParsedBinaryOp::NotEq => "not_eq",
+                    ParsedBinaryOp::LessThan => "lt",
+                    ParsedBinaryOp::GreaterThan => "gt",
+                    ParsedBinaryOp::LessThanOrEqual => "lt_eq",
+                    ParsedBinaryOp::GreaterThanOrEqual => "gt_eq",
+                    ParsedBinaryOp::LogicalAnd => "and",
+                    ParsedBinaryOp::LogicalOr => "or",
+                    ParsedBinaryOp::Plus => "add",
+                    ParsedBinaryOp::Minus => "sub",
+                    ParsedBinaryOp::Multiply => "mul",
+                };
+                write!(f, "{name}({left}, {right})")
             }
             ParsedExpr::Enum {
                 type_name,
@@ -791,51 +689,26 @@ impl ParsedExpr {
                 fields,
                 ..
             } => {
-                let base = BoxDoc::text(type_name.as_str())
-                    .append(BoxDoc::text("::"))
-                    .append(BoxDoc::text(variant_name.as_str()));
-                if fields.is_empty() {
-                    base
-                } else {
-                    base.append(BoxDoc::text(" {"))
-                        .append(BoxDoc::intersperse(
-                            fields.iter().map(|field| {
-                                BoxDoc::text(field.name.to_string())
-                                    .append(BoxDoc::text(": "))
-                                    .append(field.value.to_doc())
-                            }),
-                            BoxDoc::text(", "),
-                        ))
-                        .append(BoxDoc::text("}"))
+                write!(f, "{}::{}", type_name.as_str(), variant_name.as_str())?;
+                if !fields.is_empty() {
+                    f.write_str(" {")?;
+                    for (i, field) in fields.iter().enumerate() {
+                        let sep = if i > 0 { ", " } else { "" };
+                        write!(f, "{sep}{}: {}", field.name.as_str(), field.value)?;
+                    }
+                    f.write_str("}")?;
                 }
+                Ok(())
             }
             ParsedExpr::Match { subject, arms, .. } => {
-                if arms.is_empty() {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {}"))
-                } else {
-                    BoxDoc::text("match ")
-                        .append(subject.to_doc())
-                        .append(BoxDoc::text(" {"))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    arms.iter().map(|arm| {
-                                        arm.pattern
-                                            .to_doc()
-                                            .append(BoxDoc::text(" => "))
-                                            .append(arm.body.to_doc())
-                                    }),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text("}"))
+                write!(f, "match {subject} {{")?;
+                {
+                    let mut lines = Indent::new(f);
+                    for arm in arms {
+                        write!(lines, "\n{} => {},", arm.pattern, arm.body)?;
+                    }
                 }
+                f.write_str(if arms.is_empty() { "}" } else { "\n}" })
             }
             ParsedExpr::For {
                 var_name,
@@ -843,21 +716,10 @@ impl ParsedExpr {
                 body,
                 ..
             } => {
-                let var_doc = match var_name {
-                    Some(name) => BoxDoc::text(name.as_str()),
-                    None => BoxDoc::text("_"),
-                };
-                // A let body prints its own braces.
-                let body_doc = match body.as_ref() {
-                    ParsedExpr::Let { .. } => body.to_doc(),
-                    _ => braced_doc(vec![body.to_doc()]),
-                };
-                BoxDoc::text("for ")
-                    .append(var_doc)
-                    .append(" in ")
-                    .append(source.to_doc())
-                    .append(" ")
-                    .append(body_doc)
+                let var = var_name.as_ref().map_or("_", |name| name.as_str());
+                write!(f, "for {var} in {source} {{")?;
+                write!(Indent::new(f), "\n{body}")?;
+                f.write_str("\n}")
             }
             ParsedExpr::Lambda {
                 params,
@@ -865,140 +727,57 @@ impl ParsedExpr {
                 body,
                 ..
             } => {
-                let params_doc = BoxDoc::intersperse(
-                    params.iter().map(|param| {
-                        let name = BoxDoc::text(param.var_name.as_str());
-                        match &param.var_type {
-                            Some(var_type) => {
-                                name.append(BoxDoc::text(": ")).append(var_type.to_doc())
-                            }
-                            None => name,
-                        }
-                    }),
-                    BoxDoc::text(", "),
-                );
-                let return_doc = match return_type {
-                    Some(return_type) => BoxDoc::text(" -> ").append(return_type.to_doc()),
-                    None => BoxDoc::nil(),
-                };
-                // A let body prints its own braces.
-                let body_doc = match body.as_ref() {
-                    ParsedExpr::Let { .. } => body.to_doc(),
-                    _ => braced_doc(vec![body.to_doc()]),
-                };
-                BoxDoc::text("fn(")
-                    .append(params_doc)
-                    .append(BoxDoc::text(")"))
-                    .append(return_doc)
-                    .append(BoxDoc::text(" "))
-                    .append(body_doc)
-            }
-            ParsedExpr::Let { .. } => {
-                let mut statements = Vec::new();
-                let mut expr = self;
-                while let ParsedExpr::Let { binding, body, .. } = expr {
-                    let mut statement =
-                        BoxDoc::text("let ").append(BoxDoc::text(binding.var_name.as_str()));
-                    if let Some(var_type) = &binding.var_type {
-                        statement = statement
-                            .append(BoxDoc::text(": "))
-                            .append(var_type.to_doc());
+                f.write_str("fn(")?;
+                for (i, param) in params.iter().enumerate() {
+                    let sep = if i > 0 { ", " } else { "" };
+                    write!(f, "{sep}{}", param.var_name.as_str())?;
+                    if let Some(var_type) = &param.var_type {
+                        write!(f, ": {var_type}")?;
                     }
-                    statements.push(
-                        statement
-                            .append(BoxDoc::text(" = "))
-                            .append(binding.value_expr.to_doc())
-                            .append(BoxDoc::text(";")),
-                    );
-                    expr = body;
                 }
-                statements.push(expr.to_doc());
-                BoxDoc::text("{")
-                    .append(
-                        BoxDoc::hardline()
-                            .append(BoxDoc::intersperse(statements, BoxDoc::hardline()))
-                            .nest(2),
-                    )
-                    .append(BoxDoc::hardline())
-                    .append(BoxDoc::text("}"))
+                f.write_str(")")?;
+                if let Some(return_type) = return_type {
+                    write!(f, " -> {return_type}")?;
+                }
+                f.write_str(" {")?;
+                write!(Indent::new(f), "\n{body}")?;
+                f.write_str("\n}")
+            }
+            ParsedExpr::Let { binding, body, .. } => {
+                write!(f, "let {}", binding.var_name.as_str())?;
+                if let Some(var_type) = &binding.var_type {
+                    write!(f, ": {var_type}")?;
+                }
+                write!(f, " = {} in {body}", binding.value_expr)
             }
             ParsedExpr::Option { value, .. } => match value {
-                Some(inner) => BoxDoc::text("Some(")
-                    .append(inner.to_doc())
-                    .append(BoxDoc::text(")")),
-                None => BoxDoc::text("None"),
+                Some(inner) => write!(f, "Some({inner})"),
+                None => f.write_str("None"),
             },
             ParsedExpr::Macro { name, args, .. } => {
-                if args.is_empty() {
-                    BoxDoc::text(name.as_str()).append(BoxDoc::text("!()"))
-                } else {
-                    BoxDoc::text(name.as_str())
-                        .append(BoxDoc::text("!("))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    args.iter().map(|e| e.to_doc()),
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text(")"))
-                }
+                write!(f, "{}!({})", name.as_str(), join(args, ", "))
             }
-            ParsedExpr::Markup { markup } => markup.to_doc(),
+            ParsedExpr::Markup { markup } => write!(f, "{markup}"),
             ParsedExpr::Call { name, args, .. } => {
-                let arg_docs: Vec<BoxDoc<'_>> = match args {
-                    ParsedArguments::Positional(values) => {
-                        values.iter().map(|value| value.to_doc()).collect()
-                    }
-                    ParsedArguments::Named(named) => named
-                        .iter()
-                        .map(|arg| match arg {
-                            ParsedNamedArgument::Value {
-                                name_range, value, ..
-                            } => BoxDoc::text(name_range.as_str())
-                                .append(BoxDoc::text(": "))
-                                .append(value.to_doc()),
-                            ParsedNamedArgument::Spread { name, .. } => {
-                                BoxDoc::text(format!("...{}", name.as_str()))
+                write!(f, "{}(", name.as_str())?;
+                match args {
+                    ParsedArguments::Positional(values) => write!(f, "{}", join(values, ", "))?,
+                    ParsedArguments::Named(named) => {
+                        for (i, arg) in named.iter().enumerate() {
+                            let sep = if i > 0 { ", " } else { "" };
+                            match arg {
+                                ParsedNamedArgument::Value {
+                                    name_range, value, ..
+                                } => write!(f, "{sep}{}: {value}", name_range.as_str())?,
+                                ParsedNamedArgument::Spread { name, .. } => {
+                                    write!(f, "{sep}...{}", name.as_str())?;
+                                }
                             }
-                        })
-                        .collect(),
-                };
-                if arg_docs.is_empty() {
-                    BoxDoc::text(name.as_str()).append(BoxDoc::text("()"))
-                } else {
-                    BoxDoc::text(name.as_str())
-                        .append(BoxDoc::text("("))
-                        .append(
-                            BoxDoc::line_()
-                                .append(BoxDoc::intersperse(
-                                    arg_docs,
-                                    BoxDoc::text(",").append(BoxDoc::line()),
-                                ))
-                                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                                .append(BoxDoc::line_())
-                                .nest(2)
-                                .group(),
-                        )
-                        .append(BoxDoc::text(")"))
+                        }
+                    }
                 }
+                f.write_str(")")
             }
         }
-    }
-}
-
-impl Display for ParsedExpr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
-    }
-}
-
-impl Display for ParsedBinaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
     }
 }

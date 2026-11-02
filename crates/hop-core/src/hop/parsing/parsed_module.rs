@@ -1,3 +1,4 @@
+use crate::display::{Indent, join, write_lines, write_variant};
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
@@ -6,8 +7,7 @@ use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
-use pretty::BoxDoc;
-use std::fmt::{self, Display};
+use std::fmt::{self, Display, Write};
 
 #[derive(Debug, Clone)]
 pub struct ParsedModule {
@@ -173,40 +173,6 @@ pub struct ParsedParameter {
     pub fallback_value: Option<ParsedExpr>,
 }
 
-impl Display for ParsedParameter {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
-    }
-}
-
-impl ParsedParameter {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let name = BoxDoc::text(self.var_name.as_str());
-        match &self.fallback_value {
-            Some(fallback) => name
-                .append(BoxDoc::text("?: "))
-                .append(self.var_type.to_doc())
-                .append(BoxDoc::text(" = "))
-                .append(fallback.to_doc()),
-            None => name
-                .append(BoxDoc::text(": "))
-                .append(self.var_type.to_doc()),
-        }
-    }
-}
-
-impl ParsedDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            ParsedDeclaration::Import(import) => import.to_doc(),
-            ParsedDeclaration::Record(record) => record.to_doc(),
-            ParsedDeclaration::Enum(e) => e.to_doc(),
-            ParsedDeclaration::Page(page) => page.to_doc(),
-            ParsedDeclaration::Function(function) => function.to_doc(),
-        }
-    }
-}
-
 impl ParsedModule {
     pub fn new(declarations: Vec<ParsedDeclaration>, comments: Vec<DocumentRange>) -> Self {
         Self {
@@ -273,192 +239,121 @@ impl ParsedModule {
             _ => None,
         })
     }
+}
 
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        if self.declarations.is_empty() {
-            BoxDoc::nil()
-        } else {
-            let mut doc = BoxDoc::nil();
-            let mut prev_was_import = false;
-            for (i, decl) in self.declarations.iter().enumerate() {
-                if i > 0 {
-                    doc = doc.append(BoxDoc::line());
-                    let curr_is_import = matches!(decl, ParsedDeclaration::Import(_));
-                    if !(prev_was_import && curr_is_import) {
-                        doc = doc.append(BoxDoc::line());
-                    }
-                }
-                doc = doc.append(decl.to_doc());
-                prev_was_import = matches!(decl, ParsedDeclaration::Import(_));
-            }
-            doc.append(BoxDoc::line())
+fn pub_prefix(pub_range: &Option<DocumentRange>) -> &'static str {
+    if pub_range.is_some() { "pub " } else { "" }
+}
+
+impl Display for ParsedParameter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = self.var_name.as_str();
+        match &self.fallback_value {
+            Some(fallback) => write!(f, "{name}?: {} = {fallback}", self.var_type),
+            None => write!(f, "{name}: {}", self.var_type),
+        }
+    }
+}
+
+impl Display for ParsedDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParsedDeclaration::Import(import) => write!(f, "{import}"),
+            ParsedDeclaration::Record(record) => write!(f, "{record}"),
+            ParsedDeclaration::Enum(enumeration) => write!(f, "{enumeration}"),
+            ParsedDeclaration::Page(page) => write!(f, "{page}"),
+            ParsedDeclaration::Function(function) => write!(f, "{function}"),
         }
     }
 }
 
 impl Display for ParsedModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(40))
-    }
-}
-
-impl ParsedImportDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text("import")
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.module_name.to_string()))
-            .append(BoxDoc::text("::"))
-            .append(BoxDoc::text(self.name.as_str()))
-    }
-}
-
-impl ParsedFieldDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(self.name.as_str())
-            .append(BoxDoc::text(": "))
-            .append(self.field_type.to_doc())
-    }
-}
-
-impl ParsedRecordDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let pub_prefix = if self.pub_range.is_some() {
-            BoxDoc::text("pub").append(BoxDoc::space())
-        } else {
-            BoxDoc::nil()
-        };
-        pub_prefix
-            .append(BoxDoc::text("record"))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.type_name.as_str()))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(if self.fields.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.fields.iter().map(|f| f.to_doc()),
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    .append(BoxDoc::text(","))
-                    .nest(2)
-                    .append(BoxDoc::line())
-            })
-            .append(BoxDoc::text("}"))
-    }
-}
-
-impl ParsedEnumDeclarationVariant {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        if self.fields.is_empty() {
-            BoxDoc::text(self.name.as_str())
-        } else {
-            BoxDoc::text(self.name.as_str())
-                .append(BoxDoc::text(" { "))
-                .append(BoxDoc::intersperse(
-                    self.fields.iter().map(|field| {
-                        BoxDoc::text(field.name.to_string())
-                            .append(BoxDoc::text(": "))
-                            .append(field.field_type.to_doc())
-                    }),
-                    BoxDoc::text(", "),
-                ))
-                .append(BoxDoc::text(" }"))
+        let mut sep = "";
+        for declaration in &self.declarations {
+            writeln!(f, "{sep}{declaration}")?;
+            sep = "\n";
         }
+        Ok(())
     }
 }
 
-impl ParsedEnumDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let pub_prefix = if self.pub_range.is_some() {
-            BoxDoc::text("pub").append(BoxDoc::space())
-        } else {
-            BoxDoc::nil()
-        };
-        pub_prefix
-            .append(BoxDoc::text("enum"))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.type_name.as_str()))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(if self.variants.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        self.variants.iter().map(|v| v.to_doc()),
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    .append(BoxDoc::text(","))
-                    .nest(2)
-                    .append(BoxDoc::line())
-            })
-            .append(BoxDoc::text("}"))
+impl Display for ParsedImportDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "import {}::{}", self.module_name, self.name.as_str())
     }
 }
 
-impl ParsedFunctionDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let pub_prefix = if self.pub_range.is_some() {
-            BoxDoc::text("pub").append(BoxDoc::space())
-        } else {
-            BoxDoc::nil()
-        };
-        let mut params: Vec<BoxDoc<'_>> = self.params.iter().map(|p| p.to_doc()).collect();
+impl Display for ParsedFieldDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.name.as_str(), self.field_type)
+    }
+}
+
+impl Display for ParsedRecordDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (prefix, name) = (pub_prefix(&self.pub_range), self.type_name.as_str());
+        write_lines(
+            f,
+            format_args!("{prefix}record {name} {{"),
+            &self.fields,
+            "}",
+        )
+    }
+}
+
+impl Display for ParsedEnumDeclarationVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_variant(f, self.name.as_str(), &self.fields)
+    }
+}
+
+impl Display for ParsedEnumDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (prefix, name) = (pub_prefix(&self.pub_range), self.type_name.as_str());
+        write_lines(
+            f,
+            format_args!("{prefix}enum {name} {{"),
+            &self.variants,
+            "}",
+        )
+    }
+}
+
+impl Display for ParsedFunctionDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}fn {}({}",
+            pub_prefix(&self.pub_range),
+            self.name.as_str(),
+            join(&self.params, ", ")
+        )?;
         if let Some((name, _)) = &self.rest_param {
-            params.push(BoxDoc::text("...").append(BoxDoc::text(name.as_str())));
+            let sep = if self.params.is_empty() { "" } else { ", " };
+            write!(f, "{sep}...{}", name.as_str())?;
         }
-        pub_prefix
-            .append(BoxDoc::text("fn"))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.name.as_str()))
-            .append(BoxDoc::text("("))
-            .append(BoxDoc::intersperse(params, BoxDoc::text(", ")))
-            .append(BoxDoc::text(")"))
-            .append(BoxDoc::text(" -> "))
-            .append(self.return_type.to_doc())
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(
-                BoxDoc::line()
-                    .append(self.body.to_doc())
-                    .nest(2)
-                    .append(BoxDoc::line()),
-            )
-            .append(BoxDoc::text("}"))
+        write!(f, ") -> {} {{", self.return_type)?;
+        write!(Indent::new(f), "\n{}", self.body)?;
+        f.write_str("\n}")
     }
 }
 
-impl ParsedPageDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let pub_prefix = if self.pub_range.is_some() {
-            BoxDoc::text("pub").append(BoxDoc::space())
-        } else {
-            BoxDoc::nil()
-        };
-        let header = pub_prefix
-            .append(BoxDoc::text("page"))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(self.name.as_str()))
-            .append(BoxDoc::text("("))
-            .append(if self.params.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::intersperse(self.params.iter().map(|p| p.to_doc()), BoxDoc::text(", "))
-            })
-            .append(BoxDoc::text(")"))
-            .append(BoxDoc::space());
-
-        let blocks = self.members().map(|member| member.to_doc());
-        header
-            .append(BoxDoc::text("{"))
-            .append(
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(blocks, BoxDoc::line()))
-                    .nest(2)
-                    .append(BoxDoc::line()),
-            )
-            .append(BoxDoc::text("}"))
+impl Display for ParsedPageDeclaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}page {}({}) {{",
+            pub_prefix(&self.pub_range),
+            self.name.as_str(),
+            join(&self.params, ", ")
+        )?;
+        {
+            let mut members = Indent::new(f);
+            for member in self.members() {
+                write!(members, "\n{member}")?;
+            }
+        }
+        f.write_str("\n}")
     }
 }

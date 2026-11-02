@@ -808,7 +808,7 @@ mod tests {
                 entrypoint fn Test@f0() -> Html {
                   let v0: Int = 2147483647
                   let v1: Int = 1
-                  let v2: Int = v0 + v1
+                  let v2: Int = add(v0, v1)
                   let v3: String = v2.to_string()
                   let v4: Html = escape(v3)
                   v4
@@ -1031,7 +1031,7 @@ mod tests {
                 -- before --
                 fn Sum@f0(n@v0: Int) -> Int {
                   let v1: Int = 0
-                  let v2: Bool = v0 <= v1
+                  let v2: Bool = lt_eq(v0, v1)
                   let v8: Int = match v2 {
                     true => {
                       let v3: Int = 0
@@ -1039,9 +1039,9 @@ mod tests {
                     }
                     false => {
                       let v4: Int = 1
-                      let v5: Int = v0 - v4
+                      let v5: Int = sub(v0, v4)
                       let v6: Int = Sum@f0(v5)
-                      let v7: Int = v0 + v6
+                      let v7: Int = add(v0, v6)
                       v7
                     }
                   }
@@ -1081,7 +1081,7 @@ mod tests {
                 -- before --
                 entrypoint fn Test@f0(base@v0: Int) -> Html {
                   let v3: (Int) -> Int = fn(v1: Int) {
-                    let v2: Int = v1 + v0
+                    let v2: Int = add(v1, v0)
                     v2
                   }
                   let v4: Int = 1

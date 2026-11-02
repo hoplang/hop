@@ -1,7 +1,6 @@
 use std::fmt;
 
-use pretty::BoxDoc;
-
+use crate::display::write_tuple;
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::symbols::type_name::TypeName;
 
@@ -155,33 +154,6 @@ impl IrDataType {
             | IrDataType::Enum(_) => None,
         }
     }
-
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            IrDataType::String => BoxDoc::text("String"),
-            IrDataType::Float => BoxDoc::text("Float"),
-            IrDataType::Int => BoxDoc::text("Int"),
-            IrDataType::Bool => BoxDoc::text("Bool"),
-            IrDataType::Array(element) => BoxDoc::text("Array[")
-                .append(element.to_doc())
-                .append(BoxDoc::text("]")),
-            IrDataType::Option(element) => BoxDoc::text("Option[")
-                .append(element.to_doc())
-                .append(BoxDoc::text("]")),
-            IrDataType::Tuple(elements) => BoxDoc::text("(")
-                .append(BoxDoc::intersperse(
-                    elements.iter().map(IrDataType::to_doc),
-                    BoxDoc::text(", "),
-                ))
-                .append(if elements.len() == 1 {
-                    BoxDoc::text(",")
-                } else {
-                    BoxDoc::nil()
-                })
-                .append(BoxDoc::text(")")),
-            IrDataType::Record(name) | IrDataType::Enum(name) => BoxDoc::text(name.as_str()),
-        }
-    }
 }
 
 impl fmt::Display for IrType {
@@ -240,6 +212,15 @@ impl fmt::Display for IrHtmlSignature {
 
 impl fmt::Display for IrDataType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
+        match self {
+            IrDataType::String => f.write_str("String"),
+            IrDataType::Float => f.write_str("Float"),
+            IrDataType::Int => f.write_str("Int"),
+            IrDataType::Bool => f.write_str("Bool"),
+            IrDataType::Array(element) => write!(f, "Array[{element}]"),
+            IrDataType::Option(element) => write!(f, "Option[{element}]"),
+            IrDataType::Tuple(elements) => write_tuple(f, elements),
+            IrDataType::Record(name) | IrDataType::Enum(name) => f.write_str(name.as_str()),
+        }
     }
 }

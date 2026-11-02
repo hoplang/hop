@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 
-use pretty::BoxDoc;
-
 use super::match_types::{MatchTypes, TypeShape};
 use super::r#type::DataType;
+use crate::display::{write_lines, write_variant};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -156,74 +155,35 @@ impl MatchTypes for TypeRegistry {
     }
 }
 
-impl RecordField {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(self.name.as_str())
-            .append(BoxDoc::text(": "))
-            .append(self.typ.to_doc())
+impl Display for RecordField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.name.as_str(), self.typ)
     }
 }
 
-impl TypeDef {
-    pub fn to_doc<'a>(&'a self, name: &'a TypeName) -> BoxDoc<'a> {
-        let (keyword, members): (&str, Vec<BoxDoc<'a>>) = match self {
-            TypeDef::Record { fields } => {
-                ("record", fields.iter().map(RecordField::to_doc).collect())
-            }
-            TypeDef::Enum { variants } => (
-                "enum",
-                variants
-                    .iter()
-                    .map(|variant| {
-                        if variant.fields.is_empty() {
-                            BoxDoc::text(variant.name.as_str())
-                        } else {
-                            BoxDoc::text(variant.name.as_str())
-                                .append(BoxDoc::text(" { "))
-                                .append(BoxDoc::intersperse(
-                                    variant.fields.iter().map(RecordField::to_doc),
-                                    BoxDoc::text(", "),
-                                ))
-                                .append(BoxDoc::text(" }"))
-                        }
-                    })
-                    .collect(),
-            ),
-        };
-        BoxDoc::text(keyword)
-            .append(BoxDoc::space())
-            .append(BoxDoc::text(name.as_str()))
-            .append(BoxDoc::space())
-            .append(BoxDoc::text("{"))
-            .append(if members.is_empty() {
-                BoxDoc::nil()
-            } else {
-                BoxDoc::line()
-                    .append(BoxDoc::intersperse(
-                        members,
-                        BoxDoc::text(",").append(BoxDoc::line()),
-                    ))
-                    .append(BoxDoc::text(","))
-                    .nest(2)
-                    .append(BoxDoc::line())
-            })
-            .append(BoxDoc::text("}"))
+impl Display for EnumVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_variant(f, self.name.as_str(), &self.fields)
     }
 }
 
-impl TypeRegistry {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let docs: Vec<_> = self.iter().map(|(_, name, def)| def.to_doc(name)).collect();
-        if docs.is_empty() {
-            BoxDoc::nil()
-        } else {
-            BoxDoc::intersperse(docs, BoxDoc::line().append(BoxDoc::line())).append(BoxDoc::line())
-        }
-    }
-}
-
+/// The definitions in order, separated by blank lines.
 impl Display for TypeRegistry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(80))
+        for (i, (_, name, def)) in self.iter().enumerate() {
+            if i > 0 {
+                writeln!(f)?;
+            }
+            match def {
+                TypeDef::Record { fields } => {
+                    write_lines(f, format_args!("record {} {{", name.as_str()), fields, "}")?;
+                }
+                TypeDef::Enum { variants } => {
+                    write_lines(f, format_args!("enum {} {{", name.as_str()), variants, "}")?;
+                }
+            }
+            writeln!(f)?;
+        }
+        Ok(())
     }
 }

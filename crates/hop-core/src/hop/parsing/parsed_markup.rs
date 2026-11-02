@@ -1,3 +1,4 @@
+use crate::display::{Indent, write_lines};
 use crate::document::DocumentRange;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::uncooked_string::UncookedString;
@@ -5,9 +6,7 @@ use crate::html::HtmlElementKind;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
-use pretty::BoxDoc;
-use std::borrow::Cow;
-use std::fmt::{self, Display};
+use std::fmt::{self, Display, Write};
 
 #[derive(Debug, Clone)]
 pub enum ParsedMarkup {
@@ -124,64 +123,6 @@ pub enum ParsedAttribute {
     Spread { name: VarName, range: DocumentRange },
 }
 
-fn call_doc<'a>(name: impl Into<Cow<'a, str>>, args: Vec<BoxDoc<'a>>) -> BoxDoc<'a> {
-    let name = BoxDoc::text(name);
-    if args.is_empty() {
-        return name.append("()");
-    }
-    name.append("(")
-        .append(
-            BoxDoc::line_()
-                .append(BoxDoc::intersperse(
-                    args,
-                    BoxDoc::text(",").append(BoxDoc::line()),
-                ))
-                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                .append(BoxDoc::line_())
-                .nest(2)
-                .group(),
-        )
-        .append(")")
-}
-
-fn bracketed_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
-    if items.is_empty() {
-        return BoxDoc::text("[]");
-    }
-    BoxDoc::text("[")
-        .append(
-            BoxDoc::line_()
-                .append(BoxDoc::intersperse(
-                    items,
-                    BoxDoc::text(",").append(BoxDoc::line()),
-                ))
-                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                .append(BoxDoc::line_())
-                .nest(2)
-                .group(),
-        )
-        .append("]")
-}
-
-pub(super) fn braced_doc(items: Vec<BoxDoc<'_>>) -> BoxDoc<'_> {
-    if items.is_empty() {
-        return BoxDoc::text("{}");
-    }
-    BoxDoc::text("{")
-        .append(
-            BoxDoc::line()
-                .append(BoxDoc::intersperse(
-                    items,
-                    BoxDoc::text(",").append(BoxDoc::line()),
-                ))
-                .append(BoxDoc::text(",").flat_alt(BoxDoc::nil()))
-                .nest(2)
-                .append(BoxDoc::line())
-                .group(),
-        )
-        .append("}")
-}
-
 impl ParsedAttribute {
     /// The attribute name, or `None` for a spread.
     pub fn name(&self) -> Option<&AttributeName> {
@@ -190,19 +131,6 @@ impl ParsedAttribute {
             | ParsedAttribute::Expression { name, .. }
             | ParsedAttribute::String { name, .. } => Some(name),
             ParsedAttribute::Spread { .. } => None,
-        }
-    }
-
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            ParsedAttribute::KeyOnly { name, .. } => BoxDoc::text(name.as_str()),
-            ParsedAttribute::Expression { name, value, .. } => BoxDoc::text(name.as_str())
-                .append(": ")
-                .append(value.to_doc()),
-            ParsedAttribute::String { name, value, .. } => BoxDoc::text(name.as_str())
-                .append(": ")
-                .append(format!("{value:?}")),
-            ParsedAttribute::Spread { name, .. } => BoxDoc::text("...").append(name.as_str()),
         }
     }
 }
@@ -297,65 +225,79 @@ impl ParsedMarkup {
     pub fn tag_names(&self) -> impl Iterator<Item = &DocumentRange> {
         self.tag_name().into_iter().chain(self.closing_tag_name())
     }
+}
 
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+impl Display for ParsedAttribute {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ParsedMarkup::Text { range } => {
-                call_doc("text", vec![BoxDoc::text(format!("{:?}", range.as_str()))])
+            ParsedAttribute::KeyOnly { name, .. } => f.write_str(name.as_str()),
+            ParsedAttribute::Expression { name, value, .. } => {
+                write!(f, "{}: {value}", name.as_str())
             }
-            ParsedMarkup::Newline { .. } => call_doc("newline", vec![]),
-            ParsedMarkup::Interpolation { expression, .. } => {
-                call_doc("interpolate", vec![expression.to_doc()])
+            ParsedAttribute::String { name, value, .. } => {
+                write!(f, "{}: {value:?}", name.as_str())
             }
-            ParsedMarkup::Fragment { children, .. } => {
-                call_doc("fragment", children.iter().map(|c| c.to_doc()).collect())
-            }
-            ParsedMarkup::Element {
-                kind,
-                tag_name,
-                attributes,
-                children,
-                ..
-            } => {
-                let mut args = vec![
-                    BoxDoc::text(format!("tag: {:?}", tag_name.as_str())),
-                    BoxDoc::text("attrs: ").append(bracketed_doc(
-                        attributes.iter().map(|a| a.to_doc()).collect(),
-                    )),
-                ];
-                if !kind.is_void() || !children.is_empty() {
-                    args.push(
-                        BoxDoc::text("children: ")
-                            .append(bracketed_doc(children.iter().map(|c| c.to_doc()).collect())),
-                    );
-                }
-                call_doc("element", args)
-            }
-            ParsedMarkup::Call {
-                function_name,
-                attributes,
-                children,
-                ..
-            } => {
-                let mut args = vec![BoxDoc::text("attrs: ").append(bracketed_doc(
-                    attributes.iter().map(|a| a.to_doc()).collect(),
-                ))];
-                // `None` is a self-closing markup call, `<Foo/>`, and `Some` has
-                // an explicit closing tag, `<Foo></Foo>`, possibly with a body.
-                if let Some(children) = children {
-                    args.push(
-                        BoxDoc::text("children: ")
-                            .append(bracketed_doc(children.iter().map(|c| c.to_doc()).collect())),
-                    );
-                }
-                call_doc(function_name.as_str(), args)
-            }
+            ParsedAttribute::Spread { name, .. } => write!(f, "...{}", name.as_str()),
         }
     }
 }
 
+/// Text, newlines and interpolations are one line, and every other markup
+/// has its arguments on lines of their own.
 impl Display for ParsedMarkup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(40))
+        /// The items in brackets, each on a line of its own.
+        fn bracketed<T: Display>(items: &[T]) -> impl Display {
+            fmt::from_fn(move |f| write_lines(f, "[", items, "]"))
+        }
+
+        match self {
+            ParsedMarkup::Text { range } => write!(f, "text({:?})", range.as_str()),
+            ParsedMarkup::Newline { .. } => f.write_str("newline()"),
+            ParsedMarkup::Interpolation { expression, .. } => {
+                write!(f, "interpolate({expression})")
+            }
+            ParsedMarkup::Fragment {
+                children: fragment_children,
+                ..
+            } => write_lines(f, "fragment(", fragment_children, ")"),
+            ParsedMarkup::Element {
+                kind,
+                tag_name,
+                attributes,
+                children: element_children,
+                ..
+            } => {
+                f.write_str("element(")?;
+                {
+                    let mut args = Indent::new(f);
+                    write!(args, "\ntag: {:?},", tag_name.as_str())?;
+                    write!(args, "\nattrs: {},", bracketed(attributes))?;
+                    if !kind.is_void() || !element_children.is_empty() {
+                        write!(args, "\nchildren: {},", bracketed(element_children))?;
+                    }
+                }
+                f.write_str("\n)")
+            }
+            ParsedMarkup::Call {
+                function_name,
+                attributes,
+                children: call_children,
+                ..
+            } => {
+                write!(f, "{}(", function_name.as_str())?;
+                {
+                    let mut args = Indent::new(f);
+                    write!(args, "\nattrs: {},", bracketed(attributes))?;
+                    // `None` is a self-closing markup call, `<Foo/>`, and `Some`
+                    // has an explicit closing tag, `<Foo></Foo>`, possibly with
+                    // a body.
+                    if let Some(call_children) = call_children {
+                        write!(args, "\nchildren: {},", bracketed(call_children))?;
+                    }
+                }
+                f.write_str("\n)")
+            }
+        }
     }
 }

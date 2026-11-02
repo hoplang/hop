@@ -1,5 +1,4 @@
 use indexmap::IndexMap;
-use pretty::BoxDoc;
 
 use crate::html::HtmlElementKind;
 use crate::ir::value_id::ValueId;
@@ -41,19 +40,5 @@ impl<Children> IrHtmlElement<Children> {
                 IrAttribute::Value(name) | IrAttribute::Presence(name) => f(name),
             }
         }
-    }
-
-    /// The attributes in braces, each as its name and the name it reads.
-    pub fn attributes_to_doc(&self) -> BoxDoc<'_> {
-        let attributes = self
-            .attributes
-            .iter()
-            .map(|(name, attribute)| match attribute {
-                IrAttribute::Value(value) => format!("{}: {value}", name.as_str()),
-                IrAttribute::Presence(present) => format!("{}: {present}", name.as_str()),
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        BoxDoc::text(format!("{{{attributes}}}"))
     }
 }

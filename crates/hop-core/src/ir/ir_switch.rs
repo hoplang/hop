@@ -1,7 +1,8 @@
 //! The match of the Writer IR, a switch on the constructor of its subject.
 
-use pretty::BoxDoc;
+use std::fmt::{self, Write};
 
+use crate::display::Indent;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_type::IrDataType;
 use crate::ir::value_id::ValueId;
@@ -53,79 +54,76 @@ pub enum IrSwitch<Body> {
 
 impl<Body> IrSwitch<Body> {
     /// The match head, then each arm as its pattern and its body on lines
-    /// of their own. The body doc starts with a line break and the arm
-    /// nests it.
-    pub fn to_doc<'a>(&'a self, body_to_doc: impl Fn(&'a Body) -> BoxDoc<'a>) -> BoxDoc<'a> {
-        let (subject, arms) = match self {
-            IrSwitch::Bool {
-                subject,
-                true_body,
-                false_body,
-            } => (
-                subject,
-                vec![
-                    ("true".to_string(), true_body),
-                    ("false".to_string(), false_body),
-                ],
-            ),
-            IrSwitch::Option {
-                subject,
-                some_arm_binding,
-                some_arm_body,
-                none_arm_body,
-            } => {
-                let some_pattern = match some_arm_binding {
-                    Some(binder) => format!("Some({binder})"),
-                    None => "Some(_)".to_string(),
-                };
-                (
-                    subject,
-                    vec![
-                        (some_pattern, some_arm_body),
-                        ("None".to_string(), none_arm_body),
-                    ],
-                )
-            }
-            IrSwitch::Enum { subject, arms } => (
-                subject,
-                arms.iter()
-                    .map(|enum_arm| {
+    /// of their own. The body starts with a line break and is indented.
+    pub fn write(
+        &self,
+        w: &mut dyn Write,
+        write_body: impl Fn(&Body, &mut dyn Write) -> fmt::Result,
+    ) -> fmt::Result {
+        let (IrSwitch::Bool { subject, .. }
+        | IrSwitch::Option { subject, .. }
+        | IrSwitch::Enum { subject, .. }) = self;
+        if let IrSwitch::Enum { arms, .. } = self
+            && arms.is_empty()
+        {
+            return write!(w, "match {subject} {{}}");
+        }
+        write!(w, "match {subject} {{")?;
+        {
+            let mut arms = Indent::new(w);
+            // Each arm writes its pattern on a new line, then this.
+            let arm_body = |arms: &mut dyn Write, body: &Body| -> fmt::Result {
+                arms.write_str(" => {")?;
+                write_body(body, &mut Indent::new(arms))?;
+                arms.write_str("\n}")
+            };
+            match self {
+                IrSwitch::Bool {
+                    true_body,
+                    false_body,
+                    ..
+                } => {
+                    arms.write_str("\ntrue")?;
+                    arm_body(&mut arms, true_body)?;
+                    arms.write_str("\nfalse")?;
+                    arm_body(&mut arms, false_body)?;
+                }
+                IrSwitch::Option {
+                    some_arm_binding,
+                    some_arm_body,
+                    none_arm_body,
+                    ..
+                } => {
+                    match some_arm_binding {
+                        Some(binder) => write!(arms, "\nSome({binder})")?,
+                        None => arms.write_str("\nSome(_)")?,
+                    }
+                    arm_body(&mut arms, some_arm_body)?;
+                    arms.write_str("\nNone")?;
+                    arm_body(&mut arms, none_arm_body)?;
+                }
+                IrSwitch::Enum {
+                    arms: enum_arms, ..
+                } => {
+                    for enum_arm in enum_arms {
                         let EnumPattern::Variant {
                             type_name,
                             variant_name,
                         } = &enum_arm.pattern;
-                        let mut pattern =
-                            format!("{}::{}", type_name.as_str(), variant_name.as_str());
+                        write!(arms, "\n{}::{}", type_name.as_str(), variant_name.as_str())?;
                         if !enum_arm.bindings.is_empty() {
-                            let bindings = enum_arm
-                                .bindings
-                                .iter()
-                                .map(|(field, binder)| format!("{}@{binder}", field.as_str()))
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            pattern.push_str(&format!(" {{{bindings}}}"));
+                            arms.write_str(" {")?;
+                            for (i, (field, binder)) in enum_arm.bindings.iter().enumerate() {
+                                let sep = if i > 0 { ", " } else { "" };
+                                write!(arms, "{sep}{}@{binder}", field.as_str())?;
+                            }
+                            arms.write_str("}")?;
                         }
-                        (pattern, &enum_arm.body)
-                    })
-                    .collect(),
-            ),
-        };
-        let head = BoxDoc::text(format!("match {subject}"));
-        if arms.is_empty() {
-            return head.append(BoxDoc::text(" {}"));
+                        arm_body(&mut arms, &enum_arm.body)?;
+                    }
+                }
+            }
         }
-        head.append(BoxDoc::text(" {"))
-            .append(
-                BoxDoc::concat(arms.into_iter().map(|(pattern, body)| {
-                    BoxDoc::line()
-                        .append(BoxDoc::text(format!("{pattern} => {{")))
-                        .append(body_to_doc(body).nest(2))
-                        .append(BoxDoc::line())
-                        .append(BoxDoc::text("}"))
-                }))
-                .nest(2),
-            )
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("}"))
+        w.write_str("\n}")
     }
 }

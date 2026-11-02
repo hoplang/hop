@@ -648,7 +648,7 @@ impl<'a> Checker<'a> {
         if let Some(pattern) = missing.first() {
             panic!(
                 "{function} has a match on a {subject} where no arm matches {}",
-                pattern.to_doc().pretty(80)
+                pattern
             );
         }
         if let Some(pattern) = (0..patterns.len())
@@ -657,7 +657,7 @@ impl<'a> Checker<'a> {
         {
             panic!(
                 "{function} has a match on a {subject} where the arms before {} match every value it matches",
-                pattern.to_doc().pretty(80)
+                pattern
             );
         }
     }
@@ -667,7 +667,7 @@ impl<'a> Checker<'a> {
             (Pattern::Wildcard, _) => {}
             (_, BoundType::Data(data)) => self.data_pattern(pattern, data),
             (_, BoundType::ValueFunction(_) | BoundType::Html | BoundType::HtmlFunction(_)) => {
-                panic!("a {typ} is matched against {}", pattern.to_doc().pretty(80))
+                panic!("a {typ} is matched against {}", pattern)
             }
         }
     }
@@ -720,9 +720,7 @@ impl<'a> Checker<'a> {
                 };
                 let (arg_types, declared_fields) = resolved
                     .filter(|(arg_types, _)| arg_types.len() == args.len())
-                    .unwrap_or_else(|| {
-                        panic!("a {typ} is matched against {}", pattern.to_doc().pretty(80))
-                    });
+                    .unwrap_or_else(|| panic!("a {typ} is matched against {}", pattern));
                 for (arg, arg_type) in args.iter().zip(arg_types) {
                     self.data_pattern(arg, arg_type);
                 }
@@ -730,9 +728,7 @@ impl<'a> Checker<'a> {
                     let declared = declared_fields
                         .get(field.index)
                         .filter(|declared| declared.name == field.name)
-                        .unwrap_or_else(|| {
-                            panic!("a {typ} is matched against {}", pattern.to_doc().pretty(80))
-                        });
+                        .unwrap_or_else(|| panic!("a {typ} is matched against {}", pattern));
                     self.data_pattern(&field.pattern, &declared.typ);
                 }
             }

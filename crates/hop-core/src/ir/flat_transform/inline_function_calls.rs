@@ -418,7 +418,7 @@ mod tests {
                 }
                 entrypoint fn Test@f1(n@v7: Int) -> Html {
                   let v10: (Int) -> Int = fn(v8: Int) {
-                    let v9: Int = v8 + v7
+                    let v9: Int = add(v8, v7)
                     v9
                   }
                   let v11: Int = 1
@@ -431,7 +431,7 @@ mod tests {
                 -- after --
                 entrypoint fn Test@f1(n@v7: Int) -> Html {
                   let v10: (Int) -> Int = fn(v8: Int) {
-                    let v9: Int = v8 + v7
+                    let v9: Int = add(v8, v7)
                     v9
                   }
                   let v11: Int = 1
@@ -463,7 +463,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn double@f0(x@v0: Int) -> Int {
-                  let v1: Int = v0 + v0
+                  let v1: Int = add(v0, v0)
                   v1
                 }
                 entrypoint fn Test@f1(n@v2: Int) -> Html {
@@ -475,7 +475,7 @@ mod tests {
 
                 -- after --
                 entrypoint fn Test@f1(n@v2: Int) -> Html {
-                  let v6: Int = v2 + v2
+                  let v6: Int = add(v2, v2)
                   let v4: String = v6.to_string()
                   let v5: Html = escape(v4)
                   v5
@@ -502,13 +502,13 @@ mod tests {
                 -- before --
                 fn inner@f0(x@v0: Int) -> Int {
                   let v1: Int = 1
-                  let v2: Int = v0 + v1
+                  let v2: Int = add(v0, v1)
                   v2
                 }
                 fn outer@f1(y@v3: Int) -> Int {
                   let v4: Int = inner@f0(v3)
                   let v5: Int = 2
-                  let v6: Int = v4 * v5
+                  let v6: Int = mul(v4, v5)
                   v6
                 }
                 entrypoint fn Test@f2(n@v7: Int) -> Html {
@@ -521,9 +521,9 @@ mod tests {
                 -- after --
                 entrypoint fn Test@f2(n@v7: Int) -> Html {
                   let v13: Int = 1
-                  let v14: Int = v7 + v13
+                  let v14: Int = add(v7, v13)
                   let v15: Int = 2
-                  let v16: Int = v14 * v15
+                  let v16: Int = mul(v14, v15)
                   let v9: String = v16.to_string()
                   let v10: Html = escape(v9)
                   v10
@@ -607,7 +607,7 @@ mod tests {
                 -- before --
                 fn count@f0(n@v0: Int) -> Html {
                   let v1: Int = 1
-                  let v2: Bool = v0 < v1
+                  let v2: Bool = lt(v0, v1)
                   let v7: Html = match v2 {
                     true => {
                       let v3: Html = text(".")
@@ -615,7 +615,7 @@ mod tests {
                     }
                     false => {
                       let v4: Int = 1
-                      let v5: Int = v0 - v4
+                      let v5: Int = sub(v0, v4)
                       let v6: Html = count@f0(v5)
                       v6
                     }
@@ -631,7 +631,7 @@ mod tests {
                 -- after --
                 fn count@f0(n@v0: Int) -> Html {
                   let v1: Int = 1
-                  let v2: Bool = v0 < v1
+                  let v2: Bool = lt(v0, v1)
                   let v7: Html = match v2 {
                     true => {
                       let v3: Html = text(".")
@@ -639,7 +639,7 @@ mod tests {
                     }
                     false => {
                       let v4: Int = 1
-                      let v5: Int = v0 - v4
+                      let v5: Int = sub(v0, v4)
                       let v6: Html = count@f0(v5)
                       v6
                     }
@@ -676,7 +676,7 @@ mod tests {
                 -- before --
                 fn ping@f0(n@v0: Int) -> Html {
                   let v2: Int = 1
-                  let v3: Bool = v0 < v2
+                  let v3: Bool = lt(v0, v2)
                   let v8: Html = match v3 {
                     true => {
                       let v4: Html = text(".")
@@ -684,7 +684,7 @@ mod tests {
                     }
                     false => {
                       let v5: Int = 1
-                      let v6: Int = v0 - v5
+                      let v6: Int = sub(v0, v5)
                       let v7: Html = pong@f1(v6)
                       v7
                     }
@@ -704,7 +704,7 @@ mod tests {
                 -- after --
                 fn ping@f0(n@v0: Int) -> Html {
                   let v2: Int = 1
-                  let v3: Bool = v0 < v2
+                  let v3: Bool = lt(v0, v2)
                   let v8: Html = match v3 {
                     true => {
                       let v4: Html = text(".")
@@ -712,7 +712,7 @@ mod tests {
                     }
                     false => {
                       let v5: Int = 1
-                      let v6: Int = v0 - v5
+                      let v6: Int = sub(v0, v5)
                       let v7: Html = pong@f1(v6)
                       v7
                     }

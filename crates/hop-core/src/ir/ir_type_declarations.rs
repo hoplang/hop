@@ -1,7 +1,6 @@
 use std::fmt;
 
-use pretty::BoxDoc;
-
+use crate::display::{write_lines, write_variant};
 use crate::hop::typing::{MatchTypes, TypeShape};
 use crate::ir::ir_type::IrDataType;
 use crate::symbols::field_name::FieldName;
@@ -49,84 +48,53 @@ impl IrTypeDeclarations {
     }
 }
 
-impl IrTypeDeclarations {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let mut declarations: Vec<(&TypeName, BoxDoc<'_>)> = self
-            .records
-            .iter()
-            .map(|record| {
-                let fields = record.fields.iter().map(IrField::to_doc).collect();
-                (
-                    &record.name,
-                    declaration_doc("record", &record.name, fields),
-                )
-            })
-            .chain(self.enums.iter().map(|enumeration| {
-                let variants = enumeration.variants.iter().map(IrVariant::to_doc).collect();
-                (
-                    &enumeration.name,
-                    declaration_doc("enum", &enumeration.name, variants),
-                )
-            }))
-            .collect();
-        declarations.sort_by_key(|(name, _)| *name);
-        if declarations.is_empty() {
-            return BoxDoc::nil();
-        }
-        BoxDoc::intersperse(
-            declarations.into_iter().map(|(_, doc)| doc),
-            BoxDoc::line().append(BoxDoc::line()),
-        )
-        .append(BoxDoc::line())
-    }
-}
-
-fn declaration_doc<'a>(
-    keyword: &'a str,
-    name: &'a TypeName,
-    members: Vec<BoxDoc<'a>>,
-) -> BoxDoc<'a> {
-    let members = if members.is_empty() {
-        BoxDoc::nil()
-    } else {
-        BoxDoc::line()
-            .append(BoxDoc::intersperse(
-                members,
-                BoxDoc::text(",").append(BoxDoc::line()),
-            ))
-            .append(BoxDoc::text(","))
-            .nest(2)
-            .append(BoxDoc::line())
-    };
-    BoxDoc::text(format!("{keyword} {} {{", name.as_str()))
-        .append(members)
-        .append(BoxDoc::text("}"))
-}
-
-impl IrVariant {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        if self.fields.is_empty() {
-            return BoxDoc::text(self.name.as_str());
-        }
-        BoxDoc::text(self.name.as_str())
-            .append(BoxDoc::text(" { "))
-            .append(BoxDoc::intersperse(
-                self.fields.iter().map(IrField::to_doc),
-                BoxDoc::text(", "),
-            ))
-            .append(BoxDoc::text(" }"))
-    }
-}
-
-impl IrField {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(format!("{}: ", self.name.as_str())).append(self.typ.to_doc())
-    }
-}
-
+/// The records and then the enums, separated by blank lines.
 impl fmt::Display for IrTypeDeclarations {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(80))
+        let mut sep = "";
+        for record in &self.records {
+            writeln!(f, "{sep}{record}")?;
+            sep = "\n";
+        }
+        for enumeration in &self.enums {
+            writeln!(f, "{sep}{enumeration}")?;
+            sep = "\n";
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for IrRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_lines(
+            f,
+            format_args!("record {} {{", self.name.as_str()),
+            &self.fields,
+            "}",
+        )
+    }
+}
+
+impl fmt::Display for IrEnum {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_lines(
+            f,
+            format_args!("enum {} {{", self.name.as_str()),
+            &self.variants,
+            "}",
+        )
+    }
+}
+
+impl fmt::Display for IrVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_variant(f, self.name.as_str(), &self.fields)
+    }
+}
+
+impl fmt::Display for IrField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.name.as_str(), self.typ)
     }
 }
 

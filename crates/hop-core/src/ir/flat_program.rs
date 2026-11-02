@@ -1,13 +1,12 @@
-use std::fmt;
+use std::fmt::{self, Write};
 
-use pretty::BoxDoc;
-
+use crate::display::{Indent, join};
 use crate::document::CheapString;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_html_element::IrHtmlElement;
+use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
@@ -266,136 +265,110 @@ impl FlatHtmlOp {
     }
 }
 
-impl FlatDataBlock {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::intersperse(
-            self.bindings
-                .iter()
-                .map(FlatDataBinding::to_doc)
-                .chain(std::iter::once(BoxDoc::text(self.result.to_string()))),
-            BoxDoc::line(),
-        )
+/// Each binding and then the result on a line of its own.
+impl fmt::Display for FlatDataBlock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for binding in &self.bindings {
+            writeln!(f, "{binding}")?;
+        }
+        write!(f, "{}", self.result)
     }
 }
 
-impl FlatHtmlBlock {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::intersperse(
-            self.bindings
-                .iter()
-                .map(FlatDataBinding::to_doc)
-                .chain(self.html.iter().map(FlatHtmlBinding::to_doc))
-                .chain(std::iter::once(BoxDoc::text(self.result.to_string()))),
-            BoxDoc::line(),
-        )
+/// Each binding and then the result on a line of its own.
+impl fmt::Display for FlatHtmlBlock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for binding in &self.bindings {
+            writeln!(f, "{binding}")?;
+        }
+        for binding in &self.html {
+            writeln!(f, "{binding}")?;
+        }
+        write!(f, "{}", self.result)
     }
 }
 
-impl FlatDataBinding {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(format!("let {} = ", self.binder)).append(self.op.to_doc())
+impl fmt::Display for FlatDataBinding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "let {} = {}", self.binder, self.op)
     }
 }
 
-impl FlatHtmlBinding {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(format!("let {} = ", self.binder)).append(self.op.to_doc())
+impl fmt::Display for FlatHtmlBinding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "let {} = {}", self.binder, self.op)
     }
 }
 
-/// A call as the function and its arguments in parentheses.
-fn call_to_doc<'a>(function: &IrFunction, args: &[ValueId]) -> BoxDoc<'a> {
-    BoxDoc::text(format!("{function}({})", args_to_string(args)))
+/// Writes a block on the lines after the current one.
+fn write_block(block: &impl fmt::Display, w: &mut dyn Write) -> fmt::Result {
+    write!(w, "\n{block}")
 }
 
-fn apply_to_doc<'a>(closure: ValueId, args: &[ValueId]) -> BoxDoc<'a> {
-    BoxDoc::text(format!("{closure}({})", args_to_string(args)))
-}
-
-fn args_to_string(args: &[ValueId]) -> String {
-    args.iter()
-        .map(|arg| arg.to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-impl FlatDataOp {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+impl fmt::Display for FlatDataOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FlatDataOp::Data(op) => op.to_doc(),
-            FlatDataOp::Call(function, args) => call_to_doc(function, args),
-            FlatDataOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
-            FlatDataOp::Lambda(lambda) => {
-                lambda.to_doc(|body| BoxDoc::line().append(body.to_doc()))
-            }
-            FlatDataOp::Apply(closure, args) => apply_to_doc(*closure, args),
+            FlatDataOp::Data(op) => write!(f, "{op}"),
+            FlatDataOp::Call(function, args) => write!(f, "{function}({})", join(args, ", ")),
+            FlatDataOp::Match(match_) => match_.write(f, write_block),
+            FlatDataOp::Lambda(lambda) => lambda.write(f, write_block),
+            FlatDataOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),
         }
     }
 }
 
-impl FlatHtmlOp {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+impl fmt::Display for FlatHtmlOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FlatHtmlOp::Text(content) => BoxDoc::text(format!("text({:?})", content.as_str())),
-            FlatHtmlOp::Concat(parts) => {
-                let parts = parts
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                BoxDoc::text(format!("concat({parts})"))
-            }
-            FlatHtmlOp::Escape(string) => BoxDoc::text(format!("escape({string})")),
+            FlatHtmlOp::Text(content) => write!(f, "text({:?})", content.as_str()),
+            FlatHtmlOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),
+            FlatHtmlOp::Escape(string) => write!(f, "escape({string})"),
+            // The attributes in braces, each as its name and the name it reads.
             FlatHtmlOp::Element(element) => {
-                BoxDoc::text(format!("element({:?}, ", element.element.as_str()))
-                    .append(element.attributes_to_doc())
-                    .append(BoxDoc::text(format!(", {})", element.children)))
+                write!(f, "element({:?}, {{", element.element.as_str())?;
+                for (i, (name, attribute)) in element.attributes.iter().enumerate() {
+                    let (IrAttribute::Value(value) | IrAttribute::Presence(value)) = attribute;
+                    let sep = if i > 0 { ", " } else { "" };
+                    write!(f, "{sep}{}: {value}", name.as_str())?;
+                }
+                write!(f, "}}, {})", element.children)
             }
-            FlatHtmlOp::Call(function, args) => call_to_doc(function, args),
-            FlatHtmlOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
-            FlatHtmlOp::For(for_) => for_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
-            FlatHtmlOp::Lambda(lambda) => {
-                lambda.to_doc(|body| BoxDoc::line().append(body.to_doc()))
-            }
-            FlatHtmlOp::Apply(closure, args) => apply_to_doc(*closure, args),
+            FlatHtmlOp::Call(function, args) => write!(f, "{function}({})", join(args, ", ")),
+            FlatHtmlOp::Match(match_) => match_.write(f, write_block),
+            FlatHtmlOp::For(for_) => for_.write(f, write_block),
+            FlatHtmlOp::Lambda(lambda) => lambda.write(f, write_block),
+            FlatHtmlOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),
         }
-    }
-}
-
-impl FlatFunctionDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let (entrypoint, return_type, body) = match self {
-            FlatFunctionDeclaration::Data(function) => (
-                function.entrypoint,
-                function.return_type.to_string(),
-                function.body.to_doc(),
-            ),
-            FlatFunctionDeclaration::Html(function) => (
-                function.entrypoint,
-                "Html".to_string(),
-                function.body.to_doc(),
-            ),
-        };
-        let parameters = self
-            .parameters()
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        let keyword = if entrypoint { "entrypoint fn" } else { "fn" };
-        BoxDoc::text(format!(
-            "{keyword} {}({parameters}) -> {return_type} {{",
-            self.function()
-        ))
-        .append(BoxDoc::line().append(body).nest(2))
-        .append(BoxDoc::line())
-        .append(BoxDoc::text("}"))
     }
 }
 
 impl fmt::Display for FlatFunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.to_doc().pretty(60))
+        let keyword = |entrypoint| if entrypoint { "entrypoint fn" } else { "fn" };
+        match self {
+            FlatFunctionDeclaration::Data(function) => {
+                write!(
+                    f,
+                    "{} {}({}) -> {} {{",
+                    keyword(function.entrypoint),
+                    function.function,
+                    join(&function.parameters, ", "),
+                    function.return_type
+                )?;
+                write!(Indent::new(f), "\n{}", function.body)?;
+            }
+            FlatFunctionDeclaration::Html(function) => {
+                write!(
+                    f,
+                    "{} {}({}) -> Html {{",
+                    keyword(function.entrypoint),
+                    function.function,
+                    join(&function.parameters, ", ")
+                )?;
+                write!(Indent::new(f), "\n{}", function.body)?;
+            }
+        }
+        writeln!(f, "\n}}")
     }
 }
 

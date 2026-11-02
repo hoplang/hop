@@ -746,7 +746,7 @@ mod tests {
                 entrypoint fn Test@f0(n@v0: Int) -> Html {
                   let v1: Int = 10
                   let v4: (Int) -> Int = fn(v2: Int) {
-                    let v3: Int = v2 + v1
+                    let v3: Int = add(v2, v1)
                     v3
                   }
                   let v5: Int = 1
@@ -764,12 +764,12 @@ mod tests {
                 entrypoint fn Test@f0(n@v0: Int) -> Html {
                   let v1: Int = 10
                   let v4: (Int) -> Int = fn(v2: Int) {
-                    let v3: Int = v2 + v1
+                    let v3: Int = add(v2, v1)
                     v3
                   }
                   let v5: Int = 1
                   let v13: Int = 11
-                  let v14: Int = v0 + v1
+                  let v14: Int = add(v0, v1)
                   let v8: String = "11"
                   let v10: String = v14.to_string()
                   let v9: Html = escape(v8)
@@ -914,7 +914,7 @@ mod tests {
                 fn wrap@f0() -> Int {
                   let v0: Int = 2147483647
                   let v1: Int = 1
-                  let v2: Int = v0 + v1
+                  let v2: Int = add(v0, v1)
                   v2
                 }
 
@@ -944,7 +944,7 @@ mod tests {
                 -- before --
                 entrypoint fn Test@f0() -> Html {
                   let v0: Bool = true
-                  let v1: Bool = !v0
+                  let v1: Bool = not(v0)
                   let v4: Html = match v1 {
                     true => {
                       let v2: Html = text("yes")
@@ -1098,10 +1098,10 @@ mod tests {
                 -- before --
                 entrypoint fn Test@f0(dyn@v0: String) -> Html {
                   let v1: String = "a"
-                  let v2: String = concat(v0, v1)
+                  let v2: String = string_concat(v0, v1)
                   let v3: String = "b"
-                  let v4: String = concat(v3, v0)
-                  let v5: String = concat(v2, v4)
+                  let v4: String = string_concat(v3, v0)
+                  let v5: String = string_concat(v2, v4)
                   let v6: Html = escape(v5)
                   v6
                 }
@@ -1109,11 +1109,11 @@ mod tests {
                 -- after --
                 entrypoint fn Test@f0(dyn@v0: String) -> Html {
                   let v1: String = "a"
-                  let v2: String = concat(v0, v1)
+                  let v2: String = string_concat(v0, v1)
                   let v3: String = "b"
-                  let v4: String = concat(v3, v0)
+                  let v4: String = string_concat(v3, v0)
                   let v7: String = "ab"
-                  let v5: String = concat(v0, v7, v0)
+                  let v5: String = string_concat(v0, v7, v0)
                   let v6: Html = escape(v5)
                   v6
                 }
@@ -1134,7 +1134,7 @@ mod tests {
                 entrypoint fn Test@f0(dyn@v0: String) -> Html {
                   let v1: String = ""
                   let v2: String = ""
-                  let v3: String = concat(v1, v0, v2)
+                  let v3: String = string_concat(v1, v0, v2)
                   let v4: Html = escape(v3)
                   v4
                 }
@@ -1163,7 +1163,7 @@ mod tests {
                 entrypoint fn Test@f0() -> Html {
                   let v0: String = "Hello, "
                   let v1: String = "World"
-                  let v2: String = concat(v0, v1)
+                  let v2: String = string_concat(v0, v1)
                   let v3: Html = escape(v2)
                   v3
                 }
@@ -1256,7 +1256,7 @@ mod tests {
                       v2
                     }
                     Shape::Circle {radius@v3: Int} => {
-                      let v4: Int = v3 * v3
+                      let v4: Int = mul(v3, v3)
                       v4
                     }
                   }
@@ -1266,7 +1266,7 @@ mod tests {
                 -- after --
                 fn area@f0(n@v0: Int) -> Int {
                   let v1: Shape = Circle {radius: v0}
-                  let v4: Int = v0 * v0
+                  let v4: Int = mul(v0, v0)
                   v4
                 }
             "#]],
@@ -1355,7 +1355,7 @@ mod tests {
                 entrypoint fn Test@f0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
-                  let v2: Bool = v0 == v1
+                  let v2: Bool = eq(v0, v1)
                   let v5: Html = match v2 {
                     true => {
                       let v3: Html = text("same")

@@ -1,7 +1,6 @@
 use std::fmt::{self, Display};
 
-use pretty::BoxDoc;
-
+use crate::display::{join, write_tuple};
 use crate::document::DocumentRange;
 use crate::symbols::type_name::TypeName;
 
@@ -60,50 +59,23 @@ impl ParsedType {
             | ParsedType::Function { range, .. } => range,
         }
     }
-
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        match self {
-            ParsedType::String { .. } => BoxDoc::text("String"),
-            ParsedType::Bool { .. } => BoxDoc::text("Bool"),
-            ParsedType::Int { .. } => BoxDoc::text("Int"),
-            ParsedType::Float { .. } => BoxDoc::text("Float"),
-            ParsedType::Html { .. } => BoxDoc::text("Html"),
-            ParsedType::Option { element, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("Option["))
-                .append(element.to_doc())
-                .append(BoxDoc::text("]")),
-            ParsedType::Array { element, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("Array["))
-                .append(element.to_doc())
-                .append(BoxDoc::text("]")),
-            ParsedType::Tuple { elements, .. } => BoxDoc::nil()
-                .append(BoxDoc::text("("))
-                .append(BoxDoc::intersperse(
-                    elements.iter().map(|element| element.to_doc()),
-                    BoxDoc::text(", "),
-                ))
-                .append(if elements.len() == 1 {
-                    BoxDoc::text(",")
-                } else {
-                    BoxDoc::nil()
-                })
-                .append(BoxDoc::text(")")),
-            ParsedType::Named { name, .. } => BoxDoc::text(name.to_string()),
-            ParsedType::Function {
-                parameters, result, ..
-            } => BoxDoc::text("fn(")
-                .append(BoxDoc::intersperse(
-                    parameters.iter().map(|parameter| parameter.to_doc()),
-                    BoxDoc::text(", "),
-                ))
-                .append(BoxDoc::text(") -> "))
-                .append(result.to_doc()),
-        }
-    }
 }
 
 impl Display for ParsedType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_doc().pretty(60))
+        match self {
+            ParsedType::String { .. } => f.write_str("String"),
+            ParsedType::Bool { .. } => f.write_str("Bool"),
+            ParsedType::Int { .. } => f.write_str("Int"),
+            ParsedType::Float { .. } => f.write_str("Float"),
+            ParsedType::Html { .. } => f.write_str("Html"),
+            ParsedType::Option { element, .. } => write!(f, "Option[{element}]"),
+            ParsedType::Array { element, .. } => write!(f, "Array[{element}]"),
+            ParsedType::Tuple { elements, .. } => write_tuple(f, elements),
+            ParsedType::Named { name, .. } => write!(f, "{name}"),
+            ParsedType::Function {
+                parameters, result, ..
+            } => write!(f, "fn({}) -> {result}", join(parameters, ", ")),
+        }
     }
 }

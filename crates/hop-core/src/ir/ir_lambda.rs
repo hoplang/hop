@@ -1,7 +1,6 @@
-use std::fmt;
+use std::fmt::{self, Write};
 
-use pretty::BoxDoc;
-
+use crate::display::{Indent, join};
 use crate::ir::ir_binder::IrBinder;
 
 // The body runs once for each application, so it reads no Html bound
@@ -13,16 +12,15 @@ pub struct IrLambda<T, Body> {
 }
 
 impl<T: fmt::Display, Body> IrLambda<T, Body> {
-    pub fn to_doc<'a>(&'a self, body_to_doc: impl Fn(&'a Body) -> BoxDoc<'a>) -> BoxDoc<'a> {
-        let parameters = self
-            .parameters
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        BoxDoc::text(format!("fn({parameters}) {{"))
-            .append(body_to_doc(&self.body).nest(2))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("}"))
+    /// The parameters, then the body, which starts with a line break and is
+    /// indented.
+    pub fn write(
+        &self,
+        w: &mut dyn Write,
+        write_body: impl Fn(&Body, &mut dyn Write) -> fmt::Result,
+    ) -> fmt::Result {
+        write!(w, "fn({}) {{", join(&self.parameters, ", "))?;
+        write_body(&self.body, &mut Indent::new(w))?;
+        w.write_str("\n}")
     }
 }

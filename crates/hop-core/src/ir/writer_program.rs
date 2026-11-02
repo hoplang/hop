@@ -1,7 +1,6 @@
-use std::fmt;
+use std::fmt::{self, Write};
 
-use pretty::BoxDoc;
-
+use crate::display::{Indent, join};
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
@@ -103,141 +102,98 @@ pub enum WriterOp {
     Apply(ValueId, Vec<ValueId>),
 }
 
-/// Each statement on a line of its own. The statements start with a line
-/// break and the caller nests them, so an empty list prints nothing.
-fn stmts_to_doc(stmts: &[WriterStmt]) -> BoxDoc<'_> {
-    BoxDoc::concat(
-        stmts
-            .iter()
-            .map(|stmt| BoxDoc::line().append(stmt.to_doc())),
-    )
+/// Each statement on a line of its own, each starting with a line break,
+/// so an empty list writes nothing.
+fn write_stmts(stmts: &[WriterStmt], w: &mut dyn Write) -> fmt::Result {
+    for stmt in stmts {
+        write!(w, "\n{stmt}")?;
+    }
+    Ok(())
 }
 
-impl WriterBlock {
-    /// One line per binding and one for the result.
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::intersperse(
-            self.bindings
-                .iter()
-                .map(WriterBinding::to_doc)
-                .chain(std::iter::once(BoxDoc::text(self.result.to_string()))),
-            BoxDoc::line(),
-        )
+/// One line per binding and one for the result.
+impl fmt::Display for WriterBlock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for binding in &self.bindings {
+            writeln!(f, "{binding}")?;
+        }
+        write!(f, "{}", self.result)
     }
 }
 
-impl WriterBinding {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        BoxDoc::text(format!("let {}: {} = ", self.name, self.typ)).append(self.op.to_doc())
+impl fmt::Display for WriterBinding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "let {}: {} = {}", self.name, self.typ, self.op)
     }
 }
 
-impl WriterStmt {
-    /// An HtmlFor, a Match or a let holding a Match or a Lambda spans
-    /// lines, every other statement is one line.
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+/// An HtmlFor, a Match or a let holding a Match or a Lambda spans lines,
+/// every other statement is one line.
+impl fmt::Display for WriterStmt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            WriterStmt::Let(let_) => let_.to_doc(),
-            WriterStmt::Write(content) => BoxDoc::text(format!("write({content:?})")),
-            WriterStmt::WriteString(name) => BoxDoc::text(format!("write_string({name})")),
+            WriterStmt::Let(let_) => write!(f, "{let_}"),
+            WriterStmt::Write(content) => write!(f, "write({content:?})"),
+            WriterStmt::WriteString(name) => write!(f, "write_string({name})"),
             WriterStmt::WriteFunction(function, args) => {
-                let args = args
-                    .iter()
-                    .map(|arg| arg.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                BoxDoc::text(format!("write_function {function}({args})"))
+                write!(f, "write_function {function}({})", join(args, ", "))
             }
             WriterStmt::WriteApply(closure, args) => {
-                BoxDoc::text(format!("write_apply {closure}({})", args_to_string(args)))
+                write!(f, "write_apply {closure}({})", join(args, ", "))
             }
-            WriterStmt::HtmlFor(for_) => for_.to_doc(|body| stmts_to_doc(body)),
-            WriterStmt::Match(match_) => match_.to_doc(|body| stmts_to_doc(body)),
+            WriterStmt::HtmlFor(for_) => for_.write(f, |body, w| write_stmts(body, w)),
+            WriterStmt::Match(match_) => match_.write(f, |body, w| write_stmts(body, w)),
         }
     }
 }
 
-impl WriterOp {
-    /// A Match or a Lambda spans lines, every other op is one line.
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+/// A Match or a Lambda spans lines, every other op is one line.
+impl fmt::Display for WriterOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            WriterOp::Data(op) => op.to_doc(),
-            WriterOp::Call(function, args) => {
-                let args = args
-                    .iter()
-                    .map(|arg| arg.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                BoxDoc::text(format!("{function}({args})"))
-            }
-            WriterOp::Match(match_) => match_.to_doc(|body| BoxDoc::line().append(body.to_doc())),
-            WriterOp::Lambda(lambda) => lambda.to_doc(WriterFunctionBody::to_doc),
-            WriterOp::Apply(closure, args) => {
-                BoxDoc::text(format!("{closure}({})", args_to_string(args)))
-            }
+            WriterOp::Data(op) => write!(f, "{op}"),
+            WriterOp::Call(function, args) => write!(f, "{function}({})", join(args, ", ")),
+            WriterOp::Match(match_) => match_.write(f, |block, w| write!(w, "\n{block}")),
+            WriterOp::Lambda(lambda) => lambda.write(f, WriterFunctionBody::write),
+            WriterOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),
         }
     }
-}
-
-fn args_to_string(args: &[ValueId]) -> String {
-    args.iter()
-        .map(|arg| arg.to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 impl WriterFunctionBody {
-    // Starts with a line break, which the caller nests.
-    pub fn to_doc(&self) -> BoxDoc<'_> {
+    /// Starts with a line break.
+    fn write(&self, w: &mut dyn Write) -> fmt::Result {
         match self {
-            WriterFunctionBody::Writes(statements) => stmts_to_doc(statements),
-            WriterFunctionBody::Returns(block) => BoxDoc::line().append(block.to_doc()),
+            WriterFunctionBody::Writes(statements) => write_stmts(statements, w),
+            WriterFunctionBody::Returns(block) => write!(w, "\n{block}"),
         }
-    }
-}
-
-impl WriterFunctionDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let parameters = self
-            .parameters
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        BoxDoc::text(format!(
-            "fn {}({parameters}) -> {} {{",
-            self.function, self.return_type
-        ))
-        .append(self.body.to_doc().nest(2))
-        .append(BoxDoc::line())
-        .append(BoxDoc::text("}"))
-    }
-}
-
-impl WriterPageDeclaration {
-    pub fn to_doc(&self) -> BoxDoc<'_> {
-        let parameters = self
-            .parameters
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        BoxDoc::text(format!("page {}({parameters}) {{", self.name.as_str()))
-            .append(stmts_to_doc(&self.body).nest(2))
-            .append(BoxDoc::line())
-            .append(BoxDoc::text("}"))
     }
 }
 
 impl fmt::Display for WriterFunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.to_doc().pretty(60))
+        write!(
+            f,
+            "fn {}({}) -> {} {{",
+            self.function,
+            join(&self.parameters, ", "),
+            self.return_type
+        )?;
+        self.body.write(&mut Indent::new(f))?;
+        writeln!(f, "\n}}")
     }
 }
 
 impl fmt::Display for WriterPageDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.to_doc().pretty(60))
+        write!(
+            f,
+            "page {}({}) {{",
+            self.name.as_str(),
+            join(&self.parameters, ", ")
+        )?;
+        write_stmts(&self.body, &mut Indent::new(f))?;
+        writeln!(f, "\n}}")
     }
 }
 

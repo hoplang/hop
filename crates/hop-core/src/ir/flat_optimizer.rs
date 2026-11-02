@@ -229,7 +229,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn double@f0(x@v0: Int) -> Int {
-                  let v1: Int = v0 + v0
+                  let v1: Int = add(v0, v0)
                   v1
                 }
                 entrypoint fn Test@f1() -> Html {

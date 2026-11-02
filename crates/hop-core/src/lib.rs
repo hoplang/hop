@@ -7,6 +7,7 @@ mod definition_link;
 mod dependency_graph;
 mod diagnostic;
 mod diagnostic_severity;
+mod display;
 mod document;
 mod document_annotator;
 #[cfg(test)]
