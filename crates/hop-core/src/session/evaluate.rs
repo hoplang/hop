@@ -162,12 +162,7 @@ impl Session {
                         .iter()
                         .find(|parameter| parameter.name == name)
                         .expect("the body declares every parameter of the page");
-                    let value = random_value(
-                        &mut rng,
-                        &parameter.binder.typ,
-                        param.examples.as_ref(),
-                        &program.types,
-                    );
+                    let value = random_value(&mut rng, &parameter.binder.typ, &program.types);
                     (name, value)
                 })
                 .collect()

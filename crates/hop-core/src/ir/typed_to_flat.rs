@@ -964,7 +964,6 @@ fn lower_type_declarations(registry: &TypeRegistry) -> IrTypeDeclarations {
             .map(|field| IrField {
                 name: field.name.clone(),
                 typ: lower_data_type(registry, &field.typ),
-                examples: field.examples.clone(),
             })
             .collect()
     };

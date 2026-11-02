@@ -1,6 +1,5 @@
 use std::fmt::{self, Display};
 
-use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::typing::{Type, TypedExpr};
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
@@ -25,7 +24,6 @@ pub struct TypedPageDeclaration {
 pub struct TypedParameter {
     pub var_name: VarName,
     pub var_type: Type,
-    pub examples: Option<ExamplesAnnotation>,
 }
 
 #[derive(Debug, Clone)]

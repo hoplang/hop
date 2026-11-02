@@ -7,7 +7,6 @@ use super::parsed_module::{
 };
 use super::tokenize_expr;
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
-use crate::examples_annotation::ExamplesAnnotation;
 
 use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
@@ -212,13 +211,6 @@ fn parse_field_declarations(
         left_brace,
         &[],
         |iter, comments, errors| {
-            let examples =
-                parse_helpers::next_if_eq(iter, comments, errors, LangToken::HashBracket)
-                    .map(|hash_bracket| {
-                        parse_examples_annotation(iter, comments, errors, hash_bracket)
-                    })
-                    .transpose()?
-                    .map(|(examples, _)| examples);
             let (name, name_range) = parse_helpers::expect_identifier(iter, comments, errors)?;
             parse_helpers::expect_token(iter, comments, errors, &LangToken::Colon)?;
             let field_type = parse_type(iter, comments, errors)?;
@@ -234,7 +226,6 @@ fn parse_field_declarations(
                 name: FieldName::new(name).or_emit(errors, &name_range)?,
                 name_range,
                 field_type,
-                examples,
             })
         },
     )
@@ -487,12 +478,6 @@ fn build_function_parameters(
                 parameter,
                 optional,
             } => {
-                if let Some(examples_range) = &parameter.examples_range {
-                    let _ = errors.emit(
-                        ParseErrorKind::ExamplesNotAllowedOnFunction {},
-                        examples_range.clone(),
-                    );
-                }
                 match (optional, &parameter.fallback_value) {
                     (Some(optional), None) => {
                         let _ = errors.emit(
@@ -572,13 +557,6 @@ fn parse_parameters(
                     range: dots_range.to(var_name_range),
                 });
             }
-            let (examples, examples_range) =
-                parse_helpers::next_if_eq(iter, comments, errors, LangToken::HashBracket)
-                    .map(|hash_bracket| {
-                        parse_examples_annotation(iter, comments, errors, hash_bracket)
-                    })
-                    .transpose()?
-                    .unzip();
             let (var_name, var_name_range) =
                 parse_helpers::expect_identifier(iter, comments, errors)?;
             let optional = parse_helpers::next_if_eq(iter, comments, errors, LangToken::Question)
@@ -597,134 +575,12 @@ fn parse_parameters(
                     var_name_range,
                     var_type,
                     fallback_value,
-                    examples,
-                    examples_range,
                 }),
                 optional,
             })
         },
     )
     .map(|(items, _)| items)
-}
-
-/// Parse an `#[examples(...)]` annotation from the `#[` the caller has
-/// already consumed. Returns the annotation with the range from `#[`
-/// through `]`.
-fn parse_examples_annotation(
-    iter: &mut DocumentCursor,
-    comments: &mut Vec<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    hash_bracket: DocumentRange,
-) -> Result<(ExamplesAnnotation, DocumentRange), ErrorEmitted> {
-    parse_helpers::parse_delimited(
-        iter,
-        comments,
-        errors,
-        LangTokenPair::HashBrackets,
-        &hash_bracket,
-        |iter, comments, errors| {
-            let Some((name, name_range)) =
-                parse_helpers::next_if_map(iter, comments, errors, LangToken::identifier)
-            else {
-                return Err(match tokenize_expr::peek(iter) {
-                    Some((token, range)) => {
-                        errors.emit(ParseErrorKind::UnexpectedToken { token }, range)
-                    }
-                    None => errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range()),
-                });
-            };
-            if name.as_str() != "examples" {
-                let reported = errors.emit(ParseErrorKind::UnknownAnnotation { name }, name_range);
-                // Skip the whole annotation, whatever it holds, so that the
-                // caller's skip stops at the `]` rather than at a `)` inside.
-                parse_helpers::skip_to(iter, reported, |token, iter| {
-                    *token == LangToken::RightBracket || parse_helpers::at_declaration(iter)
-                });
-                return Err(reported);
-            }
-            let left_paren =
-                parse_helpers::expect_token(iter, comments, errors, &LangToken::LeftParen)?;
-            let mut annotation = ExamplesAnnotation::default();
-            parse_helpers::parse_delimited_list(
-                iter,
-                comments,
-                errors,
-                LangTokenPair::Parens,
-                &left_paren,
-                &[],
-                |iter, comments, errors| {
-                    let Some((key, key_range)) =
-                        parse_helpers::next_if_map(iter, comments, errors, LangToken::identifier)
-                    else {
-                        return Err(match tokenize_expr::peek(iter) {
-                            Some((token, range)) => {
-                                errors.emit(ParseErrorKind::UnexpectedToken { token }, range)
-                            }
-                            None => errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range()),
-                        });
-                    };
-                    parse_helpers::expect_token(iter, comments, errors, &LangToken::Assign)?;
-                    if key.as_str() == "pattern" {
-                        let Some((value, _)) = parse_helpers::next_if_map(
-                            iter,
-                            comments,
-                            errors,
-                            |token| match token {
-                                LangToken::StringLiteral(value) => Some(value),
-                                _ => None,
-                            },
-                        ) else {
-                            return Err(match tokenize_expr::peek(iter) {
-                                Some((actual, range)) => errors.emit(
-                                    ParseErrorKind::ExpectedStringLiteralButGot { actual },
-                                    range,
-                                ),
-                                None => {
-                                    errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range())
-                                }
-                            });
-                        };
-                        annotation.pattern = Some(value);
-                        return Ok(());
-                    }
-                    let slot = match key.as_str() {
-                        "min" => &mut annotation.min,
-                        "max" => &mut annotation.max,
-                        "min_len" => &mut annotation.min_len,
-                        "max_len" => &mut annotation.max_len,
-                        _ => {
-                            return Err(errors.emit(
-                                ParseErrorKind::UnknownExamplesKey { name: key },
-                                key_range,
-                            ));
-                        }
-                    };
-                    let negative =
-                        parse_helpers::next_if_eq(iter, comments, errors, LangToken::Minus)
-                            .is_some();
-                    let Some((digits, value_range)) =
-                        parse_helpers::next_if_map(iter, comments, errors, |token| match token {
-                            LangToken::IntLiteral(digits) => Some(digits),
-                            _ => None,
-                        })
-                    else {
-                        return Err(match tokenize_expr::peek(iter) {
-                            Some((actual, range)) => errors
-                                .emit(ParseErrorKind::ExpectedIntLiteralButGot { actual }, range),
-                            None => errors.emit(ParseErrorKind::UnexpectedEof {}, iter.eof_range()),
-                        });
-                    };
-                    let value = parse_helpers::int_literal_value(digits.as_str(), negative)
-                        .ok_or_else(|| {
-                            errors.emit(ParseErrorKind::IntLiteralOutOfRange {}, value_range)
-                        })?;
-                    *slot = Some(value);
-                    Ok(())
-                },
-            )?;
-            Ok(annotation)
-        },
-    )
 }
 
 #[cfg(test)]
@@ -6245,27 +6101,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_examples_annotation_on_function() {
-        reject(
-            indoc! {"
-                fn foo(#[examples(min = 1)] x: Int) -> Int {
-                  x
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Examples annotations are not allowed on function parameters
-                1 | fn foo(#[examples(min = 1)] x: Int) -> Int {
-                  |        ^^^^^^^^^^^^^^^^^^^^
-                -- ast --
-                fn foo(#[examples(min = 1)] x: Int) -> Int {
-                  x
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_param_after_rest_param() {
         reject(
             indoc! {r#"
@@ -6710,278 +6545,6 @@ mod tests {
                     ],
                   )
                 }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_examples_annotations_on_fields_and_params() {
-        accept(
-            indoc! {r#"
-                record User {
-                  #[examples(pattern = "[a-z]+", min_len = 1)]
-                  name: String,
-                  #[examples(min = 0, max = 120)]
-                  age: Int,
-                }
-
-                page Main(#[examples(min = 1)] count: Int) {
-                  fn body() -> Html {
-                    <div>{count}</div>
-                  }
-                }
-            "#},
-            expect![[r#"
-                record User {
-                  #[examples(pattern = "[a-z]+", min_len = 1)] name: String,
-                  #[examples(min = 0, max = 120)] age: Int,
-                }
-
-                page Main(#[examples(min = 1)] count: Int) {
-                  fn body() -> Html {
-                    element(
-                      tag: "div",
-                      attrs: [],
-                      children: [interpolate(count)],
-                    )
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_negative_examples_bounds() {
-        accept(
-            indoc! {"
-                record Reading {
-                  #[examples(min = -40, max = 60)]
-                  celsius: Int,
-                }
-            "},
-            expect![[r#"
-                record Reading {
-                  #[examples(min = -40, max = 60)] celsius: Int,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_examples_bounds_spanning_full_int_range() {
-        accept(
-            indoc! {"
-                record Reading {
-                  #[examples(min = -2147483648, max = 2147483647)]
-                  value: Int,
-                }
-            "},
-            expect![[r#"
-                record Reading {
-                  #[examples(min = -2147483648, max = 2147483647)] value: Int,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_examples_bound_beyond_i32_range() {
-        reject(
-            indoc! {"
-                record Reading {
-                  #[examples(max = 2147483648)]
-                  value: Int,
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Integer literal is out of range for Int (-2147483648 to 2147483647)
-                1 | record Reading {
-                2 |   #[examples(max = 2147483648)]
-                  |                    ^^^^^^^^^^
-                -- ast --
-                record Reading {
-                  #[examples()] value: Int,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_unknown_annotation() {
-        reject(
-            indoc! {"
-                record User {
-                  #[docs(min = 1)]
-                  age: Int,
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Unknown annotation 'docs'
-                1 | record User {
-                2 |   #[docs(min = 1)]
-                  |     ^^^^
-                -- ast --
-                record User {}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_examples_key_without_value() {
-        reject(
-            indoc! {"
-                record User {
-                  #[examples(bogus)]
-                  age: Int,
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Expected token '=' but got ')'
-                1 | record User {
-                2 |   #[examples(bogus)]
-                  |                   ^
-                -- ast --
-                record User {
-                  #[examples()] age: Int,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_annotation_missing_right_paren() {
-        reject(
-            indoc! {"
-                record User {
-                  #[examples(min = 1]
-                  age: Int,
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Expected token ')' but got ']'
-                1 | record User {
-                2 |   #[examples(min = 1]
-                  |                     ^
-                -- ast --
-                record User {}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_annotation_missing_right_bracket() {
-        reject(
-            indoc! {"
-                record User {
-                  #[examples(min = 1)
-                  age: Int,
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Expected token ']' but got 'age'
-                2 |   #[examples(min = 1)
-                3 |   age: Int,
-                  |   ^^^
-                -- ast --
-                record User {}
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_unknown_examples_key() {
-        reject(
-            indoc! {"
-                record User {
-                  #[examples(minimum = 1, max = 5)]
-                  age: Int,
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Unknown examples key 'minimum'
-                1 | record User {
-                2 |   #[examples(minimum = 1, max = 5)]
-                  |              ^^^^^^^
-                -- ast --
-                record User {
-                  #[examples(max = 5)] age: Int,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn preserves_the_spelling_of_an_examples_pattern() {
-        accept(
-            indoc! {r#"
-                record User {
-                  #[examples(pattern = "\\d+\\s\\w")]
-                  name: String,
-                }
-            "#},
-            expect![[r#"
-                record User {
-                  #[examples(pattern = "\\d+\\s\\w")] name: String,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_examples_value_of_wrong_kind() {
-        reject(
-            indoc! {r#"
-                record User {
-                  #[examples(pattern = 5)]
-                  name: String,
-                  #[examples(min = "a", max = 5)]
-                  age: Int,
-                }
-            "#},
-            expect![[r#"
-                -- errors --
-                error: Expected string literal but got '5'
-                1 | record User {
-                2 |   #[examples(pattern = 5)]
-                  |                        ^
-
-                error: Expected integer literal but got '"a"'
-                3 |   name: String,
-                4 |   #[examples(min = "a", max = 5)]
-                  |                    ^^^
-                -- ast --
-                record User {
-                  #[examples()] name: String,
-                  #[examples(max = 5)] age: Int,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_unterminated_examples_annotation() {
-        reject(
-            indoc! {"
-                fn Main(#[examples(min = 1 count: Int) -> Html {
-                  <div>{count}</div>
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Expected token ',' but got 'count'
-                1 | fn Main(#[examples(min = 1 count: Int) -> Html {
-                  |                            ^^^^^
-
-                error: Expected token ']' but got '->'
-                1 | fn Main(#[examples(min = 1 count: Int) -> Html {
-                  |                                        ^^
-                -- ast --
             "#]],
         );
     }

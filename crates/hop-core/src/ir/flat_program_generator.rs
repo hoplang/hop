@@ -356,7 +356,7 @@ pub fn random_entrypoint_args(
                 .parameters()
                 .iter()
                 .map(|param| {
-                    let value = random_value(rng, &param.binder.typ, None, &program.types);
+                    let value = random_value(rng, &param.binder.typ, &program.types);
                     (param.name.clone(), value)
                 })
                 .collect();

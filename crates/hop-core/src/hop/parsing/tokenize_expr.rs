@@ -50,10 +50,6 @@ pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
         '?' => LexStep::Token(LangToken::Question, start),
         ',' => LexStep::Token(LangToken::Comma, start),
         ';' => LexStep::Token(LangToken::Semicolon, start),
-        '#' => match iter.next_if(|s| s.ch() == '[') {
-            Some(end) => LexStep::Token(LangToken::HashBracket, start.to(end)),
-            None => LexStep::Error(ParseErrorKind::UnexpectedCharacter { ch: '#' }, start),
-        },
         '+' => LexStep::Token(LangToken::Plus, start),
         '-' => match iter.next_if(|s| s.ch() == '>') {
             Some(end) => LexStep::Token(LangToken::Arrow, start.to(end)),

@@ -11,7 +11,6 @@ mod document;
 mod document_annotator;
 #[cfg(test)]
 mod end_to_end_tests;
-mod examples_annotation;
 #[cfg(test)]
 mod extract_position;
 mod hop;

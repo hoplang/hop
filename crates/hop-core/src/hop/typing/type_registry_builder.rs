@@ -166,7 +166,6 @@ impl TypeRegistryBuilder {
                         .map(|(f, typ)| RecordField {
                             name: field_name(&f),
                             typ,
-                            examples: None,
                         })
                         .collect();
                     (name, TypeDef::Record { fields })
@@ -191,7 +190,6 @@ impl TypeRegistryBuilder {
                                 .map(|(f, typ)| RecordField {
                                     name: field_name(&f),
                                     typ,
-                                    examples: None,
                                 })
                                 .collect(),
                         })

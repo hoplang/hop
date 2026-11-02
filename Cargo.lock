@@ -453,8 +453,6 @@ dependencies = [
  "indoc",
  "pretty",
  "rand",
- "rand_regex",
- "regex-syntax",
  "rpds",
  "serde",
  "tempfile",
@@ -779,16 +777,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c8d0fd677905edcbeedbf2edb6494d676f0e98d54d5cf9bda0b061cb8fb8aba"
 
 [[package]]
-name = "rand_regex"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79e745eeef604742ec751000e44d91cdc0552aacacb2c74bee88cc7685918cfa"
-dependencies = [
- "rand",
- "regex-syntax",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -816,12 +804,6 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
-
-[[package]]
-name = "regex-syntax"
-version = "0.8.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "rpds"

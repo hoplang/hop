@@ -1,7 +1,6 @@
 use super::bounded_vec::BoundedVec;
 use super::html_node::{Html, HtmlNode};
 use super::value::{MAX_ARRAY_LENGTH, Value};
-use crate::examples_annotation::ExamplesAnnotation;
 use crate::html::HtmlElementKind;
 use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations, IrVariant};
@@ -12,15 +11,6 @@ use std::rc::Rc;
 /// Recursion depth at which generation stops making random choices and
 /// steers toward the shortest terminating value instead.
 const MAX_DEPTH: usize = 8;
-
-/// Generate a random string matching the given regex pattern.
-fn random_string_from_pattern(rng: &mut impl Rng, pattern: &str) -> Value<'static> {
-    match rand_regex::Regex::compile(pattern, 100) {
-        Ok(regex) => Value::String(rng.sample::<String, _>(&regex).into()),
-        // Fall back to word list if the regex is invalid (should be caught by type checker)
-        Err(_) => random_word(rng),
-    }
-}
 
 fn random_word(rng: &mut impl Rng) -> Value<'static> {
     const WORDS: &[&str] = &["foo", "bar", "baz"];
@@ -87,7 +77,6 @@ fn enum_variants<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrV
 /// Generates a random [`Value`] matching the given [`IrType`].
 ///
 /// Recursively generates values for nested types (arrays, options, records, enums).
-/// An optional `examples` annotation can customize generation for String and Int types.
 ///
 /// Recursive types are supported. Beyond a fixed depth, options become None,
 /// arrays become empty and enums only pick variants that can finish without
@@ -96,15 +85,10 @@ fn enum_variants<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrV
 /// Panics if the type has no finite values at all, e.g. a record whose
 /// fields require the record itself, or if it is the type of a closure,
 /// which no entrypoint takes.
-pub fn random_value(
-    rng: &mut impl Rng,
-    ty: &IrType,
-    examples: Option<&ExamplesAnnotation>,
-    types: &IrTypeDeclarations,
-) -> Value<'static> {
+pub fn random_value(rng: &mut impl Rng, ty: &IrType, types: &IrTypeDeclarations) -> Value<'static> {
     match ty {
         IrType::Value(IrValueType::Data(data)) => {
-            random_value_at_depth(rng, data, examples, types, 0, &mut Vec::new())
+            random_value_at_depth(rng, data, types, 0, &mut Vec::new())
         }
         IrType::Html(IrHtmlType::Html) => Value::Html(
             Html::new(HtmlNode::Element {
@@ -123,7 +107,6 @@ pub fn random_value(
 fn random_value_at_depth(
     rng: &mut impl Rng,
     ty: &IrDataType,
-    examples: Option<&ExamplesAnnotation>,
     types: &IrTypeDeclarations,
     depth: usize,
     visiting: &mut Vec<TypeName>,
@@ -136,7 +119,7 @@ fn random_value_at_depth(
     {
         visiting.push(name.clone());
     }
-    let value = generate(rng, ty, examples, types, depth, visiting);
+    let value = generate(rng, ty, types, depth, visiting);
     if depth >= MAX_DEPTH && named(ty).is_some() {
         visiting.pop();
     }
@@ -146,38 +129,23 @@ fn random_value_at_depth(
 fn generate(
     rng: &mut impl Rng,
     ty: &IrDataType,
-    examples: Option<&ExamplesAnnotation>,
     types: &IrTypeDeclarations,
     depth: usize,
     visiting: &mut Vec<TypeName>,
 ) -> Value<'static> {
     match ty {
-        IrDataType::String => match examples.and_then(|e| e.pattern.as_ref()) {
-            Some(p) => {
-                let cooked = p
-                    .cook(&mut |_, _| {})
-                    .expect("escape sequences were resolved during typechecking");
-                random_string_from_pattern(rng, cooked.as_str())
-            }
-            None => random_word(rng),
-        },
+        IrDataType::String => random_word(rng),
         IrDataType::Bool => Value::Bool(rng.random_bool(0.5)),
-        IrDataType::Int => {
-            let min = examples.and_then(|e| e.min).unwrap_or(0);
-            let max = examples.and_then(|e| e.max).unwrap_or(100);
-            Value::Int(rng.random_range(min..=max))
-        }
+        IrDataType::Int => Value::Int(rng.random_range(0..=100)),
         IrDataType::Float => Value::Float(rng.random_range(0.0..100.0)),
         IrDataType::Array(inner) => {
             let len = if depth >= MAX_DEPTH {
                 0
             } else {
-                let min = examples.and_then(|e| e.min_len).unwrap_or(0).max(0) as usize;
-                let max = examples.and_then(|e| e.max_len).unwrap_or(5).max(0) as usize;
-                rng.random_range(min.min(MAX_ARRAY_LENGTH)..=max.min(MAX_ARRAY_LENGTH))
+                rng.random_range(0..=MAX_ARRAY_LENGTH.min(5))
             };
-            let elements = (0..len)
-                .map(|_| random_value_at_depth(rng, inner, None, types, depth + 1, visiting));
+            let elements =
+                (0..len).map(|_| random_value_at_depth(rng, inner, types, depth + 1, visiting));
             Value::Array(Rc::new(
                 BoundedVec::new(elements).expect("the length is within the limit"),
             ))
@@ -187,7 +155,6 @@ fn generate(
                 Value::Option(Some(Rc::new(random_value_at_depth(
                     rng,
                     inner,
-                    None,
                     types,
                     depth + 1,
                     visiting,
@@ -199,9 +166,7 @@ fn generate(
         IrDataType::Tuple(elements) => Value::Tuple(
             elements
                 .iter()
-                .map(|element| {
-                    random_value_at_depth(rng, element, None, types, depth + 1, visiting)
-                })
+                .map(|element| random_value_at_depth(rng, element, types, depth + 1, visiting))
                 .collect(),
         ),
         IrDataType::Record(name) => {
@@ -210,14 +175,7 @@ fn generate(
                 .map(|field| {
                     (
                         field.name.clone(),
-                        random_value_at_depth(
-                            rng,
-                            &field.typ,
-                            field.examples.as_ref(),
-                            types,
-                            depth + 1,
-                            visiting,
-                        ),
+                        random_value_at_depth(rng, &field.typ, types, depth + 1, visiting),
                     )
                 })
                 .collect();
@@ -246,14 +204,7 @@ fn generate(
                 .map(|field| {
                     (
                         field.name.clone(),
-                        random_value_at_depth(
-                            rng,
-                            &field.typ,
-                            field.examples.as_ref(),
-                            types,
-                            depth + 1,
-                            visiting,
-                        ),
+                        random_value_at_depth(rng, &field.typ, types, depth + 1, visiting),
                     )
                 })
                 .collect();
@@ -291,7 +242,7 @@ mod tests {
         let ty = types.ty(Ty::named("Tree"));
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
-            random_value(&mut rng, &ty, None, &types);
+            random_value(&mut rng, &ty, &types);
         }
     }
 
@@ -306,7 +257,7 @@ mod tests {
         let ty = types.ty(Ty::named("Node"));
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
-            random_value(&mut rng, &ty, None, &types);
+            random_value(&mut rng, &ty, &types);
         }
     }
 
@@ -334,7 +285,7 @@ mod tests {
         let ty = types.ty(Ty::named("Expr"));
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
-            random_value(&mut rng, &ty, None, &types);
+            random_value(&mut rng, &ty, &types);
         }
     }
 
@@ -346,31 +297,7 @@ mod tests {
             .build();
         let ty = types.ty(Ty::named("Node"));
         let mut rng = SmallRng::seed_from_u64(0);
-        random_value(&mut rng, &ty, None, &types);
-    }
-
-    #[test]
-    fn array_length_respects_min_len_and_max_len() {
-        let ty = IrType::array(IrDataType::Int);
-        let examples = ExamplesAnnotation {
-            min_len: Some(3),
-            max_len: Some(4),
-            ..Default::default()
-        };
-        let types = IrTypeDeclarations::default();
-        for seed in 0..50 {
-            let mut rng = SmallRng::seed_from_u64(seed);
-            let value = random_value(&mut rng, &ty, Some(&examples), &types);
-            let Value::Array(items) = value else {
-                panic!("expected Value::Array");
-            };
-            assert!(
-                (3..=4).contains(&items.len()),
-                "length {} out of [3, 4] for seed {}",
-                items.len(),
-                seed
-            );
-        }
+        random_value(&mut rng, &ty, &types);
     }
 
     #[test]
@@ -379,7 +306,7 @@ mod tests {
         let types = IrTypeDeclarations::default();
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
-            let value = random_value(&mut rng, &ty, None, &types);
+            let value = random_value(&mut rng, &ty, &types);
             let Value::Array(items) = value else {
                 panic!("expected Value::Array");
             };

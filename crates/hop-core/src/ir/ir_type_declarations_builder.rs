@@ -79,7 +79,6 @@ impl IrTypeDeclarationsBuilder {
                 .map(|(name, ty)| IrField {
                     name: field_name(&name),
                     typ: data_type(ty, &records, &enums),
-                    examples: None,
                 })
                 .collect()
         };

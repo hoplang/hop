@@ -1,5 +1,4 @@
 use crate::document::DocumentRange;
-use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
 use crate::symbols::field_name::FieldName;
@@ -156,7 +155,6 @@ pub struct ParsedFieldDeclaration {
     pub name: FieldName,
     pub name_range: DocumentRange,
     pub field_type: ParsedType,
-    pub examples: Option<ExamplesAnnotation>,
 }
 
 #[derive(Debug, Clone)]
@@ -173,10 +171,6 @@ pub struct ParsedParameter {
     pub var_name_range: DocumentRange,
     pub var_type: ParsedType,
     pub fallback_value: Option<ParsedExpr>,
-    pub examples: Option<ExamplesAnnotation>,
-    /// The range of the `#[examples(...)]` annotation, present exactly when
-    /// `examples` is.
-    pub examples_range: Option<DocumentRange>,
 }
 
 impl Display for ParsedParameter {
@@ -187,12 +181,7 @@ impl Display for ParsedParameter {
 
 impl ParsedParameter {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let prefix = if let Some(examples) = &self.examples {
-            BoxDoc::text(examples.to_annotation_string()).append(BoxDoc::space())
-        } else {
-            BoxDoc::nil()
-        };
-        let name = prefix.append(BoxDoc::text(self.var_name.as_str()));
+        let name = BoxDoc::text(self.var_name.as_str());
         match &self.fallback_value {
             Some(fallback) => name
                 .append(BoxDoc::text("?: "))
@@ -325,12 +314,7 @@ impl ParsedImportDeclaration {
 
 impl ParsedFieldDeclaration {
     pub fn to_doc(&self) -> BoxDoc<'_> {
-        let base = if let Some(examples) = &self.examples {
-            BoxDoc::text(examples.to_annotation_string()).append(BoxDoc::space())
-        } else {
-            BoxDoc::nil()
-        };
-        base.append(BoxDoc::text(self.name.as_str()))
+        BoxDoc::text(self.name.as_str())
             .append(BoxDoc::text(": "))
             .append(self.field_type.to_doc())
     }

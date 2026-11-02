@@ -5,7 +5,6 @@ use pretty::BoxDoc;
 
 use super::match_types::{MatchTypes, TypeShape};
 use super::r#type::DataType;
-use crate::examples_annotation::ExamplesAnnotation;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -14,7 +13,6 @@ use crate::symbols::type_name::TypeName;
 pub struct RecordField {
     pub name: FieldName,
     pub typ: DataType,
-    pub examples: Option<ExamplesAnnotation>,
 }
 
 #[derive(Debug, Clone)]

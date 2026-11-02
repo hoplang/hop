@@ -8,7 +8,6 @@ pub enum LangTokenPair {
     Parens,
     Brackets,
     Braces,
-    HashBrackets,
 }
 
 impl LangToken {
@@ -38,7 +37,6 @@ impl LangTokenPair {
             LangTokenPair::Braces => LangToken::LeftBrace,
             LangTokenPair::Parens => LangToken::LeftParen,
             LangTokenPair::Brackets => LangToken::LeftBracket,
-            LangTokenPair::HashBrackets => LangToken::HashBracket,
         }
     }
     pub fn right_delimiter(&self) -> LangToken {
@@ -46,7 +44,6 @@ impl LangTokenPair {
             LangTokenPair::Braces => LangToken::RightBrace,
             LangTokenPair::Parens => LangToken::RightParen,
             LangTokenPair::Brackets => LangToken::RightBracket,
-            LangTokenPair::HashBrackets => LangToken::RightBracket,
         }
     }
 }
@@ -88,7 +85,6 @@ pub enum LangToken {
     Semicolon,
     Arrow,
     FatArrow,
-    HashBracket,
     // Keywords
     True,
     False,
@@ -317,7 +313,6 @@ impl fmt::Display for LangToken {
             LangToken::TypeHtml => write!(f, "Html"),
             LangToken::TypeArray => write!(f, "Array"),
             LangToken::TypeOption => write!(f, "Option"),
-            LangToken::HashBracket => write!(f, "#["),
         }
     }
 }

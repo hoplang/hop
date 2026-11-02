@@ -197,14 +197,8 @@ fn format_record_declaration_field<'a>(
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, field.name_range.start());
-    let base = if let Some(examples) = &field.examples {
-        leading_comments
-            .append(arena.text(examples.to_annotation_string()))
-            .append(arena.hardline())
-    } else {
-        leading_comments
-    };
-    base.append(arena.text(field.name.as_str()))
+    leading_comments
+        .append(arena.text(field.name.as_str()))
         .append(arena.text(": "))
         .append(format_type(arena, &field.field_type))
 }
@@ -252,15 +246,8 @@ fn format_enum_declaration_variant<'a>(
                 fields_doc = fields_doc.append(arena.text(",")).append(arena.line());
             }
             let field_comments = drain_comments_before(arena, comments, field.name_range.start());
-            let base = if let Some(e) = &field.examples {
-                field_comments
-                    .append(arena.text(e.to_annotation_string()))
-                    .append(arena.hardline())
-            } else {
-                field_comments
-            };
             fields_doc = fields_doc
-                .append(base)
+                .append(field_comments)
                 .append(arena.text(field.name.to_string()))
                 .append(arena.text(": "))
                 .append(format_type(arena, &field.field_type));
@@ -466,13 +453,6 @@ fn format_parameter<'a>(
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, param.var_name_range.start());
-    let prefix = if let Some(examples) = &param.examples {
-        leading_comments
-            .append(arena.text(examples.to_annotation_string()))
-            .append(arena.hardline())
-    } else {
-        leading_comments
-    };
     let name = arena.text(param.var_name.as_str());
     let param_doc = match &param.fallback_value {
         Some(fallback) => name
@@ -484,7 +464,7 @@ fn format_parameter<'a>(
             .append(arena.text(": "))
             .append(format_type(arena, &param.var_type)),
     };
-    prefix.append(param_doc)
+    leading_comments.append(param_doc)
 }
 
 fn format_attribute<'a>(
@@ -2583,57 +2563,6 @@ mod tests {
 
                 fn Main() -> Html {
                   <></>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn enum_variant_field_with_pattern_annotation() {
-        check(
-            indoc! {r#"
-                enum ContactMethod { Email {#[examples(pattern = "[a-z][a-z]")] address: String}, Phone {number: String} }
-            "#},
-            expect![[r#"
-                enum ContactMethod {
-                  Email {
-                    #[examples(pattern = "[a-z][a-z]")]
-                    address: String,
-                  },
-                  Phone {
-                    number: String,
-                  },
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn record_field_with_min_max_annotation() {
-        check(
-            indoc! {r#"
-                record Product { #[examples(min = 1, max = 999)] price: Int, name: String }
-            "#},
-            expect![[r#"
-                record Product {
-                  #[examples(min = 1, max = 999)]
-                  price: Int,
-                  name: String,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn record_field_with_min_len_max_len_annotation() {
-        check(
-            indoc! {r#"
-                record Post { #[examples(min_len = 2, max_len = 5)] tags: Array[String] }
-            "#},
-            expect![[r#"
-                record Post {
-                  #[examples(min_len = 2, max_len = 5)]
-                  tags: Array[String],
                 }
             "#]],
         );

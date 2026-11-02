@@ -2,7 +2,6 @@ use super::{DataType, Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
-use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::parsing::{
     ParsedDeclaration, ParsedEnumDeclaration, ParsedExpr, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedMarkup, ParsedModule, ParsedPageDeclaration, ParsedParameter,
@@ -422,16 +421,9 @@ fn typecheck_record_declaration(
         else {
             continue;
         };
-        validate_examples_annotation(
-            &field.examples,
-            &Type::Data(resolved_type.clone()),
-            &field.name_range,
-            errors,
-        );
         typed_fields.push(RecordField {
             name: field.name.clone(),
             typ: resolved_type,
-            examples: field.examples.clone(),
         });
     }
 
@@ -474,16 +466,9 @@ fn typecheck_enum_declaration(
             else {
                 continue;
             };
-            validate_examples_annotation(
-                &field.examples,
-                &Type::Data(resolved_type.clone()),
-                &field.name_range,
-                errors,
-            );
             typed_fields.push(RecordField {
                 name: field.name.clone(),
                 typ: resolved_type,
-                examples: field.examples.clone(),
             });
         }
         typed_variants.push(EnumVariant {
@@ -644,12 +629,10 @@ fn typecheck_page_declaration(
                 param.var_name_range.clone(),
             )),
         }
-        validate_examples_annotation(&param.examples, &param_type, &param.var_name_range, errors);
 
         typed_params.push(TypedParameter {
             var_name: param.var_name.clone(),
             var_type: param_type,
-            examples: param.examples.clone(),
         });
     }
 
@@ -767,7 +750,6 @@ fn create_function_signature<'a>(
         typed_params.push(TypedParameter {
             var_name: param.var_name.clone(),
             var_type: param_type,
-            examples: param.examples.clone(),
         });
     }
 
@@ -885,7 +867,6 @@ fn typecheck_function_body(
     typed_params.extend(forwarded.iter().map(|param| TypedParameter {
         var_name: param.name.clone(),
         var_type: param.typ.clone(),
-        examples: None,
     }));
 
     let typed_body = typed_body?;
@@ -908,83 +889,6 @@ fn typecheck_function_body(
         return_type,
         body: typed_body,
     })
-}
-
-fn validate_examples_annotation(
-    examples: &Option<ExamplesAnnotation>,
-    resolved_type: &Type,
-    range: &DocumentRange,
-    errors: &mut Vec<TypeError>,
-) {
-    let Some(examples) = examples else { return };
-    if let Some(pattern) = &examples.pattern {
-        if *resolved_type != Type::STRING {
-            errors.push(TypeError::new(
-                TypeErrorKind::PatternOnNonString {
-                    found: resolved_type.clone(),
-                },
-                range.clone(),
-            ));
-        } else if let Some(pattern) = pattern.cook(&mut |ch, range| {
-            errors.push(TypeError::new(
-                TypeErrorKind::InvalidEscapeSequence { ch },
-                range,
-            ));
-        }) {
-            if let Err(e) = regex_syntax::parse(pattern.as_str()) {
-                errors.push(TypeError::new(
-                    TypeErrorKind::InvalidPatternRegex {
-                        message: e.to_string(),
-                    },
-                    range.clone(),
-                ));
-            }
-        }
-    }
-    if examples.min.is_some() || examples.max.is_some() {
-        if *resolved_type != Type::INT {
-            errors.push(TypeError::new(
-                TypeErrorKind::MinMaxOnNonInt {
-                    found: resolved_type.clone(),
-                },
-                range.clone(),
-            ));
-        }
-        if let (Some(min), Some(max)) = (examples.min, examples.max) {
-            if min > max {
-                errors.push(TypeError::new(
-                    TypeErrorKind::MinGreaterThanMax { min, max },
-                    range.clone(),
-                ));
-            }
-        }
-    }
-    if examples.min_len.is_some() || examples.max_len.is_some() {
-        if !matches!(*resolved_type, Type::Data(DataType::Array(_))) {
-            errors.push(TypeError::new(
-                TypeErrorKind::MinMaxLenOnNonArray {
-                    found: resolved_type.clone(),
-                },
-                range.clone(),
-            ));
-        }
-        for value in [examples.min_len, examples.max_len].into_iter().flatten() {
-            if value < 0 {
-                errors.push(TypeError::new(
-                    TypeErrorKind::NegativeLen { value },
-                    range.clone(),
-                ));
-            }
-        }
-        if let (Some(min_len), Some(max_len)) = (examples.min_len, examples.max_len) {
-            if min_len > max_len {
-                errors.push(TypeError::new(
-                    TypeErrorKind::MinLenGreaterThanMaxLen { min_len, max_len },
-                    range.clone(),
-                ));
-            }
-        }
-    }
 }
 
 /// Every name written in the module, whether or not it resolves: in type
@@ -1256,47 +1160,6 @@ mod tests {
                   only: (Int,),
                   nothing: (),
                   plain: Int,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_unknown_escape_sequence_in_examples_pattern() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                record User {
-                  #[examples(pattern = "\d+")]
-                  name: String,
-                }
-            "#},
-            expect![[r#"
-                error: Invalid escape sequence '\d'
-                  --> main.hop (line 2, col 25)
-                1 | record User {
-                2 |   #[examples(pattern = "\d+")]
-                  |                         ^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_a_doubled_backslash_in_an_examples_pattern() {
-        accept(
-            indoc! {r#"
-                -- main.hop --
-                record User {
-                  #[examples(pattern = "\\d+")]
-                  name: String,
-                }
-            "#},
-            expect![[r#"
-                -- main.hop --
-
-                -- type registry --
-                record User {
-                  name: String,
                 }
             "#]],
         );
@@ -9925,161 +9788,6 @@ mod tests {
                   Literal { value: Int },
                   Neg { inner: Expr },
                 }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_examples_min_max_on_int_field() {
-        accept(
-            indoc! {r#"
-                -- main.hop --
-                record Product {
-                  #[examples(min = 1, max = 100)]
-                  price: Int,
-                }
-                fn Main() -> Html {<></>}
-            "#},
-            expect![[r#"
-                -- main.hop --
-                fn Main() -> Html {
-                  concat()
-                }
-
-                -- type registry --
-                record Product {
-                  price: Int,
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_min_max_on_string_field() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                record Product {
-                  #[examples(min = 1, max = 100)]
-                  name: String,
-                }
-                fn Main() -> Html {<></>}
-            "#},
-            expect![[r#"
-                error: #[examples(min = ..., max = ...)] is only valid on Int fields, found String
-                  --> main.hop (line 3, col 3)
-                2 |   #[examples(min = 1, max = 100)]
-                3 |   name: String,
-                  |   ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_min_greater_than_max() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                record Product {
-                  #[examples(min = 100, max = 1)]
-                  price: Int,
-                }
-                fn Main() -> Html {<></>}
-            "#},
-            expect![[r#"
-                error: #[examples(min = 100)] must be less than or equal to max = 1
-                  --> main.hop (line 3, col 3)
-                2 |   #[examples(min = 100, max = 1)]
-                3 |   price: Int,
-                  |   ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_examples_min_len_max_len_on_array_field() {
-        accept(
-            indoc! {r#"
-                -- main.hop --
-                record Post {
-                  #[examples(min_len = 2, max_len = 5)]
-                  tags: Array[String],
-                }
-                fn Main() -> Html {<></>}
-            "#},
-            expect![[r#"
-                -- main.hop --
-                fn Main() -> Html {
-                  concat()
-                }
-
-                -- type registry --
-                record Post {
-                  tags: Array[String],
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_min_len_max_len_on_non_array_field() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                record Product {
-                  #[examples(min_len = 1, max_len = 5)]
-                  name: String,
-                }
-                fn Main() -> Html {<></>}
-            "#},
-            expect![[r#"
-                error: #[examples(min_len = ..., max_len = ...)] is only valid on Array fields, found String
-                  --> main.hop (line 3, col 3)
-                2 |   #[examples(min_len = 1, max_len = 5)]
-                3 |   name: String,
-                  |   ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_negative_min_len() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                record Post {
-                  #[examples(min_len = -1, max_len = 5)]
-                  tags: Array[String],
-                }
-                fn Main() -> Html {<></>}
-            "#},
-            expect![[r#"
-                error: #[examples(min_len = ..., max_len = ...)] must be non-negative, found -1
-                  --> main.hop (line 3, col 3)
-                2 |   #[examples(min_len = -1, max_len = 5)]
-                3 |   tags: Array[String],
-                  |   ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_min_len_greater_than_max_len() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                record Post {
-                  #[examples(min_len = 5, max_len = 2)]
-                  tags: Array[String],
-                }
-                fn Main() -> Html {<></>}
-            "#},
-            expect![[r#"
-                error: #[examples(min_len = 5)] must be less than or equal to max_len = 2
-                  --> main.hop (line 3, col 3)
-                2 |   #[examples(min_len = 5, max_len = 2)]
-                3 |   tags: Array[String],
-                  |   ^^^^
             "#]],
         );
     }

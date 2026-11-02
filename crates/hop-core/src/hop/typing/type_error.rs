@@ -308,31 +308,8 @@ pub enum TypeErrorKind {
         found: usize,
     },
 
-    #[error("#[examples(pattern = ...)] is only valid on String fields, found {found}")]
-    PatternOnNonString { found: Type },
-
-    #[error("Invalid regex in #[examples(pattern = ...)]: {message}")]
-    InvalidPatternRegex { message: String },
-
     #[error("Invalid escape sequence '\\{ch}'")]
     InvalidEscapeSequence { ch: char },
-
-    #[error("#[examples(min = ..., max = ...)] is only valid on Int fields, found {found}")]
-    MinMaxOnNonInt { found: Type },
-
-    #[error("#[examples(min = {min})] must be less than or equal to max = {max}")]
-    MinGreaterThanMax { min: i32, max: i32 },
-
-    #[error(
-        "#[examples(min_len = ..., max_len = ...)] is only valid on Array fields, found {found}"
-    )]
-    MinMaxLenOnNonArray { found: Type },
-
-    #[error("#[examples(min_len = ..., max_len = ...)] must be non-negative, found {value}")]
-    NegativeLen { value: i32 },
-
-    #[error("#[examples(min_len = {min_len})] must be less than or equal to max_len = {max_len}")]
-    MinLenGreaterThanMaxLen { min_len: i32, max_len: i32 },
 
     #[error("Unknown macro '{name}'")]
     UnknownMacro { name: CheapString },

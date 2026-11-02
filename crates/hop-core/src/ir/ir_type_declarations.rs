@@ -2,7 +2,6 @@ use std::fmt;
 
 use pretty::BoxDoc;
 
-use crate::examples_annotation::ExamplesAnnotation;
 use crate::hop::typing::{MatchTypes, TypeShape};
 use crate::ir::ir_type::IrDataType;
 use crate::symbols::field_name::FieldName;
@@ -36,7 +35,6 @@ pub struct IrVariant {
 pub struct IrField {
     pub name: FieldName,
     pub typ: IrDataType,
-    pub examples: Option<ExamplesAnnotation>,
 }
 
 impl IrTypeDeclarations {

@@ -242,26 +242,11 @@ pub enum ParseErrorKind {
     #[error("Rest parameters are not allowed on pages")]
     RestParamNotAllowedOnPage,
 
-    #[error("Examples annotations are not allowed on function parameters")]
-    ExamplesNotAllowedOnFunction,
-
     #[error("Arguments must either all be named or all be positional")]
     MixedNamedAndPositionalArguments,
 
     #[error("Function '{name}' is missing a return type annotation")]
     FunctionMissingReturnTypeAnnotation { name: CheapString },
-
-    #[error("Unknown annotation '{name}'")]
-    UnknownAnnotation { name: CheapString },
-
-    #[error("Unknown examples key '{name}'")]
-    UnknownExamplesKey { name: CheapString },
-
-    #[error("Expected string literal but got '{actual}'")]
-    ExpectedStringLiteralButGot { actual: LangToken },
-
-    #[error("Expected integer literal but got '{actual}'")]
-    ExpectedIntLiteralButGot { actual: LangToken },
 
     #[error("Unknown element <{tag}>")]
     UnknownHtmlElement { tag: CheapString },
