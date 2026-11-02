@@ -590,10 +590,10 @@ fn format_markup<'a>(
         }
         ParsedMarkup::Fragment { children, range }
             if children.is_empty()
-                && !comments
+                && comments
                     .markup
                     .front()
-                    .is_some_and(|c| c.start() < range.end()) =>
+                    .is_none_or(|c| c.start() >= range.end()) =>
         {
             arena.text("<></>")
         }
@@ -635,10 +635,10 @@ fn format_markup<'a>(
                     .group()
             };
             let empty = children.is_empty()
-                && !comments
+                && comments
                     .markup
                     .front()
-                    .is_some_and(|c| c.start() < range.end());
+                    .is_none_or(|c| c.start() >= range.end());
 
             // A void element is always written self-closing. An SVG element
             // can be written either way, so its authored form is kept.
@@ -693,7 +693,7 @@ fn format_children<'a>(
     end: usize,
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    if children.is_empty() && !comments.markup.front().is_some_and(|c| c.start() < end) {
+    if children.is_empty() && comments.markup.front().is_none_or(|c| c.start() >= end) {
         return arena.hardline();
     }
 
