@@ -9,8 +9,6 @@ use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::EvalError;
 use crate::ir::runtime::random::random_value;
 use crate::ir::{DocumentShell, TailwindInjection, optimize_flat};
-use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
-use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 use rand::SeedableRng;
@@ -23,7 +21,6 @@ impl Session {
     #[cfg(test)]
     fn evaluate_page_with_values(
         &self,
-        document_id: &RootContainedFilePath,
         page_name: &TypeName,
         args: HashMap<AttributeName, ir::runtime::value::Value<'static>>,
         generated_tailwind_css: Option<&str>,
@@ -31,7 +28,6 @@ impl Session {
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     ) -> Result<String, EvaluatePageError> {
         self.evaluate_page_with(
-            document_id,
             page_name,
             |_, _| args,
             generated_tailwind_css,
@@ -42,7 +38,6 @@ impl Session {
 
     fn evaluate_page_with(
         &self,
-        document_id: &RootContainedFilePath,
         page_name: &TypeName,
         args: impl FnOnce(
             &FlatProgram,
@@ -65,16 +60,7 @@ impl Session {
             return Err(EvaluatePageError::TypeErrors);
         }
 
-        // The page filter compiles only the requested page and what it
-        // reaches.
-        let (flat_program, pages) = orchestrate_flat(
-            self.typed_modules(),
-            &self.type_registry,
-            OrchestrateOptions {
-                page_filter: Some((document_id.clone(), page_name.clone())),
-                asset_path_rewriter,
-            },
-        );
+        let (flat_program, pages) = self.compile_flat(Some(page_name), asset_path_rewriter);
         let flat_program = if skip_optimization {
             flat_program
         } else {
@@ -127,15 +113,14 @@ impl Session {
             }
         })?;
 
-        let (document_id, page_decl) = self
+        let page_decl = self
             .typed_modules
-            .iter()
-            .find_map(|(document_id, module)| {
+            .values()
+            .find_map(|module| {
                 module
                     .page_declarations()
                     .iter()
                     .find(|ep| ep.name == page_name)
-                    .map(|ep| (document_id, ep))
             })
             .ok_or_else(|| EvaluatePageError::PageNotFound {
                 page: page.to_string(),
@@ -169,7 +154,6 @@ impl Session {
         };
 
         self.evaluate_page_with(
-            document_id,
             &page_name,
             args,
             generated_tailwind_css,
@@ -201,11 +185,9 @@ mod tests {
             }
         "#}));
 
-        let main_module = RootContainedFilePath::new("main.hop").unwrap();
         let main = TypeName::parse("Main").unwrap();
         let result = session
             .evaluate_page_with_values(
-                &main_module,
                 &main,
                 HashMap::new(),
                 Some(".text-red { color: red; }"),
@@ -241,10 +223,9 @@ mod tests {
             ir::runtime::value::Value::String("Alice".into()),
         );
 
-        let main_module = RootContainedFilePath::new("main.hop").unwrap();
         let hello_world = TypeName::parse("HelloWorld").unwrap();
         let result = session
-            .evaluate_page_with_values(&main_module, &hello_world, args, None, false, None)
+            .evaluate_page_with_values(&hello_world, args, None, false, None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<h1>Hello Alice!</h1>"));
@@ -252,28 +233,15 @@ mod tests {
         // Test evaluating another-comp page without parameters
         let another_comp = TypeName::parse("AnotherComp").unwrap();
         let result = session
-            .evaluate_page_with_values(
-                &main_module,
-                &another_comp,
-                HashMap::new(),
-                None,
-                false,
-                None,
-            )
+            .evaluate_page_with_values(&another_comp, HashMap::new(), None, false, None)
             .expect("Should evaluate successfully");
 
         assert!(result.contains("<p>Static content</p>"));
 
         // Test error when page doesn't exist
         let non_existent = TypeName::parse("NonExistent").unwrap();
-        let result = session.evaluate_page_with_values(
-            &main_module,
-            &non_existent,
-            HashMap::new(),
-            None,
-            false,
-            None,
-        );
+        let result =
+            session.evaluate_page_with_values(&non_existent, HashMap::new(), None, false, None);
         assert!(
             matches!(result, Err(EvaluatePageError::PageNotFound { .. })),
             "Expected PageNotFound error, got: {:?}",

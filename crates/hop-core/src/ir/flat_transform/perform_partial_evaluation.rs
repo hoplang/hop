@@ -644,7 +644,6 @@ mod tests {
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
-    use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::root_contained_file_path::RootContainedFilePath;
     use crate::session::Session;
     use expect_test::{Expect, expect};
@@ -718,11 +717,7 @@ mod tests {
         );
         let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let (flat, _) = orchestrate_flat(
-            session.typed_modules(),
-            session.type_registry(),
-            OrchestrateOptions::default(),
-        );
+        let (flat, _) = session.compile_flat(None, None);
         check(flat, expected);
     }
 

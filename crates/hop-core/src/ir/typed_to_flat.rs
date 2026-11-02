@@ -1051,7 +1051,6 @@ mod tests {
     use super::*;
     use crate::document::Document;
     use crate::ir::flat_lint;
-    use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::session::Session;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -1066,13 +1065,7 @@ mod tests {
         );
         let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let (flat, pages) = orchestrate_flat(
-            session.typed_modules(),
-            session.type_registry(),
-            OrchestrateOptions {
-                ..Default::default()
-            },
-        );
+        let (flat, pages) = session.compile_flat(None, None);
         flat_lint::assert_well_typed(&flat);
         flat_lint::assert_html_affine(&flat);
         let pages: String = pages.iter().map(|page| format!("{page}\n")).collect();

@@ -6,7 +6,6 @@ use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::flat_evaluator;
 use crate::ir::transpile::{RustTranspiler, Transpiler, TsTranspiler};
 use crate::ir::{flat_to_writer, optimize_flat};
-use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::session::Session;
@@ -196,17 +195,7 @@ fn check_with_asset_path_rewriter(
         panic!("Diagnostics found");
     }
 
-    let typed_modules = session.typed_modules().clone();
-    let registry = session.type_registry();
-
-    let (unoptimized_flat, pages) = orchestrate_flat(
-        &typed_modules,
-        registry,
-        OrchestrateOptions {
-            asset_path_rewriter,
-            ..Default::default()
-        },
-    );
+    let (unoptimized_flat, pages) = session.compile_flat(None, asset_path_rewriter);
     let optimized_flat = optimize_flat(unoptimized_flat.clone());
 
     // Evaluate the Flat programs before lowering consumes them.

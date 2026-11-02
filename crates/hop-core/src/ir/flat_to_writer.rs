@@ -1192,7 +1192,6 @@ mod tests {
     use crate::ir::ir_parameter::IrParameter;
     use crate::ir::ir_type::IrType;
     use crate::ir::optimize_flat;
-    use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::root_contained_file_path::RootContainedFilePath;
     use crate::session::Session;
     use expect_test::{Expect, expect};
@@ -1209,11 +1208,7 @@ mod tests {
         );
         let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
-        let (flat, pages) = orchestrate_flat(
-            session.typed_modules(),
-            session.type_registry(),
-            OrchestrateOptions::default(),
-        );
+        let (flat, pages) = session.compile_flat(None, None);
         let flat = optimize_flat(flat);
         let before = flat.to_string();
         let writer = flat_to_writer(flat, &pages, shell).to_string();

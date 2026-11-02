@@ -19,7 +19,6 @@ mod hover_annotation;
 mod html;
 mod ir;
 mod itertools;
-mod orchestrator;
 mod project_root;
 mod root_contained_file_path;
 mod root_relative_file_path;

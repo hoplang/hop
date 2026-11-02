@@ -117,7 +117,6 @@ mod tests {
     use crate::hop::format;
     use crate::hop::parsing::parse;
     use crate::ir::runtime::flat_evaluator;
-    use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
     use crate::root_contained_file_path::RootContainedFilePath;
     use crate::session::Session;
     use crate::symbols::type_name::TypeName;
@@ -156,15 +155,8 @@ mod tests {
         let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
 
-        let typed_modules = session.typed_modules().clone();
         let page_name = TypeName::parse("Test").unwrap();
-        let (flat, pages) = orchestrate_flat(
-            &typed_modules,
-            session.type_registry(),
-            OrchestrateOptions {
-                ..Default::default()
-            },
-        );
+        let (flat, pages) = session.compile_flat(None, None);
         flat_evaluator::evaluate_page(&flat, &pages, &page_name, HashMap::new(), None)
             .expect("evaluator failed")
     }

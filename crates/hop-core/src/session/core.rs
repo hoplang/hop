@@ -12,9 +12,13 @@ use crate::hop::parsing::{ParseError, ParsedModule, parse};
 use crate::hop::typing::{Export, TypeError, TypeRegistry, TypedModule, typecheck};
 use crate::hover_annotation::HoverAnnotation;
 use crate::ir;
-use crate::ir::{DocumentShell, TailwindInjection, Transpiler, flat_to_writer, optimize_flat};
-use crate::orchestrator::{OrchestrateOptions, orchestrate_flat};
+use crate::ir::flat_program::FlatProgram;
+use crate::ir::ir_page::IrPage;
+use crate::ir::{
+    DocumentShell, TailwindInjection, Transpiler, flat_to_writer, optimize_flat, typed_to_flat,
+};
 use crate::root_contained_file_path::RootContainedFilePath;
+use crate::symbols::type_name::TypeName;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
@@ -234,12 +238,7 @@ impl Session {
             }),
             js_script_src,
         );
-        let options = OrchestrateOptions {
-            asset_path_rewriter,
-            ..Default::default()
-        };
-
-        let (flat, pages) = orchestrate_flat(self.typed_modules(), &self.type_registry, options);
+        let (flat, pages) = self.compile_flat(None, asset_path_rewriter);
         let flat = if skip_optimization {
             flat
         } else {
@@ -253,14 +252,32 @@ impl Session {
         }
     }
 
-    /// Get all typed modules for compilation
-    pub(crate) fn typed_modules(&self) -> &HashMap<RootContainedFilePath, TypedModule> {
-        &self.typed_modules
-    }
-
-    #[cfg(test)]
-    pub(crate) fn type_registry(&self) -> &TypeRegistry {
-        &self.type_registry
+    pub(crate) fn compile_flat(
+        &self,
+        page: Option<&TypeName>,
+        asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
+    ) -> (FlatProgram, Vec<IrPage>) {
+        // Sorted by module for a deterministic order.
+        let mut document_ids: Vec<_> = self.typed_modules.keys().collect();
+        document_ids.sort();
+        let pages: Vec<_> = document_ids
+            .iter()
+            .flat_map(|id| self.typed_modules[*id].page_declarations())
+            .filter(|decl| page.is_none_or(|name| decl.name == *name))
+            .cloned()
+            .collect();
+        let functions: Vec<_> = document_ids
+            .iter()
+            .flat_map(|id| {
+                self.typed_modules[*id]
+                    .function_declarations()
+                    .iter()
+                    .map(move |decl| (*id, decl))
+            })
+            .collect();
+        // Only the functions the selected pages reach are compiled, so a
+        // build of one page holds what that page actually needs.
+        typed_to_flat(pages, &functions, &self.type_registry, asset_path_rewriter)
     }
 
     /// Return the names of every page declared across all modules, sorted.
