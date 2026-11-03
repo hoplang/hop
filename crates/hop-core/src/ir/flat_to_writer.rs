@@ -1244,7 +1244,8 @@ mod tests {
                     });
                     t.element("ul", [], t.call("Countdown", [t.int(3), row]))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- flat --
                 fn Countdown@f0(n@v0: Int, row@v1: (Int) -> Html) -> Html {
@@ -1345,7 +1346,8 @@ mod tests {
                     let sum = t.call("Sum", [t.int(3), scale]);
                     t.escape(t.int_to_string(sum))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- flat --
                 fn Sum@f0(n@v0: Int, scale@v1: (Int) -> Int) -> Int {
@@ -1457,7 +1459,8 @@ mod tests {
                     let wrap = t.lambda([IrType::HTML], |t, params| t.element("b", [], params[0]));
                     t.call("Wrap", [t.int(2), wrap])
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- flat --
                 fn Wrap@f0(n@v0: Int, wrap@v1: (Html) -> Html) -> Html {
@@ -2312,7 +2315,8 @@ mod tests {
                         })
                     },
                 )
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- flat --
                 entrypoint fn Greeting@f0(name@v0: Option[String], formal@v1: Bool) -> Html {
@@ -2397,7 +2401,8 @@ mod tests {
                         )
                     },
                 )
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- flat --
                 entrypoint fn Items@f0(items@v0: Array[String], n@v1: Int) -> Html {
@@ -2449,7 +2454,8 @@ mod tests {
                         ])],
                     )
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- flat --
                 entrypoint fn Test@f2(label@v5: String) -> Html {

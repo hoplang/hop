@@ -1,7 +1,7 @@
 use crate::document::CheapString;
 use crate::hop::typing::{Constructor, Pattern, PatternField, Ty};
 use crate::html::HtmlElementKind;
-use crate::ir::flat_lint;
+use crate::ir::flat_lint::{self, FlatLintError};
 use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
     FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
@@ -192,7 +192,7 @@ impl FlatProgramBuilder {
         name
     }
 
-    pub fn build(self) -> FlatProgram {
+    pub fn build(self) -> Result<FlatProgram, FlatLintError> {
         let functions = self
             .functions
             .into_iter()
@@ -230,9 +230,8 @@ impl FlatProgramBuilder {
             functions,
             value_ids: self.value_ids.into_inner(),
         };
-        flat_lint::assert_well_typed(&program);
-        flat_lint::assert_html_affine(&program);
-        program
+        flat_lint::lint(&program)?;
+        Ok(program)
     }
 }
 

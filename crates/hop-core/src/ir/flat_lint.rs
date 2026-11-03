@@ -1,5 +1,3 @@
-use std::fmt;
-
 use crate::hop::typing::{Constructor, Pattern, compile_arms};
 use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBlock, FlatHtmlOp,
@@ -17,15 +15,45 @@ use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 
-/// Panics unless every Html value is read at most once on each path and
-/// never from a loop body or a lambda body it is bound outside of. A
-/// closure that renders Html is not an Html value and is read freely. Only
-/// Html reads Html, which `assert_well_typed` checks, so only the Html of a
-/// block is walked.
-///
-/// Sets of names are vectors of flags indexed by the name's number, so
-/// that forking the scope at a match is a copy and joining it is a loop.
-pub fn assert_html_affine(program: &FlatProgram) {
+#[derive(Debug, PartialEq, Eq)]
+pub enum FlatLintError {
+    /// A function reads an Html value when the path has already read it,
+    /// or in a loop or lambda body that the value is bound outside of.
+    HtmlNotLive,
+    /// An entrypoint takes a closure.
+    EntrypointTakesClosure,
+    /// A name is bound a second time.
+    BoundTwice,
+    /// A name is read before it is bound.
+    ReadBeforeBound,
+    /// A closure reads an Html value bound outside it.
+    ClosureReadsOuterHtml,
+    /// A binding declares a type that its op does not produce from the
+    /// types of its operands.
+    IllTypedBinding,
+    /// A block produces a type other than the one its context expects.
+    BlockOfWrongType,
+    /// A call calls a function that the program does not declare.
+    UndeclaredCallee,
+    /// A match produces a closure.
+    MatchProducesClosure,
+    /// A match has a value of its subject's type that no arm matches.
+    NoArmMatches,
+    /// A match has an arm whose values the arms before it all match.
+    UnreachableArm,
+    /// A pattern is matched against a type whose values it cannot match.
+    PatternMismatch,
+    /// A pattern binder binds a type other than the one it is matched
+    /// against.
+    BinderMismatch,
+}
+
+pub fn lint(program: &FlatProgram) -> Result<(), FlatLintError> {
+    check_well_typed(program)?;
+    check_html_affine(program)
+}
+
+fn check_html_affine(program: &FlatProgram) -> Result<(), FlatLintError> {
     let mut html = vec![false; program.value_ids.count()];
     let html_functions = program
         .functions
@@ -49,8 +77,9 @@ pub fn assert_html_affine(program: &FlatProgram) {
                 scope[param.binder.var.index()] = true;
             }
         }
-        check_block(&function.body, scope, &html, &function.function);
+        check_block(&function.body, scope, &html)?;
     }
+    Ok(())
 }
 
 fn collect_html(block: &FlatHtmlBlock, html: &mut [bool]) {
@@ -82,17 +111,20 @@ fn check_block(
     block: &FlatHtmlBlock,
     mut scope: Vec<bool>,
     html: &[bool],
-    function: &IrFunction,
-) -> Vec<bool> {
+) -> Result<Vec<bool>, FlatLintError> {
     for binding in &block.html {
-        binding
-            .op
-            .for_each_operand(&mut |operand| read(operand, &mut scope, html, function));
+        let mut operands = Ok(());
+        binding.op.for_each_operand(&mut |operand| {
+            if operands.is_ok() {
+                operands = read(operand, &mut scope, html);
+            }
+        });
+        operands?;
         match &binding.op {
             FlatHtmlOp::Match(match_) => {
                 let mut after = scope.clone();
                 for arm in &match_.arms {
-                    let inner = check_block(&arm.body, scope.clone(), html, function);
+                    let inner = check_block(&arm.body, scope.clone(), html)?;
                     for (name, live) in after.iter_mut().zip(&inner) {
                         *name = *name && *live;
                     }
@@ -100,14 +132,14 @@ fn check_block(
                 scope = after;
             }
             FlatHtmlOp::For(for_) => {
-                check_block(&for_.body, vec![false; html.len()], html, function);
+                check_block(&for_.body, vec![false; html.len()], html)?;
             }
             FlatHtmlOp::Lambda(lambda) => {
                 let mut inner = vec![false; html.len()];
                 for param in &lambda.parameters {
                     inner[param.var.index()] = html[param.var.index()];
                 }
-                check_block(&lambda.body, inner, html, function);
+                check_block(&lambda.body, inner, html)?;
             }
             _ => {}
         }
@@ -115,26 +147,18 @@ fn check_block(
             scope[binding.binder.var.index()] = true;
         }
     }
-    read(block.result, &mut scope, html, function);
-    scope
+    read(block.result, &mut scope, html)?;
+    Ok(scope)
 }
 
-fn read(name: ValueId, scope: &mut [bool], html: &[bool], function: &IrFunction) {
-    if html[name.index()] {
-        assert!(
-            std::mem::replace(&mut scope[name.index()], false),
-            "{function} reads the Html value {name} when the path has used it or in a loop or lambda body it is bound outside of"
-        );
+fn read(name: ValueId, scope: &mut [bool], html: &[bool]) -> Result<(), FlatLintError> {
+    if html[name.index()] && !std::mem::replace(&mut scope[name.index()], false) {
+        return Err(FlatLintError::HtmlNotLive);
     }
+    Ok(())
 }
 
-/// Panics unless every binding has the type its op produces from the types
-/// of its operands and every block produces the type its context expects.
-/// A name is read only after it is bound. Every value of a match subject's
-/// type matches some arm, and each arm matches some value that no arm
-/// before it matches. No match produces a closure, the body of a closure
-/// reads no Html bound outside it, and no entrypoint takes a closure.
-pub fn assert_well_typed(program: &FlatProgram) {
+fn check_well_typed(program: &FlatProgram) -> Result<(), FlatLintError> {
     let mut checker = Checker {
         declarations: &program.types,
         functions: &program.functions,
@@ -143,53 +167,54 @@ pub fn assert_well_typed(program: &FlatProgram) {
     };
     for function in &program.functions {
         let parameters = function.parameters();
-        if function.entrypoint() {
-            for param in &parameters {
-                assert!(
-                    !matches!(
-                        param.binder.typ,
-                        IrType::Value(IrValueType::Function(_))
-                            | IrType::Html(IrHtmlType::Function(_))
-                    ),
-                    "the entrypoint {} takes the closure {}",
-                    function.function(),
-                    param.binder
-                );
-            }
+        if function.entrypoint()
+            && parameters.iter().any(|param| {
+                matches!(
+                    param.binder.typ,
+                    IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_))
+                )
+            })
+        {
+            return Err(FlatLintError::EntrypointTakesClosure);
         }
         match function {
             FlatFunctionDeclaration::Data(data) => {
                 for param in &data.parameters {
-                    checker.bind(param.binder.var, BoundType::of_value(&param.binder.typ));
+                    checker.bind(param.binder.var, BoundType::of_value(&param.binder.typ))?;
                 }
                 let expected = BoundType::Data(&data.return_type);
-                checker.data_block(&data.body, expected, function.function());
+                checker.data_block(&data.body, expected)?;
             }
             FlatFunctionDeclaration::Html(html) => {
                 for param in &html.parameters {
-                    checker.bind(param.binder.var, BoundType::of(&param.binder.typ));
+                    checker.bind(param.binder.var, BoundType::of(&param.binder.typ))?;
                 }
-                checker.html_block(&html.body, BoundType::Html, function.function());
+                checker.html_block(&html.body, BoundType::Html)?;
             }
         }
     }
+    Ok(())
 }
 
-/// The types are borrowed from the binders in the program and indexed by
-/// the name's number, so checking neither hashes nor clones a type.
+fn try_all<T>(
+    items: impl IntoIterator<Item = T>,
+    mut f: impl FnMut(T) -> Result<bool, FlatLintError>,
+) -> Result<bool, FlatLintError> {
+    for item in items {
+        if !f(item)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 struct Checker<'a> {
     declarations: &'a IrTypeDeclarations,
     functions: &'a [FlatFunctionDeclaration],
-    // Each name with the number of closures around its binding, and
-    // `lambdas` the number around the op being checked, so that a read of
-    // Html from outside a closure shows.
     types: Vec<Option<(BoundType<'a>, usize)>>,
     lambdas: usize,
 }
 
-/// The type of a name as its binder gives it, an IrType for a parameter, an
-/// IrValueType for a value, an IrDataType for a name a pattern or a loop
-/// binds and an IrHtmlType for Html.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BoundType<'a> {
     Data(&'a IrDataType),
@@ -225,391 +250,340 @@ impl<'a> BoundType<'a> {
     }
 }
 
-impl fmt::Display for BoundType<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BoundType::Data(data) => data.fmt(f),
-            BoundType::ValueFunction(signature) => signature.fmt(f),
-            BoundType::Html => IrType::HTML.fmt(f),
-            BoundType::HtmlFunction(signature) => signature.fmt(f),
+impl<'a> Checker<'a> {
+    fn bind(&mut self, name: ValueId, typ: BoundType<'a>) -> Result<(), FlatLintError> {
+        match self.types[name.index()].replace((typ, self.lambdas)) {
+            None => Ok(()),
+            Some(_) => Err(FlatLintError::BoundTwice),
         }
     }
-}
 
-impl<'a> Checker<'a> {
-    fn bind(&mut self, name: ValueId, typ: BoundType<'a>) {
-        assert!(
-            self.types[name.index()]
-                .replace((typ, self.lambdas))
-                .is_none(),
-            "{name}: {typ} is bound twice"
-        );
+    fn typ(&self, name: ValueId) -> Result<BoundType<'a>, FlatLintError> {
+        let (typ, lambdas) = self.types[name.index()].ok_or(FlatLintError::ReadBeforeBound)?;
+        if typ == BoundType::Html && lambdas != self.lambdas {
+            return Err(FlatLintError::ClosureReadsOuterHtml);
+        }
+        Ok(typ)
     }
 
-    // Panics if the name is Html that a closure around the op reads from
-    // outside it.
-    fn typ(&self, name: ValueId) -> BoundType<'a> {
-        let (typ, lambdas) =
-            self.types[name.index()].unwrap_or_else(|| panic!("{name} is read before it is bound"));
-        assert!(
-            typ != BoundType::Html || lambdas == self.lambdas,
-            "a closure reads the Html of {name}, bound outside it"
-        );
-        typ
-    }
-
-    fn data(&self, name: ValueId) -> Option<&'a IrDataType> {
-        match self.typ(name) {
+    fn data(&self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatLintError> {
+        Ok(match self.typ(name)? {
             BoundType::Data(data) => Some(data),
             BoundType::ValueFunction(_) | BoundType::Html | BoundType::HtmlFunction(_) => None,
-        }
+        })
     }
 
     fn data_block(
         &mut self,
         block: &'a FlatDataBlock,
         expected: BoundType<'a>,
-        function: &IrFunction,
-    ) {
-        self.data_bindings(&block.bindings, function);
-        assert!(
-            self.typ(block.result) == expected,
-            "{function} has a block that produces {} where {expected} is expected",
-            self.typ(block.result)
-        );
+    ) -> Result<(), FlatLintError> {
+        self.data_bindings(&block.bindings)?;
+        self.block_result(block.result, expected)
     }
 
     fn html_block(
         &mut self,
         block: &'a FlatHtmlBlock,
         expected: BoundType<'a>,
-        function: &IrFunction,
-    ) {
-        self.data_bindings(&block.bindings, function);
+    ) -> Result<(), FlatLintError> {
+        self.data_bindings(&block.bindings)?;
         for binding in &block.html {
-            let typ = BoundType::of_html(&binding.binder.typ);
-            assert!(
-                self.html_op(&binding.op, typ, function),
-                "{function} binds {} to an op that does not produce that type",
-                binding.binder
-            );
-            self.bind(binding.binder.var, typ);
+            let declared = BoundType::of_html(&binding.binder.typ);
+            let html = declared == BoundType::Html;
+            let produces = match &binding.op {
+                FlatHtmlOp::Call(callee, args) => match self.callee(callee)? {
+                    FlatFunctionDeclaration::Html(callee) => {
+                        html && self.args(
+                            args,
+                            callee
+                                .parameters
+                                .iter()
+                                .map(|p| BoundType::of(&p.binder.typ)),
+                        )?
+                    }
+                    FlatFunctionDeclaration::Data(_) => false,
+                },
+                FlatHtmlOp::Match(match_) => {
+                    if !html {
+                        return Err(FlatLintError::MatchProducesClosure);
+                    }
+                    let subject = self.typ(match_.subject)?;
+                    for arm in &match_.arms {
+                        self.pattern(&arm.pattern, subject)?;
+                        self.html_block(&arm.body, declared)?;
+                    }
+                    self.arms(match_)?;
+                    true
+                }
+                FlatHtmlOp::Text(_) => html,
+                FlatHtmlOp::Escape(name) => html && self.typ(*name)?.is(&IrType::STRING),
+                FlatHtmlOp::Concat(parts) => {
+                    html && try_all(parts, |part| Ok(self.typ(*part)?.is(&IrType::HTML)))?
+                }
+                FlatHtmlOp::Element(element) => {
+                    let attributes = try_all(element.attributes.values(), |attribute| {
+                        Ok(match attribute {
+                            IrAttribute::Value(name) => self.typ(*name)?.is(&IrType::STRING),
+                            IrAttribute::Presence(name) => self.typ(*name)?.is(&IrType::BOOL),
+                            IrAttribute::Constant(_) => true,
+                        })
+                    })?;
+                    html && attributes && self.typ(element.children)?.is(&IrType::HTML)
+                }
+                FlatHtmlOp::For(for_) => {
+                    let Some(IrDataType::Array(element)) = self.data(for_.array)? else {
+                        return Err(FlatLintError::IllTypedBinding);
+                    };
+                    if let Some(var) = &for_.var {
+                        if var.typ != **element {
+                            return Err(FlatLintError::IllTypedBinding);
+                        }
+                        self.bind(var.var, BoundType::Data(&var.typ))?;
+                    }
+                    self.html_block(&for_.body, BoundType::Html)?;
+                    html
+                }
+                FlatHtmlOp::Lambda(lambda) => {
+                    let BoundType::HtmlFunction(signature) = declared else {
+                        return Err(FlatLintError::IllTypedBinding);
+                    };
+                    self.lambda_parameters(
+                        &lambda.parameters,
+                        signature.parameters.iter().map(BoundType::of),
+                        BoundType::of,
+                    )?;
+                    self.html_block(&lambda.body, BoundType::Html)?;
+                    self.lambdas -= 1;
+                    true
+                }
+                FlatHtmlOp::Apply(closure, args) => match self.typ(*closure)? {
+                    BoundType::HtmlFunction(signature) => {
+                        html && self.args(args, signature.parameters.iter().map(BoundType::of))?
+                    }
+                    _ => false,
+                },
+            };
+            if !produces {
+                return Err(FlatLintError::IllTypedBinding);
+            }
+            self.bind(binding.binder.var, declared)?;
         }
-        assert!(
-            self.typ(block.result) == expected,
-            "{function} has a block that produces {} where {expected} is expected",
-            self.typ(block.result)
-        );
+        self.block_result(block.result, expected)
     }
 
-    fn data_bindings(&mut self, bindings: &'a [FlatDataBinding], function: &IrFunction) {
+    fn block_result(&self, result: ValueId, expected: BoundType<'a>) -> Result<(), FlatLintError> {
+        let found = self.typ(result)?;
+        if found != expected {
+            return Err(FlatLintError::BlockOfWrongType);
+        }
+        Ok(())
+    }
+
+    fn data_bindings(&mut self, bindings: &'a [FlatDataBinding]) -> Result<(), FlatLintError> {
         for binding in bindings {
-            let typ = BoundType::of_value(&binding.binder.typ);
-            assert!(
-                self.flat_data_op(&binding.op, typ, function),
-                "{function} binds {} to an op that does not produce that type",
-                binding.binder
-            );
-            self.bind(binding.binder.var, typ);
+            let declared = BoundType::of_value(&binding.binder.typ);
+            let produces = match &binding.op {
+                FlatDataOp::Data(op) => match declared {
+                    BoundType::Data(declared) => self.data_op(op, declared)?,
+                    _ => false,
+                },
+                FlatDataOp::Call(callee, args) => match self.callee(callee)? {
+                    FlatFunctionDeclaration::Data(callee) => {
+                        declared == BoundType::Data(&callee.return_type)
+                            && self.args(
+                                args,
+                                callee
+                                    .parameters
+                                    .iter()
+                                    .map(|p| BoundType::of_value(&p.binder.typ)),
+                            )?
+                    }
+                    FlatFunctionDeclaration::Html(_) => false,
+                },
+                FlatDataOp::Match(match_) => {
+                    if !matches!(declared, BoundType::Data(_)) {
+                        return Err(FlatLintError::MatchProducesClosure);
+                    }
+                    let subject = self.typ(match_.subject)?;
+                    for arm in &match_.arms {
+                        self.pattern(&arm.pattern, subject)?;
+                        self.data_block(&arm.body, declared)?;
+                    }
+                    self.arms(match_)?;
+                    true
+                }
+                FlatDataOp::Lambda(lambda) => {
+                    let BoundType::ValueFunction(signature) = declared else {
+                        return Err(FlatLintError::IllTypedBinding);
+                    };
+                    self.lambda_parameters(
+                        &lambda.parameters,
+                        signature.parameters.iter().map(BoundType::of_value),
+                        BoundType::of_value,
+                    )?;
+                    self.data_block(&lambda.body, BoundType::Data(&signature.result))?;
+                    self.lambdas -= 1;
+                    true
+                }
+                FlatDataOp::Apply(closure, args) => match self.typ(*closure)? {
+                    BoundType::ValueFunction(signature) => {
+                        declared == BoundType::Data(&signature.result)
+                            && self
+                                .args(args, signature.parameters.iter().map(BoundType::of_value))?
+                    }
+                    _ => false,
+                },
+            };
+            if !produces {
+                return Err(FlatLintError::IllTypedBinding);
+            }
+            self.bind(binding.binder.var, declared)?;
         }
+        Ok(())
     }
 
-    /// The declaration of the function a call in `function` calls.
-    fn callee(&self, callee: &IrFunction, function: &IrFunction) -> &'a FlatFunctionDeclaration {
+    fn callee(&self, callee: &IrFunction) -> Result<&'a FlatFunctionDeclaration, FlatLintError> {
         self.functions
             .iter()
             .find(|declared| declared.function().id == callee.id)
-            .unwrap_or_else(|| panic!("{function} calls the undeclared {callee}"))
+            .ok_or(FlatLintError::UndeclaredCallee)
     }
 
-    /// Whether the arguments follow the parameters, one of its type for each.
     fn args<'t>(
         &self,
         args: &[ValueId],
         params: impl ExactSizeIterator<Item = BoundType<'t>>,
-    ) -> bool {
-        args.len() == params.len()
-            && args
-                .iter()
-                .zip(params)
-                .all(|(arg, param)| self.typ(*arg) == param)
+    ) -> Result<bool, FlatLintError> {
+        Ok(args.len() == params.len()
+            && try_all(args.iter().zip(params), |(arg, param)| {
+                Ok(self.typ(*arg)? == param)
+            })?)
     }
 
-    // Enters the closure, so the caller leaves it again, and binds its
-    // parameters if they follow the signature.
     fn lambda_parameters<T>(
         &mut self,
         parameters: &'a [IrBinder<T>],
         signature: impl ExactSizeIterator<Item = BoundType<'a>>,
         of: impl Fn(&'a T) -> BoundType<'a>,
-    ) -> bool {
+    ) -> Result<(), FlatLintError> {
         self.lambdas += 1;
         let follows = parameters.len() == signature.len()
             && (parameters.iter())
                 .zip(signature)
                 .all(|(param, typ)| of(&param.typ) == typ);
-        if follows {
-            for param in parameters {
-                self.bind(param.var, of(&param.typ));
-            }
+        if !follows {
+            return Err(FlatLintError::IllTypedBinding);
         }
-        follows
+        for param in parameters {
+            self.bind(param.var, of(&param.typ))?;
+        }
+        Ok(())
     }
 
-    /// Whether `op` produces a `declared` from the types of its operands.
-    fn flat_data_op(
-        &mut self,
-        op: &'a FlatDataOp,
-        declared: BoundType<'a>,
-        function: &IrFunction,
-    ) -> bool {
-        match op {
-            FlatDataOp::Data(op) => match declared {
-                BoundType::Data(declared) => self.data_op(op, declared),
-                _ => false,
-            },
-            FlatDataOp::Call(callee, args) => match self.callee(callee, function) {
-                FlatFunctionDeclaration::Data(callee) => {
-                    declared == BoundType::Data(&callee.return_type)
-                        && self.args(
-                            args,
-                            callee
-                                .parameters
-                                .iter()
-                                .map(|p| BoundType::of_value(&p.binder.typ)),
-                        )
-                }
-                FlatFunctionDeclaration::Html(_) => false,
-            },
-            FlatDataOp::Match(match_) => {
-                assert!(
-                    matches!(declared, BoundType::Data(_)),
-                    "{function} has a match that produces the closure {declared}"
-                );
-                let subject = self.typ(match_.subject);
-                for arm in &match_.arms {
-                    self.pattern(&arm.pattern, subject);
-                    self.data_block(&arm.body, declared, function);
-                }
-                self.arms(match_, function);
-                true
-            }
-            FlatDataOp::Lambda(lambda) => {
-                let BoundType::ValueFunction(signature) = declared else {
-                    return false;
-                };
-                if !self.lambda_parameters(
-                    &lambda.parameters,
-                    signature.parameters.iter().map(BoundType::of_value),
-                    BoundType::of_value,
-                ) {
-                    self.lambdas -= 1;
-                    return false;
-                }
-                self.data_block(&lambda.body, BoundType::Data(&signature.result), function);
-                self.lambdas -= 1;
-                true
-            }
-            FlatDataOp::Apply(closure, args) => match self.typ(*closure) {
-                BoundType::ValueFunction(signature) => {
-                    declared == BoundType::Data(&signature.result)
-                        && self.args(args, signature.parameters.iter().map(BoundType::of_value))
-                }
-                _ => false,
-            },
-        }
-    }
-
-    /// Whether `op` produces a `declared` from the types of its operands.
-    fn html_op(
-        &mut self,
-        op: &'a FlatHtmlOp,
-        declared: BoundType<'a>,
-        function: &IrFunction,
-    ) -> bool {
-        let html = declared == BoundType::Html;
-        match op {
-            FlatHtmlOp::Call(callee, args) => match self.callee(callee, function) {
-                FlatFunctionDeclaration::Html(callee) => {
-                    html && self.args(
-                        args,
-                        callee
-                            .parameters
-                            .iter()
-                            .map(|p| BoundType::of(&p.binder.typ)),
-                    )
-                }
-                FlatFunctionDeclaration::Data(_) => false,
-            },
-            FlatHtmlOp::Match(match_) => {
-                assert!(
-                    html,
-                    "{function} has a match that produces the closure {declared}"
-                );
-                let subject = self.typ(match_.subject);
-                for arm in &match_.arms {
-                    self.pattern(&arm.pattern, subject);
-                    self.html_block(&arm.body, declared, function);
-                }
-                self.arms(match_, function);
-                true
-            }
-            FlatHtmlOp::Text(_) => html,
-            FlatHtmlOp::Escape(name) => html && self.typ(*name).is(&IrType::STRING),
-            FlatHtmlOp::Concat(parts) => {
-                html && parts.iter().all(|part| self.typ(*part).is(&IrType::HTML))
-            }
-            FlatHtmlOp::Element(element) => {
-                let attributes = element
-                    .attributes
-                    .values()
-                    .all(|attribute| match attribute {
-                        IrAttribute::Value(name) => self.typ(*name).is(&IrType::STRING),
-                        IrAttribute::Presence(name) => self.typ(*name).is(&IrType::BOOL),
-                        IrAttribute::Constant(_) => true,
-                    });
-                html && attributes && self.typ(element.children).is(&IrType::HTML)
-            }
-            FlatHtmlOp::For(for_) => {
-                let Some(IrDataType::Array(element)) = self.data(for_.array) else {
-                    return false;
-                };
-                if let Some(var) = &for_.var {
-                    if var.typ != **element {
-                        return false;
-                    }
-                    self.bind(var.var, BoundType::Data(&var.typ));
-                }
-                self.html_block(&for_.body, BoundType::Html, function);
-                html
-            }
-            FlatHtmlOp::Lambda(lambda) => {
-                let BoundType::HtmlFunction(signature) = declared else {
-                    return false;
-                };
-                if !self.lambda_parameters(
-                    &lambda.parameters,
-                    signature.parameters.iter().map(BoundType::of),
-                    BoundType::of,
-                ) {
-                    self.lambdas -= 1;
-                    return false;
-                }
-                self.html_block(&lambda.body, BoundType::Html, function);
-                self.lambdas -= 1;
-                true
-            }
-            FlatHtmlOp::Apply(closure, args) => match self.typ(*closure) {
-                BoundType::HtmlFunction(signature) => {
-                    html && self.args(args, signature.parameters.iter().map(BoundType::of))
-                }
-                _ => false,
-            },
-        }
-    }
-
-    fn data_op(&self, op: &IrDataOp, declared: &IrDataType) -> bool {
+    fn data_op(&self, op: &IrDataOp, declared: &IrDataType) -> Result<bool, FlatLintError> {
         let same = |left: ValueId, right: ValueId| {
-            let typ = self.data(left)?;
-            (Some(typ) == self.data(right)).then_some(typ)
+            let left = self.data(left)?;
+            let right = self.data(right)?;
+            Ok::<_, FlatLintError>(if left == right { left } else { None })
         };
         let all =
-            |names: &[ValueId], typ: IrType| names.iter().all(|name| self.typ(*name).is(&typ));
-        let data = |name: ValueId| self.data(name);
+            |names: &[ValueId], typ: IrType| try_all(names, |name| Ok(self.typ(*name)?.is(&typ)));
         let declared_data = Some(declared);
-        match op {
+        Ok(match op {
             IrDataOp::StringLiteral(_) => *declared == IrDataType::String,
             IrDataOp::IntLiteral(_) => *declared == IrDataType::Int,
             IrDataOp::FloatLiteral(_) => *declared == IrDataType::Float,
             IrDataOp::BoolLiteral(_) => *declared == IrDataType::Bool,
             IrDataOp::Array(elements) => match declared_data {
                 Some(IrDataType::Array(element)) => {
-                    elements.iter().all(|name| data(*name) == Some(&**element))
+                    try_all(elements, |name| Ok(self.data(*name)? == Some(&**element)))?
                 }
                 _ => false,
             },
             IrDataOp::Tuple(elements) => match declared_data {
                 Some(IrDataType::Tuple(declared)) => {
                     elements.len() == declared.len()
-                        && elements
-                            .iter()
-                            .zip(declared)
-                            .all(|(name, typ)| data(*name) == Some(typ))
+                        && try_all(elements.iter().zip(declared), |(name, typ)| {
+                            Ok(self.data(*name)? == Some(typ))
+                        })?
                 }
                 _ => false,
             },
             IrDataOp::Record(fields) => match declared {
-                IrDataType::Record(name) => self
-                    .declarations
-                    .record(name)
-                    .is_some_and(|record| self.fields(fields, &record.fields)),
+                IrDataType::Record(name) => match self.declarations.record(name) {
+                    Some(record) => self.fields(fields, &record.fields)?,
+                    None => false,
+                },
                 _ => false,
             },
             IrDataOp::Enum(variant, fields) => match declared {
-                IrDataType::Enum(name) => self
-                    .declarations
-                    .enumeration(name)
-                    .and_then(|enumeration| {
+                IrDataType::Enum(name) => {
+                    match self.declarations.enumeration(name).and_then(|enumeration| {
                         enumeration.variants.iter().find(|v| v.name == *variant)
-                    })
-                    .is_some_and(|variant| self.fields(fields, &variant.fields)),
+                    }) {
+                        Some(variant) => self.fields(fields, &variant.fields)?,
+                        None => false,
+                    }
+                }
                 _ => false,
             },
             IrDataOp::OptionSome(inner) => match declared_data {
-                Some(IrDataType::Option(element)) => data(*inner) == Some(&**element),
+                Some(IrDataType::Option(element)) => self.data(*inner)? == Some(&**element),
                 _ => false,
             },
             IrDataOp::OptionNone => matches!(declared_data, Some(IrDataType::Option(_))),
             IrDataOp::StringConcat(parts) => {
-                all(parts, IrType::STRING) && *declared == IrDataType::String
+                all(parts, IrType::STRING)? && *declared == IrDataType::String
             }
             IrDataOp::NumericAdd(left, right)
             | IrDataOp::NumericSubtract(left, right)
-            | IrDataOp::NumericMultiply(left, right) => same(*left, *right)
+            | IrDataOp::NumericMultiply(left, right) => same(*left, *right)?
                 .is_some_and(|typ| typ.as_numeric_type().is_some() && Some(typ) == declared_data),
             IrDataOp::Equals(left, right) => {
-                same(*left, *right).is_some_and(|typ| typ.as_equatable_type().is_some())
+                same(*left, *right)?.is_some_and(|typ| typ.as_equatable_type().is_some())
                     && *declared == IrDataType::Bool
             }
             IrDataOp::LessThan(left, right) | IrDataOp::LessThanOrEqual(left, right) => {
-                same(*left, *right).is_some_and(|typ| typ.as_comparable_type().is_some())
+                same(*left, *right)?.is_some_and(|typ| typ.as_comparable_type().is_some())
                     && *declared == IrDataType::Bool
             }
             IrDataOp::ArrayFromRange(start, end) => {
-                all(&[*start, *end], IrType::INT)
+                all(&[*start, *end], IrType::INT)?
                     && matches!(declared_data, Some(IrDataType::Array(element)) if **element == IrDataType::Int)
             }
             IrDataOp::NumericNegation(operand) => {
-                let typ = data(*operand);
+                let typ = self.data(*operand)?;
                 typ.and_then(IrDataType::as_numeric_type).is_some() && typ == declared_data
             }
             IrDataOp::BoolNegation(operand) => {
-                all(&[*operand], IrType::BOOL) && *declared == IrDataType::Bool
+                all(&[*operand], IrType::BOOL)? && *declared == IrDataType::Bool
             }
             IrDataOp::ArrayLength(operand) => {
-                matches!(data(*operand), Some(IrDataType::Array(_))) && *declared == IrDataType::Int
+                matches!(self.data(*operand)?, Some(IrDataType::Array(_)))
+                    && *declared == IrDataType::Int
             }
             IrDataOp::ArrayIsEmpty(operand) => {
-                matches!(data(*operand), Some(IrDataType::Array(_)))
+                matches!(self.data(*operand)?, Some(IrDataType::Array(_)))
                     && *declared == IrDataType::Bool
             }
             IrDataOp::StringIsEmpty(operand) => {
-                all(&[*operand], IrType::STRING) && *declared == IrDataType::Bool
+                all(&[*operand], IrType::STRING)? && *declared == IrDataType::Bool
             }
             IrDataOp::OptionIsSome(operand) | IrDataOp::OptionIsNone(operand) => {
-                matches!(data(*operand), Some(IrDataType::Option(_)))
+                matches!(self.data(*operand)?, Some(IrDataType::Option(_)))
                     && *declared == IrDataType::Bool
             }
             IrDataOp::IntToString(operand) => {
-                all(&[*operand], IrType::INT) && *declared == IrDataType::String
+                all(&[*operand], IrType::INT)? && *declared == IrDataType::String
             }
             IrDataOp::FloatToInt(operand) => {
-                all(&[*operand], IrType::FLOAT) && *declared == IrDataType::Int
+                all(&[*operand], IrType::FLOAT)? && *declared == IrDataType::Int
             }
             IrDataOp::IntToFloat(operand) => {
-                all(&[*operand], IrType::INT) && *declared == IrDataType::Float
+                all(&[*operand], IrType::INT)? && *declared == IrDataType::Float
             }
-            IrDataOp::FieldAccess(object, field) => match data(*object) {
+            IrDataOp::FieldAccess(object, field) => match self.data(*object)? {
                 Some(IrDataType::Record(name)) => self
                     .declarations
                     .record(name)
@@ -617,68 +591,68 @@ impl<'a> Checker<'a> {
                     .is_some_and(|field| Some(&field.typ) == declared_data),
                 _ => false,
             },
-            IrDataOp::TupleIndex(tuple, index) => match self.data(*tuple) {
+            IrDataOp::TupleIndex(tuple, index) => match self.data(*tuple)? {
                 Some(IrDataType::Tuple(elements)) => elements.get(*index) == declared_data,
                 _ => false,
             },
-        }
+        })
     }
 
-    fn fields(&self, given: &[(FieldName, ValueId)], declared: &[IrField]) -> bool {
-        given.len() == declared.len()
-            && declared.iter().all(|field| {
+    fn fields(
+        &self,
+        given: &[(FieldName, ValueId)],
+        declared: &[IrField],
+    ) -> Result<bool, FlatLintError> {
+        Ok(given.len() == declared.len()
+            && try_all(declared, |field| {
                 let mut values = given
                     .iter()
                     .filter(|(name, _)| *name == field.name)
                     .map(|(_, value)| *value);
-                match (values.next(), values.next()) {
-                    (Some(value), None) => self.data(value) == Some(&field.typ),
+                Ok(match (values.next(), values.next()) {
+                    (Some(value), None) => self.data(value)? == Some(&field.typ),
                     _ => false,
-                }
-            })
+                })
+            })?)
     }
 
-    /// Panics unless every value of the subject's type matches some arm and
-    /// each arm matches some value that no arm before it matches.
-    fn arms<B>(&self, match_: &IrMatch<B>, function: &IrFunction) {
-        let Some(subject) = self.data(match_.subject) else {
-            return;
+    fn arms<B>(&self, match_: &IrMatch<B>) -> Result<(), FlatLintError> {
+        let Some(subject) = self.data(match_.subject)? else {
+            return Ok(());
         };
         let patterns: Vec<IrPattern> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
         let (_, reachable, missing) = compile_arms(self.declarations, &patterns, subject.clone());
-        if let Some(pattern) = missing.first() {
-            panic!(
-                "{function} has a match on a {subject} where no arm matches {}",
-                pattern
-            );
+        if !missing.is_empty() {
+            return Err(FlatLintError::NoArmMatches);
         }
-        if let Some(pattern) = (0..patterns.len())
-            .find(|index| !reachable.contains(index))
-            .map(|index| &patterns[index])
-        {
-            panic!(
-                "{function} has a match on a {subject} where the arms before {} match every value it matches",
-                pattern
-            );
+        if (0..patterns.len()).any(|index| !reachable.contains(&index)) {
+            return Err(FlatLintError::UnreachableArm);
         }
+        Ok(())
     }
 
-    fn pattern(&mut self, pattern: &'a IrPattern, typ: BoundType<'a>) {
+    fn pattern(&mut self, pattern: &'a IrPattern, typ: BoundType<'a>) -> Result<(), FlatLintError> {
         match (pattern, typ) {
-            (Pattern::Wildcard, _) => {}
+            (Pattern::Wildcard, _) => Ok(()),
             (_, BoundType::Data(data)) => self.data_pattern(pattern, data),
             (_, BoundType::ValueFunction(_) | BoundType::Html | BoundType::HtmlFunction(_)) => {
-                panic!("a {typ} is matched against {}", pattern)
+                Err(FlatLintError::PatternMismatch)
             }
         }
     }
 
-    fn data_pattern(&mut self, pattern: &'a IrPattern, typ: &IrDataType) {
+    fn data_pattern(
+        &mut self,
+        pattern: &'a IrPattern,
+        typ: &IrDataType,
+    ) -> Result<(), FlatLintError> {
         match pattern {
             Pattern::Wildcard => {}
             Pattern::Binding(binder) => {
-                assert!(binder.typ == *typ, "{binder} binds a {typ}");
-                self.bind(binder.var, BoundType::Data(&binder.typ));
+                if binder.typ != *typ {
+                    return Err(FlatLintError::BinderMismatch);
+                }
+                self.bind(binder.var, BoundType::Data(&binder.typ))?;
             }
             Pattern::Constructor {
                 constructor,
@@ -721,44 +695,46 @@ impl<'a> Checker<'a> {
                 };
                 let (arg_types, declared_fields) = resolved
                     .filter(|(arg_types, _)| arg_types.len() == args.len())
-                    .unwrap_or_else(|| panic!("a {typ} is matched against {}", pattern));
+                    .ok_or(FlatLintError::PatternMismatch)?;
                 for (arg, arg_type) in args.iter().zip(arg_types) {
-                    self.data_pattern(arg, arg_type);
+                    self.data_pattern(arg, arg_type)?;
                 }
                 for field in fields {
                     let declared = declared_fields
                         .get(field.index)
                         .filter(|declared| declared.name == field.name)
-                        .unwrap_or_else(|| panic!("a {typ} is matched against {}", pattern));
-                    self.data_pattern(&field.pattern, &declared.typ);
+                        .ok_or(FlatLintError::PatternMismatch)?;
+                    self.data_pattern(&field.pattern, &declared.typ)?;
                 }
             }
         }
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::FlatLintError;
     use crate::hop::typing::Ty;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::ir_type::IrType;
 
     #[test]
-    #[should_panic(expected = "a closure reads the Html of v0, bound outside it")]
     fn should_reject_a_closure_that_reads_html_bound_outside_it() {
-        FlatProgramBuilder::new()
+        let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| {
                 let outer = t.text("x");
                 let closure = t.lambda([], |_, _| outer);
                 t.apply(closure, [])
             })
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ClosureReadsOuterHtml);
     }
 
     #[test]
-    #[should_panic(expected = "Test@f0 has a match that produces the closure (Int) -> Int")]
     fn should_reject_a_match_that_produces_a_closure() {
-        FlatProgramBuilder::new()
+        let error = FlatProgramBuilder::new()
             .entrypoint("Test", [("double", Ty::Bool)], Ty::Html, |t| {
                 let scale = t.match_(t.param("double"), |m| {
                     m.arm(Pat::True, |t, _| {
@@ -771,86 +747,95 @@ mod tests {
                 let scaled = t.apply(scale, [t.int(1)]);
                 t.escape(t.int_to_string(scaled))
             })
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::MatchProducesClosure);
     }
 
     #[test]
-    #[should_panic(expected = "the entrypoint Test@f0 takes the closure")]
     fn should_reject_an_entrypoint_that_takes_a_closure() {
-        FlatProgramBuilder::new()
+        let error = FlatProgramBuilder::new()
             .entrypoint_with_types(
                 "Test",
                 [("row", IrType::html_function([]))],
                 IrType::HTML,
                 |t| t.apply(t.param("row"), []),
             )
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::EntrypointTakesClosure);
     }
 
     #[test]
-    #[should_panic(expected = "does not produce that type")]
     fn should_reject_an_application_with_the_wrong_arguments() {
-        FlatProgramBuilder::new()
+        let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| {
                 let double = t.lambda([IrType::INT], |t, params| t.add(params[0], params[0]));
                 let doubled = t.apply(double, [t.str("one")]);
                 t.escape(t.int_to_string(doubled))
             })
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::IllTypedBinding);
     }
 
     #[test]
-    #[should_panic]
     fn should_reject_an_op_with_ill_typed_operands() {
-        FlatProgramBuilder::new()
+        let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| {
                 let sum = t.add(t.int(1), t.str("one"));
                 t.escape(t.int_to_string(sum))
             })
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::IllTypedBinding);
     }
 
     #[test]
-    #[should_panic]
     fn should_reject_a_block_of_the_wrong_type() {
-        FlatProgramBuilder::new()
+        let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], Ty::Html, |t| t.int(1))
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::BlockOfWrongType);
     }
 
     #[test]
-    #[should_panic]
     fn should_reject_a_call_with_the_wrong_arguments() {
-        FlatProgramBuilder::new()
+        let error = FlatProgramBuilder::new()
             .function("show", [("n", Ty::Int)], Ty::Html, |t| {
                 t.escape(t.int_to_string(t.param("n")))
             })
             .entrypoint("Test", [], Ty::Html, |t| t.call("show", [t.str("one")]))
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::IllTypedBinding);
     }
 
     #[test]
-    #[should_panic]
     fn should_reject_a_match_where_no_arm_matches_some_value() {
-        FlatProgramBuilder::new()
+        let error = FlatProgramBuilder::new()
             .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
                 t.match_(t.param("flag"), |m| {
                     m.arm(Pat::True, |t, _| t.text("yes"));
                 })
             })
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::NoArmMatches);
     }
 
     #[test]
-    #[should_panic]
     fn should_reject_a_match_with_a_shadowed_arm() {
-        FlatProgramBuilder::new()
+        let error = FlatProgramBuilder::new()
             .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
                 t.match_(t.param("flag"), |m| {
                     m.arm(Pat::Wildcard, |t, _| t.text("any"));
                     m.arm(Pat::False, |t, _| t.text("no"));
                 })
             })
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::UnreachableArm);
     }
 }

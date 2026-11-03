@@ -357,7 +357,8 @@ mod tests {
                     let twice = t.call("Twice", [add, t.int(1)]);
                     t.escape(t.int_to_string(twice))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn Twice@f0(f@v0: (Int) -> Int, x@v1: Int) -> Int {
@@ -412,7 +413,8 @@ mod tests {
                 .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.call("double", [t.param("n")])))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn double@f0(x@v0: Int) -> Int {
@@ -450,7 +452,8 @@ mod tests {
                 .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.call("outer", [t.param("n")])))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn inner@f0(x@v0: Int) -> Int {
@@ -505,7 +508,8 @@ mod tests {
                         ])
                     },
                 )
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn list@f0(items@v0: Array[String]) -> Html {
@@ -555,7 +559,8 @@ mod tests {
                     })
                 })
                 .entrypoint("Test", [], Ty::Html, |t| t.call("count", [t.int(3)]))
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn count@f0(n@v0: Int) -> Html {
@@ -624,7 +629,8 @@ mod tests {
                 })
                 .define("pong", |t, _| t.call("ping", [t.param("n")]))
                 .entrypoint("Test", [], Ty::Html, |t| t.call("ping", [t.int(2)]))
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn ping@f0(n@v0: Int) -> Html {

@@ -1066,8 +1066,7 @@ mod tests {
         let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let (flat, pages) = session.compile_flat(None, None);
-        flat_lint::assert_well_typed(&flat);
-        flat_lint::assert_html_affine(&flat);
+        flat_lint::lint(&flat).unwrap();
         let pages: String = pages.iter().map(|page| format!("{page}\n")).collect();
         expected.assert_eq(&format!("{flat}{pages}"));
     }

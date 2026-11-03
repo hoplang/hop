@@ -51,7 +51,7 @@ mod tests {
                 .collect();
 
             let program = optimize_flat(program);
-            flat_lint::assert_well_typed(&program);
+            flat_lint::lint(&program).unwrap();
 
             for ((function, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit a limit has no output to preserve.
@@ -99,7 +99,8 @@ mod tests {
                     });
                     t.call("Rows", [t.param("items"), row])
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn Rows@f0(items@v0: Array[String], row@v1: (String) -> Html) -> Html {
@@ -148,7 +149,8 @@ mod tests {
                         }),
                     )
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Items@f0(items@v0: Array[String]) -> Html {
@@ -187,7 +189,8 @@ mod tests {
                         m.arm(Pat::False, |t, _| t.html_concat(vec![]));
                     })])
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -226,7 +229,8 @@ mod tests {
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.call("double", [t.int(21)])))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn double@f0(x@v0: Int) -> Int {

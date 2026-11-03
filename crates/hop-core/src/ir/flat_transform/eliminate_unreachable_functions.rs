@@ -63,7 +63,8 @@ mod tests {
                 .define("ping", |t, _| t.call("pong", [t.param("n")]))
                 .define("pong", |t, _| t.call("ping", [t.param("n")]))
                 .entrypoint("Test", [], Ty::Html, |t| t.text("shown"))
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn ping@f0(n@v0: Int) -> Int {
@@ -101,7 +102,8 @@ mod tests {
                     t.lambda([], |t, _| t.call("label", []));
                     t.html_for(t.param("items"), |t, item| t.call("row", [item]))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn row@f0(n@v0: Int) -> Html {
@@ -165,7 +167,8 @@ mod tests {
                     t.call("double", [t.param("n")])
                 })
                 .entrypoint("Test", [], Ty::Html, |t| t.text("shown"))
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn double@f0(n@v0: Int) -> Int {

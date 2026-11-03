@@ -233,7 +233,8 @@ mod tests {
                     let _unused = t.str("value");
                     t.text("Hello")
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -263,7 +264,8 @@ mod tests {
                     });
                     t.text("Hello")
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn f@f0() -> Int {
@@ -305,7 +307,8 @@ mod tests {
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.html_for(t.param("items"), |t, _| t.text("."))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0(items@v0: Array[String]) -> Html {
@@ -338,7 +341,8 @@ mod tests {
                         m.arm(Pat::None, |t, _| t.text("none"));
                     })
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0(name@v0: Option[String]) -> Html {
@@ -398,7 +402,8 @@ mod tests {
                         );
                     })
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn width@f0(shape@v0: Shape) -> Int {

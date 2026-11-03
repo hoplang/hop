@@ -776,7 +776,8 @@ mod tests {
                         t.escape(t.int_to_string(unknown)),
                     ])
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0(n@v0: Int) -> Html {
@@ -944,7 +945,8 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("wrap", [], Ty::Int, |t| t.add(t.int(i32::MAX), t.int(1)))
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn wrap@f0() -> Int {
@@ -975,7 +977,8 @@ mod tests {
                         m.arm(Pat::False, |t, _| t.text("no"));
                     })
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -1015,7 +1018,8 @@ mod tests {
                         m.arm(Pat::False, |t, _| t.text("no"));
                     })
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0(flag@v0: Bool) -> Html {
@@ -1066,7 +1070,8 @@ mod tests {
                         "x",
                     )))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0(n@v0: Int) -> Html {
@@ -1097,7 +1102,8 @@ mod tests {
                 .function("second", [], Ty::String, |t| {
                     t.tuple_index(t.tuple([t.int(1), t.str("two")]), 1)
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn second@f0() -> String {
@@ -1129,7 +1135,8 @@ mod tests {
                         t.string_concat(vec![t.str("b"), t.param("dyn")]),
                     ]))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0(dyn@v0: String) -> Html {
@@ -1164,7 +1171,8 @@ mod tests {
                 .entrypoint("Test", [("dyn", Ty::String)], Ty::Html, |t| {
                     t.escape(t.string_concat([t.str(""), t.param("dyn"), t.str("")]))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0(dyn@v0: String) -> Html {
@@ -1193,7 +1201,8 @@ mod tests {
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.escape(t.string_concat([t.str("Hello, "), t.str("World")]))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -1227,7 +1236,8 @@ mod tests {
                         t.html_concat(vec![t.text("d")]),
                     ])
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -1281,7 +1291,8 @@ mod tests {
                         },
                     )
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn area@f0(n@v0: Int) -> Int {
@@ -1321,7 +1332,8 @@ mod tests {
                         m.arm(Pat::None, |t, _| t.text("none"));
                     })
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -1356,7 +1368,8 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("big", [], Ty::Int, |t| t.float_to_int(t.float(1e10)))
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 fn big@f0() -> Int {
@@ -1385,7 +1398,8 @@ mod tests {
                         m.arm(Pat::False, |t, _| t.text("other"));
                     })
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -1424,7 +1438,8 @@ mod tests {
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.html_concat([t.text("a "), t.escape(t.str("<b>")), t.text(" c")])
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -1454,7 +1469,8 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], Ty::Html, |t| t.escape(t.str("a\rb")))
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -1488,7 +1504,8 @@ mod tests {
                         t.text("text"),
                     )
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -1522,7 +1539,8 @@ mod tests {
                     let greeting = t.string_concat([t.str("hi "), name]);
                     t.html_concat([t.escape(name), t.escape(greeting)])
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0() -> Html {
@@ -1559,7 +1577,8 @@ mod tests {
                         t.element("li", [t.attr_value("title", label)], t.escape(label))
                     })
                 })
-                .build(),
+                .build()
+                .unwrap(),
             expect![[r#"
                 -- before --
                 entrypoint fn Test@f0(items@v0: Array[Int]) -> Html {

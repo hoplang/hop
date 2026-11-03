@@ -337,7 +337,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
             },
         );
     }
-    builder.build()
+    builder.build().unwrap()
 }
 
 pub fn random_entrypoint_args(

@@ -556,7 +556,8 @@ mod tests {
                         }),
                     )
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |v| vec![("items", v.array(vec![v.str("a<b"), v.str("c")]))],
             expect![[r#"
                 -- before --
@@ -591,7 +592,8 @@ mod tests {
                         m.arm(Pat::False, |t, _| t.str("no"));
                     }))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |v| vec![("flag", v.bool(false))],
             expect![[r#"
                 -- before --
@@ -649,7 +651,8 @@ mod tests {
                         );
                     }))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |v| {
                 vec![(
                     "shape",
@@ -692,7 +695,8 @@ mod tests {
                         t.int_to_string(t.array_length(t.array([t.field_access(held, "nothing")]))),
                     )
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -721,7 +725,8 @@ mod tests {
                     let pair = t.tuple([t.int(1), t.str("two")]);
                     t.escape(t.tuple_index(pair, 1))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -748,7 +753,8 @@ mod tests {
                     let only = t.tuple([t.str("alone")]);
                     t.escape(t.tuple_index(only, 0))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -775,7 +781,8 @@ mod tests {
                     let outer = t.tuple([t.int(1), inner]);
                     t.escape(t.tuple_index(t.tuple_index(outer, 1), 0))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -805,7 +812,8 @@ mod tests {
                     let sum = t.add(t.int(2147483647), t.int(1));
                     t.escape(t.int_to_string(sum))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -831,7 +839,8 @@ mod tests {
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.element("div", [], t.text("Hello World"))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -867,7 +876,8 @@ mod tests {
                         )
                     },
                 )
-                .build(),
+                .build()
+                .unwrap(),
             |v| vec![("cls", v.str("a\"b")), ("flag", v.bool(true))],
             expect![[r#"
                 -- before --
@@ -891,7 +901,8 @@ mod tests {
                 .entrypoint("Test", [("content", Ty::String)], Ty::Html, |t| {
                     t.escape(t.param("content"))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |v| vec![("content", v.str("<script>alert('xss')</script>"))],
             expect![[r#"
                 -- before --
@@ -916,7 +927,8 @@ mod tests {
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |v| vec![("show", v.bool(true))],
             expect![[r#"
                 -- before --
@@ -951,7 +963,8 @@ mod tests {
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |v| vec![("show", v.bool(false))],
             expect![[r#"
                 -- before --
@@ -985,7 +998,8 @@ mod tests {
                         t.html_concat([t.element("li", vec![], t.escape(item)), t.text("\n")])
                     })
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |v| {
                 vec![(
                     "items",
@@ -1029,7 +1043,8 @@ mod tests {
                 .entrypoint("Test", [], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.call("Sum", [t.int(10)])))
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |_| vec![],
             expect![[r#"
                 -- before --
@@ -1079,7 +1094,8 @@ mod tests {
                         t.escape(t.int_to_string(two)),
                     ])
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |v| vec![("base", v.int(10))],
             expect![[r#"
                 -- before --
@@ -1131,7 +1147,8 @@ mod tests {
                     });
                     t.call("Rows", [t.param("items"), row])
                 })
-                .build(),
+                .build()
+                .unwrap(),
             |v| vec![("items", v.array(vec![v.str("a"), v.str("b")]))],
             expect![[r#"
                 -- before --
@@ -1175,7 +1192,8 @@ mod tests {
                 }
                 t.escape(t.int_to_string(t.apply(closure, [])))
             })
-            .build();
+            .build()
+            .unwrap();
         let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -1192,7 +1210,8 @@ mod tests {
             .entrypoint("Test", [], Ty::Html, |t| {
                 t.escape(t.int_to_string(t.call("Loop", [t.int(0)])))
             })
-            .build();
+            .build()
+            .unwrap();
         let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -1229,7 +1248,8 @@ mod tests {
                 let leaf = t.enum_variant_with_fields(t.ty(Ty::named("Tree")), "Leaf", []);
                 t.escape(t.int_to_string(t.call("Grow", [leaf])))
             })
-            .build();
+            .build()
+            .unwrap();
         let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -1244,7 +1264,8 @@ mod tests {
                 let all = t.array_from_range(t.int(i32::MIN), t.int(i32::MAX));
                 t.escape(t.int_to_string(t.array_length(all)))
             })
-            .build();
+            .build()
+            .unwrap();
         let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -1262,7 +1283,8 @@ mod tests {
                 }
                 t.escape(string)
             })
-            .build();
+            .build()
+            .unwrap();
         let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -1282,7 +1304,8 @@ mod tests {
                 let second = t.escape(string);
                 t.html_concat(vec![first, second])
             })
-            .build();
+            .build()
+            .unwrap();
         let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -1305,7 +1328,8 @@ mod tests {
                 })
             })
             .entrypoint("Test", [], Ty::Html, |t| t.call("Tree", [t.int(0)]))
-            .build();
+            .build()
+            .unwrap();
         let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
@@ -1319,7 +1343,8 @@ mod tests {
             .entrypoint("Test", [("name", Ty::String)], Ty::Html, |t| {
                 t.escape(t.param("name"))
             })
-            .build();
+            .build()
+            .unwrap();
         let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
         assert!(result.is_err());
         let err = result.unwrap_err();
