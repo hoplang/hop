@@ -22,7 +22,7 @@ impl Session {
     fn evaluate_page_with_values(
         &self,
         page_name: &TypeName,
-        args: HashMap<AttributeName, ir::runtime::value::Value>,
+        args: HashMap<AttributeName, ir::runtime::value::Value<'static>>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
@@ -39,7 +39,10 @@ impl Session {
     fn evaluate_page_with(
         &self,
         page_name: &TypeName,
-        args: impl FnOnce(&FlatProgram, &[IrPage]) -> HashMap<AttributeName, ir::runtime::value::Value>,
+        args: impl FnOnce(
+            &FlatProgram,
+            &[IrPage],
+        ) -> HashMap<AttributeName, ir::runtime::value::Value<'static>>,
         generated_tailwind_css: Option<&str>,
         skip_optimization: bool,
         asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
