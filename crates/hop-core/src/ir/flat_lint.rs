@@ -24,6 +24,8 @@ pub enum FlatLintError {
     BoundTwice,
     /// A name is read before it is bound.
     ReadBeforeBound,
+    /// A name is read outside the block that binds it.
+    ReadOutOfScope,
     /// A closure reads an Html value bound outside it.
     ClosureReadsOuterHtml,
     /// A binding declares a type that its op does not produce from the
@@ -166,11 +168,12 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatLintError> {
     let mut checker = Checker {
         declarations: &program.types,
         functions: &program.functions,
-        types: vec![None; program.value_ids.count()],
+        names: vec![None; program.value_ids.count()],
+        scope: Vec::new(),
         lambdas: 0,
     };
     for function in &program.functions {
-        match function {
+        checker.scoped(|checker| match function {
             FlatFunctionDeclaration::Data(data) => {
                 for param in &data.parameters {
                     checker.bind(
@@ -179,21 +182,23 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatLintError> {
                     )?;
                 }
                 let expected = BoundType::Data(&data.return_type);
-                checker.data_block(&data.body, expected)?;
+                checker.data_block(&data.body, expected)
             }
             FlatFunctionDeclaration::Html(html) => {
                 for param in &html.parameters {
                     checker.bind(param.binder.var, BoundType::of(&param.binder.typ))?;
                 }
-                checker.html_block(&html.body, BoundType::Html)?;
+                checker.html_block(&html.body, BoundType::Html)
             }
-        }
+        })?;
     }
     for entrypoint in program.entrypoints.iter() {
-        for param in &entrypoint.parameters {
-            checker.bind(param.binder.var, BoundType::Data(&param.binder.typ))?;
-        }
-        checker.html_block(&entrypoint.body, BoundType::Html)?;
+        checker.scoped(|checker| {
+            for param in &entrypoint.parameters {
+                checker.bind(param.binder.var, BoundType::Data(&param.binder.typ))?;
+            }
+            checker.html_block(&entrypoint.body, BoundType::Html)
+        })?;
     }
     Ok(())
 }
@@ -213,8 +218,17 @@ fn try_all<T>(
 struct Checker<'a> {
     declarations: &'a IrTypeDeclarations,
     functions: &'a [FlatFunctionDeclaration],
-    types: Vec<Option<(BoundType<'a>, usize)>>,
+    names: Vec<Option<Name<'a>>>,
+    // The names bound in the blocks being checked, innermost last.
+    scope: Vec<ValueId>,
     lambdas: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Name<'a> {
+    typ: BoundType<'a>,
+    lambdas: usize,
+    in_scope: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -254,18 +268,41 @@ impl<'a> BoundType<'a> {
 
 impl<'a> Checker<'a> {
     fn bind(&mut self, name: ValueId, typ: BoundType<'a>) -> Result<(), FlatLintError> {
-        match self.types[name.index()].replace((typ, self.lambdas)) {
-            None => Ok(()),
-            Some(_) => Err(FlatLintError::BoundTwice),
+        let bound = Name {
+            typ,
+            lambdas: self.lambdas,
+            in_scope: true,
+        };
+        if self.names[name.index()].replace(bound).is_some() {
+            return Err(FlatLintError::BoundTwice);
         }
+        self.scope.push(name);
+        Ok(())
+    }
+
+    fn scoped(
+        &mut self,
+        check: impl FnOnce(&mut Self) -> Result<(), FlatLintError>,
+    ) -> Result<(), FlatLintError> {
+        let outer = self.scope.len();
+        check(self)?;
+        for name in self.scope.drain(outer..) {
+            if let Some(bound) = &mut self.names[name.index()] {
+                bound.in_scope = false;
+            }
+        }
+        Ok(())
     }
 
     fn typ(&self, name: ValueId) -> Result<BoundType<'a>, FlatLintError> {
-        let (typ, lambdas) = self.types[name.index()].ok_or(FlatLintError::ReadBeforeBound)?;
-        if typ == BoundType::Html && lambdas != self.lambdas {
+        let bound = self.names[name.index()].ok_or(FlatLintError::ReadBeforeBound)?;
+        if !bound.in_scope {
+            return Err(FlatLintError::ReadOutOfScope);
+        }
+        if bound.typ == BoundType::Html && bound.lambdas != self.lambdas {
             return Err(FlatLintError::ClosureReadsOuterHtml);
         }
-        Ok(typ)
+        Ok(bound.typ)
     }
 
     fn data(&self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatLintError> {
@@ -312,8 +349,10 @@ impl<'a> Checker<'a> {
                     }
                     let subject = self.typ(match_.subject)?;
                     for arm in &match_.arms {
-                        self.pattern(&arm.pattern, subject)?;
-                        self.html_block(&arm.body, declared)?;
+                        self.scoped(|checker| {
+                            checker.pattern(&arm.pattern, subject)?;
+                            checker.html_block(&arm.body, declared)
+                        })?;
                     }
                     self.arms(match_)?;
                     true
@@ -337,25 +376,29 @@ impl<'a> Checker<'a> {
                     let Some(IrDataType::Array(element)) = self.data(for_.array)? else {
                         return Err(FlatLintError::IllTypedBinding);
                     };
-                    if let Some(var) = &for_.var {
-                        if var.typ != **element {
-                            return Err(FlatLintError::IllTypedBinding);
+                    self.scoped(|checker| {
+                        if let Some(var) = &for_.var {
+                            if var.typ != **element {
+                                return Err(FlatLintError::IllTypedBinding);
+                            }
+                            checker.bind(var.var, BoundType::Data(&var.typ))?;
                         }
-                        self.bind(var.var, BoundType::Data(&var.typ))?;
-                    }
-                    self.html_block(&for_.body, BoundType::Html)?;
+                        checker.html_block(&for_.body, BoundType::Html)
+                    })?;
                     html
                 }
                 FlatHtmlOp::Lambda(lambda) => {
                     let BoundType::HtmlFunction(signature) = declared else {
                         return Err(FlatLintError::IllTypedBinding);
                     };
-                    self.lambda_parameters(
-                        &lambda.parameters,
-                        signature.parameters.iter().map(BoundType::of),
-                        BoundType::of,
-                    )?;
-                    self.html_block(&lambda.body, BoundType::Html)?;
+                    self.scoped(|checker| {
+                        checker.lambda_parameters(
+                            &lambda.parameters,
+                            signature.parameters.iter().map(BoundType::of),
+                            BoundType::of,
+                        )?;
+                        checker.html_block(&lambda.body, BoundType::Html)
+                    })?;
                     self.lambdas -= 1;
                     true
                 }
@@ -409,8 +452,10 @@ impl<'a> Checker<'a> {
                     }
                     let subject = self.typ(match_.subject)?;
                     for arm in &match_.arms {
-                        self.pattern(&arm.pattern, subject)?;
-                        self.data_block(&arm.body, declared)?;
+                        self.scoped(|checker| {
+                            checker.pattern(&arm.pattern, subject)?;
+                            checker.data_block(&arm.body, declared)
+                        })?;
                     }
                     self.arms(match_)?;
                     true
@@ -419,12 +464,14 @@ impl<'a> Checker<'a> {
                     let BoundType::DataFunction(signature) = declared else {
                         return Err(FlatLintError::IllTypedBinding);
                     };
-                    self.lambda_parameters(
-                        &lambda.parameters,
-                        signature.parameters.iter().map(BoundType::of_function_data),
-                        BoundType::of_function_data,
-                    )?;
-                    self.data_block(&lambda.body, BoundType::Data(&signature.result))?;
+                    self.scoped(|checker| {
+                        checker.lambda_parameters(
+                            &lambda.parameters,
+                            signature.parameters.iter().map(BoundType::of_function_data),
+                            BoundType::of_function_data,
+                        )?;
+                        checker.data_block(&lambda.body, BoundType::Data(&signature.result))
+                    })?;
                     self.lambdas -= 1;
                     true
                 }
@@ -718,6 +765,8 @@ impl<'a> Checker<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::FlatLintError;
     use crate::hop::typing::Ty;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
@@ -827,5 +876,78 @@ mod tests {
             .build()
             .unwrap_err();
         assert_eq!(error, FlatLintError::UnreachableArm);
+    }
+
+    #[test]
+    fn should_reject_a_read_of_a_name_bound_in_an_arm_after_the_match() {
+        let inner = Cell::new(None);
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [("on", Ty::Bool)], |t| {
+                let picked = t.match_(t.param("on"), |m| {
+                    m.arm(Pat::True, |t, _| {
+                        let one = t.int(1);
+                        inner.set(Some(one));
+                        one
+                    });
+                    m.arm(Pat::False, |t, _| t.int(0));
+                });
+                let sum = t.add(inner.get().unwrap(), picked);
+                t.escape(t.int_to_string(sum))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ReadOutOfScope);
+    }
+
+    #[test]
+    fn should_reject_a_read_of_the_variable_of_a_loop_after_the_loop() {
+        let var = Cell::new(None);
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
+                let rows = t.html_for(t.param("items"), |t, item| {
+                    var.set(Some(item));
+                    t.escape(item)
+                });
+                let last = t.escape(var.get().unwrap());
+                t.html_concat([rows, last])
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ReadOutOfScope);
+    }
+
+    #[test]
+    fn should_reject_a_read_of_a_parameter_of_a_lambda_after_the_lambda() {
+        let param = Cell::new(None);
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let id = t.lambda([IrType::INT], |_, params| {
+                    param.set(Some(params[0]));
+                    params[0]
+                });
+                let one = t.apply(id, [t.int(1)]);
+                let sum = t.add(one, param.get().unwrap());
+                t.escape(t.int_to_string(sum))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ReadOutOfScope);
+    }
+
+    #[test]
+    fn should_reject_a_read_of_a_parameter_of_another_function() {
+        let param = Cell::new(None);
+        let error = FlatProgramBuilder::new()
+            .function("id", [("n", Ty::Int)], Ty::Int, |t| {
+                param.set(Some(t.param("n")));
+                t.param("n")
+            })
+            .entrypoint("Test", [], |t| {
+                let sum = t.add(t.call("id", [t.int(1)]), param.get().unwrap());
+                t.escape(t.int_to_string(sum))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ReadOutOfScope);
     }
 }
