@@ -287,6 +287,7 @@ mod tests {
 
     use super::*;
     use crate::hop::typing::Ty;
+    use crate::ir::flat_lint;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::ir_type::IrType;
@@ -323,6 +324,7 @@ mod tests {
                 .collect();
 
             let program = inline_function_calls(program);
+            flat_lint::lint(&program).unwrap();
 
             for ((entrypoint, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit a limit has no output to preserve.

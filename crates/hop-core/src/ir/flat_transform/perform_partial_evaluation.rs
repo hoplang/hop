@@ -14,7 +14,7 @@ use crate::ir::ir_for::IrFor;
 use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
-use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrType};
+use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrType};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::field_name::FieldName;
 
@@ -32,6 +32,9 @@ use crate::symbols::field_name::FieldName;
 ///   empty constants and merges adjacent constants. An html concat takes
 ///   the parts of a nested concat as its own. A concat of one part is that
 ///   part.
+/// - An html concat is bound just before each reader that is not a concat,
+///   not where it stands. A path reads Html at most once, so a path that
+///   read the concat reads each of its parts once.
 /// - An escape of a constant String without a carriage return is text. An
 ///   attribute whose value is a constant String or whose presence is a
 ///   constant true is a constant attribute, and one whose presence is a
@@ -59,7 +62,7 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
             let mut evaluator = Evaluator {
                 value_ids: &mut value_ids,
                 values: HashMap::new(),
-                concats: HashMap::new(),
+                html_concats: HashMap::new(),
                 renames: HashMap::new(),
                 data_lambdas: HashMap::new(),
                 html_lambdas: HashMap::new(),
@@ -86,7 +89,7 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
             let mut evaluator = Evaluator {
                 value_ids: &mut value_ids,
                 values: HashMap::new(),
-                concats: HashMap::new(),
+                html_concats: HashMap::new(),
                 renames: HashMap::new(),
                 data_lambdas: HashMap::new(),
                 html_lambdas: HashMap::new(),
@@ -125,22 +128,49 @@ struct Evaluator<'a> {
     /// The ops of data of the bindings kept so far, for their readers to
     /// look at. Names are unique, so one map serves every nested block.
     values: HashMap<ValueId, IrDataOp>,
-    /// The parts of the Html concats kept so far, for the concats that
-    /// read them to take as their own.
-    concats: HashMap<ValueId, Vec<ValueId>>,
+    /// The Html concats seen so far, which are bound only where a reader
+    /// other than a concat reads them.
+    html_concats: HashMap<ValueId, HtmlConcat>,
     /// The names that turned out to be another name: the bindings that
     /// folded to one, and the names the patterns of selected arms bind, each
     /// with the constructor operand it stands for.
     renames: HashMap<ValueId, ValueId>,
-    // The lambdas kept so far, evaluated, for the applications that read
-    // them to copy.
+    /// The lambdas kept so far, evaluated, for the applications that read
+    /// them to copy.
     data_lambdas: HashMap<ValueId, IrLambda<IrFunctionDataType, FlatDataBlock>>,
     html_lambdas: HashMap<ValueId, IrLambda<IrType, FlatHtmlBlock>>,
+}
+
+struct HtmlConcat {
+    parts: Vec<ValueId>,
+    bound: bool,
 }
 
 impl Evaluator<'_> {
     fn resolve(&self, name: ValueId) -> ValueId {
         self.renames.get(&name).copied().unwrap_or(name)
+    }
+
+    fn bind_concat(&mut self, name: ValueId, html: &mut Vec<FlatHtmlBinding>) -> ValueId {
+        let Some(concat) = self.html_concats.get_mut(&name) else {
+            return name;
+        };
+        // Nothing binds the name of the concat where it stands, so the first
+        // reader binds it, and each later reader, in another arm, binds a
+        // fresh one.
+        let var = if std::mem::replace(&mut concat.bound, true) {
+            self.value_ids.next()
+        } else {
+            name
+        };
+        html.push(FlatHtmlBinding {
+            binder: IrBinder {
+                var,
+                typ: IrFunctionHtmlType::Html(IrHtmlType),
+            },
+            op: FlatHtmlOp::Concat(concat.parts.clone()),
+        });
+        var
     }
 
     fn data_block(&mut self, block: FlatDataBlock) -> FlatDataBlock {
@@ -163,10 +193,12 @@ impl Evaluator<'_> {
         for binding in block.html {
             self.html_binding(binding, &mut bindings, &mut html);
         }
+        let result = self.resolve(block.result);
+        let result = self.bind_concat(result, &mut html);
         FlatHtmlBlock {
             bindings,
             html,
-            result: self.resolve(block.result),
+            result,
         }
     }
 
@@ -370,7 +402,7 @@ impl Evaluator<'_> {
         let FlatHtmlBinding { binder, mut op } = binding;
         let name = binder.var;
         op.for_each_operand_mut(&mut |operand| *operand = self.resolve(*operand));
-        let op = match op {
+        let mut op = match op {
             FlatHtmlOp::Match(match_) => {
                 if let Some((index, bound)) = self.selected_arm(&match_) {
                     let arm = self.take_arm(match_, index, bound);
@@ -418,17 +450,21 @@ impl Evaluator<'_> {
             FlatHtmlOp::Concat(parts) => {
                 let mut flattened = Vec::with_capacity(parts.len());
                 for part in parts {
-                    match self.concats.get(&part) {
-                        Some(subparts) => flattened.extend(subparts.iter().copied()),
+                    match self.html_concats.get(&part) {
+                        Some(concat) => flattened.extend(concat.parts.iter().copied()),
                         None => flattened.push(part),
                     }
                 }
                 if flattened.len() == 1 {
                     self.renames.insert(name, flattened[0]);
-                    return;
+                } else {
+                    let concat = HtmlConcat {
+                        parts: flattened,
+                        bound: false,
+                    };
+                    self.html_concats.insert(name, concat);
                 }
-                self.concats.insert(name, flattened.clone());
-                FlatHtmlOp::Concat(flattened)
+                return;
             }
             FlatHtmlOp::Escape(string) => match self.values.get(&string) {
                 // TODO: Fold a literal with a carriage return too, once the
@@ -467,6 +503,7 @@ impl Evaluator<'_> {
             }
             op => op,
         };
+        op.for_each_operand_mut(&mut |operand| *operand = self.bind_concat(*operand, html));
         html.push(FlatHtmlBinding { binder, op });
     }
 
@@ -697,6 +734,7 @@ mod tests {
     use super::*;
     use crate::document::Document;
     use crate::hop::typing::Ty;
+    use crate::ir::flat_lint;
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
@@ -726,6 +764,7 @@ mod tests {
                 .collect();
 
             let program = perform_partial_evaluation(program);
+            flat_lint::lint(&program).unwrap();
 
             // The pass drops no computation but a selected arm's siblings,
             // which never ran, so the output stays the same.
@@ -1275,9 +1314,61 @@ mod tests {
                   let v0: Html = text("a")
                   let v1: Html = text("b")
                   let v2: Html = text("c")
-                  let v3: Html = concat(v1, v2)
                   let v4: Html = text("d")
                   let v6: Html = concat(v0, v1, v2, v4)
+                  v6
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_bind_an_html_concat_in_the_arm_that_reads_it_whole() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [("flag", Ty::Bool)], |t| {
+                    let inner = t.html_concat([t.text("a"), t.text("b")]);
+                    t.match_(t.param("flag"), |m| {
+                        m.arm(Pat::True, |t, _| t.html_concat([inner, t.text("c")]));
+                        m.arm(Pat::False, |_, _| inner);
+                    })
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- before --
+                entrypoint Test@e0(flag@v0: Bool) -> Html {
+                  let v1: Html = text("a")
+                  let v2: Html = text("b")
+                  let v3: Html = concat(v1, v2)
+                  let v6: Html = match v0 {
+                    true => {
+                      let v4: Html = text("c")
+                      let v5: Html = concat(v3, v4)
+                      v5
+                    }
+                    false => {
+                      v3
+                    }
+                  }
+                  v6
+                }
+
+                -- after --
+                entrypoint Test@e0(flag@v0: Bool) -> Html {
+                  let v1: Html = text("a")
+                  let v2: Html = text("b")
+                  let v6: Html = match v0 {
+                    true => {
+                      let v4: Html = text("c")
+                      let v5: Html = concat(v1, v2, v4)
+                      v5
+                    }
+                    false => {
+                      let v3: Html = concat(v1, v2)
+                      v3
+                    }
+                  }
                   v6
                 }
             "#]],

@@ -44,7 +44,59 @@ mod tests {
 
     use super::*;
     use crate::hop::typing::Ty;
+    use crate::ir::flat_lint;
     use crate::ir::flat_program_builder::FlatProgramBuilder;
+    use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::runtime::EvalError;
+    use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
+    use crate::ir::runtime::value::Value;
+    use rand::{SeedableRng, rngs::SmallRng};
+
+    #[test]
+    fn fuzz_random_programs_evaluate_identically_after_elimination() {
+        arbtest::arbtest(|u| {
+            let program = random_program(u);
+            let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
+            let entrypoint_args = random_entrypoint_args(&program, &mut rng);
+
+            let before_program = program.clone();
+            let before: Vec<Option<String>> = entrypoint_args
+                .iter()
+                .map(|(entrypoint, args)| {
+                    match evaluate_entrypoint(&program, *entrypoint, args.clone())
+                        .map(Value::into_markup)
+                    {
+                        Ok(output) => Some(output),
+                        Err(
+                            EvalError::CallDepthLimit { .. }
+                            | EvalError::OpCountLimit { .. }
+                            | EvalError::HtmlSizeLimit { .. }
+                            | EvalError::StringLengthLimit { .. },
+                        ) => None,
+                        Err(error) => panic!("{error}"),
+                    }
+                })
+                .collect();
+
+            let program = eliminate_unreachable_functions(program);
+            flat_lint::lint(&program).unwrap();
+
+            for ((entrypoint, args), before) in entrypoint_args.iter().zip(&before) {
+                // An entrypoint that hit a limit has no output to preserve.
+                let Some(before) = before else {
+                    continue;
+                };
+                let after = evaluate_entrypoint(&program, *entrypoint, args.clone())
+                    .unwrap()
+                    .into_markup();
+                assert_eq!(
+                    before, &after,
+                    "entrypoint {entrypoint}\n-- before --\n{before_program}\n-- after --\n{program}"
+                );
+            }
+            Ok(())
+        });
+    }
 
     fn check(program: FlatProgram, expected: Expect) {
         let before = program.to_string();
