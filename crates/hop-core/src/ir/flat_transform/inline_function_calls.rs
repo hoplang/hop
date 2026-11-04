@@ -2,8 +2,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
-    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
+    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatEntrypoint,
+    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp,
+    FlatProgram,
 };
 use crate::ir::flat_transform::callees::{collect_data_callees, collect_html_callees};
 use crate::ir::flat_transform::freshener::Freshener;
@@ -16,7 +17,7 @@ use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// A pass that replaces a call to a non-recursive function with the
 /// callee's body, and drops the function once no call to it is left. Only
-/// the functions in a call cycle and the entrypoint functions remain.
+/// the functions in a call cycle and the entrypoints remain.
 ///
 /// A call's arguments are names, computed before the call, so a parameter
 /// is bound by reading the argument's name in its place. The body is copied
@@ -26,6 +27,7 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
     let FlatProgram {
         types,
         functions,
+        entrypoints,
         mut value_ids,
     } = program;
 
@@ -93,24 +95,34 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
         decls.insert(id, decl);
     }
 
+    let entrypoints = entrypoints
+        .into_iter()
+        .map(|entrypoint| {
+            let mut inliner = Inliner {
+                decls: &decls,
+                recursive: &recursive,
+                value_ids: &mut value_ids,
+                renames: &mut renames,
+            };
+            FlatEntrypoint {
+                body: inliner.html_block(entrypoint.body),
+                ..entrypoint
+            }
+        })
+        .collect();
+
     // Every call to a function outside a cycle was replaced by its body, so
-    // nothing calls such a function any more. An entrypoint function is called
-    // from outside the program, so it stays.
+    // nothing calls such a function any more. Entrypoints are kept separately.
     let functions = order
         .into_iter()
         .map(|id| decls.remove(&id).expect("each function is declared once"))
-        .filter(|decl| {
-            let entrypoint = match decl {
-                FlatFunctionDeclaration::Data(function) => function.entrypoint,
-                FlatFunctionDeclaration::Html(function) => function.entrypoint,
-            };
-            entrypoint || recursive.contains(&decl.function().id)
-        })
+        .filter(|decl| recursive.contains(&decl.function().id))
         .collect();
 
     FlatProgram {
         types,
         functions,
+        entrypoints,
         value_ids,
     }
 }
@@ -295,8 +307,8 @@ mod tests {
             let before_program = program.clone();
             let before: Vec<Option<String>> = entrypoint_args
                 .iter()
-                .map(|(function, args)| {
-                    match evaluate_entrypoint(&program, function, args.clone())
+                .map(|(entrypoint, args)| {
+                    match evaluate_entrypoint(&program, *entrypoint, args.clone())
                         .map(Value::into_markup)
                     {
                         Ok(output) => Some(output),
@@ -313,17 +325,17 @@ mod tests {
 
             let program = inline_function_calls(program);
 
-            for ((function, args), before) in entrypoint_args.iter().zip(&before) {
+            for ((entrypoint, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit a limit has no output to preserve.
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_entrypoint(&program, function, args.clone())
+                let after = evaluate_entrypoint(&program, *entrypoint, args.clone())
                     .unwrap()
                     .into_markup();
                 assert_eq!(
                     before, &after,
-                    "entrypoint {function}\n-- before --\n{before_program}\n-- after --\n{program}"
+                    "entrypoint {entrypoint}\n-- before --\n{before_program}\n-- after --\n{program}"
                 );
             }
             Ok(())
@@ -351,7 +363,7 @@ mod tests {
                         t.apply(again, [t.apply(f, [t.param("x")])])
                     },
                 )
-                .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
+                .entrypoint("Test", [("n", Ty::Int)], |t| {
                     let n = t.param("n");
                     let add = t.lambda([IrType::INT], |t, params| t.add(params[0], n));
                     let twice = t.call("Twice", [add, t.int(1)]);
@@ -370,7 +382,7 @@ mod tests {
                   let v6: Int = v4(v5)
                   v6
                 }
-                entrypoint fn Test@f1(n@v7: Int) -> Html {
+                entrypoint Test@e0(n@v7: Int) -> Html {
                   let v10: (Int) -> Int = fn(v8: Int) {
                     let v9: Int = add(v8, v7)
                     v9
@@ -383,7 +395,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f1(n@v7: Int) -> Html {
+                entrypoint Test@e0(n@v7: Int) -> Html {
                   let v10: (Int) -> Int = fn(v8: Int) {
                     let v9: Int = add(v8, v7)
                     v9
@@ -410,7 +422,7 @@ mod tests {
                 .function("double", [("x", Ty::Int)], Ty::Int, |t| {
                     t.add(t.param("x"), t.param("x"))
                 })
-                .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
+                .entrypoint("Test", [("n", Ty::Int)], |t| {
                     t.escape(t.int_to_string(t.call("double", [t.param("n")])))
                 })
                 .build()
@@ -421,7 +433,7 @@ mod tests {
                   let v1: Int = add(v0, v0)
                   v1
                 }
-                entrypoint fn Test@f1(n@v2: Int) -> Html {
+                entrypoint Test@e0(n@v2: Int) -> Html {
                   let v3: Int = double@f0(v2)
                   let v4: String = v3.to_string()
                   let v5: Html = escape(v4)
@@ -429,7 +441,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f1(n@v2: Int) -> Html {
+                entrypoint Test@e0(n@v2: Int) -> Html {
                   let v6: Int = add(v2, v2)
                   let v4: String = v6.to_string()
                   let v5: Html = escape(v4)
@@ -449,7 +461,7 @@ mod tests {
                 .function("outer", [("y", Ty::Int)], Ty::Int, |t| {
                     t.mul(t.call("inner", [t.param("y")]), t.int(2))
                 })
-                .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
+                .entrypoint("Test", [("n", Ty::Int)], |t| {
                     t.escape(t.int_to_string(t.call("outer", [t.param("n")])))
                 })
                 .build()
@@ -467,7 +479,7 @@ mod tests {
                   let v6: Int = mul(v4, v5)
                   v6
                 }
-                entrypoint fn Test@f2(n@v7: Int) -> Html {
+                entrypoint Test@e0(n@v7: Int) -> Html {
                   let v8: Int = outer@f1(v7)
                   let v9: String = v8.to_string()
                   let v10: Html = escape(v9)
@@ -475,7 +487,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f2(n@v7: Int) -> Html {
+                entrypoint Test@e0(n@v7: Int) -> Html {
                   let v13: Int = 1
                   let v14: Int = add(v7, v13)
                   let v15: Int = 2
@@ -500,7 +512,6 @@ mod tests {
                 .entrypoint(
                     "Test",
                     [("a", Ty::array(Ty::String)), ("b", Ty::array(Ty::String))],
-                    Ty::Html,
                     |t| {
                         t.html_concat([
                             t.call("list", vec![t.param("a")]),
@@ -520,7 +531,7 @@ mod tests {
                   }
                   v4
                 }
-                entrypoint fn Test@f1(a@v5: Array[String], b@v6: Array[String]) -> Html {
+                entrypoint Test@e0(a@v5: Array[String], b@v6: Array[String]) -> Html {
                   let v7: Html = list@f0(v5)
                   let v8: Html = list@f0(v6)
                   let v9: Html = concat(v7, v8)
@@ -528,7 +539,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f1(a@v5: Array[String], b@v6: Array[String]) -> Html {
+                entrypoint Test@e0(a@v5: Array[String], b@v6: Array[String]) -> Html {
                   let v13: Html = for v10: String in v5 {
                     let v11: Html = escape(v10)
                     let v12: Html = element("li", {}, v11)
@@ -558,7 +569,7 @@ mod tests {
                         });
                     })
                 })
-                .entrypoint("Test", [], Ty::Html, |t| t.call("count", [t.int(3)]))
+                .entrypoint("Test", [], |t| t.call("count", [t.int(3)]))
                 .build()
                 .unwrap(),
             expect![[r#"
@@ -580,7 +591,7 @@ mod tests {
                   }
                   v7
                 }
-                entrypoint fn Test@f1() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v8: Int = 3
                   let v9: Html = count@f0(v8)
                   v9
@@ -604,7 +615,7 @@ mod tests {
                   }
                   v7
                 }
-                entrypoint fn Test@f1() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v8: Int = 3
                   let v9: Html = count@f0(v8)
                   v9
@@ -628,7 +639,7 @@ mod tests {
                     })
                 })
                 .define("pong", |t, _| t.call("ping", [t.param("n")]))
-                .entrypoint("Test", [], Ty::Html, |t| t.call("ping", [t.int(2)]))
+                .entrypoint("Test", [], |t| t.call("ping", [t.int(2)]))
                 .build()
                 .unwrap(),
             expect![[r#"
@@ -654,7 +665,7 @@ mod tests {
                   let v9: Html = ping@f0(v1)
                   v9
                 }
-                entrypoint fn Test@f2() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v10: Int = 2
                   let v11: Html = ping@f0(v10)
                   v11
@@ -682,7 +693,7 @@ mod tests {
                   let v9: Html = ping@f0(v1)
                   v9
                 }
-                entrypoint fn Test@f2() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v10: Int = 2
                   let v11: Html = ping@f0(v10)
                   v11

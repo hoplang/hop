@@ -132,12 +132,12 @@ impl Session {
                 .iter()
                 .find(|page| page.name == page_name)
                 .expect("the program compiles the page");
-            let parameters = program
-                .functions
+            let parameters = &program
+                .entrypoints
                 .iter()
-                .find(|decl| *decl.function() == page.body)
+                .find(|decl| decl.id == page.body)
                 .expect("the program declares the page's body")
-                .parameters();
+                .parameters;
             page_decl
                 .params
                 .iter()
@@ -147,7 +147,8 @@ impl Session {
                         .iter()
                         .find(|parameter| parameter.name == name)
                         .expect("the body declares every parameter of the page");
-                    let value = random_value(&mut rng, &parameter.binder.typ, &program.types);
+                    let value =
+                        random_value(&mut rng, &parameter.widen().binder.typ, &program.types);
                     (name, value)
                 })
                 .collect()

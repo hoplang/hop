@@ -4,6 +4,7 @@ use std::rc::Rc;
 use rpds::HashTrieMap;
 
 use crate::ir::document_shell::DocumentShell;
+use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBlock, FlatHtmlOp,
     FlatProgram,
@@ -39,7 +40,7 @@ const STRING_LENGTH_LIMIT_ERROR: EvalError = EvalError::StringLengthLimit {
     limit: MAX_STRING_LENGTH,
 };
 
-/// Evaluate a page from the entrypoint functions it points at, each called with
+/// Evaluate a page from the entrypoints it points at, each called with
 /// the arguments named by the page's parameters. With a shell, the page
 /// renders as a whole document, the shell around its head and its body.
 pub fn evaluate_page<'a>(
@@ -57,10 +58,10 @@ pub fn evaluate_page<'a>(
         })?;
 
     let head = match &page.head {
-        Some(head) => evaluate_entrypoint(program, head, args.clone())?.unwrap_html(),
+        Some(head) => evaluate_entrypoint(program, *head, args.clone())?.unwrap_html(),
         None => Html::empty(),
     };
-    let body = evaluate_entrypoint(program, &page.body, args)?.unwrap_html();
+    let body = evaluate_entrypoint(program, page.body, args)?.unwrap_html();
 
     let mut html = String::new();
     match shell {
@@ -79,29 +80,28 @@ pub fn evaluate_page<'a>(
     Ok(html)
 }
 
-/// Evaluate a function called from outside the program, on the arguments
-/// named by its parameters.
+/// Evaluate an entrypoint on the arguments named by its parameters.
 pub fn evaluate_entrypoint<'a>(
     program: &'a FlatProgram,
-    function: &IrFunction,
+    entrypoint: EntrypointId,
     mut args: HashMap<AttributeName, Value<'a>>,
 ) -> Result<Value<'a>, EvalError> {
     let decl = program
-        .functions
+        .entrypoints
         .iter()
-        .find(|decl| decl.function().id == function.id)
+        .find(|decl| decl.id == entrypoint)
         .unwrap();
-    let mut values = Vec::with_capacity(decl.parameters().len());
-    for param in decl.parameters() {
+    let mut env = HashTrieMap::new();
+    for param in &decl.parameters {
         let value = args
             .remove(param.name())
             .ok_or_else(|| EvalError::MissingParameter {
-                function: function.clone(),
+                entrypoint: decl.name.clone(),
                 param: param.name().clone(),
             })?;
-        values.push(value);
+        env.insert_mut(param.binder.var, value);
     }
-    evaluate_function(&program.functions, function, values, 0, &mut 0)
+    evaluate_html_block(&decl.body, &env, &program.functions, 1, &mut 0)
 }
 
 /// Evaluate a function on its arguments, one for each parameter in the
@@ -501,8 +501,8 @@ mod tests {
         arbtest::arbtest(|u| {
             let program = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            for (function, args) in random_entrypoint_args(&program, &mut rng) {
-                match evaluate_entrypoint(&program, &function, args) {
+            for (entrypoint, args) in random_entrypoint_args(&program, &mut rng) {
+                match evaluate_entrypoint(&program, entrypoint, args) {
                     Ok(_)
                     | Err(
                         EvalError::CallDepthLimit { .. }
@@ -528,16 +528,11 @@ mod tests {
             .map(|(name, value)| (AttributeName::parse(name).unwrap(), value))
             .collect();
         let entrypoint = program
-            .functions
-            .iter()
-            .find(|decl| match decl {
-                FlatFunctionDeclaration::Data(decl) => decl.entrypoint,
-                FlatFunctionDeclaration::Html(decl) => decl.entrypoint,
-            })
-            .expect("the program has an entrypoint function")
-            .function()
-            .clone();
-        let after = evaluate_entrypoint(&program, &entrypoint, args)
+            .entrypoints
+            .first()
+            .expect("the program has an entrypoint")
+            .id;
+        let after = evaluate_entrypoint(&program, entrypoint, args)
             .expect("Evaluation should succeed")
             .into_markup();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}\n"));
@@ -547,7 +542,7 @@ mod tests {
     fn should_bind_loop_names_afresh_on_each_iteration() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Items", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
+                .entrypoint("Items", [("items", Ty::array(Ty::String))], |t| {
                     t.element(
                         "ul",
                         [],
@@ -561,7 +556,7 @@ mod tests {
             |v| vec![("items", v.array(vec![v.str("a<b"), v.str("c")]))],
             expect![[r#"
                 -- before --
-                entrypoint fn Items@f0(items@v0: Array[String]) -> Html {
+                entrypoint Items@e0(items@v0: Array[String]) -> Html {
                   let v4: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
                     let v3: Html = element("li", {}, v2)
@@ -582,7 +577,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("diverge", [], Ty::Bool, |t| t.call("diverge", []))
-                .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
+                .entrypoint("Test", [("flag", Ty::Bool)], |t| {
                     let and = t.match_(t.param("flag"), |m| {
                         m.arm(Pat::True, |t, _| t.call("diverge", []));
                         m.arm(Pat::False, |t, _| t.bool(false));
@@ -601,7 +596,7 @@ mod tests {
                   let v0: Bool = diverge@f0()
                   v0
                 }
-                entrypoint fn Test@f1(flag@v1: Bool) -> Html {
+                entrypoint Test@e0(flag@v1: Bool) -> Html {
                   let v4: Bool = match v1 {
                     true => {
                       let v2: Bool = diverge@f0()
@@ -642,7 +637,7 @@ mod tests {
             .build();
         check(
             FlatProgramBuilder::with_types(types)
-                .entrypoint("Test", [("shape", Ty::named("Shape"))], Ty::Html, |t| {
+                .entrypoint("Test", [("shape", Ty::named("Shape"))], |t| {
                     t.escape(t.match_(t.param("shape"), |m| {
                         m.arm(Pat::variant("Dot", []), |t, _| t.str("dot"));
                         m.arm(
@@ -661,7 +656,7 @@ mod tests {
             },
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(shape@v0: Shape) -> Html {
+                entrypoint Test@e0(shape@v0: Shape) -> Html {
                   let v4: String = match v0 {
                     Shape::Dot => {
                       let v1: String = "dot"
@@ -689,7 +684,7 @@ mod tests {
             .build();
         check(
             FlatProgramBuilder::with_types(types)
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     let held = t.record(t.ty(Ty::named("Holder")), [("nothing", t.tuple(vec![]))]);
                     t.escape(
                         t.int_to_string(t.array_length(t.array([t.field_access(held, "nothing")]))),
@@ -700,7 +695,7 @@ mod tests {
             |_| vec![],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: () = ()
                   let v1: Holder = {nothing: v0}
                   let v2: () = v1.nothing
@@ -721,7 +716,7 @@ mod tests {
     fn should_read_an_element_back_out_of_a_tuple() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     let pair = t.tuple([t.int(1), t.str("two")]);
                     t.escape(t.tuple_index(pair, 1))
                 })
@@ -730,7 +725,7 @@ mod tests {
             |_| vec![],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: Int = 1
                   let v1: String = "two"
                   let v2: (Int, String) = (v0, v1)
@@ -749,7 +744,7 @@ mod tests {
     fn should_read_an_element_back_out_of_a_one_tuple() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     let only = t.tuple([t.str("alone")]);
                     t.escape(t.tuple_index(only, 0))
                 })
@@ -758,7 +753,7 @@ mod tests {
             |_| vec![],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "alone"
                   let v1: (String,) = (v0,)
                   let v2: String = v1.0
@@ -776,7 +771,7 @@ mod tests {
     fn should_index_a_nested_tuple() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     let inner = t.tuple([t.str("deep"), t.int(2)]);
                     let outer = t.tuple([t.int(1), inner]);
                     t.escape(t.tuple_index(t.tuple_index(outer, 1), 0))
@@ -786,7 +781,7 @@ mod tests {
             |_| vec![],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "deep"
                   let v1: Int = 2
                   let v2: (String, Int) = (v0, v1)
@@ -808,7 +803,7 @@ mod tests {
     fn should_wrap_int_addition_at_i32_boundary() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     let sum = t.add(t.int(2147483647), t.int(1));
                     t.escape(t.int_to_string(sum))
                 })
@@ -817,7 +812,7 @@ mod tests {
             |_| vec![],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: Int = 2147483647
                   let v1: Int = 1
                   let v2: Int = add(v0, v1)
@@ -836,15 +831,13 @@ mod tests {
     fn should_evaluate_an_element() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
-                    t.element("div", [], t.text("Hello World"))
-                })
+                .entrypoint("Test", [], |t| t.element("div", [], t.text("Hello World")))
                 .build()
                 .unwrap(),
             |_| vec![],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: Html = text("Hello World")
                   let v1: Html = element("div", {}, v0)
                   v1
@@ -860,28 +853,23 @@ mod tests {
     fn should_escape_attribute_values_and_settle_boolean_attributes() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint(
-                    "Test",
-                    [("cls", Ty::String), ("flag", Ty::Bool)],
-                    Ty::Html,
-                    |t| {
-                        t.element(
-                            "input",
-                            [
-                                t.attr_value("class", t.param("cls")),
-                                t.attr_presence("disabled", t.param("flag")),
-                                t.attr_presence("checked", t.bool(false)),
-                            ],
-                            t.html_concat(vec![]),
-                        )
-                    },
-                )
+                .entrypoint("Test", [("cls", Ty::String), ("flag", Ty::Bool)], |t| {
+                    t.element(
+                        "input",
+                        [
+                            t.attr_value("class", t.param("cls")),
+                            t.attr_presence("disabled", t.param("flag")),
+                            t.attr_presence("checked", t.bool(false)),
+                        ],
+                        t.html_concat(vec![]),
+                    )
+                })
                 .build()
                 .unwrap(),
             |v| vec![("cls", v.str("a\"b")), ("flag", v.bool(true))],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(cls@v0: String, flag@v1: Bool) -> Html {
+                entrypoint Test@e0(cls@v0: String, flag@v1: Bool) -> Html {
                   let v2: Bool = false
                   let v3: Html = concat()
                   let v4: Html = element("input", {class: v0, disabled: v1, checked: v2}, v3)
@@ -898,7 +886,7 @@ mod tests {
     fn should_escape_html_in_expressions() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("content", Ty::String)], Ty::Html, |t| {
+                .entrypoint("Test", [("content", Ty::String)], |t| {
                     t.escape(t.param("content"))
                 })
                 .build()
@@ -906,7 +894,7 @@ mod tests {
             |v| vec![("content", v.str("<script>alert('xss')</script>"))],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(content@v0: String) -> Html {
+                entrypoint Test@e0(content@v0: String) -> Html {
                   let v1: Html = escape(v0)
                   v1
                 }
@@ -921,7 +909,7 @@ mod tests {
     fn should_render_if_body_when_condition_is_true() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("show", Ty::Bool)], Ty::Html, |t| {
+                .entrypoint("Test", [("show", Ty::Bool)], |t| {
                     t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| t.element("div", [], t.text("Visible")));
                         m.arm(Pat::False, |t, _| t.html_concat([]));
@@ -932,7 +920,7 @@ mod tests {
             |v| vec![("show", v.bool(true))],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(show@v0: Bool) -> Html {
+                entrypoint Test@e0(show@v0: Bool) -> Html {
                   let v4: Html = match v0 {
                     true => {
                       let v1: Html = text("Visible")
@@ -957,7 +945,7 @@ mod tests {
     fn should_skip_if_body_when_condition_is_false() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("show", Ty::Bool)], Ty::Html, |t| {
+                .entrypoint("Test", [("show", Ty::Bool)], |t| {
                     t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| t.element("div", [], t.text("Hidden")));
                         m.arm(Pat::False, |t, _| t.html_concat([]));
@@ -968,7 +956,7 @@ mod tests {
             |v| vec![("show", v.bool(false))],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(show@v0: Bool) -> Html {
+                entrypoint Test@e0(show@v0: Bool) -> Html {
                   let v4: Html = match v0 {
                     true => {
                       let v1: Html = text("Hidden")
@@ -993,7 +981,7 @@ mod tests {
     fn should_iterate_over_array_in_for_loop() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
+                .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     t.html_for(t.param("items"), |t, item| {
                         t.html_concat([t.element("li", vec![], t.escape(item)), t.text("\n")])
                     })
@@ -1008,7 +996,7 @@ mod tests {
             },
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(items@v0: Array[String]) -> Html {
+                entrypoint Test@e0(items@v0: Array[String]) -> Html {
                   let v6: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
                     let v3: Html = element("li", {}, v2)
@@ -1040,7 +1028,7 @@ mod tests {
                         });
                     })
                 })
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     t.escape(t.int_to_string(t.call("Sum", [t.int(10)])))
                 })
                 .build()
@@ -1066,7 +1054,7 @@ mod tests {
                   }
                   v8
                 }
-                entrypoint fn Test@f1() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v9: Int = 10
                   let v10: Int = Sum@f0(v9)
                   let v11: String = v10.to_string()
@@ -1084,7 +1072,7 @@ mod tests {
     fn should_apply_a_closure_to_its_arguments_and_the_names_it_captures() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("base", Ty::Int)], Ty::Html, |t| {
+                .entrypoint("Test", [("base", Ty::Int)], |t| {
                     let base = t.param("base");
                     let add = t.lambda([IrType::INT], |t, params| t.add(params[0], base));
                     let one = t.apply(add, [t.int(1)]);
@@ -1099,7 +1087,7 @@ mod tests {
             |v| vec![("base", v.int(10))],
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(base@v0: Int) -> Html {
+                entrypoint Test@e0(base@v0: Int) -> Html {
                   let v3: (Int) -> Int = fn(v1: Int) {
                     let v2: Int = add(v1, v0)
                     v2
@@ -1139,7 +1127,7 @@ mod tests {
                         t.element("ul", [], rows)
                     },
                 )
-                .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
+                .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     let prefix = t.str("- ");
                     let row = t.lambda([IrType::STRING], |t, params| {
                         let text = t.html_concat([t.escape(prefix), t.escape(params[0])]);
@@ -1160,7 +1148,7 @@ mod tests {
                   let v5: Html = element("ul", {}, v4)
                   v5
                 }
-                entrypoint fn Test@f1(items@v6: Array[String]) -> Html {
+                entrypoint Test@e0(items@v6: Array[String]) -> Html {
                   let v7: String = "- "
                   let v13: (String) -> Html = fn(v8: String) {
                     let v9: Html = escape(v7)
@@ -1182,7 +1170,7 @@ mod tests {
     #[test]
     fn should_count_an_application_towards_the_call_depth() {
         let program = FlatProgramBuilder::new()
-            .entrypoint("Test", [], Ty::Html, |t| {
+            .entrypoint("Test", [], |t| {
                 // Applying the last closure applies every closure before it,
                 // twelve applications deep in the frame of Test.
                 let mut closure = t.lambda([], |t, _| t.int(0));
@@ -1194,7 +1182,7 @@ mod tests {
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Program exceeded the call depth limit of 12"
@@ -1207,12 +1195,12 @@ mod tests {
             .function("Loop", [("n", Ty::Int)], Ty::Int, |t| {
                 t.call("Loop", [t.add(t.param("n"), t.int(1))])
             })
-            .entrypoint("Test", [], Ty::Html, |t| {
+            .entrypoint("Test", [], |t| {
                 t.escape(t.int_to_string(t.call("Loop", [t.int(0)])))
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Program exceeded the call depth limit of 12"
@@ -1244,13 +1232,13 @@ mod tests {
                 );
                 t.call("Grow", [node])
             })
-            .entrypoint("Test", [], Ty::Html, |t| {
+            .entrypoint("Test", [], |t| {
                 let leaf = t.enum_variant_with_fields(t.ty(Ty::named("Tree")), "Leaf", []);
                 t.escape(t.int_to_string(t.call("Grow", [leaf])))
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Program exceeded the call depth limit of 12"
@@ -1260,13 +1248,13 @@ mod tests {
     #[test]
     fn should_error_when_a_range_is_too_long() {
         let program = FlatProgramBuilder::new()
-            .entrypoint("Test", [], Ty::Html, |t| {
+            .entrypoint("Test", [], |t| {
                 let all = t.array_from_range(t.int(i32::MIN), t.int(i32::MAX));
                 t.escape(t.int_to_string(t.array_length(all)))
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "An array exceeded the array length limit of 10000000"
@@ -1276,7 +1264,7 @@ mod tests {
     #[test]
     fn should_error_when_a_string_is_too_long() {
         let program = FlatProgramBuilder::new()
-            .entrypoint("Test", [], Ty::Html, |t| {
+            .entrypoint("Test", [], |t| {
                 let mut string = t.str("x");
                 for _ in 0..24 {
                     string = t.string_concat([string, string]);
@@ -1285,7 +1273,7 @@ mod tests {
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "A string exceeded the string length limit of 10000000 bytes"
@@ -1295,7 +1283,7 @@ mod tests {
     #[test]
     fn should_error_when_html_is_too_large() {
         let program = FlatProgramBuilder::new()
-            .entrypoint("Test", [], Ty::Html, |t| {
+            .entrypoint("Test", [], |t| {
                 let mut string = t.str("x");
                 for _ in 0..23 {
                     string = t.string_concat([string, string]);
@@ -1306,7 +1294,7 @@ mod tests {
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "An Html value exceeded the Html size limit of 10000000"
@@ -1327,10 +1315,10 @@ mod tests {
                     m.arm(Pat::False, |t, _| t.text("leaf"));
                 })
             })
-            .entrypoint("Test", [], Ty::Html, |t| t.call("Tree", [t.int(0)]))
+            .entrypoint("Test", [], |t| t.call("Tree", [t.int(0)]))
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.functions[1].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "An evaluation exceeded the op count limit of 5000"
@@ -1340,12 +1328,12 @@ mod tests {
     #[test]
     fn should_error_when_required_param_not_provided() {
         let program = FlatProgramBuilder::new()
-            .entrypoint("Test", [("name", Ty::String)], Ty::Html, |t| {
+            .entrypoint("Test", [("name", Ty::String)], |t| {
                 t.escape(t.param("name"))
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.functions[0].function(), HashMap::new());
+        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));

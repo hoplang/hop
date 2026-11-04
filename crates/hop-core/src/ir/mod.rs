@@ -1,4 +1,5 @@
 mod document_shell;
+mod entrypoint_id;
 mod flat_optimizer;
 pub mod flat_program;
 mod flat_to_writer;

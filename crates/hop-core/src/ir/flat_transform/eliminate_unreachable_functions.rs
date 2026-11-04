@@ -7,10 +7,10 @@ use super::callees::{collect_data_callees, collect_html_callees};
 
 /// Drop the functions no entrypoint can reach.
 pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
-    let mut reached: BTreeSet<FunctionId> = (program.functions.iter())
-        .filter(|function| function.entrypoint())
-        .map(|function| function.function().id)
-        .collect();
+    let mut reached = BTreeSet::new();
+    for entrypoint in &program.entrypoints {
+        collect_html_callees(&entrypoint.body, &mut reached);
+    }
     let mut pending: Vec<FunctionId> = reached.iter().copied().collect();
     while let Some(id) = pending.pop() {
         let mut callees = BTreeSet::new();
@@ -46,7 +46,6 @@ mod tests {
     use super::*;
     use crate::hop::typing::Ty;
     use crate::ir::flat_program_builder::FlatProgramBuilder;
-    use crate::ir::ir_type::IrType;
 
     fn check(program: FlatProgram, expected: Expect) {
         let before = program.to_string();
@@ -62,7 +61,7 @@ mod tests {
                 .declare("pong", [("n", Ty::Int)], Ty::Int)
                 .define("ping", |t, _| t.call("pong", [t.param("n")]))
                 .define("pong", |t, _| t.call("ping", [t.param("n")]))
-                .entrypoint("Test", [], Ty::Html, |t| t.text("shown"))
+                .entrypoint("Test", [], |t| t.text("shown"))
                 .build()
                 .unwrap(),
             expect![[r#"
@@ -75,13 +74,13 @@ mod tests {
                   let v3: Int = ping@f0(v1)
                   v3
                 }
-                entrypoint fn Test@f2() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v4: Html = text("shown")
                   v4
                 }
 
                 -- after --
-                entrypoint fn Test@f2() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v4: Html = text("shown")
                   v4
                 }
@@ -98,7 +97,7 @@ mod tests {
                 })
                 .function("label", [], Ty::Html, |t| t.text("label"))
                 .function("unused", [], Ty::Html, |t| t.text("unused"))
-                .entrypoint("Test", [("items", Ty::array(Ty::Int))], Ty::Html, |t| {
+                .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
                     t.lambda([], |t, _| t.call("label", []));
                     t.html_for(t.param("items"), |t, item| t.call("row", [item]))
                 })
@@ -119,7 +118,7 @@ mod tests {
                   let v4: Html = text("unused")
                   v4
                 }
-                entrypoint fn Test@f3(items@v5: Array[Int]) -> Html {
+                entrypoint Test@e0(items@v5: Array[Int]) -> Html {
                   let v7: () -> Html = fn() {
                     let v6: Html = label@f1()
                     v6
@@ -141,7 +140,7 @@ mod tests {
                   let v3: Html = text("label")
                   v3
                 }
-                entrypoint fn Test@f3(items@v5: Array[Int]) -> Html {
+                entrypoint Test@e0(items@v5: Array[Int]) -> Html {
                   let v7: () -> Html = fn() {
                     let v6: Html = label@f1()
                     v6
@@ -163,10 +162,10 @@ mod tests {
                 .function("double", [("n", Ty::Int)], Ty::Int, |t| {
                     t.mul(t.param("n"), t.int(2))
                 })
-                .entrypoint_with_types("Count", [("n", IrType::INT)], IrType::INT, |t| {
-                    t.call("double", [t.param("n")])
+                .entrypoint("Count", [("n", Ty::Int)], |t| {
+                    t.escape(t.int_to_string(t.call("double", [t.param("n")])))
                 })
-                .entrypoint("Test", [], Ty::Html, |t| t.text("shown"))
+                .entrypoint("Test", [], |t| t.text("shown"))
                 .build()
                 .unwrap(),
             expect![[r#"
@@ -176,13 +175,15 @@ mod tests {
                   let v2: Int = mul(v0, v1)
                   v2
                 }
-                entrypoint fn Count@f1(n@v3: Int) -> Int {
+                entrypoint Count@e0(n@v3: Int) -> Html {
                   let v4: Int = double@f0(v3)
-                  v4
+                  let v5: String = v4.to_string()
+                  let v6: Html = escape(v5)
+                  v6
                 }
-                entrypoint fn Test@f2() -> Html {
-                  let v5: Html = text("shown")
-                  v5
+                entrypoint Test@e1() -> Html {
+                  let v7: Html = text("shown")
+                  v7
                 }
 
                 -- after --
@@ -191,13 +192,15 @@ mod tests {
                   let v2: Int = mul(v0, v1)
                   v2
                 }
-                entrypoint fn Count@f1(n@v3: Int) -> Int {
+                entrypoint Count@e0(n@v3: Int) -> Html {
                   let v4: Int = double@f0(v3)
-                  v4
+                  let v5: String = v4.to_string()
+                  let v6: Html = escape(v5)
+                  v6
                 }
-                entrypoint fn Test@f2() -> Html {
-                  let v5: Html = text("shown")
-                  v5
+                entrypoint Test@e1() -> Html {
+                  let v7: Html = text("shown")
+                  v7
                 }
             "#]],
         );

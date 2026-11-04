@@ -1726,7 +1726,7 @@ mod tests {
                         })
                     },
                 )
-                .entrypoint("Test", [("prefix", Ty::String)], Ty::Html, |t| {
+                .entrypoint("Test", [("prefix", Ty::String)], |t| {
                     let prefix = t.param("prefix");
                     let row = t.lambda([IrType::INT], |t, params| {
                         let text = t.string_concat([prefix, t.int_to_string(params[0])]);
@@ -1804,7 +1804,7 @@ mod tests {
                         })
                     },
                 )
-                .entrypoint("Test", [("double", Ty::Bool)], Ty::Html, |t| {
+                .entrypoint("Test", [("double", Ty::Bool)], |t| {
                     let scale = t.lambda([IrType::INT], |t, params| {
                         t.match_(t.param("double"), |m| {
                             m.arm(Pat::True, |t, _| t.mul(params[0], t.int(2)));
@@ -1892,7 +1892,7 @@ mod tests {
                         })
                     },
                 )
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     let wrap = t.lambda([IrType::HTML], |t, params| t.element("b", [], params[0]));
                     t.call("Wrap", [t.int(2), wrap])
                 })

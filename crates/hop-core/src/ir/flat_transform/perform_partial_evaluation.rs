@@ -4,8 +4,9 @@ use crate::document::CheapString;
 use crate::hop::typing::{Constructor, Pattern};
 use crate::html::write_escaped_html;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
-    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
+    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatEntrypoint,
+    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp,
+    FlatProgram,
 };
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::ir_binder::IrBinder;
@@ -50,6 +51,7 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
     let FlatProgram {
         types,
         functions,
+        entrypoints,
         mut value_ids,
     } = program;
     let functions = functions
@@ -79,9 +81,27 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
             }
         })
         .collect();
+    let entrypoints = entrypoints
+        .into_iter()
+        .map(|entrypoint| {
+            let mut evaluator = Evaluator {
+                value_ids: &mut value_ids,
+                values: HashMap::new(),
+                concats: HashMap::new(),
+                renames: HashMap::new(),
+                data_lambdas: HashMap::new(),
+                html_lambdas: HashMap::new(),
+            };
+            FlatEntrypoint {
+                body: evaluator.html_block(entrypoint.body),
+                ..entrypoint
+            }
+        })
+        .collect();
     FlatProgram {
         types,
         functions,
+        entrypoints,
         value_ids,
     }
 }
@@ -701,8 +721,8 @@ mod tests {
             let before_program = program.clone();
             let before: Vec<Result<String, EvalError>> = entrypoint_args
                 .iter()
-                .map(|(function, args)| {
-                    evaluate_entrypoint(&program, function, args.clone()).map(Value::into_markup)
+                .map(|(entrypoint, args)| {
+                    evaluate_entrypoint(&program, *entrypoint, args.clone()).map(Value::into_markup)
                 })
                 .collect();
 
@@ -710,13 +730,13 @@ mod tests {
 
             // The pass drops no computation but a selected arm's siblings,
             // which never ran, so the output stays the same.
-            for ((function, args), before) in entrypoint_args.iter().zip(before) {
-                let after =
-                    evaluate_entrypoint(&program, function, args.clone()).map(Value::into_markup);
+            for ((entrypoint, args), before) in entrypoint_args.iter().zip(before) {
+                let after = evaluate_entrypoint(&program, *entrypoint, args.clone())
+                    .map(Value::into_markup);
                 match (before, after) {
                     (Ok(before), Ok(after)) => assert_eq!(
                         before, after,
-                        "entrypoint {function}\n-- before --\n{before_program}\n-- after --\n{program}"
+                        "entrypoint {entrypoint}\n-- before --\n{before_program}\n-- after --\n{program}"
                     ),
                     (
                         Err(EvalError::HtmlSizeLimit { .. }),
@@ -734,7 +754,7 @@ mod tests {
                     // stay under the call depth limit after it.
                     (Err(EvalError::CallDepthLimit { .. }), _) => {}
                     (before, after) => panic!(
-                        "entrypoint {function}: before {before:?}, after {after:?}\n-- before --\n{before_program}\n-- after --\n{program}"
+                        "entrypoint {entrypoint}: before {before:?}, after {after:?}\n-- before --\n{before_program}\n-- after --\n{program}"
                     ),
                 }
             }
@@ -766,7 +786,7 @@ mod tests {
     fn should_run_a_copy_of_a_lambda_in_place_of_each_application() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
+                .entrypoint("Test", [("n", Ty::Int)], |t| {
                     let ten = t.int(10);
                     let add = t.lambda([IrType::INT], |t, params| t.add(params[0], ten));
                     let known = t.apply(add, [t.int(1)]);
@@ -780,7 +800,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(n@v0: Int) -> Html {
+                entrypoint Test@e0(n@v0: Int) -> Html {
                   let v1: Int = 10
                   let v4: (Int) -> Int = fn(v2: Int) {
                     let v3: Int = add(v2, v1)
@@ -798,7 +818,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0(n@v0: Int) -> Html {
+                entrypoint Test@e0(n@v0: Int) -> Html {
                   let v1: Int = 10
                   let v4: (Int) -> Int = fn(v2: Int) {
                     let v3: Int = add(v2, v1)
@@ -833,7 +853,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- before --
-                entrypoint fn body@f0(nickname@v0: Option[String]) -> Html {
+                entrypoint body@e0(nickname@v0: Option[String]) -> Html {
                   let v1: Bool = true
                   let v2: (Bool, Option[String]) = (v1, v0)
                   let v13: Html = match v2 {
@@ -863,7 +883,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn body@f0(nickname@v0: Option[String]) -> Html {
+                entrypoint body@e0(nickname@v0: Option[String]) -> Html {
                   let v1: Bool = true
                   let v2: (Bool, Option[String]) = (v1, v0)
                   let v9: String = match v0 {
@@ -898,7 +918,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- before --
-                entrypoint fn body@f0(nickname@v0: Option[String]) -> Html {
+                entrypoint body@e0(nickname@v0: Option[String]) -> Html {
                   let v1: Bool = true
                   let v2: (Bool, Option[String]) = (v1, v0)
                   let v10: Html = match v2 {
@@ -919,7 +939,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn body@f0(nickname@v0: Option[String]) -> Html {
+                entrypoint body@e0(nickname@v0: Option[String]) -> Html {
                   let v1: Bool = true
                   let v2: (Bool, Option[String]) = (v1, v0)
                   let v10: Html = match v2 {
@@ -971,7 +991,7 @@ mod tests {
     fn should_select_the_arm_of_a_match_on_a_negated_constant() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     t.match_(t.not(t.bool(true)), |m| {
                         m.arm(Pat::True, |t, _| t.text("yes"));
                         m.arm(Pat::False, |t, _| t.text("no"));
@@ -981,7 +1001,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: Bool = true
                   let v1: Bool = not(v0)
                   let v4: Html = match v1 {
@@ -998,7 +1018,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: Bool = true
                   let v1: Bool = false
                   let v3: Html = text("no")
@@ -1012,7 +1032,7 @@ mod tests {
     fn should_keep_a_match_on_a_dynamic_subject() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
+                .entrypoint("Test", [("flag", Ty::Bool)], |t| {
                     t.match_(t.param("flag"), |m| {
                         m.arm(Pat::True, |t, _| t.text("yes"));
                         m.arm(Pat::False, |t, _| t.text("no"));
@@ -1022,7 +1042,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(flag@v0: Bool) -> Html {
+                entrypoint Test@e0(flag@v0: Bool) -> Html {
                   let v3: Html = match v0 {
                     true => {
                       let v1: Html = text("yes")
@@ -1037,7 +1057,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0(flag@v0: Bool) -> Html {
+                entrypoint Test@e0(flag@v0: Bool) -> Html {
                   let v3: Html = match v0 {
                     true => {
                       let v1: Html = text("yes")
@@ -1061,7 +1081,7 @@ mod tests {
             .build();
         check(
             FlatProgramBuilder::with_types(types)
-                .entrypoint("Test", [("n", Ty::Int)], Ty::Html, |t| {
+                .entrypoint("Test", [("n", Ty::Int)], |t| {
                     t.escape(t.int_to_string(t.field_access(
                         t.record(
                             t.ty(Ty::named("Point")),
@@ -1074,7 +1094,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(n@v0: Int) -> Html {
+                entrypoint Test@e0(n@v0: Int) -> Html {
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
                   let v3: Int = v2.x
@@ -1084,7 +1104,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0(n@v0: Int) -> Html {
+                entrypoint Test@e0(n@v0: Int) -> Html {
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
                   let v4: String = v0.to_string()
@@ -1129,7 +1149,7 @@ mod tests {
     fn should_flatten_a_concat_and_merge_its_adjacent_constants() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("dyn", Ty::String)], Ty::Html, |t| {
+                .entrypoint("Test", [("dyn", Ty::String)], |t| {
                     t.escape(t.string_concat([
                         t.string_concat(vec![t.param("dyn"), t.str("a")]),
                         t.string_concat(vec![t.str("b"), t.param("dyn")]),
@@ -1139,7 +1159,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(dyn@v0: String) -> Html {
+                entrypoint Test@e0(dyn@v0: String) -> Html {
                   let v1: String = "a"
                   let v2: String = string_concat(v0, v1)
                   let v3: String = "b"
@@ -1150,7 +1170,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0(dyn@v0: String) -> Html {
+                entrypoint Test@e0(dyn@v0: String) -> Html {
                   let v1: String = "a"
                   let v2: String = string_concat(v0, v1)
                   let v3: String = "b"
@@ -1168,14 +1188,14 @@ mod tests {
     fn should_drop_empty_strings_and_read_the_one_part_left() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("dyn", Ty::String)], Ty::Html, |t| {
+                .entrypoint("Test", [("dyn", Ty::String)], |t| {
                     t.escape(t.string_concat([t.str(""), t.param("dyn"), t.str("")]))
                 })
                 .build()
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(dyn@v0: String) -> Html {
+                entrypoint Test@e0(dyn@v0: String) -> Html {
                   let v1: String = ""
                   let v2: String = ""
                   let v3: String = string_concat(v1, v0, v2)
@@ -1184,7 +1204,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0(dyn@v0: String) -> Html {
+                entrypoint Test@e0(dyn@v0: String) -> Html {
                   let v1: String = ""
                   let v2: String = ""
                   let v4: Html = escape(v0)
@@ -1198,14 +1218,14 @@ mod tests {
     fn should_fold_a_concat_of_constants_to_one_constant() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     t.escape(t.string_concat([t.str("Hello, "), t.str("World")]))
                 })
                 .build()
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "Hello, "
                   let v1: String = "World"
                   let v2: String = string_concat(v0, v1)
@@ -1214,7 +1234,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "Hello, "
                   let v1: String = "World"
                   let v4: String = "Hello, World"
@@ -1229,7 +1249,7 @@ mod tests {
     fn should_flatten_a_nested_html_concat() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     t.html_concat([
                         t.text("a"),
                         t.html_concat(vec![t.text("b"), t.text("c")]),
@@ -1240,7 +1260,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: Html = text("a")
                   let v1: Html = text("b")
                   let v2: Html = text("c")
@@ -1252,7 +1272,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: Html = text("a")
                   let v1: Html = text("b")
                   let v2: Html = text("c")
@@ -1324,7 +1344,7 @@ mod tests {
     fn should_select_the_some_arm_and_bind_its_value() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     t.match_(t.some(t.str("x")), |m| {
                         m.arm(Pat::some(Pat::bind("v")), |t, arm| {
                             t.escape(arm.binding("v"))
@@ -1336,7 +1356,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "x"
                   let v1: Option[String] = Some(v0)
                   let v5: Html = match v1 {
@@ -1353,7 +1373,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "x"
                   let v1: Option[String] = Some(v0)
                   let v3: Html = text("x")
@@ -1392,7 +1412,7 @@ mod tests {
     fn should_select_an_arm_through_a_folded_equality() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     t.match_(t.eq(t.str("a"), t.str("a")), |m| {
                         m.arm(Pat::True, |t, _| t.text("same"));
                         m.arm(Pat::False, |t, _| t.text("other"));
@@ -1402,7 +1422,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
                   let v2: Bool = eq(v0, v1)
@@ -1420,7 +1440,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
                   let v2: Bool = true
@@ -1435,14 +1455,14 @@ mod tests {
     fn should_fold_an_escaped_literal_into_text() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     t.html_concat([t.text("a "), t.escape(t.str("<b>")), t.text(" c")])
                 })
                 .build()
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v1: String = "<b>"
                   let v0: Html = text("a ")
                   let v2: Html = escape(v1)
@@ -1452,7 +1472,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v1: String = "<b>"
                   let v0: Html = text("a ")
                   let v2: Html = text("&lt;b&gt;")
@@ -1468,19 +1488,19 @@ mod tests {
     fn should_keep_an_escaped_literal_with_a_carriage_return() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| t.escape(t.str("a\rb")))
+                .entrypoint("Test", [], |t| t.escape(t.str("a\rb")))
                 .build()
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "a\rb"
                   let v1: Html = escape(v0)
                   v1
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "a\rb"
                   let v1: Html = escape(v0)
                   v1
@@ -1493,7 +1513,7 @@ mod tests {
     fn should_fold_literal_attributes_into_constants() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     t.element(
                         "p",
                         [
@@ -1508,7 +1528,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "note"
                   let v1: Bool = true
                   let v2: Bool = false
@@ -1518,7 +1538,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "note"
                   let v1: Bool = true
                   let v2: Bool = false
@@ -1534,7 +1554,7 @@ mod tests {
     fn should_fold_an_escape_of_a_string_the_pass_makes_constant() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     let name = t.str("x");
                     let greeting = t.string_concat([t.str("hi "), name]);
                     t.html_concat([t.escape(name), t.escape(greeting)])
@@ -1543,7 +1563,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "x"
                   let v1: String = "hi "
                   let v2: String = string_concat(v1, v0)
@@ -1554,7 +1574,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "x"
                   let v1: String = "hi "
                   let v6: String = "hi x"
@@ -1571,7 +1591,7 @@ mod tests {
     fn should_fold_a_literal_bound_outside_a_loop_into_its_body() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("items", Ty::array(Ty::Int))], Ty::Html, |t| {
+                .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
                     let label = t.str("row");
                     t.html_for_unbound(t.param("items"), |t| {
                         t.element("li", [t.attr_value("title", label)], t.escape(label))
@@ -1581,7 +1601,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(items@v0: Array[Int]) -> Html {
+                entrypoint Test@e0(items@v0: Array[Int]) -> Html {
                   let v1: String = "row"
                   let v4: Html = for _ in v0 {
                     let v2: Html = escape(v1)
@@ -1592,7 +1612,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0(items@v0: Array[Int]) -> Html {
+                entrypoint Test@e0(items@v0: Array[Int]) -> Html {
                   let v1: String = "row"
                   let v4: Html = for _ in v0 {
                     let v2: Html = text("row")

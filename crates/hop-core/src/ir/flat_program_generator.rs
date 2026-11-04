@@ -1,9 +1,9 @@
 use crate::hop::typing::Ty;
+use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{FlatFunctionDeclaration, FlatProgram};
 use crate::ir::flat_program_builder::{
     DeclaredFunction, FlatBlockBuilder, FlatProgramBuilder, Pat,
 };
-use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_type::{
     IrDataType, IrHtmlSignature, IrHtmlType, IrType, IrValueSignature, IrValueType,
 };
@@ -307,7 +307,12 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
         (0..g.count(1..=3))
             .map(|i| {
                 let params = (0..g.count(0..=8))
-                    .map(|i| (format!("p{i}"), g.random_type(2)))
+                    .map(|i| {
+                        (
+                            format!("p{i}"),
+                            g.random_type_where(2, NamedTypes::Any, false),
+                        )
+                    })
                     .collect();
                 (format!("V{i}"), params)
             })
@@ -327,7 +332,6 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
         builder = builder.entrypoint(
             name,
             params.iter().map(|(n, t)| (n.as_str(), t.clone())),
-            Ty::Html,
             |b| {
                 let mut scope = Scope::default();
                 for (n, _) in params {
@@ -343,24 +347,20 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
 pub fn random_entrypoint_args(
     program: &FlatProgram,
     rng: &mut impl Rng,
-) -> Vec<(IrFunction, HashMap<AttributeName, Value<'static>>)> {
+) -> Vec<(EntrypointId, HashMap<AttributeName, Value<'static>>)> {
     program
-        .functions
+        .entrypoints
         .iter()
-        .filter(|decl| match decl {
-            FlatFunctionDeclaration::Data(decl) => decl.entrypoint,
-            FlatFunctionDeclaration::Html(decl) => decl.entrypoint,
-        })
         .map(|decl| {
             let args = decl
-                .parameters()
+                .parameters
                 .iter()
                 .map(|param| {
-                    let value = random_value(rng, &param.binder.typ, &program.types);
+                    let value = random_value(rng, &param.widen().binder.typ, &program.types);
                     (param.name.clone(), value)
                 })
                 .collect();
-            (decl.function().clone(), args)
+            (decl.id, args)
         })
         .collect()
 }
@@ -428,7 +428,7 @@ impl FlatGenerator<'_, '_> {
     ) -> impl Iterator<Item = &'t DeclaredFunction> + 't {
         b.functions()
             .iter()
-            .filter(move |function| !function.entrypoint && function.return_type == *target)
+            .filter(move |function| function.return_type == *target)
     }
 
     fn var_in_scope(
@@ -1729,9 +1729,9 @@ mod tests {
             consumed += used;
             most_consumed = most_consumed.max(used);
             exhausted += u.is_empty() as usize;
-            for (function, args) in random_entrypoint_args(&program, &mut rng) {
+            for (entrypoint, args) in random_entrypoint_args(&program, &mut rng) {
                 entrypoints += 1;
-                let result = evaluate_entrypoint(&program, &function, args);
+                let result = evaluate_entrypoint(&program, entrypoint, args);
                 call_depth_limit +=
                     matches!(result, Err(EvalError::CallDepthLimit { .. })) as usize;
                 array_len_limit +=
@@ -1743,10 +1743,31 @@ mod tests {
             }
             let mut live = HashSet::new();
             let mut dynamic = HashSet::new();
-            let bodies: Vec<Block<'_>> = program.functions.iter().map(Block::of).collect();
-            for (function, body) in program.functions.iter().zip(&bodies) {
+            let bodies: Vec<Block<'_>> = program
+                .functions
+                .iter()
+                .map(Block::of)
+                .chain(
+                    program
+                        .entrypoints
+                        .iter()
+                        .map(|entrypoint| Block::Html(&entrypoint.body)),
+                )
+                .collect();
+            let parameters = program
+                .functions
+                .iter()
+                .map(|function| function.parameters())
+                .chain(program.entrypoints.iter().map(|entrypoint| {
+                    entrypoint
+                        .parameters
+                        .iter()
+                        .map(|param| param.widen())
+                        .collect()
+                }));
+            for (parameters, body) in parameters.zip(&bodies) {
                 mark_live(*body, &mut live);
-                dynamic.extend(function.parameters().iter().map(|param| param.binder.var));
+                dynamic.extend(parameters.iter().map(|param| param.binder.var));
                 mark_dynamic(*body, &mut dynamic);
                 match_stats.count_block(*body);
             }
@@ -1809,59 +1830,59 @@ mod tests {
             ));
         }
         expect![[r#"
-            6737 of 65536 input bytes consumed per program on average, at most 37062
+            7841 of 65536 input bytes consumed per program on average, at most 60960
             0 of 100 programs exhaust the input
-            11 of 210 entrypoints hit the call depth limit
-            0 of 210 entrypoints hit the array length limit
-            0 of 210 entrypoints hit the string length limit
-            0 of 210 entrypoints hit the Html size limit
-            3 of 210 entrypoints hit the op count limit
-            102 of 10288 Html bindings have more than one reference
-            2.5 arms per match on average, at least 2 and at most 27
-            8228 of 20803 match arms bind names
+            7 of 190 entrypoints hit the call depth limit
+            0 of 190 entrypoints hit the array length limit
+            0 of 190 entrypoints hit the string length limit
+            0 of 190 entrypoints hit the Html size limit
+            0 of 190 entrypoints hit the op count limit
+            65 of 6409 Html bindings have more than one reference
+            2.8 arms per match on average, at least 2 and at most 18
+            11428 of 26760 match arms bind names
 
             op                   ops/program % progs  % live   % dyn
-            Apply                       80.4    91.0    95.6    75.5
-            Array                      182.9    87.0    94.6    16.2
-            ArrayFromRange               5.1    77.0    97.4     0.0
-            ArrayIsEmpty                 1.1    43.0    96.3    32.7
-            ArrayLength                 11.1    80.0    98.0    53.5
-            BoolLiteral                 61.8    86.0    95.4     0.0
-            BoolNegation                 1.1    41.0    98.2    47.3
-            Call                         6.8    52.0   100.0    80.7
-            Enum                       123.5    67.0    95.0    21.2
-            Equals                       1.1    44.0   100.0    73.1
-            FieldAccess                  3.7    41.0    98.1    66.9
-            FloatLiteral                73.0    87.0    94.9     0.0
-            FloatToInt                  11.3    76.0    97.3    49.0
-            HtmlApply                    4.4    71.0    99.1    78.3
-            HtmlConcat                  34.5    87.0    99.7    35.4
-            HtmlElement                 20.7    81.0    99.7    49.7
-            HtmlEscape                  13.6    85.0    99.4    53.1
-            HtmlFor                      7.9    78.0    98.7    66.5
-            HtmlLambda                   5.0    73.0    99.6    61.3
-            HtmlText                     7.5    63.0    99.6     0.0
-            IntLiteral                  69.2    92.0    95.3     0.0
-            IntToFloat                  11.6    73.0    97.0    49.0
-            IntToString                 16.2    83.0    98.4    50.4
-            Lambda                      98.7    91.0    95.7    60.3
-            LessThan                     1.1    46.0    98.1    67.6
-            LessThanOrEqual              1.2    49.0    99.2    65.9
-            Match                       83.2    85.0    95.8    87.0
-            NumericAdd                  23.1    79.0    97.7    71.7
-            NumericMultiply             22.3    76.0    97.3    69.7
-            NumericNegation             23.4    77.0    98.0    57.0
-            NumericSubtract             23.5    80.0    97.6    70.3
-            OptionIsNone                 1.1    46.0    97.2    50.5
-            OptionIsSome                 1.0    48.0    99.0    57.6
-            OptionNone                 112.5    93.0    94.0     0.0
-            OptionSome                  62.1    87.0    93.9    25.4
-            Record                      82.0    61.0    94.6    23.8
-            StringConcat                16.4    76.0    98.4    52.7
-            StringIsEmpty                1.1    42.0    95.6    54.9
-            StringLiteral               58.4    93.0    94.6     0.0
-            Tuple                      676.8    90.0    94.9    47.3
-            TupleIndex                 421.2    90.0    94.6    69.3
+            Apply                       90.1    86.0    97.8    77.8
+            Array                      217.3    89.0    97.1    15.6
+            ArrayFromRange               4.0    71.0    98.8     0.0
+            ArrayIsEmpty                 1.2    49.0    95.8    57.1
+            ArrayLength                 12.4    76.0    97.6    58.4
+            BoolLiteral                 81.5    87.0    96.6     0.0
+            BoolNegation                 1.2    49.0    98.3    50.0
+            Call                         4.5    47.0    99.3    86.3
+            Enum                       149.4    66.0    96.9    18.8
+            Equals                       1.2    47.0    99.2    67.2
+            FieldAccess                  3.8    36.0    96.6    61.3
+            FloatLiteral                88.4    86.0    96.7     0.0
+            FloatToInt                  12.2    77.0    96.4    49.2
+            HtmlApply                    2.7    55.0   100.0    82.7
+            HtmlConcat                  21.4    81.0   100.0    34.8
+            HtmlElement                 12.6    77.0    99.9    51.2
+            HtmlEscape                   8.3    77.0   100.0    46.8
+            HtmlFor                      5.7    75.0   100.0    73.3
+            HtmlLambda                   3.3    58.0   100.0    61.5
+            HtmlText                     4.1    59.0   100.0     0.0
+            IntLiteral                  81.6    90.0    97.5     0.0
+            IntToFloat                  13.2    73.0    96.4    52.7
+            IntToString                 11.6    72.0    98.9    47.2
+            Lambda                     110.8    87.0    97.9    62.4
+            LessThan                     1.1    50.0    98.2    64.2
+            LessThanOrEqual              1.0    47.0    99.0    82.8
+            Match                       95.7    86.0    97.8    89.3
+            NumericAdd                  24.9    76.0    96.2    68.2
+            NumericMultiply             25.4    77.0    96.6    67.7
+            NumericNegation             26.9    80.0    96.6    53.1
+            NumericSubtract             25.5    76.0    95.7    68.8
+            OptionIsNone                 1.0    44.0    96.9    61.9
+            OptionIsSome                 1.0    50.0    97.0    63.0
+            OptionNone                 142.4    86.0    97.3     0.0
+            OptionSome                  79.8    85.0    97.0    25.2
+            Record                     110.4    69.0    97.6    19.0
+            StringConcat                12.1    73.0    99.1    48.1
+            StringIsEmpty                1.0    43.0    97.9    50.0
+            StringLiteral               73.6    91.0    97.4     0.0
+            Tuple                      848.2    90.0    97.2    48.6
+            TupleIndex                 521.2    88.0    96.8    70.2
         "#]]
         .assert_eq(&report);
     }
@@ -1873,7 +1894,7 @@ mod tests {
             0,
             expect![[r#"
 
-                entrypoint fn V0@f0() -> Html {
+                entrypoint V0@e0() -> Html {
                   let v0: Html = concat()
                   v0
                 }
@@ -1915,7 +1936,7 @@ mod tests {
                 fn C1@f1(p0@v6: String, p1@v7: Html, p2@v8: ((Float, E1, R1), Array[R1]) -> Int) -> Html {
                   v7
                 }
-                entrypoint fn V0@f2() -> Html {
+                entrypoint V0@e0() -> Html {
                   let v10: Html = concat()
                   v10
                 }
@@ -1939,82 +1960,14 @@ mod tests {
                   W1,
                 }
 
-                entrypoint fn V0@f0(p0@v0: Bool, p1@v1: Int) -> Html {
-                  let v28: (Array[E0], Option[E0]) = match v0 {
-                    false => {
-                      let v16: ((Array[E0], Option[E0]),) = match v0 {
-                        true => {
-                          let v2: Array[E0] = []
-                          let v3: Float = 1.5
-                          let v4: E0 = W0 {f0: v3}
-                          let v5: Option[E0] = Some(v4)
-                          let v6: (Array[E0], Option[E0]) = (v2, v5)
-                          let v7: ((Array[E0], Option[E0]),) = (v6,)
-                          v7
-                        }
-                        false => {
-                          let v8: Float = 0.1
-                          let v9: E0 = W0 {f0: v8}
-                          let v10: Array[E0] = [v9, v9, v9]
-                          let v11: Bool = false
-                          let v12: E0 = W1 {f0: v11}
-                          let v13: Option[E0] = Some(v12)
-                          let v14: (Array[E0], Option[E0]) = (v10, v13)
-                          let v15: ((Array[E0], Option[E0]),) = (v14,)
-                          v15
-                        }
-                      }
-                      let v17: (Array[E0], Option[E0]) = v16.0
-                      v17
-                    }
-                    v18: Bool => {
-                      let v26: () -> (Array[E0], Option[E0]) = fn() {
-                        let v19: Array[E0] = []
-                        let v20: Option[E0] = None
-                        let v21: (Array[E0], Option[E0]) = (v19, v20)
-                        let v22: () = ()
-                        let v23: E1 = W1
-                        let v24: ((Array[E0], Option[E0]), (), E1) = (v21, v22, v23)
-                        let v25: (Array[E0], Option[E0]) = v24.0
-                        v25
-                      }
-                      let v27: (Array[E0], Option[E0]) = v26()
-                      v27
-                    }
-                  }
-                  let v29: Array[E0] = v28.0
-                  let v43: Html = for v30: E0 in v29 {
-                    let v39: Int = match v30 {
-                      E0::W0 {f0@v31: Float} => {
-                        let v32: Int = v29.len()
-                        v32
-                      }
-                      _ => {
-                        let v37: Int = match v0 {
-                          true => {
-                            let v33: Int = -2147483648
-                            let v34: Int = add(v33, v1)
-                            let v35: Int = mul(v1, v34)
-                            v35
-                          }
-                          v36: Bool => {
-                            v1
-                          }
-                        }
-                        let v38: Int = sub(v37, v1)
-                        v38
-                      }
-                    }
-                    let v40: String = v39.to_string()
-                    let v41: Html = concat()
-                    let v42: Html = element("span", {id: v40}, v41)
-                    v42
-                  }
-                  v43
+                entrypoint V0@e0(p0@v0: Option[Int], p1@v1: Option[Array[Int]]) -> Html {
+                  let v2: Html = text("a\"b'c")
+                  v2
                 }
-                entrypoint fn V1@f1() -> Html {
-                  let v44: Html = concat()
-                  v44
+                entrypoint V1@e1() -> Html {
+                  let v3: Html = concat()
+                  let v4: Html = element("section", {}, v3)
+                  v4
                 }
             "#]],
         );

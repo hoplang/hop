@@ -1,10 +1,12 @@
 use crate::document::CheapString;
 use crate::hop::typing::{Constructor, Pattern, PatternField, Ty};
 use crate::html::HtmlElementKind;
+use crate::ir::entrypoint_id::EntrypointIdCounter;
 use crate::ir::flat_lint::{self, FlatLintError};
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
-    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
+    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatEntrypoint,
+    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp,
+    FlatProgram,
 };
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binder::IrBinder;
@@ -27,10 +29,12 @@ use std::cell::{Ref, RefCell};
 pub struct FlatProgramBuilder {
     types: IrTypeDeclarations,
     function_ids: FunctionIdCounter,
+    entrypoint_ids: EntrypointIdCounter,
     value_ids: RefCell<ValueIdCounter>,
     /// The type of every name bound so far, indexed by the name's number.
     value_types: RefCell<Vec<IrType>>,
     functions: Vec<DeclaredFunction>,
+    entrypoints: Vec<FlatEntrypoint>,
 }
 
 impl Default for FlatProgramBuilder {
@@ -48,9 +52,11 @@ impl FlatProgramBuilder {
         FlatProgramBuilder {
             types,
             function_ids: FunctionIdCounter::new(),
+            entrypoint_ids: EntrypointIdCounter::new(),
             value_ids: RefCell::new(ValueIdCounter::new()),
             value_types: RefCell::new(Vec::new()),
             functions: Vec::new(),
+            entrypoints: Vec::new(),
         }
     }
 
@@ -66,14 +72,38 @@ impl FlatProgramBuilder {
     }
 
     pub fn entrypoint<'p>(
-        self,
+        mut self,
         name: &str,
         params: impl IntoIterator<Item = (&'p str, Ty)>,
-        return_type: Ty,
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     ) -> Self {
-        self.declare_function(name, true, params, return_type)
-            .define(name, |t, _| body_fn(t))
+        let id = self.entrypoint_ids.next();
+        let name = FunctionName::parse(name).unwrap();
+        let parameters: Vec<IrParameter<IrDataType>> = params
+            .into_iter()
+            .map(|(name, typ)| {
+                let typ = self.types.ty(typ);
+                let IrType::Value(IrValueType::Data(typ)) = typ else {
+                    panic!("an entrypoint parameter must have a data type");
+                };
+                IrParameter {
+                    name: AttributeName::parse(name).unwrap(),
+                    binder: IrBinder {
+                        var: self.binder(IrType::Value(IrValueType::Data(typ.clone()))),
+                        typ,
+                    },
+                }
+            })
+            .collect();
+        let block_parameters: Vec<_> = parameters.iter().map(|param| param.widen()).collect();
+        let body = FlatBlockBuilder::build(&self, &block_parameters, body_fn).into_html();
+        self.entrypoints.push(FlatEntrypoint {
+            id,
+            name,
+            parameters,
+            body,
+        });
+        self
     }
 
     pub fn declare<'p>(
@@ -82,7 +112,12 @@ impl FlatProgramBuilder {
         params: impl IntoIterator<Item = (&'p str, Ty)>,
         return_type: Ty,
     ) -> Self {
-        self.declare_function(name, false, params, return_type)
+        let params: Vec<(&str, IrType)> = params
+            .into_iter()
+            .map(|(name, typ)| (name, self.types.ty(typ)))
+            .collect();
+        let return_type = self.types.ty(return_type);
+        self.declare_with_types(name, params, return_type)
     }
 
     // The variants with types take IR types, since Ty has no closures.
@@ -97,54 +132,12 @@ impl FlatProgramBuilder {
             .define(name, |t, _| body_fn(t))
     }
 
-    pub fn entrypoint_with_types<'p>(
-        self,
-        name: &str,
-        params: impl IntoIterator<Item = (&'p str, IrType)>,
-        return_type: IrType,
-        body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
-    ) -> Self {
-        self.declare_function_with_types(name, true, params, return_type)
-            .define(name, |t, _| body_fn(t))
-    }
-
     pub fn declare_with_types<'p>(
-        self,
-        name: &str,
-        params: impl IntoIterator<Item = (&'p str, IrType)>,
-        return_type: IrType,
-    ) -> Self {
-        self.declare_function_with_types(name, false, params, return_type)
-    }
-
-    fn declare_function<'p>(
-        self,
-        name: &str,
-        entrypoint: bool,
-        params: impl IntoIterator<Item = (&'p str, Ty)>,
-        return_type: Ty,
-    ) -> Self {
-        let params: Vec<(&str, IrType)> = params
-            .into_iter()
-            .map(|(name, typ)| (name, self.types.ty(typ)))
-            .collect();
-        let return_type = self.types.ty(return_type);
-        self.declare_function_with_types(name, entrypoint, params, return_type)
-    }
-
-    fn declare_function_with_types<'p>(
         mut self,
         name: &str,
-        entrypoint: bool,
         params: impl IntoIterator<Item = (&'p str, IrType)>,
         return_type: IrType,
     ) -> Self {
-        assert!(
-            !self
-                .functions
-                .iter()
-                .any(|declared| declared.function.name.as_str() == name)
-        );
         let function =
             IrFunction::new(self.function_ids.next(), FunctionName::parse(name).unwrap());
         let parameters = params
@@ -159,7 +152,6 @@ impl FlatProgramBuilder {
             .collect();
         self.functions.push(DeclaredFunction {
             function,
-            entrypoint,
             parameters,
             return_type,
             body: None,
@@ -179,7 +171,7 @@ impl FlatProgramBuilder {
             .unwrap();
         let declared = &self.functions[index];
         assert!(declared.body.is_none());
-        let body = FlatBlockBuilder::build(&self, declared, |t| body_fn(t, declared));
+        let body = FlatBlockBuilder::build(&self, &declared.parameters, |t| body_fn(t, declared));
         self.functions[index].body = Some(body);
         self
     }
@@ -199,7 +191,6 @@ impl FlatProgramBuilder {
             .map(|declared| match declared.return_type {
                 IrType::Html(IrHtmlType::Html) => FlatFunctionDeclaration::Html(FlatHtmlFunction {
                     function: declared.function,
-                    entrypoint: declared.entrypoint,
                     parameters: declared.parameters,
                     body: declared.body.unwrap().into_html(),
                 }),
@@ -215,7 +206,6 @@ impl FlatProgramBuilder {
                             })
                             .collect(),
                         function: declared.function,
-                        entrypoint: declared.entrypoint,
                         return_type,
                         body: declared.body.unwrap().into_data(),
                     })
@@ -227,6 +217,7 @@ impl FlatProgramBuilder {
             .collect();
         let program = FlatProgram {
             types: self.types,
+            entrypoints: self.entrypoints,
             functions,
             value_ids: self.value_ids.into_inner(),
         };
@@ -237,7 +228,6 @@ impl FlatProgramBuilder {
 
 pub struct DeclaredFunction {
     pub function: IrFunction,
-    pub entrypoint: bool,
     pub parameters: Vec<IrParameter<IrType>>,
     pub return_type: IrType,
     body: Option<BuiltBlock>,
@@ -275,7 +265,7 @@ impl BuiltBlock {
 
 pub struct FlatBlockBuilder<'a> {
     program: &'a FlatProgramBuilder,
-    function: &'a DeclaredFunction,
+    parameters: &'a [IrParameter<IrType>],
     bindings: RefCell<Vec<FlatDataBinding>>,
     html: RefCell<Vec<FlatHtmlBinding>>,
 }
@@ -283,12 +273,12 @@ pub struct FlatBlockBuilder<'a> {
 impl<'a> FlatBlockBuilder<'a> {
     fn build(
         program: &'a FlatProgramBuilder,
-        function: &'a DeclaredFunction,
+        parameters: &'a [IrParameter<IrType>],
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     ) -> BuiltBlock {
         let builder = FlatBlockBuilder {
             program,
-            function,
+            parameters,
             bindings: RefCell::new(Vec::new()),
             html: RefCell::new(Vec::new()),
         };
@@ -302,7 +292,7 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     fn block(&self, body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) -> BuiltBlock {
-        Self::build(self.program, self.function, body_fn)
+        Self::build(self.program, self.parameters, body_fn)
     }
 
     fn typ(&self, name: ValueId) -> IrType {
@@ -372,8 +362,7 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn param(&self, name: &str) -> ValueId {
-        self.function
-            .parameters
+        self.parameters
             .iter()
             .find(|param| param.name.as_str() == name)
             .unwrap()

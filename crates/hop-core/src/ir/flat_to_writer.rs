@@ -5,15 +5,14 @@ use crate::hop::typing::{
 };
 use crate::html::write_escaped_html;
 use crate::ir::document_shell::DocumentShell;
+use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBinding,
-    FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
+    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunctionDeclaration,
+    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
 };
-use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
-use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
@@ -69,9 +68,8 @@ use crate::symbols::type_name::TypeName;
 /// the first binds fresh names, so that the program binds every name once.
 ///
 /// The Flat IR has no pages, so the pages come beside the program, each
-/// pointing at the entrypoint functions that render it. Those functions are
-/// only ever called by the page, so they are not lowered as functions but
-/// written into the page. With a shell, a page writes a whole document, the
+/// pointing at the entrypoints that render it. Their bodies are written into
+/// the page. With a shell, a page writes a whole document, the
 /// shell around its head and its body. Without one, a page writes its head
 /// and its body alone.
 pub fn flat_to_writer(
@@ -82,6 +80,7 @@ pub fn flat_to_writer(
     let FlatProgram {
         types,
         functions,
+        entrypoints,
         value_ids,
     } = program;
     let mut lowerer = Lowerer {
@@ -104,30 +103,23 @@ pub fn flat_to_writer(
             FlatFunctionDeclaration::Html(function) => lowerer.analyze_html_block(&function.body),
         }
     }
-    let page_functions: HashSet<FunctionId> = pages
+    for entrypoint in &entrypoints {
+        for param in &entrypoint.parameters {
+            lowerer.analyze_parameter(&param.widen().binder);
+        }
+        lowerer.analyze_html_block(&entrypoint.body);
+    }
+    let mut page_entrypoints: HashMap<EntrypointId, _> = entrypoints
         .iter()
-        .flat_map(|page| page.head.iter().chain([&page.body]))
-        .map(|function| function.id)
-        .collect();
-    let (page_functions, functions): (Vec<_>, Vec<_>) = functions
-        .iter()
-        .partition(|decl| page_functions.contains(&decl.function().id));
-    let mut page_functions: HashMap<FunctionId, &FlatHtmlFunction> = page_functions
-        .into_iter()
-        .map(|decl| match decl {
-            FlatFunctionDeclaration::Html(function) => (function.function.id, function),
-            FlatFunctionDeclaration::Data(function) => {
-                panic!("the page function {} returns a value", function.function)
-            }
-        })
+        .map(|entrypoint| (entrypoint.id, entrypoint))
         .collect();
     let pages = pages
         .iter()
         .map(|page| {
-            let mut take = |function: &IrFunction| {
-                page_functions
-                    .remove(&function.id)
-                    .expect("each page points at functions of its own")
+            let mut take = |id: &EntrypointId| {
+                page_entrypoints
+                    .remove(id)
+                    .expect("each page points at entrypoints of its own")
             };
             let head = page.head.as_ref().map(&mut take);
             let body = take(&page.body);
@@ -135,7 +127,7 @@ pub fn flat_to_writer(
         })
         .collect();
     let functions = functions
-        .into_iter()
+        .iter()
         .map(|decl| lowerer.lower_function(decl))
         .collect();
     WriterProgram {
@@ -424,13 +416,13 @@ impl<'a> Lowerer<'a> {
         fresh
     }
 
-    /// Lower a page from the functions it points at. The page takes the
+    /// Lower a page from the entrypoints it points at. The page takes the
     /// body's parameters, and the head reads them in place of its own.
     fn lower_page(
         &mut self,
         name: TypeName,
-        head: Option<&'a FlatHtmlFunction>,
-        body: &'a FlatHtmlFunction,
+        head: Option<&'a FlatEntrypoint>,
+        body: &'a FlatEntrypoint,
         shell: Option<&DocumentShell>,
     ) -> WriterPageDeclaration {
         let head = head.map(|head| {
@@ -459,7 +451,7 @@ impl<'a> Lowerer<'a> {
         }
         WriterPageDeclaration {
             name,
-            parameters: body.parameters.clone(),
+            parameters: body.parameters.iter().map(|param| param.widen()).collect(),
             body: statements,
         }
     }
@@ -1236,7 +1228,7 @@ mod tests {
                         })
                     },
                 )
-                .entrypoint("Test", [("prefix", Ty::String)], Ty::Html, |t| {
+                .entrypoint("Test", [("prefix", Ty::String)], |t| {
                     let prefix = t.param("prefix");
                     let row = t.lambda([IrType::INT], |t, params| {
                         let text = t.string_concat([prefix, t.int_to_string(params[0])]);
@@ -1267,7 +1259,7 @@ mod tests {
                   }
                   v10
                 }
-                entrypoint fn Test@f1(prefix@v11: String) -> Html {
+                entrypoint Test@e0(prefix@v11: String) -> Html {
                   let v18: Int = 3
                   let v17: (Int) -> Html = fn(v12: Int) {
                     let v13: String = v12.to_string()
@@ -1336,7 +1328,7 @@ mod tests {
                         })
                     },
                 )
-                .entrypoint("Test", [("double", Ty::Bool)], Ty::Html, |t| {
+                .entrypoint("Test", [("double", Ty::Bool)], |t| {
                     let scale = t.lambda([IrType::INT], |t, params| {
                         t.match_(t.param("double"), |m| {
                             m.arm(Pat::True, |t, _| t.mul(params[0], t.int(2)));
@@ -1369,7 +1361,7 @@ mod tests {
                   }
                   v10
                 }
-                entrypoint fn Test@f1(double@v11: Bool) -> Html {
+                entrypoint Test@e0(double@v11: Bool) -> Html {
                   let v16: (Int) -> Int = fn(v12: Int) {
                     let v15: Int = match v11 {
                       true => {
@@ -1455,7 +1447,7 @@ mod tests {
                         })
                     },
                 )
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     let wrap = t.lambda([IrType::HTML], |t, params| t.element("b", [], params[0]));
                     t.call("Wrap", [t.int(2), wrap])
                 })
@@ -1481,7 +1473,7 @@ mod tests {
                   }
                   v9
                 }
-                entrypoint fn Test@f1() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v13: Int = 2
                   let v12: (Html) -> Html = fn(v10: Html) {
                     let v11: Html = element("b", {}, v10)
@@ -1538,12 +1530,12 @@ mod tests {
             Some(&DocumentShell::new(None, None)),
             expect![[r#"
                 -- flat --
-                entrypoint fn head@f0(title@v0: String) -> Html {
+                entrypoint head@e0(title@v0: String) -> Html {
                   let v1: Html = escape(v0)
                   let v3: Html = element("title", {}, v1)
                   v3
                 }
-                entrypoint fn body@f1(title@v4: String) -> Html {
+                entrypoint body@e1(title@v4: String) -> Html {
                   let v5: Html = escape(v4)
                   let v7: Html = element("h1", {}, v5)
                   v7
@@ -1579,7 +1571,7 @@ mod tests {
             None,
             expect![[r#"
                 -- flat --
-                entrypoint fn body@f0(id@v0: String, flag@v1: Bool) -> Html {
+                entrypoint body@e0(id@v0: String, flag@v1: Bool) -> Html {
                   let v5: Html = concat()
                   let v6: Html = element("input", {disabled, checked: v1}, v5)
                   let v8: Html = element("div", {class: "a<b", id: v0}, v6)
@@ -1621,7 +1613,7 @@ mod tests {
             None,
             expect![[r#"
                 -- flat --
-                entrypoint fn body@f0(items@v0: Array[String]) -> Html {
+                entrypoint body@e0(items@v0: Array[String]) -> Html {
                   let v1: Html = text("before")
                   let v6: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
@@ -1664,7 +1656,7 @@ mod tests {
             None,
             expect![[r#"
                 -- flat --
-                entrypoint fn body@f0() -> Html {
+                entrypoint body@e0() -> Html {
                   let v0: Html = text("Hello")
                   let v2: Html = element("p", {}, v0)
                   let v3: Html = text("World")
@@ -1698,7 +1690,7 @@ mod tests {
             None,
             expect![[r#"
                 -- flat --
-                entrypoint fn body@f0() -> Html {
+                entrypoint body@e0() -> Html {
                   let v0: Html = text("aaaaaaaaaaaaaaaaaaaaaaaaa")
                   let v1: Html = text("bbbbbbbbbbbbbbbbbbbbbbbbb")
                   let v3: Html = element("b", {}, v1)
@@ -1731,7 +1723,7 @@ mod tests {
             None,
             expect![[r#"
                 -- flat --
-                entrypoint fn body@f0(name@v0: String) -> Html {
+                entrypoint body@e0(name@v0: String) -> Html {
                   let v1: String = "a<"
                   let v3: String = ">b"
                   let v4: String = string_concat(v1, v0, v3)
@@ -1766,7 +1758,7 @@ mod tests {
             None,
             expect![[r#"
                 -- flat --
-                entrypoint fn body@f0(signed_in@v0: Bool, nickname@v1: Option[String]) -> Html {
+                entrypoint body@e0(signed_in@v0: Bool, nickname@v1: Option[String]) -> Html {
                   let v2: (Bool, Option[String]) = (v0, v1)
                   let v11: Html = match v2 {
                     (true, Some(v3: String)) => {
@@ -1965,7 +1957,7 @@ mod tests {
             None,
             expect![[r#"
                 -- flat --
-                entrypoint fn body@f0(signed_in@v0: Bool, nickname@v1: Option[String], count@v2: Int) -> Html {
+                entrypoint body@e0(signed_in@v0: Bool, nickname@v1: Option[String], count@v2: Int) -> Html {
                   let v3: (Bool, Option[String]) = (v0, v1)
                   let v6: String = match v3 {
                     (true, Some(v4: String)) => {
@@ -2101,7 +2093,7 @@ mod tests {
             None,
             expect![[r#"
                 -- flat --
-                entrypoint fn body@f0(session@v0: Session) -> Html {
+                entrypoint body@e0(session@v0: Session) -> Html {
                   let v12: Html = match v0 {
                     Session::SignedIn {user: User {name@v1: String, admin: true}} => {
                       let v2: Html = escape(v1)
@@ -2169,7 +2161,7 @@ mod tests {
             None,
             expect![[r#"
                 -- flat --
-                entrypoint fn body@f0(count@v0: Option[Int], exact@v1: Bool) -> Html {
+                entrypoint body@e0(count@v0: Option[Int], exact@v1: Bool) -> Html {
                   let v2: (Option[Int], Bool) = (v0, v1)
                   let v7: String = match v2 {
                     (Some(v3: Int), true) => {
@@ -2256,7 +2248,7 @@ mod tests {
                   }
                   v17
                 }
-                entrypoint fn body@f1(name@v0: String) -> Html {
+                entrypoint body@e0(name@v0: String) -> Html {
                   let v1: Int = 2
                   let v2: Html = escape(v0)
                   let v4: Html = element("b", {}, v2)
@@ -2301,7 +2293,6 @@ mod tests {
                 .entrypoint(
                     "Greeting",
                     [("name", Ty::option(Ty::String)), ("formal", Ty::Bool)],
-                    Ty::Html,
                     |t| {
                         let greeting = t.match_(t.param("name"), |m| {
                             m.arm(Pat::some(Pat::bind("n")), |t, arm| {
@@ -2319,7 +2310,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- flat --
-                entrypoint fn Greeting@f0(name@v0: Option[String], formal@v1: Bool) -> Html {
+                entrypoint Greeting@e0(name@v0: Option[String], formal@v1: Bool) -> Html {
                   let v6: Html = match v0 {
                     Some(v2: String) => {
                       let v3: Html = escape(v2)
@@ -2388,7 +2379,6 @@ mod tests {
                 .entrypoint(
                     "Items",
                     [("items", Ty::array(Ty::String)), ("n", Ty::Int)],
-                    Ty::Html,
                     |t| {
                         let _unused = t.text("never");
                         let data_x = t.int_to_string(t.add(t.param("n"), t.int(1)));
@@ -2405,7 +2395,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- flat --
-                entrypoint fn Items@f0(items@v0: Array[String], n@v1: Int) -> Html {
+                entrypoint Items@e0(items@v0: Array[String], n@v1: Int) -> Html {
                   let v3: Int = 1
                   let v4: Int = add(v1, v3)
                   let v5: String = v4.to_string()
@@ -2445,7 +2435,7 @@ mod tests {
                 .function("Wrap", [("content", Ty::Html)], Ty::Html, |t| {
                     t.element("div", [], t.param("content"))
                 })
-                .entrypoint("Test", [("label", Ty::String)], Ty::Html, |t| {
+                .entrypoint("Test", [("label", Ty::String)], |t| {
                     t.call(
                         "Wrap",
                         [t.html_concat(vec![
@@ -2458,7 +2448,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- flat --
-                entrypoint fn Test@f2(label@v5: String) -> Html {
+                entrypoint Test@e0(label@v5: String) -> Html {
                   let v11: Html = escape(v5)
                   let v12: Html = element("span", {}, v11)
                   let v7: Html = concat()

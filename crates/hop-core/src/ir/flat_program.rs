@@ -2,6 +2,7 @@ use std::fmt::{self, Write};
 
 use crate::display::{Indent, join};
 use crate::document::CheapString;
+use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
@@ -12,6 +13,7 @@ use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
+use crate::symbols::function_name::FunctionName;
 
 use super::ir_parameter::IrParameter;
 
@@ -20,7 +22,19 @@ use super::ir_parameter::IrParameter;
 pub struct FlatProgram {
     pub types: IrTypeDeclarations,
     pub functions: Vec<FlatFunctionDeclaration>,
+    pub entrypoints: Vec<FlatEntrypoint>,
     pub value_ids: ValueIdCounter,
+}
+
+/// An externally invoked declaration that renders Html. Entrypoints are
+/// retained even when no function calls them, and cannot be called from
+/// within the program.
+#[derive(Debug, Clone)]
+pub struct FlatEntrypoint {
+    pub id: EntrypointId,
+    pub name: FunctionName,
+    pub parameters: Vec<IrParameter<IrDataType>>,
+    pub body: FlatHtmlBlock,
 }
 
 /// A function that returns Html renders markup, and any other function
@@ -36,9 +50,6 @@ pub enum FlatFunctionDeclaration {
 #[derive(Debug, Clone)]
 pub struct FlatDataFunction {
     pub function: IrFunction,
-    /// Whether the function is called from outside the program, so it is kept
-    /// even when nothing in the program calls it.
-    pub entrypoint: bool,
     pub parameters: Vec<IrParameter<IrValueType>>,
     pub return_type: IrDataType,
     pub body: FlatDataBlock,
@@ -48,9 +59,6 @@ pub struct FlatDataFunction {
 #[derive(Debug, Clone)]
 pub struct FlatHtmlFunction {
     pub function: IrFunction,
-    /// Whether the function is called from outside the program, so it is kept
-    /// even when nothing in the program calls it.
-    pub entrypoint: bool,
     pub parameters: Vec<IrParameter<IrType>>,
     pub body: FlatHtmlBlock,
 }
@@ -63,20 +71,15 @@ impl FlatFunctionDeclaration {
         }
     }
 
-    pub fn entrypoint(&self) -> bool {
-        match self {
-            FlatFunctionDeclaration::Data(function) => function.entrypoint,
-            FlatFunctionDeclaration::Html(function) => function.entrypoint,
-        }
-    }
-
     /// The parameters, those of a function that returns a value widened to
     /// IrType.
     pub fn parameters(&self) -> Vec<IrParameter<IrType>> {
         match self {
-            FlatFunctionDeclaration::Data(function) => {
-                function.parameters.iter().map(IrParameter::widen).collect()
-            }
+            FlatFunctionDeclaration::Data(function) => function
+                .parameters
+                .iter()
+                .map(|param| param.widen())
+                .collect(),
             FlatFunctionDeclaration::Html(function) => function.parameters.clone(),
         }
     }
@@ -348,13 +351,11 @@ impl fmt::Display for FlatHtmlOp {
 
 impl fmt::Display for FlatFunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let keyword = |entrypoint| if entrypoint { "entrypoint fn" } else { "fn" };
         match self {
             FlatFunctionDeclaration::Data(function) => {
                 write!(
                     f,
-                    "{} {}({}) -> {} {{",
-                    keyword(function.entrypoint),
+                    "fn {}({}) -> {} {{",
                     function.function,
                     join(&function.parameters, ", "),
                     function.return_type
@@ -364,8 +365,7 @@ impl fmt::Display for FlatFunctionDeclaration {
             FlatFunctionDeclaration::Html(function) => {
                 write!(
                     f,
-                    "{} {}({}) -> Html {{",
-                    keyword(function.entrypoint),
+                    "fn {}({}) -> Html {{",
                     function.function,
                     join(&function.parameters, ", ")
                 )?;
@@ -376,10 +376,27 @@ impl fmt::Display for FlatFunctionDeclaration {
     }
 }
 
+impl fmt::Display for FlatEntrypoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "entrypoint {}@e{}({}) -> Html {{",
+            self.name,
+            self.id,
+            join(&self.parameters, ", ")
+        )?;
+        write!(Indent::new(f), "\n{}", self.body)?;
+        writeln!(f, "\n}}")
+    }
+}
+
 impl fmt::Display for FlatProgram {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for function in &self.functions {
             write!(f, "{function}")?;
+        }
+        for entrypoint in &self.entrypoints {
+            write!(f, "{entrypoint}")?;
         }
         Ok(())
     }

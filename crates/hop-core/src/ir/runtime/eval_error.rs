@@ -1,15 +1,15 @@
 use thiserror::Error;
 
-use crate::ir::ir_function::IrFunction;
+use crate::symbols::function_name::FunctionName;
 use crate::symbols::{attribute_name::AttributeName, type_name::TypeName};
 
 #[derive(Debug, Error)]
 pub enum EvalError {
     #[error("Page '{page}' not found in program")]
     PageNotFound { page: TypeName },
-    #[error("Missing required parameter '{param}' for function '{function}'")]
+    #[error("Missing required parameter '{param}' for entrypoint '{entrypoint}'")]
     MissingParameter {
-        function: IrFunction,
+        entrypoint: FunctionName,
         param: AttributeName,
     },
     #[error("Program exceeded the call depth limit of {limit}")]

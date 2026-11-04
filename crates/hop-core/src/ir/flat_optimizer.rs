@@ -34,8 +34,8 @@ mod tests {
             let before_program = program.clone();
             let before: Vec<Option<String>> = entrypoint_args
                 .iter()
-                .map(|(function, args)| {
-                    match evaluate_entrypoint(&program, function, args.clone())
+                .map(|(entrypoint, args)| {
+                    match evaluate_entrypoint(&program, *entrypoint, args.clone())
                         .map(Value::into_markup)
                     {
                         Ok(output) => Some(output),
@@ -53,17 +53,17 @@ mod tests {
             let program = optimize_flat(program);
             flat_lint::lint(&program).unwrap();
 
-            for ((function, args), before) in entrypoint_args.iter().zip(&before) {
+            for ((entrypoint, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit a limit has no output to preserve.
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_entrypoint(&program, function, args.clone())
+                let after = evaluate_entrypoint(&program, *entrypoint, args.clone())
                     .unwrap()
                     .into_markup();
                 assert_eq!(
                     before, &after,
-                    "entrypoint {function}\n-- before --\n{before_program}\n-- after --\n{program}"
+                    "entrypoint {entrypoint}\n-- before --\n{before_program}\n-- after --\n{program}"
                 );
             }
             Ok(())
@@ -93,7 +93,7 @@ mod tests {
                         t.element("ul", [], rows)
                     },
                 )
-                .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
+                .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     let row = t.lambda([IrType::STRING], |t, params| {
                         t.element("li", [], t.escape(params[0]))
                     });
@@ -111,7 +111,7 @@ mod tests {
                   let v5: Html = element("ul", {}, v4)
                   v5
                 }
-                entrypoint fn Test@f1(items@v6: Array[String]) -> Html {
+                entrypoint Test@e0(items@v6: Array[String]) -> Html {
                   let v10: (String) -> Html = fn(v7: String) {
                     let v8: Html = escape(v7)
                     let v9: Html = element("li", {}, v8)
@@ -122,7 +122,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f1(items@v6: Array[String]) -> Html {
+                entrypoint Test@e0(items@v6: Array[String]) -> Html {
                   let v14: Html = for v12: String in v6 {
                     let v16: Html = escape(v12)
                     let v17: Html = element("li", {}, v16)
@@ -139,7 +139,7 @@ mod tests {
     fn should_leave_only_the_computations_an_entrypoint_renders() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Items", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
+                .entrypoint("Items", [("items", Ty::array(Ty::String))], |t| {
                     let _unused = t.str("value");
                     t.element(
                         "ul",
@@ -153,7 +153,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Items@f0(items@v0: Array[String]) -> Html {
+                entrypoint Items@e0(items@v0: Array[String]) -> Html {
                   let v1: String = "value"
                   let v5: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
@@ -165,7 +165,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Items@f0(items@v0: Array[String]) -> Html {
+                entrypoint Items@e0(items@v0: Array[String]) -> Html {
                   let v5: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
                     let v4: Html = element("li", {}, v3)
@@ -182,7 +182,7 @@ mod tests {
     fn should_select_an_arm_and_drop_what_the_match_read() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     let flag = t.bool(true);
                     t.html_concat([t.match_(flag, |m| {
                         m.arm(Pat::True, |t, _| t.html_concat(vec![t.text("yes")]));
@@ -193,7 +193,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: Bool = true
                   let v4: Html = match v0 {
                     true => {
@@ -211,7 +211,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v1: Html = text("yes")
                   v1
                 }
@@ -226,7 +226,7 @@ mod tests {
                 .function("double", [("x", Ty::Int)], Ty::Int, |t| {
                     t.add(t.param("x"), t.param("x"))
                 })
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     t.escape(t.int_to_string(t.call("double", [t.int(21)])))
                 })
                 .build()
@@ -237,7 +237,7 @@ mod tests {
                   let v1: Int = add(v0, v0)
                   v1
                 }
-                entrypoint fn Test@f1() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v2: Int = 21
                   let v3: Int = double@f0(v2)
                   let v4: String = v3.to_string()
@@ -246,7 +246,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f1() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v5: Html = text("42")
                   v5
                 }

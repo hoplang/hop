@@ -8,9 +8,11 @@ use crate::hop::typing::{
     TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource, TypedPageDeclaration,
     TypedParameter, TypedPattern, TypedRecordUpdateField,
 };
+use crate::ir::entrypoint_id::EntrypointIdCounter;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
-    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
+    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatEntrypoint,
+    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp,
+    FlatProgram,
 };
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::ir_binder::IrBinder;
@@ -37,7 +39,7 @@ use super::ir_parameter::IrParameter;
 
 /// Compile the pages and the functions they reach.
 ///
-/// Flat has no pages. A page compiles to an entrypoint function for its head, if
+/// Flat has no pages. A page compiles to an entrypoint for its head, if
 /// it has one, and one for its body, and the pages that point at them are
 /// returned beside the program.
 ///
@@ -103,20 +105,21 @@ pub fn typed_to_flat(
         next += 1;
     }
     functions.sort_by_key(|(index, _)| *index);
-    let mut functions: Vec<FlatFunctionDeclaration> =
+    let functions: Vec<FlatFunctionDeclaration> =
         functions.into_iter().map(|(_, decl)| decl).collect();
 
-    // The functions of the pages come last, numbered after every function
-    // a page reaches.
+    let mut entrypoint_ids = EntrypointIdCounter::new();
+    let mut entrypoints = Vec::new();
     let pages = pages
         .into_iter()
-        .map(|page| page.declare(&mut function_ids, &mut functions))
+        .map(|page| page.declare(&mut entrypoint_ids, &mut entrypoints))
         .collect();
 
     (
         FlatProgram {
             types: lower_type_declarations(registry),
             functions,
+            entrypoints,
             value_ids,
         },
         pages,
@@ -139,44 +142,36 @@ struct Specialization {
 /// functions: the parameters and the body of each.
 struct CompiledPage {
     name: TypeName,
-    head: Option<(Vec<IrParameter<IrType>>, FlatHtmlBlock)>,
-    body: (Vec<IrParameter<IrType>>, FlatHtmlBlock),
+    head: Option<(Vec<IrParameter<IrDataType>>, FlatHtmlBlock)>,
+    body: (Vec<IrParameter<IrDataType>>, FlatHtmlBlock),
 }
 
 impl CompiledPage {
-    /// Declare the head and the body as entrypoint functions, appended to
-    /// `functions`, and point the page at them.
+    /// Declare the head and the body as entrypoints and point the page at them.
     fn declare(
         self,
-        function_ids: &mut FunctionIdCounter,
-        functions: &mut Vec<FlatFunctionDeclaration>,
+        entrypoint_ids: &mut EntrypointIdCounter,
+        entrypoints: &mut Vec<FlatEntrypoint>,
     ) -> IrPage {
-        let mut declare = |function: IrFunction, (parameters, body)| {
-            functions.push(FlatFunctionDeclaration::Html(FlatHtmlFunction {
-                function: function.clone(),
-                entrypoint: true,
+        let mut declare = |name: &str, (parameters, body)| {
+            let id = entrypoint_ids.next();
+            entrypoints.push(FlatEntrypoint {
+                id,
+                name: FunctionName::new(CheapString::new(name.to_string()))
+                    .expect("a page member name is valid"),
                 parameters,
                 body,
-            }));
-            function
+            });
+            id
         };
-        let head = self
-            .head
-            .map(|head| declare(page_function(function_ids, "head"), head));
-        let body = declare(page_function(function_ids, "body"), self.body);
+        let head = self.head.map(|head| declare("head", head));
+        let body = declare("body", self.body);
         IrPage {
             name: self.name,
             head,
             body,
         }
     }
-}
-
-/// A function that renders a page member, named after the member.
-fn page_function(function_ids: &mut FunctionIdCounter, member: &str) -> IrFunction {
-    let name = FunctionName::new(CheapString::new(member.to_string()))
-        .expect("a page member name is a valid function name");
-    IrFunction::new(function_ids.next(), name)
 }
 
 struct Compiler<'a> {
@@ -267,13 +262,11 @@ impl<'a> Compiler<'a> {
         let declaration = match &decl.return_type {
             Type::Html(_) => FlatFunctionDeclaration::Html(FlatHtmlFunction {
                 function,
-                entrypoint: false,
                 parameters,
                 body: self.compile_html_block(&decl.body),
             }),
             Type::Data(return_type) => FlatFunctionDeclaration::Data(FlatDataFunction {
                 function,
-                entrypoint: false,
                 parameters: parameters
                     .into_iter()
                     .map(|param| {
@@ -304,13 +297,13 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    /// Compile the head or the body of a page as the body of a function
+    /// Compile the head or the body of a page as an entrypoint
     /// that declares the page's parameters, each with a name of its own.
     fn compile_page_member(
         &mut self,
         params: &[TypedParameter],
         expr: &TypedExpr,
-    ) -> (Vec<IrParameter<IrType>>, FlatHtmlBlock) {
+    ) -> (Vec<IrParameter<IrDataType>>, FlatHtmlBlock) {
         self.push_scope();
         let parameters = params
             .iter()
@@ -318,7 +311,10 @@ impl<'a> Compiler<'a> {
                 name: param.var_name.clone().into(),
                 binder: IrBinder {
                     var: self.bind(&param.var_name),
-                    typ: lower_type(self.registry, &param.var_type),
+                    typ: match &param.var_type {
+                        Type::Data(typ) => lower_data_type(self.registry, typ),
+                        _ => panic!("a page parameter must have a data type"),
+                    },
                 },
             })
             .collect();
@@ -1085,18 +1081,18 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn head@f0() -> Html {
+                entrypoint head@e0() -> Html {
                   let v0: Html = text("Hi")
                   let v1: Html = concat(v0)
                   let v2: Html = element("title", {}, v1)
                   v2
                 }
-                entrypoint fn body@f1() -> Html {
+                entrypoint body@e1() -> Html {
                   let v3: Html = text("Hello World")
                   let v4: Html = concat(v3)
                   v4
                 }
-                page Test: head@f0, body@f1
+                page Test: e0, e1
             "#]],
         );
     }
@@ -1112,13 +1108,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0(name@v0: String) -> Html {
+                entrypoint body@e0(name@v0: String) -> Html {
                   let v1: Html = text("Hello ")
                   let v2: Html = escape(v0)
                   let v3: Html = concat(v1, v2)
                   v3
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1134,13 +1130,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0() -> Html {
+                entrypoint body@e0() -> Html {
                   let v0: Html = text("Content")
                   let v1: Html = concat(v0)
                   let v2: Html = element("div", {}, v1)
                   v2
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1160,7 +1156,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0(items@v0: Array[String]) -> Html {
+                entrypoint body@e0(items@v0: Array[String]) -> Html {
                   let v5: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
                     let v3: Html = concat(v2)
@@ -1171,7 +1167,7 @@ mod tests {
                   let v7: Html = element("ul", {}, v6)
                   v7
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1196,7 +1192,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0(items@v0: Array[String], name@v1: Option[String]) -> Html {
+                entrypoint body@e0(items@v0: Array[String], name@v1: Option[String]) -> Html {
                   let v6: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
                     let v4: Html = concat(v3)
@@ -1221,7 +1217,7 @@ mod tests {
                   let v16: Html = element("ul", {}, v15)
                   v16
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1237,7 +1233,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0() -> Html {
+                entrypoint body@e0() -> Html {
                   let v0: String = "base"
                   let v1: String = "test"
                   let v2: Html = text("Content")
@@ -1245,7 +1241,7 @@ mod tests {
                   let v4: Html = element("div", {class: v0, id: v1}, v3)
                   v4
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1261,14 +1257,14 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0(cls@v0: String) -> Html {
+                entrypoint body@e0(cls@v0: String) -> Html {
                   let v1: String = "base"
                   let v2: Html = text("Content")
                   let v3: Html = concat(v2)
                   let v4: Html = element("div", {class: v1, data-value: v0}, v3)
                   v4
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1287,7 +1283,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0(flag@v0: Bool) -> Html {
+                entrypoint body@e0(flag@v0: Bool) -> Html {
                   let v5: Html = match v0 {
                     true => {
                       let v1: Html = text("yes")
@@ -1302,7 +1298,7 @@ mod tests {
                   }
                   v5
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1327,7 +1323,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0(a@v0: Bool, b@v1: Bool) -> Html {
+                entrypoint body@e0(a@v0: Bool, b@v1: Bool) -> Html {
                   let v4: Bool = match v0 {
                     true => {
                       let v2: Bool = not(v1)
@@ -1373,7 +1369,7 @@ mod tests {
                   let v16: Html = concat(v8, v15)
                   v16
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1398,7 +1394,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0(signed_in@v0: Bool, status@v1: Status) -> Html {
+                entrypoint body@e0(signed_in@v0: Bool, status@v1: Status) -> Html {
                   let v2: (Bool, Status) = (v0, v1)
                   let v13: Html = match v2 {
                     (true, Status::Away {since@v3: String}) => {
@@ -1422,7 +1418,7 @@ mod tests {
                   }
                   v13
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1438,12 +1434,12 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0() -> Html {
+                entrypoint body@e0() -> Html {
                   let v0: Html = concat()
                   let v1: Html = element("br", {}, v0)
                   v1
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1464,7 +1460,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0(user@v0: User) -> Html {
+                entrypoint body@e0(user@v0: User) -> Html {
                   let v1: String = "Jane"
                   let v2: Int = v0.age
                   let v3: User = {name: v1, age: v2}
@@ -1473,7 +1469,7 @@ mod tests {
                   let v6: Html = concat(v5)
                   v6
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1498,7 +1494,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint fn body@f0(app@v0: App) -> Html {
+                entrypoint body@e0(app@v0: App) -> Html {
                   let v1: State = v0.state
                   let v2: String = v1.query
                   let v3: Int = 1
@@ -1508,7 +1504,7 @@ mod tests {
                   let v7: Html = concat(v6)
                   v7
                 }
-                page Test: body@f0
+                page Test: e0
             "#]],
         );
     }
@@ -1546,7 +1542,7 @@ mod tests {
                   let v16: Html = element("button", {class: v12, disabled: v13}, v15)
                   v16
                 }
-                entrypoint fn body@f2() -> Html {
+                entrypoint body@e0() -> Html {
                   let v0: String = "a"
                   let v2: String = "b"
                   let v3: Bool = true
@@ -1557,7 +1553,7 @@ mod tests {
                   let v7: Html = concat(v1, v4, v6)
                   v7
                 }
-                page Test: body@f2
+                page Test: e0
             "#]],
         );
     }
@@ -1597,13 +1593,13 @@ mod tests {
                   let v6: Html = Card@f1(v3, v5, v4)
                   v6
                 }
-                entrypoint fn body@f2() -> Html {
+                entrypoint body@e0() -> Html {
                   let v0: String = "Hi"
                   let v1: String = "wide"
                   let v2: Html = Panel@f0(v0, v1)
                   v2
                 }
-                page Test: body@f2
+                page Test: e0
             "#]],
         );
     }
@@ -1671,13 +1667,13 @@ mod tests {
                   let v26: Html = element("div", {class: v16}, v25)
                   v26
                 }
-                entrypoint fn body@f2() -> Html {
+                entrypoint body@e0() -> Html {
                   let v0: Int = 2
                   let v1: String = "outer"
                   let v2: Html = Nest@f0(v0, v1)
                   v2
                 }
-                page Test: body@f2
+                page Test: e0
             "#]],
         );
     }
@@ -1705,13 +1701,13 @@ mod tests {
                   let v7: Html = element("button", {data-x: v3, aria-label: v4}, v6)
                   v7
                 }
-                entrypoint fn body@f1() -> Html {
+                entrypoint body@e0() -> Html {
                   let v0: String = "1"
                   let v1: String = "go"
                   let v2: Html = Button@f0(v0, v1)
                   v2
                 }
-                page Test: body@f1
+                page Test: e0
             "#]],
         );
     }
@@ -1746,11 +1742,11 @@ mod tests {
                   let v3: Html = element("p", {}, v2)
                   v3
                 }
-                entrypoint fn body@f1() -> Html {
+                entrypoint body@e0() -> Html {
                   let v0: Html = Used@f0()
                   v0
                 }
-                page Test: body@f1
+                page Test: e0
             "#]],
         );
     }
@@ -1806,14 +1802,14 @@ mod tests {
                   }
                   v20
                 }
-                entrypoint fn body@f2(name@v0: String) -> Html {
+                entrypoint body@e0(name@v0: String) -> Html {
                   let v1: String = label@f0(v0)
                   let v2: Html = escape(v1)
                   let v3: Html = concat(v2)
                   let v4: Html = element("p", {}, v3)
                   v4
                 }
-                page Test: body@f2
+                page Test: e0
             "#]],
         );
     }
@@ -1849,7 +1845,7 @@ mod tests {
                   let v21: Html = element("ul", {}, v20)
                   v21
                 }
-                entrypoint fn body@f1(labels@v0: Array[String], scale@v1: Int) -> Html {
+                entrypoint body@e0(labels@v0: Array[String], scale@v1: Int) -> Html {
                   let v4: (Int) -> Int = fn(v2: Int) {
                     let v3: Int = mul(v2, v1)
                     v3
@@ -1867,7 +1863,7 @@ mod tests {
                   let v14: Html = Rows@f0(v0, v13)
                   v14
                 }
-                page Test: body@f1
+                page Test: e0
             "#]],
         );
     }
@@ -1909,7 +1905,7 @@ mod tests {
                   }
                   v19
                 }
-                entrypoint fn body@f1(n@v0: Int) -> Html {
+                entrypoint body@e0(n@v0: Int) -> Html {
                   let v3: (Int) -> Int = fn(v1: Int) {
                     let v2: Int = add(v1, v0)
                     v2
@@ -1922,7 +1918,7 @@ mod tests {
                   let v9: Html = element("p", {}, v8)
                   v9
                 }
-                page Test: body@f1
+                page Test: e0
             "#]],
         );
     }
@@ -1972,7 +1968,7 @@ mod tests {
                   }
                   v18
                 }
-                entrypoint fn body@f1(flag@v0: Bool) -> Html {
+                entrypoint body@e0(flag@v0: Bool) -> Html {
                   let v5: String = match v0 {
                     true => {
                       let v1: Int = 1
@@ -1990,7 +1986,7 @@ mod tests {
                   let v8: Html = element("p", {}, v7)
                   v8
                 }
-                page Test: body@f1
+                page Test: e0
             "#]],
         );
     }
@@ -2038,7 +2034,7 @@ mod tests {
                   let v8: Html = Callout@f1(v6, v7)
                   v8
                 }
-                entrypoint fn body@f2(open@v0: Bool) -> Html {
+                entrypoint body@e0(open@v0: Bool) -> Html {
                   let v1: Html = text("x")
                   let v2: Html = concat(v1)
                   let v3: Html = element("b", {}, v2)
@@ -2046,7 +2042,7 @@ mod tests {
                   let v5: Html = Tip@f0(v0, v4)
                   v5
                 }
-                page Test: body@f2
+                page Test: e0
             "#]],
         );
     }

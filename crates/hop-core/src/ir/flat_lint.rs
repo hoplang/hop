@@ -20,8 +20,6 @@ pub enum FlatLintError {
     /// A function reads an Html value when the path has already read it,
     /// or in a loop or lambda body that the value is bound outside of.
     HtmlNotLive,
-    /// An entrypoint takes a closure.
-    EntrypointTakesClosure,
     /// A name is bound a second time.
     BoundTwice,
     /// A name is read before it is bound.
@@ -70,6 +68,9 @@ fn check_html_affine(program: &FlatProgram) -> Result<(), FlatLintError> {
         }
         collect_html(&function.body, &mut html);
     }
+    for entrypoint in &program.entrypoints {
+        collect_html(&entrypoint.body, &mut html);
+    }
     for function in html_functions {
         let mut scope = vec![false; html.len()];
         for param in &function.parameters {
@@ -78,6 +79,9 @@ fn check_html_affine(program: &FlatProgram) -> Result<(), FlatLintError> {
             }
         }
         check_block(&function.body, scope, &html)?;
+    }
+    for entrypoint in &program.entrypoints {
+        check_block(&entrypoint.body, vec![false; html.len()], &html)?;
     }
     Ok(())
 }
@@ -166,17 +170,6 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatLintError> {
         lambdas: 0,
     };
     for function in &program.functions {
-        let parameters = function.parameters();
-        if function.entrypoint()
-            && parameters.iter().any(|param| {
-                matches!(
-                    param.binder.typ,
-                    IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_))
-                )
-            })
-        {
-            return Err(FlatLintError::EntrypointTakesClosure);
-        }
         match function {
             FlatFunctionDeclaration::Data(data) => {
                 for param in &data.parameters {
@@ -192,6 +185,12 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatLintError> {
                 checker.html_block(&html.body, BoundType::Html)?;
             }
         }
+    }
+    for entrypoint in &program.entrypoints {
+        for param in &entrypoint.parameters {
+            checker.bind(param.binder.var, BoundType::Data(&param.binder.typ))?;
+        }
+        checker.html_block(&entrypoint.body, BoundType::Html)?;
     }
     Ok(())
 }
@@ -722,7 +721,7 @@ mod tests {
     #[test]
     fn should_reject_a_closure_that_reads_html_bound_outside_it() {
         let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], Ty::Html, |t| {
+            .entrypoint("Test", [], |t| {
                 let outer = t.text("x");
                 let closure = t.lambda([], |_, _| outer);
                 t.apply(closure, [])
@@ -735,7 +734,7 @@ mod tests {
     #[test]
     fn should_reject_a_match_that_produces_a_closure() {
         let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [("double", Ty::Bool)], Ty::Html, |t| {
+            .entrypoint("Test", [("double", Ty::Bool)], |t| {
                 let scale = t.match_(t.param("double"), |m| {
                     m.arm(Pat::True, |t, _| {
                         t.lambda([IrType::INT], |t, params| t.add(params[0], params[0]))
@@ -753,23 +752,9 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_an_entrypoint_that_takes_a_closure() {
-        let error = FlatProgramBuilder::new()
-            .entrypoint_with_types(
-                "Test",
-                [("row", IrType::html_function([]))],
-                IrType::HTML,
-                |t| t.apply(t.param("row"), []),
-            )
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatLintError::EntrypointTakesClosure);
-    }
-
-    #[test]
     fn should_reject_an_application_with_the_wrong_arguments() {
         let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], Ty::Html, |t| {
+            .entrypoint("Test", [], |t| {
                 let double = t.lambda([IrType::INT], |t, params| t.add(params[0], params[0]));
                 let doubled = t.apply(double, [t.str("one")]);
                 t.escape(t.int_to_string(doubled))
@@ -782,7 +767,7 @@ mod tests {
     #[test]
     fn should_reject_an_op_with_ill_typed_operands() {
         let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], Ty::Html, |t| {
+            .entrypoint("Test", [], |t| {
                 let sum = t.add(t.int(1), t.str("one"));
                 t.escape(t.int_to_string(sum))
             })
@@ -794,7 +779,7 @@ mod tests {
     #[test]
     fn should_reject_a_block_of_the_wrong_type() {
         let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], Ty::Html, |t| t.int(1))
+            .entrypoint("Test", [], |t| t.int(1))
             .build()
             .unwrap_err();
         assert_eq!(error, FlatLintError::BlockOfWrongType);
@@ -806,7 +791,7 @@ mod tests {
             .function("show", [("n", Ty::Int)], Ty::Html, |t| {
                 t.escape(t.int_to_string(t.param("n")))
             })
-            .entrypoint("Test", [], Ty::Html, |t| t.call("show", [t.str("one")]))
+            .entrypoint("Test", [], |t| t.call("show", [t.str("one")]))
             .build()
             .unwrap_err();
         assert_eq!(error, FlatLintError::IllTypedBinding);
@@ -815,7 +800,7 @@ mod tests {
     #[test]
     fn should_reject_a_match_where_no_arm_matches_some_value() {
         let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
+            .entrypoint("Test", [("flag", Ty::Bool)], |t| {
                 t.match_(t.param("flag"), |m| {
                     m.arm(Pat::True, |t, _| t.text("yes"));
                 })
@@ -828,7 +813,7 @@ mod tests {
     #[test]
     fn should_reject_a_match_with_a_shadowed_arm() {
         let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
+            .entrypoint("Test", [("flag", Ty::Bool)], |t| {
                 t.match_(t.param("flag"), |m| {
                     m.arm(Pat::Wildcard, |t, _| t.text("any"));
                     m.arm(Pat::False, |t, _| t.text("no"));

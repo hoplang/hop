@@ -2,8 +2,9 @@ use std::collections::HashSet;
 
 use crate::hop::typing::Pattern;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatFunctionDeclaration,
-    FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp, FlatProgram,
+    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatEntrypoint,
+    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp,
+    FlatProgram,
 };
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_lambda::IrLambda;
@@ -36,6 +37,14 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
         })
         .collect();
     FlatProgram {
+        entrypoints: program
+            .entrypoints
+            .into_iter()
+            .map(|entrypoint| FlatEntrypoint {
+                body: eliminate_html(entrypoint.body, &mut HashSet::new()),
+                ..entrypoint
+            })
+            .collect(),
         types: program.types,
         functions,
         value_ids: program.value_ids,
@@ -184,8 +193,8 @@ mod tests {
             let before_program = program.clone();
             let before: Vec<Option<String>> = entrypoint_args
                 .iter()
-                .map(|(function, args)| {
-                    match evaluate_entrypoint(&program, function, args.clone())
+                .map(|(entrypoint, args)| {
+                    match evaluate_entrypoint(&program, *entrypoint, args.clone())
                         .map(Value::into_markup)
                     {
                         Ok(output) => Some(output),
@@ -202,17 +211,17 @@ mod tests {
 
             let program = eliminate_dead_bindings(program);
 
-            for ((function, args), before) in entrypoint_args.iter().zip(&before) {
+            for ((entrypoint, args), before) in entrypoint_args.iter().zip(&before) {
                 // An entrypoint that hit a limit has no output to preserve.
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_entrypoint(&program, function, args.clone())
+                let after = evaluate_entrypoint(&program, *entrypoint, args.clone())
                     .unwrap()
                     .into_markup();
                 assert_eq!(
                     before, &after,
-                    "entrypoint {function}\n-- before --\n{before_program}\n-- after --\n{program}"
+                    "entrypoint {entrypoint}\n-- before --\n{before_program}\n-- after --\n{program}"
                 );
             }
             Ok(())
@@ -229,7 +238,7 @@ mod tests {
     fn should_drop_a_value_nothing_reads() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], Ty::Html, |t| {
+                .entrypoint("Test", [], |t| {
                     let _unused = t.str("value");
                     t.text("Hello")
                 })
@@ -237,14 +246,14 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v0: String = "value"
                   let v1: Html = text("Hello")
                   v1
                 }
 
                 -- after --
-                entrypoint fn Test@f0() -> Html {
+                entrypoint Test@e0() -> Html {
                   let v1: Html = text("Hello")
                   v1
                 }
@@ -257,7 +266,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("f", [], Ty::Int, |t| t.call("f", []))
-                .entrypoint("Test", [("flag", Ty::Bool)], Ty::Html, |t| {
+                .entrypoint("Test", [("flag", Ty::Bool)], |t| {
                     let _unused = t.match_(t.param("flag"), |m| {
                         m.arm(Pat::True, |t, _| t.call("f", []));
                         m.arm(Pat::False, |t, _| t.int(0));
@@ -272,7 +281,7 @@ mod tests {
                   let v0: Int = f@f0()
                   v0
                 }
-                entrypoint fn Test@f1(flag@v1: Bool) -> Html {
+                entrypoint Test@e0(flag@v1: Bool) -> Html {
                   let v4: Int = match v1 {
                     true => {
                       let v2: Int = f@f0()
@@ -292,7 +301,7 @@ mod tests {
                   let v0: Int = f@f0()
                   v0
                 }
-                entrypoint fn Test@f1(flag@v1: Bool) -> Html {
+                entrypoint Test@e0(flag@v1: Bool) -> Html {
                   let v5: Html = text("Hello")
                   v5
                 }
@@ -304,14 +313,14 @@ mod tests {
     fn should_unbind_an_unused_loop_variable() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
+                .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     t.html_for(t.param("items"), |t, _| t.text("."))
                 })
                 .build()
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(items@v0: Array[String]) -> Html {
+                entrypoint Test@e0(items@v0: Array[String]) -> Html {
                   let v3: Html = for v1: String in v0 {
                     let v2: Html = text(".")
                     v2
@@ -320,7 +329,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0(items@v0: Array[String]) -> Html {
+                entrypoint Test@e0(items@v0: Array[String]) -> Html {
                   let v3: Html = for _ in v0 {
                     let v2: Html = text(".")
                     v2
@@ -335,7 +344,7 @@ mod tests {
     fn should_unbind_an_unused_option_binding() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [("name", Ty::option(Ty::String))], Ty::Html, |t| {
+                .entrypoint("Test", [("name", Ty::option(Ty::String))], |t| {
                     t.match_(t.param("name"), |m| {
                         m.arm(Pat::some(Pat::bind("n")), |t, _| t.text("some"));
                         m.arm(Pat::None, |t, _| t.text("none"));
@@ -345,7 +354,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint fn Test@f0(name@v0: Option[String]) -> Html {
+                entrypoint Test@e0(name@v0: Option[String]) -> Html {
                   let v4: Html = match v0 {
                     Some(v1: String) => {
                       let v2: Html = text("some")
@@ -360,7 +369,7 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint fn Test@f0(name@v0: Option[String]) -> Html {
+                entrypoint Test@e0(name@v0: Option[String]) -> Html {
                   let v4: Html = match v0 {
                     Some(_) => {
                       let v2: Html = text("some")
