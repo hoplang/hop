@@ -8,13 +8,14 @@ use crate::hop::typing::{
     TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource, TypedPageDeclaration,
     TypedParameter, TypedPattern, TypedRecordUpdateField,
 };
-use crate::ir::entrypoint_id::EntrypointIdCounter;
+use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
     FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatEntrypoint,
     FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp,
     FlatProgram,
 };
 use crate::ir::function_id::FunctionIdCounter;
+use crate::ir::index_vec::IndexVec;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
@@ -108,11 +109,10 @@ pub fn typed_to_flat(
     let functions: Vec<FlatFunctionDeclaration> =
         functions.into_iter().map(|(_, decl)| decl).collect();
 
-    let mut entrypoint_ids = EntrypointIdCounter::new();
-    let mut entrypoints = Vec::new();
+    let mut entrypoints = IndexVec::new();
     let pages = pages
         .into_iter()
-        .map(|page| page.declare(&mut entrypoint_ids, &mut entrypoints))
+        .map(|page| page.declare(&mut entrypoints))
         .collect();
 
     (
@@ -148,21 +148,14 @@ struct CompiledPage {
 
 impl CompiledPage {
     /// Declare the head and the body as entrypoints and point the page at them.
-    fn declare(
-        self,
-        entrypoint_ids: &mut EntrypointIdCounter,
-        entrypoints: &mut Vec<FlatEntrypoint>,
-    ) -> IrPage {
+    fn declare(self, entrypoints: &mut IndexVec<EntrypointId, FlatEntrypoint>) -> IrPage {
         let mut declare = |name: &str, (parameters, body)| {
-            let id = entrypoint_ids.next();
             entrypoints.push(FlatEntrypoint {
-                id,
                 name: FunctionName::new(CheapString::new(name.to_string()))
                     .expect("a page member name is valid"),
                 parameters,
                 body,
-            });
-            id
+            })
         };
         let head = self.head.map(|head| declare("head", head));
         let body = declare("body", self.body);

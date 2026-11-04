@@ -3,6 +3,7 @@ use std::fmt::{self, Write};
 use crate::display::{Indent, join};
 use crate::document::CheapString;
 use crate::ir::entrypoint_id::EntrypointId;
+use crate::ir::index_vec::IndexVec;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
@@ -17,36 +18,27 @@ use crate::symbols::function_name::FunctionName;
 
 use super::ir_parameter::IrParameter;
 
-/// A Flat program.
 #[derive(Debug, Clone)]
 pub struct FlatProgram {
     pub types: IrTypeDeclarations,
     pub functions: Vec<FlatFunctionDeclaration>,
-    pub entrypoints: Vec<FlatEntrypoint>,
+    pub entrypoints: IndexVec<EntrypointId, FlatEntrypoint>,
     pub value_ids: ValueIdCounter,
 }
 
-/// An externally invoked declaration that renders Html. Entrypoints are
-/// retained even when no function calls them, and cannot be called from
-/// within the program.
 #[derive(Debug, Clone)]
 pub struct FlatEntrypoint {
-    pub id: EntrypointId,
     pub name: FunctionName,
     pub parameters: Vec<IrParameter<IrDataType>>,
     pub body: FlatHtmlBlock,
 }
 
-/// A function that returns Html renders markup, and any other function
-/// computes a value.
 #[derive(Debug, Clone)]
 pub enum FlatFunctionDeclaration {
     Data(FlatDataFunction),
     Html(FlatHtmlFunction),
 }
 
-/// A function whose body computes a value of its return type. No value
-/// depends on Html, so its parameters take values only.
 #[derive(Debug, Clone)]
 pub struct FlatDataFunction {
     pub function: IrFunction,
@@ -55,7 +47,6 @@ pub struct FlatDataFunction {
     pub body: FlatDataBlock,
 }
 
-/// A function whose body renders markup.
 #[derive(Debug, Clone)]
 pub struct FlatHtmlFunction {
     pub function: IrFunction,
@@ -71,8 +62,6 @@ impl FlatFunctionDeclaration {
         }
     }
 
-    /// The parameters, those of a function that returns a value widened to
-    /// IrType.
     pub fn parameters(&self) -> Vec<IrParameter<IrType>> {
         match self {
             FlatFunctionDeclaration::Data(function) => function
@@ -85,17 +74,12 @@ impl FlatFunctionDeclaration {
     }
 }
 
-/// A block that computes a value. A binding is in scope for every later
-/// binding of the block, for the blocks nested in them, and for the result.
 #[derive(Debug, Clone)]
 pub struct FlatDataBlock {
     pub bindings: Vec<FlatDataBinding>,
     pub result: ValueId,
 }
 
-/// A block that renders Html. No value reads Html, so the values come
-/// before the Html. A binding is in scope for every later binding of the
-/// block, for the blocks nested in them, and for the result.
 #[derive(Debug, Clone)]
 pub struct FlatHtmlBlock {
     pub bindings: Vec<FlatDataBinding>,
@@ -118,7 +102,7 @@ pub struct FlatHtmlBinding {
 #[derive(Debug, Clone)]
 pub enum FlatDataOp {
     Data(IrDataOp),
-    /// Invokes a function that returns a value and produces its result.
+    /// Invokes a function.
     /// The arguments follow the function's parameters, one for each.
     Call(IrFunction, Vec<ValueId>),
     /// A match with the arms of the source. Each arm is a block that
@@ -128,7 +112,8 @@ pub enum FlatDataOp {
     /// Matching is exhaustive, a value must match at least one arm.
     Match(IrMatch<FlatDataBlock>),
     Lambda(IrLambda<IrValueType, FlatDataBlock>),
-    // The arguments follow the closure's parameters, one for each.
+    /// Invokes a closure.
+    /// The arguments follow the closure's parameters, one for each.
     Apply(ValueId, Vec<ValueId>),
 }
 
@@ -152,13 +137,12 @@ pub enum FlatHtmlOp {
     /// element in order.
     For(IrFor<FlatHtmlBlock>),
     Lambda(IrLambda<IrType, FlatHtmlBlock>),
-    // The arguments follow the closure's parameters, one for each.
+    /// Invokes a closure.
+    /// The arguments follow the closure's parameters, one for each.
     Apply(ValueId, Vec<ValueId>),
 }
 
 impl FlatDataOp {
-    /// Apply `f` to each name this op reads directly. The names read inside
-    /// the blocks of a Match or a Lambda are not visited, only the subject.
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
             FlatDataOp::Data(op) => op.for_each_operand(f),
@@ -178,8 +162,6 @@ impl FlatDataOp {
         }
     }
 
-    /// Apply `f` to each name this op reads directly, to rewrite it. Visits
-    /// the same names as `for_each_operand`.
     pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         match self {
             FlatDataOp::Data(op) => op.for_each_operand_mut(f),
@@ -201,9 +183,6 @@ impl FlatDataOp {
 }
 
 impl FlatHtmlOp {
-    /// Apply `f` to each name this op reads directly. The names read inside
-    /// the blocks of a Match, a loop or a Lambda are not visited, only the
-    /// subject or the array.
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
             FlatHtmlOp::Text(_) => {}
@@ -234,8 +213,6 @@ impl FlatHtmlOp {
         }
     }
 
-    /// Apply `f` to each name this op reads directly, to rewrite it. Visits
-    /// the same names as `for_each_operand`.
     pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         match self {
             FlatHtmlOp::Text(_) => {}
@@ -267,7 +244,6 @@ impl FlatHtmlOp {
     }
 }
 
-/// Each binding and then the result on a line of its own.
 impl fmt::Display for FlatDataBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for binding in &self.bindings {
@@ -277,7 +253,6 @@ impl fmt::Display for FlatDataBlock {
     }
 }
 
-/// Each binding and then the result on a line of its own.
 impl fmt::Display for FlatHtmlBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for binding in &self.bindings {
@@ -302,7 +277,6 @@ impl fmt::Display for FlatHtmlBinding {
     }
 }
 
-/// Writes a block on the lines after the current one.
 fn write_block(block: &impl fmt::Display, w: &mut dyn Write) -> fmt::Result {
     write!(w, "\n{block}")
 }
@@ -376,27 +350,21 @@ impl fmt::Display for FlatFunctionDeclaration {
     }
 }
 
-impl fmt::Display for FlatEntrypoint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "entrypoint {}@e{}({}) -> Html {{",
-            self.name,
-            self.id,
-            join(&self.parameters, ", ")
-        )?;
-        write!(Indent::new(f), "\n{}", self.body)?;
-        writeln!(f, "\n}}")
-    }
-}
-
 impl fmt::Display for FlatProgram {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for function in &self.functions {
             write!(f, "{function}")?;
         }
-        for entrypoint in &self.entrypoints {
-            write!(f, "{entrypoint}")?;
+        for (id, entrypoint) in self.entrypoints.iter_enumerated() {
+            write!(
+                f,
+                "entrypoint {}@e{}({}) -> Html {{",
+                entrypoint.name,
+                id,
+                join(&entrypoint.parameters, ", ")
+            )?;
+            write!(Indent::new(f), "\n{}", entrypoint.body)?;
+            writeln!(f, "\n}}")?;
         }
         Ok(())
     }

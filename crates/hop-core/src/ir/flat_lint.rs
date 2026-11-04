@@ -68,7 +68,7 @@ fn check_html_affine(program: &FlatProgram) -> Result<(), FlatLintError> {
         }
         collect_html(&function.body, &mut html);
     }
-    for entrypoint in &program.entrypoints {
+    for entrypoint in program.entrypoints.iter() {
         collect_html(&entrypoint.body, &mut html);
     }
     for function in html_functions {
@@ -80,7 +80,7 @@ fn check_html_affine(program: &FlatProgram) -> Result<(), FlatLintError> {
         }
         check_block(&function.body, scope, &html)?;
     }
-    for entrypoint in &program.entrypoints {
+    for entrypoint in program.entrypoints.iter() {
         check_block(&entrypoint.body, vec![false; html.len()], &html)?;
     }
     Ok(())
@@ -186,7 +186,7 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatLintError> {
             }
         }
     }
-    for entrypoint in &program.entrypoints {
+    for entrypoint in program.entrypoints.iter() {
         for param in &entrypoint.parameters {
             checker.bind(param.binder.var, BoundType::Data(&param.binder.typ))?;
         }

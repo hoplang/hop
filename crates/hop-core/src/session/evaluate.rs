@@ -132,12 +132,7 @@ impl Session {
                 .iter()
                 .find(|page| page.name == page_name)
                 .expect("the program compiles the page");
-            let parameters = &program
-                .entrypoints
-                .iter()
-                .find(|decl| decl.id == page.body)
-                .expect("the program declares the page's body")
-                .parameters;
+            let parameters = &program.entrypoints[page.body].parameters;
             page_decl
                 .params
                 .iter()

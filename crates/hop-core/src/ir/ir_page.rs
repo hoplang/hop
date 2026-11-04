@@ -23,12 +23,12 @@ impl IrPage {
     pub fn for_entrypoints(program: &crate::ir::flat_program::FlatProgram) -> Vec<IrPage> {
         program
             .entrypoints
-            .iter()
-            .map(|decl| IrPage {
+            .iter_enumerated()
+            .map(|(id, decl)| IrPage {
                 name: TypeName::parse(decl.name.as_str())
                     .expect("a test entrypoint is named like a page"),
                 head: None,
-                body: decl.id,
+                body: id,
             })
             .collect()
     }

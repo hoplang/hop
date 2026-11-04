@@ -5,10 +5,9 @@ use crate::ir::function_id::FunctionId;
 
 use super::callees::{collect_data_callees, collect_html_callees};
 
-/// Drop the functions no entrypoint can reach.
 pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
     let mut reached = BTreeSet::new();
-    for entrypoint in &program.entrypoints {
+    for entrypoint in program.entrypoints.iter() {
         collect_html_callees(&entrypoint.body, &mut reached);
     }
     let mut pending: Vec<FunctionId> = reached.iter().copied().collect();

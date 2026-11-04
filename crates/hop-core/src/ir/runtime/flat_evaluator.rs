@@ -83,25 +83,21 @@ pub fn evaluate_page<'a>(
 /// Evaluate an entrypoint on the arguments named by its parameters.
 pub fn evaluate_entrypoint<'a>(
     program: &'a FlatProgram,
-    entrypoint: EntrypointId,
+    entrypoint_id: EntrypointId,
     mut args: HashMap<AttributeName, Value<'a>>,
 ) -> Result<Value<'a>, EvalError> {
-    let decl = program
-        .entrypoints
-        .iter()
-        .find(|decl| decl.id == entrypoint)
-        .unwrap();
+    let entrypoint = &program.entrypoints[entrypoint_id];
     let mut env = HashTrieMap::new();
-    for param in &decl.parameters {
+    for param in &entrypoint.parameters {
         let value = args
             .remove(param.name())
             .ok_or_else(|| EvalError::MissingParameter {
-                entrypoint: decl.name.clone(),
+                entrypoint: entrypoint.name.clone(),
                 param: param.name().clone(),
             })?;
         env.insert_mut(param.binder.var, value);
     }
-    evaluate_html_block(&decl.body, &env, &program.functions, 1, &mut 0)
+    evaluate_html_block(&entrypoint.body, &env, &program.functions, 1, &mut 0)
 }
 
 /// Evaluate a function on its arguments, one for each parameter in the
@@ -490,6 +486,7 @@ mod tests {
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::index_vec::Idx;
     use crate::ir::ir_type::{IrDataType, IrType};
     use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::value_builder::ValueBuilder;
@@ -527,12 +524,7 @@ mod tests {
             .into_iter()
             .map(|(name, value)| (AttributeName::parse(name).unwrap(), value))
             .collect();
-        let entrypoint = program
-            .entrypoints
-            .first()
-            .expect("the program has an entrypoint")
-            .id;
-        let after = evaluate_entrypoint(&program, entrypoint, args)
+        let after = evaluate_entrypoint(&program, EntrypointId::new(0), args)
             .expect("Evaluation should succeed")
             .into_markup();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}\n"));
@@ -1182,7 +1174,7 @@ mod tests {
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
+        let result = evaluate_entrypoint(&program, EntrypointId::new(0), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Program exceeded the call depth limit of 12"
@@ -1200,7 +1192,7 @@ mod tests {
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
+        let result = evaluate_entrypoint(&program, EntrypointId::new(0), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Program exceeded the call depth limit of 12"
@@ -1238,7 +1230,7 @@ mod tests {
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
+        let result = evaluate_entrypoint(&program, EntrypointId::new(0), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "Program exceeded the call depth limit of 12"
@@ -1254,7 +1246,7 @@ mod tests {
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
+        let result = evaluate_entrypoint(&program, EntrypointId::new(0), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "An array exceeded the array length limit of 10000000"
@@ -1273,7 +1265,7 @@ mod tests {
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
+        let result = evaluate_entrypoint(&program, EntrypointId::new(0), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "A string exceeded the string length limit of 10000000 bytes"
@@ -1294,7 +1286,7 @@ mod tests {
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
+        let result = evaluate_entrypoint(&program, EntrypointId::new(0), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "An Html value exceeded the Html size limit of 10000000"
@@ -1318,7 +1310,7 @@ mod tests {
             .entrypoint("Test", [], |t| t.call("Tree", [t.int(0)]))
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
+        let result = evaluate_entrypoint(&program, EntrypointId::new(0), HashMap::new());
         assert_eq!(
             result.unwrap_err().to_string(),
             "An evaluation exceeded the op count limit of 5000"
@@ -1333,7 +1325,7 @@ mod tests {
             })
             .build()
             .unwrap();
-        let result = evaluate_entrypoint(&program, program.entrypoints[0].id, HashMap::new());
+        let result = evaluate_entrypoint(&program, EntrypointId::new(0), HashMap::new());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Missing required parameter"));

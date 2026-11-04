@@ -350,8 +350,8 @@ pub fn random_entrypoint_args(
 ) -> Vec<(EntrypointId, HashMap<AttributeName, Value<'static>>)> {
     program
         .entrypoints
-        .iter()
-        .map(|decl| {
+        .iter_enumerated()
+        .map(|(id, decl)| {
             let args = decl
                 .parameters
                 .iter()
@@ -360,7 +360,7 @@ pub fn random_entrypoint_args(
                     (param.name.clone(), value)
                 })
                 .collect();
-            (decl.id, args)
+            (id, args)
         })
         .collect()
 }

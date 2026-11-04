@@ -103,16 +103,13 @@ pub fn flat_to_writer(
             FlatFunctionDeclaration::Html(function) => lowerer.analyze_html_block(&function.body),
         }
     }
-    for entrypoint in &entrypoints {
+    for entrypoint in entrypoints.iter() {
         for param in &entrypoint.parameters {
             lowerer.analyze_parameter(&param.widen().binder);
         }
         lowerer.analyze_html_block(&entrypoint.body);
     }
-    let mut page_entrypoints: HashMap<EntrypointId, _> = entrypoints
-        .iter()
-        .map(|entrypoint| (entrypoint.id, entrypoint))
-        .collect();
+    let mut page_entrypoints: HashMap<EntrypointId, _> = entrypoints.iter_enumerated().collect();
     let pages = pages
         .iter()
         .map(|page| {
