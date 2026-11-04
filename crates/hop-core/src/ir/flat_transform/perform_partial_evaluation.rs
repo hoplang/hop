@@ -4,9 +4,8 @@ use crate::document::CheapString;
 use crate::hop::typing::{Constructor, Pattern};
 use crate::html::write_escaped_html;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatEntrypoint,
-    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp,
-    FlatProgram,
+    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction,
+    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::ir_binder::IrBinder;
@@ -15,7 +14,7 @@ use crate::ir::ir_for::IrFor;
 use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
-use crate::ir::ir_type::{IrDataType, IrType, IrValueType};
+use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrType};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::field_name::FieldName;
 
@@ -67,13 +66,13 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
             };
             match function {
                 FlatFunctionDeclaration::Data(function) => {
-                    FlatFunctionDeclaration::Data(FlatDataFunction {
+                    FlatFunctionDeclaration::Data(FlatFunction {
                         body: evaluator.data_block(function.body),
                         ..function
                     })
                 }
                 FlatFunctionDeclaration::Html(function) => {
-                    FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                    FlatFunctionDeclaration::Html(FlatFunction {
                         body: evaluator.html_block(function.body),
                         ..function
                     })
@@ -135,7 +134,7 @@ struct Evaluator<'a> {
     renames: HashMap<ValueId, ValueId>,
     // The lambdas kept so far, evaluated, for the applications that read
     // them to copy.
-    data_lambdas: HashMap<ValueId, IrLambda<IrValueType, FlatDataBlock>>,
+    data_lambdas: HashMap<ValueId, IrLambda<IrFunctionDataType, FlatDataBlock>>,
     html_lambdas: HashMap<ValueId, IrLambda<IrType, FlatHtmlBlock>>,
 }
 
@@ -537,7 +536,7 @@ impl Evaluator<'_> {
                             out.push(FlatDataBinding {
                                 binder: IrBinder {
                                     var: name,
-                                    typ: IrValueType::Data(IrDataType::String),
+                                    typ: IrFunctionDataType::Data(IrDataType::String),
                                 },
                                 op: FlatDataOp::Data(op),
                             });

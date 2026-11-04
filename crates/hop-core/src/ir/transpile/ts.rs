@@ -9,7 +9,7 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::ir_type::{IrDataType, IrHtmlSignature, IrType, IrValueSignature, IrValueType};
+use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrHtmlType, IrSignature, IrType};
 use crate::ir::ir_type_declarations::{IrEnum, IrRecord};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
@@ -250,7 +250,7 @@ impl TsTranspiler {
                 for (_, binder) in &arm.bindings {
                     self.name_types.insert(
                         binder.var,
-                        IrType::Value(IrValueType::Data(binder.typ.clone())),
+                        IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
                     );
                 }
                 let bindings_doc = if arm.bindings.is_empty() {
@@ -327,7 +327,7 @@ impl TsTranspiler {
             Some(binder) => {
                 self.name_types.insert(
                     binder.var,
-                    IrType::Value(IrValueType::Data(binder.typ.clone())),
+                    IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
                 );
                 arena
                     .text("const ")
@@ -842,7 +842,7 @@ impl Transpiler for TsTranspiler {
             Some(binder) => {
                 self.name_types.insert(
                     binder.var,
-                    IrType::Value(IrValueType::Data(binder.typ.clone())),
+                    IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
                 );
                 name_ident(binder.var)
             }
@@ -1450,10 +1450,10 @@ impl Transpiler for TsTranspiler {
     fn transpile_value_function_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrValueSignature,
+        signature: &IrSignature<IrFunctionDataType, IrDataType>,
     ) -> Doc<'a> {
         let parameters: Vec<IrType> = (signature.parameters.iter().cloned())
-            .map(IrType::Value)
+            .map(IrType::Data)
             .collect();
         let result = self.transpile_data_type(arena, &signature.result);
         self.transpile_function_type(arena, &parameters, result)
@@ -1464,7 +1464,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_html_function_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrHtmlSignature,
+        signature: &IrSignature<IrType, IrHtmlType>,
     ) -> Doc<'a> {
         self.transpile_function_type(arena, &signature.parameters, arena.text("string"))
     }
@@ -1500,7 +1500,7 @@ impl Transpiler for TsTranspiler {
             ),
             (
                 WriterFunctionBody::Returns(block),
-                IrType::Value(IrValueType::Function(signature)),
+                IrType::Data(IrFunctionDataType::Function(signature)),
             ) => (
                 self.transpile_data_type(arena, &signature.result),
                 self.transpile_value_block(arena, block),
@@ -1789,7 +1789,7 @@ mod tests {
                     "Sum",
                     [
                         ("n", IrType::INT),
-                        ("scale", IrType::value_function([IrType::INT], IrType::INT)),
+                        ("scale", IrType::data_function([IrType::INT], IrType::INT)),
                     ],
                     IrType::INT,
                     |t| {

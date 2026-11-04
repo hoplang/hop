@@ -2,7 +2,7 @@ use super::bounded_vec::BoundedVec;
 use super::html_node::{Html, HtmlNode};
 use super::value::{MAX_ARRAY_LENGTH, Value};
 use crate::html::HtmlElementKind;
-use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
+use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrType};
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations, IrVariant};
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
@@ -87,10 +87,10 @@ fn enum_variants<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrV
 /// which no entrypoint takes.
 pub fn random_value(rng: &mut impl Rng, ty: &IrType, types: &IrTypeDeclarations) -> Value<'static> {
     match ty {
-        IrType::Value(IrValueType::Data(data)) => {
+        IrType::Data(IrFunctionDataType::Data(data)) => {
             random_value_at_depth(rng, data, types, 0, &mut Vec::new())
         }
-        IrType::Html(IrHtmlType::Html) => Value::Html(
+        IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => Value::Html(
             Html::new(HtmlNode::Element {
                 element: HtmlElementKind::Span,
                 attributes: Vec::new(),
@@ -98,7 +98,8 @@ pub fn random_value(rng: &mut impl Rng, ty: &IrType, types: &IrTypeDeclarations)
             })
             .unwrap(),
         ),
-        IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_)) => {
+        IrType::Data(IrFunctionDataType::Function(_))
+        | IrType::Html(IrFunctionHtmlType::Function(_)) => {
             panic!("an entrypoint takes no closure")
         }
     }

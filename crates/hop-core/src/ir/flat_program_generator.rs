@@ -5,7 +5,7 @@ use crate::ir::flat_program_builder::{
     DeclaredFunction, FlatBlockBuilder, FlatProgramBuilder, Pat,
 };
 use crate::ir::ir_type::{
-    IrDataType, IrHtmlSignature, IrHtmlType, IrType, IrValueSignature, IrValueType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
 };
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
@@ -388,7 +388,7 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn data_type(&self, ty: Ty) -> IrDataType {
-        let IrType::Value(IrValueType::Data(typ)) = self.ir_type(ty) else {
+        let IrType::Data(IrFunctionDataType::Data(typ)) = self.ir_type(ty) else {
             panic!("a value has a data type");
         };
         typ
@@ -445,7 +445,7 @@ impl FlatGenerator<'_, '_> {
         let count = scope.names_where(&types, fits).count();
         let index = self.index(count);
         let name = scope.names_where(&types, fits).nth(index).unwrap();
-        let IrType::Value(IrValueType::Data(typ)) = &types[name.index()] else {
+        let IrType::Data(IrFunctionDataType::Data(typ)) = &types[name.index()] else {
             unreachable!()
         };
         Some((name, typ.clone()))
@@ -453,9 +453,11 @@ impl FlatGenerator<'_, '_> {
 
     fn random_closure_type(&mut self, html: bool, depth: usize) -> IrType {
         if html && self.coin() {
-            IrType::Html(IrHtmlType::Function(self.random_html_signature(depth)))
+            IrType::Html(IrFunctionHtmlType::Function(
+                self.random_html_signature(depth),
+            ))
         } else {
-            IrType::Value(IrValueType::Function(
+            IrType::Data(IrFunctionDataType::Function(
                 self.random_value_signature(depth, None),
             ))
         }
@@ -465,30 +467,33 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         depth: usize,
         result: Option<IrDataType>,
-    ) -> IrValueSignature {
+    ) -> IrSignature<IrFunctionDataType, IrDataType> {
         let parameters = (0..self.count(0..=2))
             .map(|_| {
                 if depth > 0 && self.index(4) == 0 {
-                    IrValueType::Function(self.random_value_signature(depth - 1, None))
+                    IrFunctionDataType::Function(self.random_value_signature(depth - 1, None))
                 } else {
-                    IrValueType::Data(self.random_data_type(1))
+                    IrFunctionDataType::Data(self.random_data_type(1))
                 }
             })
             .collect();
         let result = result.unwrap_or_else(|| self.random_data_type(1));
-        IrValueSignature { parameters, result }
+        IrSignature { parameters, result }
     }
 
-    fn random_html_signature(&mut self, depth: usize) -> IrHtmlSignature {
+    fn random_html_signature(&mut self, depth: usize) -> IrSignature<IrType, IrHtmlType> {
         let parameters = (0..self.count(0..=2))
             .map(|_| match self.index(if depth > 0 { 4 } else { 2 }) {
-                0 => IrType::Value(IrValueType::Data(self.random_data_type(1))),
+                0 => IrType::Data(IrFunctionDataType::Data(self.random_data_type(1))),
                 1 => IrType::HTML,
                 2 => self.random_closure_type(false, depth - 1),
                 _ => self.random_closure_type(true, depth - 1),
             })
             .collect();
-        IrHtmlSignature { parameters }
+        IrSignature {
+            parameters,
+            result: IrHtmlType,
+        }
     }
 
     fn random_type(&mut self, depth: usize) -> Ty {
@@ -602,9 +607,12 @@ impl FlatGenerator<'_, '_> {
         depth: usize,
     ) -> ValueId {
         match typ {
-            IrType::Value(IrValueType::Data(target)) => self.data_block(b, scope, target, depth),
-            IrType::Html(IrHtmlType::Html) => self.html_block(b, scope, depth),
-            IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_)) => {
+            IrType::Data(IrFunctionDataType::Data(target)) => {
+                self.data_block(b, scope, target, depth)
+            }
+            IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => self.html_block(b, scope, depth),
+            IrType::Data(IrFunctionDataType::Function(_))
+            | IrType::Html(IrFunctionHtmlType::Function(_)) => {
                 unreachable!("a block produces no closure")
             }
         }
@@ -619,11 +627,14 @@ impl FlatGenerator<'_, '_> {
         nesting: usize,
     ) -> ValueId {
         match typ {
-            IrType::Value(IrValueType::Data(target)) => {
+            IrType::Data(IrFunctionDataType::Data(target)) => {
                 self.data_op(b, scope, target, depth, nesting)
             }
-            IrType::Html(IrHtmlType::Html) => self.html_op(b, scope, depth, nesting),
-            IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_)) => {
+            IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
+                self.html_op(b, scope, depth, nesting)
+            }
+            IrType::Data(IrFunctionDataType::Function(_))
+            | IrType::Html(IrFunctionHtmlType::Function(_)) => {
                 self.closure_op(b, scope, typ, depth, nesting)
             }
         }
@@ -644,13 +655,14 @@ impl FlatGenerator<'_, '_> {
             return name;
         }
         let parameters: Vec<IrType> = match typ {
-            IrType::Value(IrValueType::Function(signature)) => {
+            IrType::Data(IrFunctionDataType::Function(signature)) => {
                 (signature.parameters.iter().cloned())
-                    .map(IrType::Value)
+                    .map(IrType::Data)
                     .collect()
             }
-            IrType::Html(IrHtmlType::Function(signature)) => signature.parameters.clone(),
-            IrType::Value(IrValueType::Data(_)) | IrType::Html(IrHtmlType::Html) => {
+            IrType::Html(IrFunctionHtmlType::Function(signature)) => signature.parameters.clone(),
+            IrType::Data(IrFunctionDataType::Data(_))
+            | IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 unreachable!("closure_op makes closures")
             }
         };
@@ -662,7 +674,7 @@ impl FlatGenerator<'_, '_> {
                 inner.push(*param);
             }
             match typ {
-                IrType::Value(IrValueType::Function(signature)) => {
+                IrType::Data(IrFunctionDataType::Function(signature)) => {
                     self.data_op(b, &mut inner, &signature.result, depth, nesting)
                 }
                 _ => self.html_op(b, &mut inner, depth, nesting),
@@ -681,10 +693,13 @@ impl FlatGenerator<'_, '_> {
     ) -> ValueId {
         let fits = |typ: &IrType| match (typ, result) {
             (
-                IrType::Value(IrValueType::Function(signature)),
-                IrType::Value(IrValueType::Data(result)),
+                IrType::Data(IrFunctionDataType::Function(signature)),
+                IrType::Data(IrFunctionDataType::Data(result)),
             ) => signature.result == *result,
-            (IrType::Html(IrHtmlType::Function(_)), IrType::Html(IrHtmlType::Html)) => true,
+            (
+                IrType::Html(IrFunctionHtmlType::Function(_)),
+                IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
+            ) => true,
             _ => false,
         };
         let fitting: Vec<ValueId> = scope.names_where(&b.value_types(), fits).collect();
@@ -692,21 +707,24 @@ impl FlatGenerator<'_, '_> {
             fitting[self.index(fitting.len())]
         } else {
             let typ = match result {
-                IrType::Value(IrValueType::Data(result)) => IrType::Value(IrValueType::Function(
-                    self.random_value_signature(1, Some(result.clone())),
-                )),
-                _ => IrType::Html(IrHtmlType::Function(self.random_html_signature(1))),
+                IrType::Data(IrFunctionDataType::Data(result)) => {
+                    IrType::Data(IrFunctionDataType::Function(
+                        self.random_value_signature(1, Some(result.clone())),
+                    ))
+                }
+                _ => IrType::Html(IrFunctionHtmlType::Function(self.random_html_signature(1))),
             };
             self.closure_op(b, scope, &typ, depth, nesting - 1)
         };
         let parameters: Vec<IrType> = match &b.value_types()[closure.index()] {
-            IrType::Value(IrValueType::Function(signature)) => {
+            IrType::Data(IrFunctionDataType::Function(signature)) => {
                 (signature.parameters.iter().cloned())
-                    .map(IrType::Value)
+                    .map(IrType::Data)
                     .collect()
             }
-            IrType::Html(IrHtmlType::Function(signature)) => signature.parameters.clone(),
-            IrType::Value(IrValueType::Data(_)) | IrType::Html(IrHtmlType::Html) => {
+            IrType::Html(IrFunctionHtmlType::Function(signature)) => signature.parameters.clone(),
+            IrType::Data(IrFunctionDataType::Data(_))
+            | IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 unreachable!("an application applies a closure")
             }
         };
@@ -763,9 +781,11 @@ impl FlatGenerator<'_, '_> {
         typ: &IrDataType,
         depth: usize,
     ) -> ValueId {
-        if let Some(name) =
-            self.name_in_scope(b, scope, &IrType::Value(IrValueType::Data(typ.clone())))
-        {
+        if let Some(name) = self.name_in_scope(
+            b,
+            scope,
+            &IrType::Data(IrFunctionDataType::Data(typ.clone())),
+        ) {
             return name;
         }
         let literal = match typ {
@@ -790,7 +810,7 @@ impl FlatGenerator<'_, '_> {
                     .map(|_| self.data_leaf(b, scope, inner, depth.saturating_sub(1)))
                     .collect();
                 if elements.is_empty() {
-                    b.empty_array(IrType::Value(IrValueType::Data((**inner).clone())))
+                    b.empty_array(IrType::Data(IrFunctionDataType::Data((**inner).clone())))
                 } else {
                     b.array(elements)
                 }
@@ -800,7 +820,7 @@ impl FlatGenerator<'_, '_> {
                     let value = self.data_leaf(b, scope, inner, depth.saturating_sub(1));
                     b.some(value)
                 } else {
-                    b.none(IrType::Value(IrValueType::Data((**inner).clone())))
+                    b.none(IrType::Data(IrFunctionDataType::Data((**inner).clone())))
                 }
             }
             IrDataType::Record(name) => {
@@ -813,7 +833,7 @@ impl FlatGenerator<'_, '_> {
                         self.data_leaf(b, scope, &field.typ, depth.saturating_sub(1)),
                     ));
                 }
-                b.record(IrType::Value(IrValueType::Data(typ.clone())), values)
+                b.record(IrType::Data(IrFunctionDataType::Data(typ.clone())), values)
             }
             IrDataType::Enum(name) => {
                 let variants = &b.types().enumeration(name).unwrap().variants;
@@ -827,7 +847,7 @@ impl FlatGenerator<'_, '_> {
                     ));
                 }
                 b.enum_variant_with_fields(
-                    IrType::Value(IrValueType::Data(typ.clone())),
+                    IrType::Data(IrFunctionDataType::Data(typ.clone())),
                     variant.name.as_str(),
                     values,
                 )
@@ -1136,7 +1156,7 @@ impl FlatGenerator<'_, '_> {
             Call,
             Apply,
         }
-        let typ = IrType::Value(IrValueType::Data(target.clone()));
+        let typ = IrType::Data(IrFunctionDataType::Data(target.clone()));
         let mut productions: Vec<P> = Vec::new();
         if self.record_fields_of_type(b, target).next().is_some() {
             productions.push(P::FieldAccess);

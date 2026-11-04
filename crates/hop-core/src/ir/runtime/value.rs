@@ -6,7 +6,7 @@ use crate::hop::typing::{Constructor, Pattern};
 use crate::ir::flat_program::{FlatDataBlock, FlatHtmlBlock};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::IrPattern;
-use crate::ir::ir_type::{IrType, IrValueType};
+use crate::ir::ir_type::{IrFunctionDataType, IrType};
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::html_node::Html;
 use crate::ir::value_id::ValueId;
@@ -43,7 +43,7 @@ pub struct Closure<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Lambda<'a> {
-    Data(&'a IrLambda<IrValueType, FlatDataBlock>),
+    Data(&'a IrLambda<IrFunctionDataType, FlatDataBlock>),
     Html(&'a IrLambda<IrType, FlatHtmlBlock>),
 }
 

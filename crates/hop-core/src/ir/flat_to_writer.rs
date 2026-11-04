@@ -19,7 +19,7 @@ use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
+use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrType};
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::ir::writer_program::{
@@ -154,11 +154,11 @@ fn write(out: &mut Vec<WriterStmt>, content: &str) {
 /// parameters that writes it, in the signatures of closures as well.
 fn parameter_type(typ: &IrType) -> IrType {
     match typ {
-        IrType::Html(IrHtmlType::Html) => IrType::html_function([]),
-        IrType::Html(IrHtmlType::Function(signature)) => {
+        IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => IrType::html_function([]),
+        IrType::Html(IrFunctionHtmlType::Function(signature)) => {
             IrType::html_function(signature.parameters.iter().map(parameter_type))
         }
-        IrType::Value(_) => typ.clone(),
+        IrType::Data(_) => typ.clone(),
     }
 }
 
@@ -213,20 +213,22 @@ impl<'a> Lowerer<'a> {
     /// Whether the name is Html.
     fn is_html(&self, name: ValueId) -> bool {
         self.html_parameters.contains(&name)
-            || (self.html.get(&name)).is_some_and(|binding| binding.binder.typ == IrHtmlType::Html)
+            || (self.html.get(&name))
+                .is_some_and(|binding| binding.binder.typ == IrFunctionHtmlType::Html(IrHtmlType))
     }
 
     // An Html parameter takes a closure, and the type of a parameter of data
     // is what a match on it needs.
     fn analyze_parameter(&mut self, binder: &IrBinder<IrType>) {
         match &binder.typ {
-            IrType::Value(IrValueType::Data(typ)) => {
+            IrType::Data(IrFunctionDataType::Data(typ)) => {
                 self.binder_types.insert(binder.var, typ.clone());
             }
-            IrType::Html(IrHtmlType::Html) => {
+            IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 self.html_parameters.insert(binder.var);
             }
-            IrType::Value(IrValueType::Function(_)) | IrType::Html(IrHtmlType::Function(_)) => {}
+            IrType::Data(IrFunctionDataType::Function(_))
+            | IrType::Html(IrFunctionHtmlType::Function(_)) => {}
         }
     }
 
@@ -288,7 +290,7 @@ impl<'a> Lowerer<'a> {
                     for param in &lambda.parameters {
                         self.analyze_parameter(&IrBinder {
                             var: param.var,
-                            typ: IrType::Value(param.typ.clone()),
+                            typ: IrType::Data(param.typ.clone()),
                         });
                     }
                     self.analyze_data_block(&lambda.body);
@@ -482,7 +484,9 @@ impl<'a> Lowerer<'a> {
                 WriterFunctionDeclaration {
                     function: function.function.clone(),
                     parameters: decl.parameters(),
-                    return_type: IrType::Value(IrValueType::Data(function.return_type.clone())),
+                    return_type: IrType::Data(IrFunctionDataType::Data(
+                        function.return_type.clone(),
+                    )),
                     body: WriterFunctionBody::Returns(WriterBlock {
                         bindings,
                         result: self.name(function.body.result),
@@ -526,7 +530,7 @@ impl<'a> Lowerer<'a> {
                         parameters: (parameters.into_iter())
                             .map(|param| IrBinder {
                                 var: param.var,
-                                typ: IrType::Value(param.typ),
+                                typ: IrType::Data(param.typ),
                             })
                             .collect(),
                         body,
@@ -539,7 +543,7 @@ impl<'a> Lowerer<'a> {
             };
             out.push(WriterBinding {
                 name: self.bind(binding.binder.var),
-                typ: IrType::Value(binding.binder.typ.clone()),
+                typ: IrType::Data(binding.binder.typ.clone()),
                 op,
             });
         }
@@ -602,7 +606,7 @@ impl<'a> Lowerer<'a> {
         let patterns: Vec<_> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
         let subject_type = match self.bindings.get(&match_.subject) {
             Some(binding) => {
-                let IrValueType::Data(typ) = &binding.binder.typ else {
+                let IrFunctionDataType::Data(typ) = &binding.binder.typ else {
                     unreachable!("a match subject is data");
                 };
                 typ.clone()
@@ -651,7 +655,7 @@ impl<'a> Lowerer<'a> {
                     let name = self.value_ids.next();
                     lets.push(WriterBinding {
                         name,
-                        typ: IrType::Value(IrValueType::Data(field.var.typ.clone())),
+                        typ: IrType::Data(IrFunctionDataType::Data(field.var.typ.clone())),
                         op: WriterOp::Data(IrDataOp::FieldAccess(record, field.field_name.clone())),
                     });
                     name
@@ -690,7 +694,7 @@ impl<'a> Lowerer<'a> {
                     let name = self.value_ids.next();
                     lets.push(WriterBinding {
                         name,
-                        typ: IrType::Value(IrValueType::Data(element.typ.clone())),
+                        typ: IrType::Data(IrFunctionDataType::Data(element.typ.clone())),
                         op: WriterOp::Data(IrDataOp::TupleIndex(tuple, index)),
                     });
                     name
@@ -705,7 +709,7 @@ impl<'a> Lowerer<'a> {
     fn lower_data_match(
         &mut self,
         match_: &'a IrMatch<FlatDataBlock>,
-        typ: &IrValueType,
+        typ: &IrFunctionDataType,
         lets: &mut Vec<WriterBinding>,
     ) -> ValueId {
         let (decision, used, mut parts) = self.compile_match(match_);
@@ -721,7 +725,7 @@ impl<'a> Lowerer<'a> {
         &mut self,
         decision: &Decision<IrBinder<IrDataType>, IrDataType>,
         arms: &'a [IrMatchArm<FlatDataBlock>],
-        typ: &IrValueType,
+        typ: &IrFunctionDataType,
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
         lets: &mut Vec<WriterBinding>,
@@ -865,7 +869,7 @@ impl<'a> Lowerer<'a> {
         let name = self.value_ids.next();
         lets.push(WriterBinding {
             name,
-            typ: IrType::Value(typ.clone()),
+            typ: IrType::Data(typ.clone()),
             op: WriterOp::Match(switch),
         });
         name
@@ -1310,7 +1314,7 @@ mod tests {
                     "Sum",
                     [
                         ("n", IrType::INT),
-                        ("scale", IrType::value_function([IrType::INT], IrType::INT)),
+                        ("scale", IrType::data_function([IrType::INT], IrType::INT)),
                     ],
                     IrType::INT,
                     |t| {

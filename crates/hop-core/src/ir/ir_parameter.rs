@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::ir::ir_binder::IrBinder;
-use crate::ir::ir_type::{IrDataType, IrType, IrValueType};
+use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrType};
 use crate::symbols::attribute_name::AttributeName;
 
 /// A parameter of a function, an entrypoint, or a Writer page. The name is what a call
@@ -21,10 +21,10 @@ impl<T> IrParameter<T> {
 }
 
 impl IrParameter<IrType> {
-    /// The parameter as one of a function that returns a value, or None if
+    /// The parameter as one of a function that returns data, or None if
     /// it takes Html.
-    pub fn into_value(self) -> Option<IrParameter<IrValueType>> {
-        let IrType::Value(typ) = self.binder.typ else {
+    pub fn into_function_data(self) -> Option<IrParameter<IrFunctionDataType>> {
+        let IrType::Data(typ) = self.binder.typ else {
             return None;
         };
         Some(IrParameter {
@@ -44,20 +44,20 @@ impl IrParameter<IrDataType> {
             name: self.name.clone(),
             binder: IrBinder {
                 var: self.binder.var,
-                typ: IrType::Value(IrValueType::Data(self.binder.typ.clone())),
+                typ: IrType::Data(IrFunctionDataType::Data(self.binder.typ.clone())),
             },
         }
     }
 }
 
-impl IrParameter<IrValueType> {
+impl IrParameter<IrFunctionDataType> {
     /// The parameter as one of a function that may take Html.
     pub fn widen(&self) -> IrParameter<IrType> {
         IrParameter {
             name: self.name.clone(),
             binder: IrBinder {
                 var: self.binder.var,
-                typ: IrType::Value(self.binder.typ.clone()),
+                typ: IrType::Data(self.binder.typ.clone()),
             },
         }
     }

@@ -11,7 +11,7 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::IrMatch;
-use crate::ir::ir_type::{IrDataType, IrHtmlType, IrType, IrValueType};
+use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrType};
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::function_name::FunctionName;
@@ -35,23 +35,16 @@ pub struct FlatEntrypoint {
 
 #[derive(Debug, Clone)]
 pub enum FlatFunctionDeclaration {
-    Data(FlatDataFunction),
-    Html(FlatHtmlFunction),
+    Data(FlatFunction<IrFunctionDataType, IrDataType, FlatDataBlock>),
+    Html(FlatFunction<IrType, IrHtmlType, FlatHtmlBlock>),
 }
 
 #[derive(Debug, Clone)]
-pub struct FlatDataFunction {
+pub struct FlatFunction<Param, Return, Body> {
     pub function: IrFunction,
-    pub parameters: Vec<IrParameter<IrValueType>>,
-    pub return_type: IrDataType,
-    pub body: FlatDataBlock,
-}
-
-#[derive(Debug, Clone)]
-pub struct FlatHtmlFunction {
-    pub function: IrFunction,
-    pub parameters: Vec<IrParameter<IrType>>,
-    pub body: FlatHtmlBlock,
+    pub parameters: Vec<IrParameter<Param>>,
+    pub return_type: Return,
+    pub body: Body,
 }
 
 impl FlatFunctionDeclaration {
@@ -89,13 +82,13 @@ pub struct FlatHtmlBlock {
 
 #[derive(Debug, Clone)]
 pub struct FlatDataBinding {
-    pub binder: IrBinder<IrValueType>,
+    pub binder: IrBinder<IrFunctionDataType>,
     pub op: FlatDataOp,
 }
 
 #[derive(Debug, Clone)]
 pub struct FlatHtmlBinding {
-    pub binder: IrBinder<IrHtmlType>,
+    pub binder: IrBinder<IrFunctionHtmlType>,
     pub op: FlatHtmlOp,
 }
 
@@ -111,7 +104,7 @@ pub enum FlatDataOp {
     ///
     /// Matching is exhaustive, a value must match at least one arm.
     Match(IrMatch<FlatDataBlock>),
-    Lambda(IrLambda<IrValueType, FlatDataBlock>),
+    Lambda(IrLambda<IrFunctionDataType, FlatDataBlock>),
     /// Invokes a closure.
     /// The arguments follow the closure's parameters, one for each.
     Apply(ValueId, Vec<ValueId>),
@@ -326,26 +319,27 @@ impl fmt::Display for FlatHtmlOp {
 impl fmt::Display for FlatFunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FlatFunctionDeclaration::Data(function) => {
-                write!(
-                    f,
-                    "fn {}({}) -> {} {{",
-                    function.function,
-                    join(&function.parameters, ", "),
-                    function.return_type
-                )?;
-                write!(Indent::new(f), "\n{}", function.body)?;
-            }
-            FlatFunctionDeclaration::Html(function) => {
-                write!(
-                    f,
-                    "fn {}({}) -> Html {{",
-                    function.function,
-                    join(&function.parameters, ", ")
-                )?;
-                write!(Indent::new(f), "\n{}", function.body)?;
-            }
+            FlatFunctionDeclaration::Data(function) => function.fmt(f),
+            FlatFunctionDeclaration::Html(function) => function.fmt(f),
         }
+    }
+}
+
+impl<Param, Return, Body> fmt::Display for FlatFunction<Param, Return, Body>
+where
+    Param: fmt::Display,
+    Return: fmt::Display,
+    Body: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "fn {}({}) -> {} {{",
+            self.function,
+            join(&self.parameters, ", "),
+            self.return_type
+        )?;
+        write!(Indent::new(f), "\n{}", self.body)?;
         writeln!(f, "\n}}")
     }
 }

@@ -2,9 +2,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatEntrypoint,
-    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp,
-    FlatProgram,
+    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction,
+    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::flat_transform::callees::{collect_data_callees, collect_html_callees};
 use crate::ir::flat_transform::freshener::Freshener;
@@ -80,13 +79,13 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
         };
         let decl = match decl {
             FlatFunctionDeclaration::Data(function) => {
-                FlatFunctionDeclaration::Data(FlatDataFunction {
+                FlatFunctionDeclaration::Data(FlatFunction {
                     body: inliner.data_block(function.body),
                     ..function
                 })
             }
             FlatFunctionDeclaration::Html(function) => {
-                FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                FlatFunctionDeclaration::Html(FlatFunction {
                     body: inliner.html_block(function.body),
                     ..function
                 })
@@ -350,7 +349,7 @@ mod tests {
 
     #[test]
     fn should_inline_a_call_that_passes_a_closure_and_copy_the_lambdas_of_the_callee() {
-        let int_to_int = || IrType::value_function([IrType::INT], IrType::INT);
+        let int_to_int = || IrType::data_function([IrType::INT], IrType::INT);
         check(
             FlatProgramBuilder::new()
                 .function_with_types(

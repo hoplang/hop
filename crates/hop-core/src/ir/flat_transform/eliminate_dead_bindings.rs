@@ -2,9 +2,8 @@ use std::collections::HashSet;
 
 use crate::hop::typing::Pattern;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatEntrypoint,
-    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp,
-    FlatProgram,
+    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction,
+    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_lambda::IrLambda;
@@ -23,13 +22,13 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
         .into_iter()
         .map(|function| match function {
             FlatFunctionDeclaration::Data(function) => {
-                FlatFunctionDeclaration::Data(FlatDataFunction {
+                FlatFunctionDeclaration::Data(FlatFunction {
                     body: eliminate_data(function.body, &mut HashSet::new()),
                     ..function
                 })
             }
             FlatFunctionDeclaration::Html(function) => {
-                FlatFunctionDeclaration::Html(FlatHtmlFunction {
+                FlatFunctionDeclaration::Html(FlatFunction {
                     body: eliminate_html(function.body, &mut HashSet::new()),
                     ..function
                 })

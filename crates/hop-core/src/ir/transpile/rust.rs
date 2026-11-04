@@ -11,7 +11,7 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::ir_type::{
-    IrDataType, IrHtmlSignature, IrHtmlType, IrType, IrValueSignature, IrValueType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
 };
 use crate::ir::ir_type_declarations::{IrEnum, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::ValueId;
@@ -195,8 +195,8 @@ impl RustTranspiler {
             return self.name_place(arena, name);
         }
         let method = match typ {
-            IrType::Value(IrValueType::Data(IrDataType::Array(_))) => ".to_vec()",
-            IrType::Value(IrValueType::Data(IrDataType::String)) => ".to_string()",
+            IrType::Data(IrFunctionDataType::Data(IrDataType::Array(_))) => ".to_vec()",
+            IrType::Data(IrFunctionDataType::Data(IrDataType::String)) => ".to_string()",
             _ => ".clone()",
         };
         let receiver = match self.name_binding(name) {
@@ -315,7 +315,7 @@ impl RustTranspiler {
         owner: &str,
         value: ValueId,
     ) -> Doc<'a> {
-        if let IrType::Value(IrValueType::Data(value_type)) = self.name_type(value)
+        if let IrType::Data(IrFunctionDataType::Data(value_type)) = self.name_type(value)
             && self.field_type_is_boxed(value_type, owner)
         {
             arena
@@ -367,7 +367,7 @@ impl RustTranspiler {
                 binder.var,
                 (
                     binding,
-                    IrType::Value(IrValueType::Data(binder.typ.clone())),
+                    IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
                 ),
             );
         }
@@ -428,10 +428,10 @@ impl RustTranspiler {
     /// Whether `t` is one of hop's scalar types.
     fn is_scalar(t: &IrType) -> bool {
         match t {
-            IrType::Value(IrValueType::Data(
+            IrType::Data(IrFunctionDataType::Data(
                 IrDataType::Bool | IrDataType::Int | IrDataType::Float,
             )) => true,
-            IrType::Value(IrValueType::Data(
+            IrType::Data(IrFunctionDataType::Data(
                 IrDataType::String
                 | IrDataType::Array(_)
                 | IrDataType::Tuple(_)
@@ -439,44 +439,46 @@ impl RustTranspiler {
                 | IrDataType::Enum(_)
                 | IrDataType::Option(_),
             ))
-            | IrType::Html(IrHtmlType::Html)
-            | IrType::Value(IrValueType::Function(_))
-            | IrType::Html(IrHtmlType::Function(_)) => false,
+            | IrType::Html(IrFunctionHtmlType::Html(IrHtmlType))
+            | IrType::Data(IrFunctionDataType::Function(_))
+            | IrType::Html(IrFunctionHtmlType::Function(_)) => false,
         }
     }
 
     /// Transpile a type for use in function parameters (uses references without explicit lifetimes)
     fn transpile_param_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrType) -> Doc<'a> {
         match t {
-            IrType::Value(IrValueType::Data(IrDataType::Bool)) => arena.text("bool"),
-            IrType::Value(IrValueType::Data(IrDataType::String)) => arena.text("&str"),
-            IrType::Value(IrValueType::Data(IrDataType::Float)) => arena.text("f64"),
-            IrType::Value(IrValueType::Data(IrDataType::Int)) => arena.text("i32"),
-            IrType::Html(IrHtmlType::Html) => unreachable!("Html is written, never held"),
-            IrType::Value(IrValueType::Data(IrDataType::Array(elem))) => arena
+            IrType::Data(IrFunctionDataType::Data(IrDataType::Bool)) => arena.text("bool"),
+            IrType::Data(IrFunctionDataType::Data(IrDataType::String)) => arena.text("&str"),
+            IrType::Data(IrFunctionDataType::Data(IrDataType::Float)) => arena.text("f64"),
+            IrType::Data(IrFunctionDataType::Data(IrDataType::Int)) => arena.text("i32"),
+            IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
+                unreachable!("Html is written, never held")
+            }
+            IrType::Data(IrFunctionDataType::Data(IrDataType::Array(elem))) => arena
                 .text("&[")
                 .append(self.transpile_data_type(arena, elem))
                 .append(arena.text("]")),
-            IrType::Value(IrValueType::Data(IrDataType::Option(inner))) => arena
+            IrType::Data(IrFunctionDataType::Data(IrDataType::Option(inner))) => arena
                 .text("&Option<")
                 .append(self.transpile_data_type(arena, inner))
                 .append(arena.text(">")),
-            IrType::Value(IrValueType::Data(IrDataType::Tuple(_))) => {
+            IrType::Data(IrFunctionDataType::Data(IrDataType::Tuple(_))) => {
                 arena.text("&").append(self.transpile_type(arena, t))
             }
-            IrType::Value(IrValueType::Data(IrDataType::Record(name) | IrDataType::Enum(name))) => {
-                arena
-                    .text("&")
-                    .append(arena.text(name.as_str().to_string()))
-            }
-            IrType::Value(IrValueType::Function(signature)) => {
+            IrType::Data(IrFunctionDataType::Data(
+                IrDataType::Record(name) | IrDataType::Enum(name),
+            )) => arena
+                .text("&")
+                .append(arena.text(name.as_str().to_string())),
+            IrType::Data(IrFunctionDataType::Function(signature)) => {
                 let parameters: Vec<IrType> = (signature.parameters.iter().cloned())
-                    .map(IrType::Value)
+                    .map(IrType::Data)
                     .collect();
                 let result = self.transpile_data_type(arena, &signature.result);
                 self.transpile_fn_type(arena, None, &parameters, Some(result))
             }
-            IrType::Html(IrHtmlType::Function(signature)) => {
+            IrType::Html(IrFunctionHtmlType::Function(signature)) => {
                 let output = arena.text("&mut String");
                 self.transpile_fn_type(arena, Some(output), &signature.parameters, None)
             }
@@ -1021,7 +1023,7 @@ impl Transpiler for RustTranspiler {
                 binder.var,
                 (
                     Binding::Borrowed,
-                    IrType::Value(IrValueType::Data(binder.typ.clone())),
+                    IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
                 ),
             );
         }
@@ -1128,7 +1130,7 @@ impl Transpiler for RustTranspiler {
                         binder.var,
                         (
                             Binding::Borrowed,
-                            IrType::Value(IrValueType::Data(binder.typ.clone())),
+                            IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
                         ),
                     );
                 }
@@ -1305,22 +1307,22 @@ impl Transpiler for RustTranspiler {
     fn transpile_value_function_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrValueSignature,
+        signature: &IrSignature<IrFunctionDataType, IrDataType>,
     ) -> Doc<'a> {
         self.transpile_param_type(
             arena,
-            &IrType::Value(IrValueType::Function(signature.clone())),
+            &IrType::Data(IrFunctionDataType::Function(signature.clone())),
         )
     }
 
     fn transpile_html_function_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrHtmlSignature,
+        signature: &IrSignature<IrType, IrHtmlType>,
     ) -> Doc<'a> {
         self.transpile_param_type(
             arena,
-            &IrType::Html(IrHtmlType::Function(signature.clone())),
+            &IrType::Html(IrFunctionHtmlType::Function(signature.clone())),
         )
     }
 
@@ -1350,7 +1352,7 @@ impl Transpiler for RustTranspiler {
             }
             (
                 WriterFunctionBody::Returns(block),
-                IrType::Value(IrValueType::Function(signature)),
+                IrType::Data(IrFunctionDataType::Function(signature)),
             ) => {
                 let result = self.transpile_data_type(arena, &signature.result);
                 (
@@ -1859,7 +1861,7 @@ impl Transpiler for RustTranspiler {
                         binder.var,
                         (
                             Binding::Borrowed,
-                            IrType::Value(IrValueType::Data(binder.typ.clone())),
+                            IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
                         ),
                     );
                 }
@@ -2093,7 +2095,7 @@ mod tests {
                     "Sum",
                     [
                         ("n", IrType::INT),
-                        ("scale", IrType::value_function([IrType::INT], IrType::INT)),
+                        ("scale", IrType::data_function([IrType::INT], IrType::INT)),
                     ],
                     IrType::INT,
                     |t| {

@@ -9,7 +9,7 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_match::{IrMatch, IrPattern};
 use crate::ir::ir_type::{
-    IrDataType, IrHtmlSignature, IrHtmlType, IrType, IrValueSignature, IrValueType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
 };
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::value_id::ValueId;
@@ -88,7 +88,7 @@ fn check_html_affine(program: &FlatProgram) -> Result<(), FlatLintError> {
 
 fn collect_html(block: &FlatHtmlBlock, html: &mut [bool]) {
     for binding in &block.html {
-        if binding.binder.typ == IrHtmlType::Html {
+        if binding.binder.typ == IrFunctionHtmlType::Html(IrHtmlType) {
             html[binding.binder.var.index()] = true;
         }
         match &binding.op {
@@ -173,7 +173,10 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatLintError> {
         match function {
             FlatFunctionDeclaration::Data(data) => {
                 for param in &data.parameters {
-                    checker.bind(param.binder.var, BoundType::of_value(&param.binder.typ))?;
+                    checker.bind(
+                        param.binder.var,
+                        BoundType::of_function_data(&param.binder.typ),
+                    )?;
                 }
                 let expected = BoundType::Data(&data.return_type);
                 checker.data_block(&data.body, expected)?;
@@ -217,30 +220,30 @@ struct Checker<'a> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BoundType<'a> {
     Data(&'a IrDataType),
-    ValueFunction(&'a IrValueSignature),
+    DataFunction(&'a IrSignature<IrFunctionDataType, IrDataType>),
     Html,
-    HtmlFunction(&'a IrHtmlSignature),
+    HtmlFunction(&'a IrSignature<IrType, IrHtmlType>),
 }
 
 impl<'a> BoundType<'a> {
     fn of(typ: &'a IrType) -> Self {
         match typ {
-            IrType::Value(value) => BoundType::of_value(value),
-            IrType::Html(html) => BoundType::of_html(html),
+            IrType::Data(data) => BoundType::of_function_data(data),
+            IrType::Html(html) => BoundType::of_function_html(html),
         }
     }
 
-    fn of_value(typ: &'a IrValueType) -> Self {
+    fn of_function_data(typ: &'a IrFunctionDataType) -> Self {
         match typ {
-            IrValueType::Data(data) => BoundType::Data(data),
-            IrValueType::Function(signature) => BoundType::ValueFunction(signature),
+            IrFunctionDataType::Data(data) => BoundType::Data(data),
+            IrFunctionDataType::Function(signature) => BoundType::DataFunction(signature),
         }
     }
 
-    fn of_html(typ: &'a IrHtmlType) -> Self {
+    fn of_function_html(typ: &'a IrFunctionHtmlType) -> Self {
         match typ {
-            IrHtmlType::Html => BoundType::Html,
-            IrHtmlType::Function(signature) => BoundType::HtmlFunction(signature),
+            IrFunctionHtmlType::Html(IrHtmlType) => BoundType::Html,
+            IrFunctionHtmlType::Function(signature) => BoundType::HtmlFunction(signature),
         }
     }
 
@@ -268,7 +271,7 @@ impl<'a> Checker<'a> {
     fn data(&self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatLintError> {
         Ok(match self.typ(name)? {
             BoundType::Data(data) => Some(data),
-            BoundType::ValueFunction(_) | BoundType::Html | BoundType::HtmlFunction(_) => None,
+            BoundType::DataFunction(_) | BoundType::Html | BoundType::HtmlFunction(_) => None,
         })
     }
 
@@ -288,7 +291,7 @@ impl<'a> Checker<'a> {
     ) -> Result<(), FlatLintError> {
         self.data_bindings(&block.bindings)?;
         for binding in &block.html {
-            let declared = BoundType::of_html(&binding.binder.typ);
+            let declared = BoundType::of_function_html(&binding.binder.typ);
             let html = declared == BoundType::Html;
             let produces = match &binding.op {
                 FlatHtmlOp::Call(callee, args) => match self.callee(callee)? {
@@ -381,7 +384,7 @@ impl<'a> Checker<'a> {
 
     fn data_bindings(&mut self, bindings: &'a [FlatDataBinding]) -> Result<(), FlatLintError> {
         for binding in bindings {
-            let declared = BoundType::of_value(&binding.binder.typ);
+            let declared = BoundType::of_function_data(&binding.binder.typ);
             let produces = match &binding.op {
                 FlatDataOp::Data(op) => match declared {
                     BoundType::Data(declared) => self.data_op(op, declared)?,
@@ -395,7 +398,7 @@ impl<'a> Checker<'a> {
                                 callee
                                     .parameters
                                     .iter()
-                                    .map(|p| BoundType::of_value(&p.binder.typ)),
+                                    .map(|p| BoundType::of_function_data(&p.binder.typ)),
                             )?
                     }
                     FlatFunctionDeclaration::Html(_) => false,
@@ -413,23 +416,25 @@ impl<'a> Checker<'a> {
                     true
                 }
                 FlatDataOp::Lambda(lambda) => {
-                    let BoundType::ValueFunction(signature) = declared else {
+                    let BoundType::DataFunction(signature) = declared else {
                         return Err(FlatLintError::IllTypedBinding);
                     };
                     self.lambda_parameters(
                         &lambda.parameters,
-                        signature.parameters.iter().map(BoundType::of_value),
-                        BoundType::of_value,
+                        signature.parameters.iter().map(BoundType::of_function_data),
+                        BoundType::of_function_data,
                     )?;
                     self.data_block(&lambda.body, BoundType::Data(&signature.result))?;
                     self.lambdas -= 1;
                     true
                 }
                 FlatDataOp::Apply(closure, args) => match self.typ(*closure)? {
-                    BoundType::ValueFunction(signature) => {
+                    BoundType::DataFunction(signature) => {
                         declared == BoundType::Data(&signature.result)
-                            && self
-                                .args(args, signature.parameters.iter().map(BoundType::of_value))?
+                            && self.args(
+                                args,
+                                signature.parameters.iter().map(BoundType::of_function_data),
+                            )?
                     }
                     _ => false,
                 },
@@ -634,7 +639,7 @@ impl<'a> Checker<'a> {
         match (pattern, typ) {
             (Pattern::Wildcard, _) => Ok(()),
             (_, BoundType::Data(data)) => self.data_pattern(pattern, data),
-            (_, BoundType::ValueFunction(_) | BoundType::Html | BoundType::HtmlFunction(_)) => {
+            (_, BoundType::DataFunction(_) | BoundType::Html | BoundType::HtmlFunction(_)) => {
                 Err(FlatLintError::PatternMismatch)
             }
         }

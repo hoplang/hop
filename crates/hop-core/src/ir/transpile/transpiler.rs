@@ -6,7 +6,7 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::IrSwitch;
 use crate::ir::ir_type::{
-    IrDataType, IrHtmlSignature, IrHtmlType, IrType, IrValueSignature, IrValueType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
 };
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
@@ -133,12 +133,12 @@ pub trait Transpiler {
     fn transpile_value_function_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrValueSignature,
+        signature: &IrSignature<IrFunctionDataType, IrDataType>,
     ) -> Doc<'a>;
     fn transpile_html_function_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrHtmlSignature,
+        signature: &IrSignature<IrType, IrHtmlType>,
     ) -> Doc<'a>;
 
     // Closures. `typ` is the type of the let that binds the lambda.
@@ -162,12 +162,14 @@ pub trait Transpiler {
     ) -> Doc<'a>;
     fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrType) -> Doc<'a> {
         match t {
-            IrType::Value(IrValueType::Data(data)) => self.transpile_data_type(arena, data),
-            IrType::Html(IrHtmlType::Html) => unreachable!("Html is written, never held"),
-            IrType::Value(IrValueType::Function(signature)) => {
+            IrType::Data(IrFunctionDataType::Data(data)) => self.transpile_data_type(arena, data),
+            IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
+                unreachable!("Html is written, never held")
+            }
+            IrType::Data(IrFunctionDataType::Function(signature)) => {
                 self.transpile_value_function_type(arena, signature)
             }
-            IrType::Html(IrHtmlType::Function(signature)) => {
+            IrType::Html(IrFunctionHtmlType::Function(signature)) => {
                 self.transpile_html_function_type(arena, signature)
             }
         }
@@ -379,37 +381,37 @@ pub trait Transpiler {
                 self.transpile_tuple_index(arena, *tuple, *index)
             }
             WriterOp::Data(IrDataOp::Array(elements)) => match typ {
-                IrType::Value(IrValueType::Data(IrDataType::Array(elem_type))) => {
+                IrType::Data(IrFunctionDataType::Data(IrDataType::Array(elem_type))) => {
                     self.transpile_array_literal(arena, elements, elem_type)
                 }
                 _ => unreachable!("Array value must have Array type"),
             },
             WriterOp::Data(IrDataOp::Tuple(elements)) => match typ {
-                IrType::Value(IrValueType::Data(IrDataType::Tuple(element_types))) => {
+                IrType::Data(IrFunctionDataType::Data(IrDataType::Tuple(element_types))) => {
                     self.transpile_tuple_literal(arena, elements, element_types)
                 }
                 _ => unreachable!("Tuple value must have Tuple type"),
             },
             WriterOp::Data(IrDataOp::Record(fields)) => match typ {
-                IrType::Value(IrValueType::Data(IrDataType::Record(name))) => {
+                IrType::Data(IrFunctionDataType::Data(IrDataType::Record(name))) => {
                     self.transpile_record_literal(arena, name.as_str(), fields)
                 }
                 _ => unreachable!("Record value must have a Record type"),
             },
             WriterOp::Data(IrDataOp::Enum(variant_name, fields)) => match typ {
-                IrType::Value(IrValueType::Data(IrDataType::Enum(name))) => {
+                IrType::Data(IrFunctionDataType::Data(IrDataType::Enum(name))) => {
                     self.transpile_enum_literal(arena, name.as_str(), variant_name.as_str(), fields)
                 }
                 _ => unreachable!("Enum value must have an Enum type"),
             },
             WriterOp::Data(IrDataOp::OptionSome(value)) => match typ {
-                IrType::Value(IrValueType::Data(IrDataType::Option(inner_type))) => {
+                IrType::Data(IrFunctionDataType::Data(IrDataType::Option(inner_type))) => {
                     self.transpile_option_literal(arena, Some(*value), inner_type)
                 }
                 _ => unreachable!("Option value must have Option type"),
             },
             WriterOp::Data(IrDataOp::OptionNone) => match typ {
-                IrType::Value(IrValueType::Data(IrDataType::Option(inner_type))) => {
+                IrType::Data(IrFunctionDataType::Data(IrDataType::Option(inner_type))) => {
                     self.transpile_option_literal(arena, None, inner_type)
                 }
                 _ => unreachable!("Option value must have Option type"),

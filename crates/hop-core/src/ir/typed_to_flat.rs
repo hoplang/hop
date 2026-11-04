@@ -10,9 +10,8 @@ use crate::hop::typing::{
 };
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataFunction, FlatDataOp, FlatEntrypoint,
-    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlFunction, FlatHtmlOp,
-    FlatProgram,
+    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction,
+    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::index_vec::IndexVec;
@@ -24,7 +23,7 @@ use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_type::{
-    IrDataType, IrHtmlSignature, IrHtmlType, IrType, IrValueSignature, IrValueType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
 };
 use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
@@ -253,18 +252,19 @@ impl<'a> Compiler<'a> {
         }
 
         let declaration = match &decl.return_type {
-            Type::Html(_) => FlatFunctionDeclaration::Html(FlatHtmlFunction {
+            Type::Html(_) => FlatFunctionDeclaration::Html(FlatFunction {
                 function,
                 parameters,
+                return_type: IrHtmlType,
                 body: self.compile_html_block(&decl.body),
             }),
-            Type::Data(return_type) => FlatFunctionDeclaration::Data(FlatDataFunction {
+            Type::Data(return_type) => FlatFunctionDeclaration::Data(FlatFunction {
                 function,
                 parameters: parameters
                     .into_iter()
                     .map(|param| {
                         param
-                            .into_value()
+                            .into_function_data()
                             .expect("a function that returns a value takes values only")
                     })
                     .collect(),
@@ -362,7 +362,7 @@ impl<'a> Compiler<'a> {
     /// Bind `op` to a fresh name of type `typ`, which is a value, in the
     /// block being compiled, and return the name.
     fn push(&mut self, typ: Type, op: FlatDataOp) -> ValueId {
-        let IrType::Value(typ) = lower_type(self.registry, &typ) else {
+        let IrType::Data(typ) = lower_type(self.registry, &typ) else {
             unreachable!("an op of a value produces a value");
         };
         let name = self.value_id_counter.next();
@@ -376,12 +376,12 @@ impl<'a> Compiler<'a> {
     /// Bind `op` to a fresh name of type Html in the block being compiled,
     /// and return the name.
     fn push_html(&mut self, op: FlatHtmlOp) -> ValueId {
-        self.bind_html(IrHtmlType::Html, op)
+        self.bind_html(IrFunctionHtmlType::Html(IrHtmlType), op)
     }
 
     /// Bind `op` to a fresh name of type `typ` in the block being compiled,
     /// and return the name.
-    fn bind_html(&mut self, typ: IrHtmlType, op: FlatHtmlOp) -> ValueId {
+    fn bind_html(&mut self, typ: IrFunctionHtmlType, op: FlatHtmlOp) -> ValueId {
         let name = self.value_id_counter.next();
         self.html.push(FlatHtmlBinding {
             binder: IrBinder { var: name, typ },
@@ -864,7 +864,7 @@ impl<'a> Compiler<'a> {
                     parameters: parameters
                         .into_iter()
                         .map(|binder| {
-                            let IrType::Value(typ) = binder.typ else {
+                            let IrType::Data(typ) = binder.typ else {
                                 unreachable!("a lambda that computes a value takes values only");
                             };
                             IrBinder {
@@ -982,22 +982,23 @@ fn lower_type_declarations(registry: &TypeRegistry) -> IrTypeDeclarations {
 
 fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
     match typ {
-        Type::Data(data) => IrType::Value(IrValueType::Data(lower_data_type(registry, data))),
-        Type::Html(_) => IrType::Html(IrHtmlType::Html),
+        Type::Data(data) => IrType::Data(IrFunctionDataType::Data(lower_data_type(registry, data))),
+        Type::Html(_) => IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
         Type::Function(function) => match function.result.as_ref() {
-            Type::Html(_) => IrType::Html(IrHtmlType::Function(IrHtmlSignature {
+            Type::Html(_) => IrType::Html(IrFunctionHtmlType::Function(IrSignature {
                 parameters: function
                     .parameters
                     .iter()
                     .map(|parameter| lower_type(registry, parameter))
                     .collect(),
+                result: IrHtmlType,
             })),
-            Type::Data(result) => IrType::Value(IrValueType::Function(IrValueSignature {
+            Type::Data(result) => IrType::Data(IrFunctionDataType::Function(IrSignature {
                 parameters: function
                     .parameters
                     .iter()
                     .map(|parameter| match lower_type(registry, parameter) {
-                        IrType::Value(parameter) => parameter,
+                        IrType::Data(parameter) => parameter,
                         IrType::Html(_) => {
                             unreachable!("a function that returns data takes no Html")
                         }
