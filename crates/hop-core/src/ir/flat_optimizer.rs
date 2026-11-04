@@ -17,7 +17,7 @@ mod tests {
     use crate::ir::flat_lint;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
-    use crate::ir::ir_type::{IrDataType, IrType};
+    use crate::ir::ir_type::IrType;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
@@ -80,13 +80,13 @@ mod tests {
     fn should_render_the_body_of_a_closure_a_called_function_applies_in_place() {
         check(
             FlatProgramBuilder::new()
-                .function_with_types(
+                .function(
                     "Rows",
                     [
-                        ("items", IrType::array(IrDataType::String)),
-                        ("row", IrType::html_function([IrType::STRING])),
+                        ("items", Ty::array(Ty::String)),
+                        ("row", Ty::function([Ty::String], Ty::Html)),
                     ],
-                    IrType::HTML,
+                    Ty::Html,
                     |t| {
                         let rows =
                             t.html_for(t.param("items"), |t, item| t.apply(t.param("row"), [item]));

@@ -14788,7 +14788,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Variable render takes its arguments by position
+                error: Function render takes its arguments by position
                   --> main.hop (line 3, col 6)
                 2 |   <>
                 3 |     {render(label: "a", depth: 1)}

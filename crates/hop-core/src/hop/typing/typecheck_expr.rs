@@ -45,11 +45,12 @@ pub fn typecheck_expr(
             params,
             return_type,
             body,
-            ..
+            range,
         } => typecheck_lambda(
             params,
             return_type.as_ref(),
             body,
+            range,
             expected_type,
             forwarded_params,
             var_env,
@@ -5509,6 +5510,150 @@ mod tests {
                 error: Expected Int got String
                 add_ten("hello")
                         ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_call_to_closure_variable() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("render", Ty::function([Ty::String, Ty::Int], Ty::Html))],
+            "render(\"a\", 1)",
+            expect!["Html"],
+        );
+    }
+
+    #[test]
+    fn rejects_closure_call_with_mismatched_argument_type() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("render", Ty::function([Ty::String, Ty::Int], Ty::Html))],
+            "render(1, 1)",
+            expect![[r#"
+                error: Expected String got Int
+                render(1, 1)
+                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_closure_call_with_too_many_arguments() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("double", Ty::function([Ty::Int], Ty::Int))],
+            "double(1, 2)",
+            expect![[r#"
+                error: Function double expects 1 argument(s), got 2
+                double(1, 2)
+                ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_lambda_without_context_when_annotated() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[],
+            "fn(n: Int) -> Int { n * 2 }",
+            expect!["fn(Int) -> Int"],
+        );
+    }
+
+    #[test]
+    fn accepts_lambda_parameter_types_from_the_function_parameter() {
+        accept(
+            TestModuleBuilder::new().function(
+                "apply",
+                [("f", Ty::function([Ty::Int], Ty::Int))],
+                Ty::Int,
+            ),
+            &[],
+            "apply(fn(n) { n + 1 })",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn accepts_closure_variable_passed_to_function_parameter() {
+        accept(
+            TestModuleBuilder::new().function(
+                "apply",
+                [("f", Ty::function([Ty::Int], Ty::Int))],
+                Ty::Int,
+            ),
+            &[("double", Ty::function([Ty::Int], Ty::Int))],
+            "apply(double)",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn accepts_lambda_calling_closure_variable() {
+        accept(
+            TestModuleBuilder::new().function(
+                "apply",
+                [("f", Ty::function([Ty::Int], Ty::Int))],
+                Ty::Int,
+            ),
+            &[("double", Ty::function([Ty::Int], Ty::Int))],
+            "apply(fn(n) { double(n) + 1 })",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn rejects_lambda_body_that_does_not_fit_the_function_parameter() {
+        reject(
+            TestModuleBuilder::new().function(
+                "apply",
+                [("f", Ty::function([Ty::Int], Ty::Int))],
+                Ty::Int,
+            ),
+            &[],
+            "apply(fn(n) { n.to_string() })",
+            expect![[r#"
+                error: Expected fn(Int) -> Int got fn(Int) -> String
+                apply(fn(n) { n.to_string() })
+                      ^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_lambda_with_more_parameters_than_the_function_parameter() {
+        reject(
+            TestModuleBuilder::new().function(
+                "apply",
+                [("f", Ty::function([Ty::Int], Ty::Int))],
+                Ty::Int,
+            ),
+            &[],
+            "apply(fn(a, b) { a })",
+            expect![[r#"
+                error: A lambda with 2 parameter(s) cannot have type fn(Int) -> Int
+                apply(fn(a, b) { a })
+                      ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_closure_variable_of_another_function_type() {
+        reject(
+            TestModuleBuilder::new().function(
+                "apply",
+                [("f", Ty::function([Ty::Int], Ty::Int))],
+                Ty::Int,
+            ),
+            &[("show", Ty::function([Ty::Int], Ty::String))],
+            "apply(show)",
+            expect![[r#"
+                error: Expected fn(Int) -> Int got fn(Int) -> String
+                apply(show)
+                      ^^^^
             "#]],
         );
     }

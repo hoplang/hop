@@ -1,4 +1,5 @@
-use crate::hop::typing::r#type::{DataType, Type};
+use crate::hop::typing::resolve_type::check_function_type;
+use crate::hop::typing::r#type::{DataType, FunctionType, Type};
 use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
@@ -30,6 +31,10 @@ pub enum Ty {
     Array(Box<Ty>),
     Option(Box<Ty>),
     Tuple(Vec<Ty>),
+    Function {
+        parameters: Vec<Ty>,
+        result: Box<Ty>,
+    },
 }
 
 impl Ty {
@@ -48,12 +53,29 @@ impl Ty {
     pub fn tuple(elements: impl IntoIterator<Item = Ty>) -> Ty {
         Ty::Tuple(elements.into_iter().collect())
     }
+
+    pub fn function(parameters: impl IntoIterator<Item = Ty>, result: Ty) -> Ty {
+        Ty::Function {
+            parameters: parameters.into_iter().collect(),
+            result: Box::new(result),
+        }
+    }
 }
 
 impl From<Ty> for Type {
     fn from(ty: Ty) -> Type {
         match ty {
             Ty::Html => Type::HTML,
+            Ty::Function { parameters, result } => {
+                let function = FunctionType {
+                    parameters: parameters.into_iter().map(Type::from).collect(),
+                    result: Box::new((*result).into()),
+                };
+                if let Some(error) = check_function_type(&function) {
+                    panic!("invalid function type: {error:?}");
+                }
+                Type::Function(function)
+            }
             data => Type::Data(data.into()),
         }
     }
@@ -67,6 +89,7 @@ impl From<Ty> for DataType {
             Ty::Bool => DataType::Bool,
             Ty::Float => DataType::Float,
             Ty::Html => panic!("Html is not a data type"),
+            Ty::Function { .. } => panic!("a function type is not a data type"),
             Ty::Named(name) => DataType::Named {
                 module: test_module(),
                 name: type_name(&name),

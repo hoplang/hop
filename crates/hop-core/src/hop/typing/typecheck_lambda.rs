@@ -25,6 +25,7 @@ pub fn typecheck_lambda(
     params: &[ParsedLambdaParameter],
     return_type: Option<&ParsedType>,
     body: &ParsedExpr,
+    range: &DocumentRange,
     expected_type: Option<&Type>,
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
@@ -35,6 +36,21 @@ pub fn typecheck_lambda(
     asset_references: &mut Vec<AssetReference>,
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
+    // A parameter without a type has no position to take it from when the
+    // expected function type has another number of parameters.
+    if let Some(Type::Function(function)) = expected_type
+        && function.parameters.len() != params.len()
+        && params.iter().any(|param| param.var_type.is_none())
+    {
+        errors.push(TypeError::new(
+            TypeErrorKind::LambdaParameterCountMismatch {
+                expected: Type::Function(function.clone()),
+                found: params.len(),
+            },
+            range.clone(),
+        ));
+        return None;
+    }
     let expected = match expected_type {
         Some(Type::Function(function)) if function.parameters.len() == params.len() => {
             Some(function)

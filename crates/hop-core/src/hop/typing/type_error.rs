@@ -341,11 +341,14 @@ pub enum TypeErrorKind {
     #[error("Variable {name} is not a function")]
     NotAFunction { name: FunctionName },
 
-    #[error("Variable {name} takes its arguments by position")]
+    #[error("Function {name} takes its arguments by position")]
     NamedArgumentsToFunctionValue { name: VarName },
 
     #[error("The type of parameter {name} cannot be inferred")]
     LambdaParameterNeedsType { name: VarName },
+
+    #[error("A lambda with {found} parameter(s) cannot have type {expected}")]
+    LambdaParameterCountMismatch { expected: Type, found: usize },
 
     #[error("A match cannot produce {typ}")]
     MatchProducesFunction { typ: Type },

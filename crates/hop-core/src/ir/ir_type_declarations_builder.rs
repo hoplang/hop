@@ -128,10 +128,23 @@ impl IrTypeDeclarations {
             .iter()
             .map(|enumeration| enumeration.name.as_str().to_string())
             .collect();
-        match ty {
-            Ty::Html => IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
-            ty => IrType::Data(IrFunctionDataType::Data(data_type(ty, &records, &enums))),
+        ir_type(ty, &records, &enums)
+    }
+}
+
+fn ir_type(ty: Ty, records: &[String], enums: &[String]) -> IrType {
+    match ty {
+        Ty::Html => IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
+        Ty::Function { parameters, result } => {
+            let parameters = parameters
+                .into_iter()
+                .map(|parameter| ir_type(parameter, records, enums));
+            match ir_type(*result, records, enums) {
+                IrType::Html(IrFunctionHtmlType::Html(_)) => IrType::html_function(parameters),
+                result => IrType::data_function(parameters, result),
+            }
         }
+        ty => IrType::Data(IrFunctionDataType::Data(data_type(ty, records, enums))),
     }
 }
 
@@ -143,6 +156,7 @@ fn data_type(ty: Ty, records: &[String], enums: &[String]) -> IrDataType {
         Ty::Bool => IrDataType::Bool,
         Ty::Float => IrDataType::Float,
         Ty::Html => panic!("Html is not a data type"),
+        Ty::Function { .. } => panic!("a function type is not a data type"),
         Ty::Array(ty) => IrDataType::Array(element(ty)),
         Ty::Option(ty) => IrDataType::Option(element(ty)),
         Ty::Tuple(elements) => IrDataType::Tuple(

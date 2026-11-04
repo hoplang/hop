@@ -487,7 +487,7 @@ mod tests {
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::index_vec::Idx;
-    use crate::ir::ir_type::{IrDataType, IrType};
+    use crate::ir::ir_type::IrType;
     use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::value_builder::ValueBuilder;
     use expect_test::{Expect, expect};
@@ -1106,13 +1106,13 @@ mod tests {
     fn should_render_a_closure_a_function_takes_once_per_application() {
         check(
             FlatProgramBuilder::new()
-                .function_with_types(
+                .function(
                     "Rows",
                     [
-                        ("items", IrType::array(IrDataType::String)),
-                        ("row", IrType::html_function([IrType::STRING])),
+                        ("items", Ty::array(Ty::String)),
+                        ("row", Ty::function([Ty::String], Ty::Html)),
                     ],
-                    IrType::HTML,
+                    Ty::Html,
                     |t| {
                         let rows =
                             t.html_for(t.param("items"), |t, item| t.apply(t.param("row"), [item]));

@@ -1707,13 +1707,10 @@ mod tests {
         // The function is recursive, so the inliner keeps the closure.
         check_program(
             FlatProgramBuilder::new()
-                .function_with_types(
+                .function(
                     "Countdown",
-                    [
-                        ("n", IrType::INT),
-                        ("row", IrType::html_function([IrType::INT])),
-                    ],
-                    IrType::HTML,
+                    [("n", Ty::Int), ("row", Ty::function([Ty::Int], Ty::Html))],
+                    Ty::Html,
                     |t| {
                         t.match_(t.lte(t.param("n"), t.int(0)), |m| {
                             m.arm(Pat::True, |t, _| t.html_concat([]));
@@ -1785,13 +1782,10 @@ mod tests {
     fn closure_that_matches_on_a_name_it_captures() {
         check_program(
             FlatProgramBuilder::new()
-                .function_with_types(
+                .function(
                     "Sum",
-                    [
-                        ("n", IrType::INT),
-                        ("scale", IrType::data_function([IrType::INT], IrType::INT)),
-                    ],
-                    IrType::INT,
+                    [("n", Ty::Int), ("scale", Ty::function([Ty::Int], Ty::Int))],
+                    Ty::Int,
                     |t| {
                         t.match_(t.lte(t.param("n"), t.int(0)), |m| {
                             m.arm(Pat::True, |t, _| t.int(0));
@@ -1874,13 +1868,10 @@ mod tests {
     fn closure_that_takes_html() {
         check_program(
             FlatProgramBuilder::new()
-                .function_with_types(
+                .function(
                     "Wrap",
-                    [
-                        ("n", IrType::INT),
-                        ("wrap", IrType::html_function([IrType::HTML])),
-                    ],
-                    IrType::HTML,
+                    [("n", Ty::Int), ("wrap", Ty::function([Ty::Html], Ty::Html))],
+                    Ty::Html,
                     |t| {
                         t.match_(t.lte(t.param("n"), t.int(0)), |m| {
                             m.arm(Pat::True, |t, _| t.text("x"));

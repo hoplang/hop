@@ -349,13 +349,12 @@ mod tests {
 
     #[test]
     fn should_inline_a_call_that_passes_a_closure_and_copy_the_lambdas_of_the_callee() {
-        let int_to_int = || IrType::data_function([IrType::INT], IrType::INT);
         check(
             FlatProgramBuilder::new()
-                .function_with_types(
+                .function(
                     "Twice",
-                    [("f", int_to_int()), ("x", IrType::INT)],
-                    IrType::INT,
+                    [("f", Ty::function([Ty::Int], Ty::Int)), ("x", Ty::Int)],
+                    Ty::Int,
                     |t| {
                         let f = t.param("f");
                         let again = t.lambda([IrType::INT], |t, params| t.apply(f, [params[0]]));

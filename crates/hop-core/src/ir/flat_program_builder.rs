@@ -115,17 +115,6 @@ impl FlatProgramBuilder {
         self.declare_with_types(name, params, return_type)
     }
 
-    pub fn function_with_types<'p>(
-        self,
-        name: &str,
-        params: impl IntoIterator<Item = (&'p str, IrType)>,
-        return_type: IrType,
-        body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
-    ) -> Self {
-        self.declare_with_types(name, params, return_type)
-            .define(name, |t, _| body_fn(t))
-    }
-
     pub fn declare_with_types<'p>(
         mut self,
         name: &str,
