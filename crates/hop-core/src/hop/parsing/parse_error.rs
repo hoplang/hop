@@ -89,6 +89,11 @@ pub enum ParseErrorKind {
     #[error("let is only allowed inside a block: wrap the expression in braces")]
     LetOutsideBlock,
 
+    #[error(
+        "Comparison operators cannot be chained: combine the comparisons with && or parenthesize one of them"
+    )]
+    ChainedComparison,
+
     #[error("Invalid markup declaration")]
     InvalidMarkupDeclaration,
 

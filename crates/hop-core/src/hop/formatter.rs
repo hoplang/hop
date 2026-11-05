@@ -4,12 +4,13 @@ use crate::hop::parsing::{
     ParsedEnumDeclarationVariant, ParsedExpr, ParsedFieldDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedLetBinding, ParsedLoopSource, ParsedMarkup, ParsedMatchArm,
     ParsedModule, ParsedNamedArgument, ParsedPageDeclaration, ParsedParameter, ParsedPattern,
-    ParsedRecordDeclaration, ParsedType,
+    ParsedRecordDeclaration, ParsedType, Precedence,
 };
 use crate::html::HtmlElementKind;
 use crate::symbols::var_name::VarName;
 use pretty::{Arena, DocAllocator, DocBuilder};
 use std::collections::VecDeque;
+use std::ops::Bound;
 
 /// The comments not yet printed, in source order: `//` comments, and the
 /// `<!-- -->` comments of markup content, which are kept apart so that each
@@ -850,20 +851,19 @@ fn contains_exterior_record_literal(expr: &ParsedExpr) -> bool {
             right,
             ..
         } => {
-            let (left_power, right_power) = operator.binding_power();
-            (left.binding_power() >= left_power && contains_exterior_record_literal(left))
-                || (right.binding_power() >= right_power && contains_exterior_record_literal(right))
+            let (left_bound, right_bound) = operator.operand_bounds();
+            (left.precedence().satisfies(left_bound) && contains_exterior_record_literal(left))
+                || (right.precedence().satisfies(right_bound)
+                    && contains_exterior_record_literal(right))
         }
         ParsedExpr::Unary { operand, .. } => {
-            operand.binding_power() >= ParsedExpr::PREFIX_BINDING_POWER
-                && contains_exterior_record_literal(operand)
+            operand.precedence() >= Precedence::Prefix && contains_exterior_record_literal(operand)
         }
         ParsedExpr::FieldAccess { record, .. } => {
-            record.binding_power() >= ParsedExpr::POSTFIX_BINDING_POWER
-                && contains_exterior_record_literal(record)
+            record.precedence() >= Precedence::Postfix && contains_exterior_record_literal(record)
         }
         ParsedExpr::MethodCall { receiver, .. } => {
-            receiver.binding_power() >= ParsedExpr::POSTFIX_BINDING_POWER
+            receiver.precedence() >= Precedence::Postfix
                 && contains_exterior_record_literal(receiver)
         }
         _ => false,
@@ -1031,19 +1031,28 @@ fn format_expr<'a>(
             record: object,
             field,
             ..
-        } => format_expr_in_slot(arena, object, ParsedExpr::POSTFIX_BINDING_POWER, comments)
-            .append(arena.text("."))
-            .append(arena.text(field.as_str())),
+        } => format_expr_in_slot(
+            arena,
+            object,
+            Bound::Included(Precedence::Postfix),
+            comments,
+        )
+        .append(arena.text("."))
+        .append(arena.text(field.as_str())),
         ParsedExpr::MethodCall {
             receiver,
             method,
             args,
             ..
         } => {
-            let callee =
-                format_expr_in_slot(arena, receiver, ParsedExpr::POSTFIX_BINDING_POWER, comments)
-                    .append(arena.text("."))
-                    .append(arena.text(method.as_str()));
+            let callee = format_expr_in_slot(
+                arena,
+                receiver,
+                Bound::Included(Precedence::Postfix),
+                comments,
+            )
+            .append(arena.text("."))
+            .append(arena.text(method.as_str()));
             if args.is_empty() {
                 callee.append(arena.text("()"))
             } else {
@@ -1157,7 +1166,7 @@ fn format_expr<'a>(
         } => arena.text(operator.as_str()).append(format_expr_in_slot(
             arena,
             operand,
-            ParsedExpr::PREFIX_BINDING_POWER,
+            Bound::Included(Precedence::Prefix),
             comments,
         )),
         ParsedExpr::Binary {
@@ -1166,12 +1175,12 @@ fn format_expr<'a>(
             right,
             ..
         } => {
-            let (left_power, right_power) = operator.binding_power();
-            format_expr_in_slot(arena, left, left_power, comments)
+            let (left_bound, right_bound) = operator.operand_bounds();
+            format_expr_in_slot(arena, left, left_bound, comments)
                 .append(arena.text(" "))
                 .append(arena.text(operator.as_str()))
                 .append(arena.text(" "))
-                .append(format_expr_in_slot(arena, right, right_power, comments))
+                .append(format_expr_in_slot(arena, right, right_bound, comments))
         }
         ParsedExpr::Enum {
             type_name,
@@ -1404,15 +1413,15 @@ fn format_expr<'a>(
     }
 }
 
-/// Formats an expression placed in an operand slot of the given binding power,
-/// adding parentheses if the expression does not bind tightly enough for it.
+/// Formats an expression placed in an operand slot that admits precedences
+/// within `bound`, adding parentheses if the expression binds too loosely.
 fn format_expr_in_slot<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
-    slot_binding_power: u8,
+    bound: Bound<Precedence>,
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    if expr.binding_power() < slot_binding_power {
+    if !expr.precedence().satisfies(bound) {
         arena
             .text("(")
             .append(format_expr(arena, expr, comments))
@@ -5166,7 +5175,7 @@ mod tests {
         check(
             indoc! {"
                 fn Main(a: Bool, b: Bool, c: Bool) -> Html {
-                  <div>{(1 - 1) - 1}{(1 + 2) - 3}{1 - 2 * 3}{(a == b) == c}</div>
+                  <div>{(1 - 1) - 1}{(1 + 2) - 3}{1 - 2 * 3}</div>
                 }
             "},
             expect![[r#"
@@ -5179,7 +5188,31 @@ mod tests {
                     {1 - 1 - 1}
                     {1 + 2 - 3}
                     {1 - 2 * 3}
-                    {a == b == c}
+                  </div>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn binary_expr_keeps_parens_around_comparison_operand_of_comparison() {
+        check(
+            indoc! {"
+                fn Main(a: Bool, b: Bool, c: Int, d: Int) -> Html {
+                  <div>{(a == b) == (c < d)}{a != (c <= d)}{(c > d) == a}</div>
+                }
+            "},
+            expect![[r#"
+                fn Main(
+                  a: Bool,
+                  b: Bool,
+                  c: Int,
+                  d: Int,
+                ) -> Html {
+                  <div>
+                    {(a == b) == (c < d)}
+                    {a != (c <= d)}
+                    {(c > d) == a}
                   </div>
                 }
             "#]],

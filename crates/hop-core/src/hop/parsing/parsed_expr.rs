@@ -1,7 +1,9 @@
 use std::fmt::{self, Display, Write};
+use std::ops::Bound;
 
 use super::parsed_markup::ParsedMarkup;
 use super::parsed_type::ParsedType;
+use super::token::LangToken;
 use crate::display::{Indent, join, write_tuple};
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::uncooked_string::UncookedString;
@@ -258,20 +260,82 @@ pub enum ParsedBinaryOp {
     Multiply,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Precedence {
+    LogicalOr,
+    LogicalAnd,
+    Comparison,
+    Additive,
+    Multiplicative,
+    Prefix,
+    Postfix,
+    /// Expressions that never need parentheses as an operand, either
+    /// because they are atomic or because they are delimited.
+    Atom,
+}
+
+impl Precedence {
+    pub fn satisfies(self, bound: Bound<Precedence>) -> bool {
+        match bound {
+            Bound::Included(min) => self >= min,
+            Bound::Excluded(min) => self > min,
+            Bound::Unbounded => true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fixity {
+    Left,
+    None,
+}
+
 impl ParsedBinaryOp {
-    pub fn binding_power(&self) -> (u8, u8) {
-        let left = match self {
-            ParsedBinaryOp::LogicalOr => 1,
-            ParsedBinaryOp::LogicalAnd => 3,
-            ParsedBinaryOp::Eq | ParsedBinaryOp::NotEq => 5,
-            ParsedBinaryOp::LessThan
+    pub fn from_token(token: &LangToken) -> Option<Self> {
+        Some(match token {
+            LangToken::LogicalOr => ParsedBinaryOp::LogicalOr,
+            LangToken::LogicalAnd => ParsedBinaryOp::LogicalAnd,
+            LangToken::Eq => ParsedBinaryOp::Eq,
+            LangToken::NotEq => ParsedBinaryOp::NotEq,
+            LangToken::LessThan => ParsedBinaryOp::LessThan,
+            LangToken::GreaterThan => ParsedBinaryOp::GreaterThan,
+            LangToken::LessThanOrEqual => ParsedBinaryOp::LessThanOrEqual,
+            LangToken::GreaterThanOrEqual => ParsedBinaryOp::GreaterThanOrEqual,
+            LangToken::Plus => ParsedBinaryOp::Plus,
+            LangToken::Minus => ParsedBinaryOp::Minus,
+            LangToken::Asterisk => ParsedBinaryOp::Multiply,
+            _ => return None,
+        })
+    }
+
+    pub fn precedence(&self) -> Precedence {
+        match self {
+            ParsedBinaryOp::LogicalOr => Precedence::LogicalOr,
+            ParsedBinaryOp::LogicalAnd => Precedence::LogicalAnd,
+            ParsedBinaryOp::Eq
+            | ParsedBinaryOp::NotEq
+            | ParsedBinaryOp::LessThan
             | ParsedBinaryOp::GreaterThan
             | ParsedBinaryOp::LessThanOrEqual
-            | ParsedBinaryOp::GreaterThanOrEqual => 7,
-            ParsedBinaryOp::Plus | ParsedBinaryOp::Minus => 9,
-            ParsedBinaryOp::Multiply => 11,
-        };
-        (left, left + 1)
+            | ParsedBinaryOp::GreaterThanOrEqual => Precedence::Comparison,
+            ParsedBinaryOp::Plus | ParsedBinaryOp::Minus => Precedence::Additive,
+            ParsedBinaryOp::Multiply => Precedence::Multiplicative,
+        }
+    }
+
+    pub fn fixity(&self) -> Fixity {
+        match self.precedence() {
+            Precedence::Comparison => Fixity::None,
+            _ => Fixity::Left,
+        }
+    }
+
+    pub fn operand_bounds(&self) -> (Bound<Precedence>, Bound<Precedence>) {
+        let precedence = self.precedence();
+        match self.fixity() {
+            Fixity::Left => (Bound::Included(precedence), Bound::Excluded(precedence)),
+            Fixity::None => (Bound::Excluded(precedence), Bound::Excluded(precedence)),
+        }
     }
 }
 
@@ -540,12 +604,9 @@ impl ParsedExpr {
         }
     }
 
-    pub const PREFIX_BINDING_POWER: u8 = 13;
-    pub const POSTFIX_BINDING_POWER: u8 = 15;
-
-    pub fn binding_power(&self) -> u8 {
+    pub fn precedence(&self) -> Precedence {
         match self {
-            ParsedExpr::Binary { operator, .. } => operator.binding_power().0,
+            ParsedExpr::Binary { operator, .. } => operator.precedence(),
             ParsedExpr::Unary { .. }
             | ParsedExpr::IntLiteral {
                 minus_range: Some(_),
@@ -554,11 +615,29 @@ impl ParsedExpr {
             | ParsedExpr::FloatLiteral {
                 minus_range: Some(_),
                 ..
-            } => Self::PREFIX_BINDING_POWER,
-            ParsedExpr::FieldAccess { .. } | ParsedExpr::MethodCall { .. } => {
-                Self::POSTFIX_BINDING_POWER
+            } => Precedence::Prefix,
+            ParsedExpr::FieldAccess { .. } | ParsedExpr::MethodCall { .. } => Precedence::Postfix,
+            ParsedExpr::VariableReference { .. }
+            | ParsedExpr::StringLiteral { .. }
+            | ParsedExpr::BoolLiteral { .. }
+            | ParsedExpr::IntLiteral {
+                minus_range: None, ..
             }
-            _ => u8::MAX,
+            | ParsedExpr::FloatLiteral {
+                minus_range: None, ..
+            }
+            | ParsedExpr::Array { .. }
+            | ParsedExpr::Tuple { .. }
+            | ParsedExpr::Record { .. }
+            | ParsedExpr::Enum { .. }
+            | ParsedExpr::Match { .. }
+            | ParsedExpr::For { .. }
+            | ParsedExpr::Option { .. }
+            | ParsedExpr::Macro { .. }
+            | ParsedExpr::Let { .. }
+            | ParsedExpr::Lambda { .. }
+            | ParsedExpr::Markup { .. }
+            | ParsedExpr::Call { .. } => Precedence::Atom,
         }
     }
 }

@@ -622,16 +622,19 @@ BinaryOp     ::= "==" | "!=" | "<" | ">" | "<=" | ">=" | "+" | "-" | "*" | "&&" 
 Operators group by precedence, listed here from highest to lowest:
 
 ```
-Precedence   Operators           Kind      Associativity
-1            .field, .method()   postfix   –
-2            !, -                unary     –
-3            *                   binary    left
-4            +, -                binary    left
-5            <, >, <=, >=        binary    left
-6            ==, !=              binary    left
-7            &&                  binary    left
-8            ||                  binary    left
+Precedence   Operators                  Kind      Associativity
+1            .field, .method()          postfix   –
+2            !, -                       unary     –
+3            *                          binary    left
+4            +, -                       binary    left
+5            ==, !=, <, >, <=, >=       binary    none
+6            &&                         binary    left
+7            ||                         binary    left
 ```
+
+Comparison operators cannot be chained, so `a < b < c` and `a == b < c` are
+syntax errors. Write `a < b && b < c`, or add parentheses, as in
+`(a == b) == c`.
 
 A binary operator whose operands have different types is a compile error, so
 `1 + 1.0` is a compile error unless one side is converted with `to_float()` or

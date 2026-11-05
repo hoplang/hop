@@ -5,6 +5,7 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
+use std::ops::Bound;
 
 use super::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
 use super::parse_helpers::{
@@ -14,9 +15,9 @@ use super::parse_helpers::{
 use super::parse_markup;
 use super::parse_type::parse_type;
 use super::parsed_expr::{
-    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer, ParsedLambdaParameter,
-    ParsedLetBinding, ParsedLoopSource, ParsedMatchArm, ParsedNamedArgument, ParsedPattern,
-    ParsedUnaryOp,
+    Fixity, ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer,
+    ParsedLambdaParameter, ParsedLetBinding, ParsedLoopSource, ParsedMatchArm, ParsedNamedArgument,
+    ParsedPattern, ParsedUnaryOp, Precedence,
 };
 use super::token::LangToken;
 use super::tokenize_expr::{next, peek, peek2, peek3};
@@ -49,124 +50,43 @@ pub fn parse_expr_with(
     errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_logical_and(iter, comments, errors, restrictions)?;
-    while next_if_eq(iter, comments, errors, LangToken::LogicalOr).is_some() {
-        let right = parse_logical_and(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::Binary {
-            range: expr.range().clone().to(right.range().clone()),
-            left: Box::new(expr),
-            operator: ParsedBinaryOp::LogicalOr,
-            right: Box::new(right),
-        };
-    }
-    Ok(expr)
+    parse_binary(iter, comments, errors, restrictions, Bound::Unbounded)
 }
 
-fn parse_logical_and(
+fn parse_binary(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
-) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_equality(iter, comments, errors, restrictions)?;
-    while next_if_eq(iter, comments, errors, LangToken::LogicalAnd).is_some() {
-        let right = parse_equality(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::Binary {
-            range: expr.range().clone().to(right.range().clone()),
-            left: Box::new(expr),
-            operator: ParsedBinaryOp::LogicalAnd,
-            right: Box::new(right),
-        };
-    }
-    Ok(expr)
-}
-
-fn parse_equality(
-    iter: &mut DocumentCursor,
-    comments: &mut Vec<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    restrictions: Restrictions,
-) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_relational(iter, comments, errors, restrictions)?;
-    while let Some((operator, _)) = next_if_map(iter, comments, errors, |token| match token {
-        LangToken::Eq => Some(ParsedBinaryOp::Eq),
-        LangToken::NotEq => Some(ParsedBinaryOp::NotEq),
-        _ => None,
-    }) {
-        let right = parse_relational(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::Binary {
-            range: expr.range().clone().to(right.range().clone()),
-            left: Box::new(expr),
-            operator,
-            right: Box::new(right),
-        };
-    }
-    Ok(expr)
-}
-
-fn parse_relational(
-    iter: &mut DocumentCursor,
-    comments: &mut Vec<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    restrictions: Restrictions,
-) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_additive(iter, comments, errors, restrictions)?;
-    while let Some((operator, _)) = next_if_map(iter, comments, errors, |token| match token {
-        LangToken::LessThan => Some(ParsedBinaryOp::LessThan),
-        LangToken::GreaterThan => Some(ParsedBinaryOp::GreaterThan),
-        LangToken::LessThanOrEqual => Some(ParsedBinaryOp::LessThanOrEqual),
-        LangToken::GreaterThanOrEqual => Some(ParsedBinaryOp::GreaterThanOrEqual),
-        _ => None,
-    }) {
-        let right = parse_additive(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::Binary {
-            range: expr.range().clone().to(right.range().clone()),
-            left: Box::new(expr),
-            operator,
-            right: Box::new(right),
-        };
-    }
-    Ok(expr)
-}
-
-fn parse_additive(
-    iter: &mut DocumentCursor,
-    comments: &mut Vec<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    restrictions: Restrictions,
-) -> Result<ParsedExpr, ErrorEmitted> {
-    let mut expr = parse_multiplicative(iter, comments, errors, restrictions)?;
-    while let Some((operator, _)) = next_if_map(iter, comments, errors, |token| match token {
-        LangToken::Plus => Some(ParsedBinaryOp::Plus),
-        LangToken::Minus => Some(ParsedBinaryOp::Minus),
-        _ => None,
-    }) {
-        let right = parse_multiplicative(iter, comments, errors, restrictions)?;
-        expr = ParsedExpr::Binary {
-            range: expr.range().clone().to(right.range().clone()),
-            left: Box::new(expr),
-            operator,
-            right: Box::new(right),
-        };
-    }
-    Ok(expr)
-}
-
-fn parse_multiplicative(
-    iter: &mut DocumentCursor,
-    comments: &mut Vec<DocumentRange>,
-    errors: &mut Vec<ParseError>,
-    restrictions: Restrictions,
+    min_precedence: Bound<Precedence>,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let mut expr = parse_unary(iter, comments, errors, restrictions)?;
-    while next_if_eq(iter, comments, errors, LangToken::Asterisk).is_some() {
-        let right = parse_unary(iter, comments, errors, restrictions)?;
+    let mut previous: Option<ParsedBinaryOp> = None;
+    let mut chained_comparisons = Vec::new();
+    while let Some((operator, _)) = next_if_map(iter, comments, errors, |token| {
+        ParsedBinaryOp::from_token(&token)
+            .filter(|operator| operator.precedence().satisfies(min_precedence))
+    }) {
+        let (_, right_bound) = operator.operand_bounds();
+        let right = parse_binary(iter, comments, errors, restrictions, right_bound)?;
+        let range = expr.range().clone().to(right.range().clone());
+        if operator.fixity() == Fixity::None
+            && previous
+                .as_ref()
+                .is_some_and(|previous| previous.precedence() == operator.precedence())
+        {
+            chained_comparisons.push(range.clone());
+        }
         expr = ParsedExpr::Binary {
-            range: expr.range().clone().to(right.range().clone()),
+            range,
             left: Box::new(expr),
-            operator: ParsedBinaryOp::Multiply,
+            operator: operator.clone(),
             right: Box::new(right),
         };
+        previous = Some(operator);
+    }
+    for range in chained_comparisons {
+        let _ = errors.emit(ParseErrorKind::ChainedComparison, range);
     }
     Ok(expr)
 }
@@ -2507,6 +2427,101 @@ mod tests {
             "!a || !b",
             expect![[r#"
                 or(not(a), not(b))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_expr_with_chained_relational_operators() {
+        reject(
+            "a < b < c",
+            expect![[r#"
+                -- errors --
+                error: Comparison operators cannot be chained: combine the comparisons with && or parenthesize one of them
+                a < b < c
+                ^^^^^^^^^
+                -- ast --
+                lt(lt(a, b), c)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_expr_with_chained_equality_operators() {
+        reject(
+            "a == b == c",
+            expect![[r#"
+                -- errors --
+                error: Comparison operators cannot be chained: combine the comparisons with && or parenthesize one of them
+                a == b == c
+                ^^^^^^^^^^^
+                -- ast --
+                eq(eq(a, b), c)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_expr_with_equality_chained_to_relational_operator() {
+        reject(
+            "a == b < c",
+            expect![[r#"
+                -- errors --
+                error: Comparison operators cannot be chained: combine the comparisons with && or parenthesize one of them
+                a == b < c
+                ^^^^^^^^^^
+                -- ast --
+                lt(eq(a, b), c)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_expr_with_comparisons_chained_across_addition() {
+        reject(
+            "a < b + 1 <= c",
+            expect![[r#"
+                -- errors --
+                error: Comparison operators cannot be chained: combine the comparisons with && or parenthesize one of them
+                a < b + 1 <= c
+                ^^^^^^^^^^^^^^
+                -- ast --
+                lt_eq(lt(a, add(b, 1)), c)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_expr_with_chained_comparison_on_right_of_logical_and() {
+        reject(
+            "a && b < c < d",
+            expect![[r#"
+                -- errors --
+                error: Comparison operators cannot be chained: combine the comparisons with && or parenthesize one of them
+                a && b < c < d
+                     ^^^^^^^^^
+                -- ast --
+                and(a, lt(lt(b, c), d))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_expr_with_comparisons_combined_by_logical_and() {
+        accept(
+            "a < b && b < c",
+            expect![[r#"
+                and(lt(a, b), lt(b, c))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_expr_with_parenthesized_comparison_as_comparison_operand() {
+        accept(
+            "(a < b) == (c != d)",
+            expect![[r#"
+                eq(lt(a, b), not_eq(c, d))
             "#]],
         );
     }

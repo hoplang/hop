@@ -37,7 +37,8 @@ const INT_LITERALS_NEGATIVE: &[&str] = &["-1", "-42", "-2147483648"];
 const FLOAT_LITERALS_POSITIVE: &[&str] = &["0.5", "1.0", "3.25", "100.125"];
 const FLOAT_LITERALS_NEGATIVE: &[&str] = &["-0.5", "-3.25"];
 
-const BINARY_OPERATORS: &[&str] = &["==", "!=", "<", ">", "<=", ">=", "&&", "||", "+", "-", "*"];
+const COMPARISON_OPERATORS: &[&str] = &["==", "!=", "<", ">", "<=", ">="];
+const OTHER_BINARY_OPERATORS: &[&str] = &["&&", "||", "+", "-", "*"];
 
 const MARKUP_TEXT: &[&str] = &[
     "hello",
@@ -334,9 +335,20 @@ fn expr(
 ) -> Result<()> {
     unary(u, depth, restrictions, out)?;
     if u.int_in_range(0..=7)? == 7 {
+        let mut comparison_since_logical = false;
         for _ in 0..u.int_in_range(1..=3)? {
             ws(u, out)?;
-            out.push_str(u.choose(BINARY_OPERATORS)?);
+            let operator = if !comparison_since_logical && u.ratio(6, 11)? {
+                comparison_since_logical = true;
+                u.choose(COMPARISON_OPERATORS)?
+            } else {
+                let operator = u.choose(OTHER_BINARY_OPERATORS)?;
+                if matches!(*operator, "&&" | "||") {
+                    comparison_since_logical = false;
+                }
+                operator
+            };
+            out.push_str(operator);
             ws(u, out)?;
             unary(u, depth, restrictions, out)?;
         }
