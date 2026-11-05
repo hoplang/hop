@@ -14,8 +14,6 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HtmlType;
 
-/// The type of a lambda. The result is data or Html, never a function, and
-/// a function whose result is data takes no parameter that renders Html.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionType {
     pub parameters: Vec<Type>,
@@ -37,8 +35,6 @@ pub enum DataType {
     },
 }
 
-/// An EquatableType is a type where its values can be compared
-/// using `==` and `!=`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EquatableType {
     String,
@@ -47,16 +43,12 @@ pub enum EquatableType {
     Float,
 }
 
-/// A ComparableType is a type where its values can be ordered
-/// using comparison operations like `<`, `>`, `<=`, `>=`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ComparableType {
     Int,
     Float,
 }
 
-/// A NumericType is a type where its values can be used
-/// in arithmetic operations like `+`, `-`, `*`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum NumericType {
     Int,
@@ -78,7 +70,6 @@ impl Type {
         Type::Data(DataType::Option(Box::new(element)))
     }
 
-    /// The data type of this type, or None for Html and functions.
     pub fn as_data(&self) -> Option<&DataType> {
         match self {
             Type::Data(data) => Some(data),
@@ -86,8 +77,6 @@ impl Type {
         }
     }
 
-    /// Whether this is Html or a function whose result is Html. What a
-    /// value computes never depends on such a type.
     pub fn renders_html(&self) -> bool {
         match self {
             Type::Data(_) => false,
@@ -108,7 +97,6 @@ impl Type {
         self.as_data()?.as_numeric_type()
     }
 
-    /// Whether values of this type can be destructured by a `match` expression.
     pub fn is_matchable(&self) -> bool {
         match self {
             Type::Data(
