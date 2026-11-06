@@ -4,13 +4,16 @@ use crate::document::CheapString;
 use crate::hop::typing::{Constructor, Pattern};
 use crate::html::write_escaped_html;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction,
-    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
+    FlatBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction, FlatHtmlBlock,
+    FlatHtmlOp, FlatProgram,
 };
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_binding::IrBinding;
+use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
+use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
@@ -68,18 +71,14 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
                 html_lambdas: HashMap::new(),
             };
             match function {
-                FlatFunctionDeclaration::Data(function) => {
-                    FlatFunctionDeclaration::Data(FlatFunction {
-                        body: evaluator.data_block(function.body),
-                        ..function
-                    })
-                }
-                FlatFunctionDeclaration::Html(function) => {
-                    FlatFunctionDeclaration::Html(FlatFunction {
-                        body: evaluator.html_block(function.body),
-                        ..function
-                    })
-                }
+                FlatFunction::Data(function) => FlatFunction::Data(IrFunctionDeclaration {
+                    body: evaluator.data_block(function.body),
+                    ..function
+                }),
+                FlatFunction::Html(function) => FlatFunction::Html(IrFunctionDeclaration {
+                    body: evaluator.html_block(function.body),
+                    ..function
+                }),
             }
         })
         .collect();
@@ -151,7 +150,7 @@ impl Evaluator<'_> {
         self.renames.get(&name).copied().unwrap_or(name)
     }
 
-    fn bind_concat(&mut self, name: ValueId, html: &mut Vec<FlatHtmlBinding>) -> ValueId {
+    fn bind_concat(&mut self, name: ValueId, out: &mut Vec<FlatBinding>) -> ValueId {
         let Some(concat) = self.html_concats.get_mut(&name) else {
             return name;
         };
@@ -163,13 +162,13 @@ impl Evaluator<'_> {
         } else {
             name
         };
-        html.push(FlatHtmlBinding {
+        out.push(FlatBinding::Html(IrBinding {
             binder: IrBinder {
                 var,
                 typ: IrFunctionHtmlType::Html(IrHtmlType),
             },
             op: FlatHtmlOp::Concat(concat.parts.clone()),
-        });
+        }));
         var
     }
 
@@ -178,7 +177,7 @@ impl Evaluator<'_> {
         for binding in block.bindings {
             self.data_binding(binding, &mut bindings);
         }
-        FlatDataBlock {
+        IrBlock {
             bindings,
             result: self.resolve(block.result),
         }
@@ -186,20 +185,10 @@ impl Evaluator<'_> {
 
     fn html_block(&mut self, block: FlatHtmlBlock) -> FlatHtmlBlock {
         let mut bindings = Vec::with_capacity(block.bindings.len());
-        for binding in block.bindings {
-            self.data_binding(binding, &mut bindings);
-        }
-        let mut html = Vec::with_capacity(block.html.len());
-        for binding in block.html {
-            self.html_binding(binding, &mut bindings, &mut html);
-        }
+        self.html_bindings(block.bindings, &mut bindings);
         let result = self.resolve(block.result);
-        let result = self.bind_concat(result, &mut html);
-        FlatHtmlBlock {
-            bindings,
-            html,
-            result,
-        }
+        let result = self.bind_concat(result, &mut bindings);
+        IrBlock { bindings, result }
     }
 
     /// Whether the value of `name` surely matches the pattern, surely does
@@ -321,8 +310,12 @@ impl Evaluator<'_> {
         }
     }
 
-    fn data_binding(&mut self, binding: FlatDataBinding, out: &mut Vec<FlatDataBinding>) {
-        let FlatDataBinding { binder, mut op } = binding;
+    fn data_binding(
+        &mut self,
+        binding: IrBinding<IrFunctionDataType, FlatDataOp>,
+        out: &mut Vec<IrBinding<IrFunctionDataType, FlatDataOp>>,
+    ) {
+        let IrBinding { binder, mut op } = binding;
         let name = binder.var;
         op.for_each_operand_mut(&mut |operand| *operand = self.resolve(*operand));
         match op {
@@ -340,7 +333,7 @@ impl Evaluator<'_> {
                     return;
                 }
                 let match_ = self.evaluate_arms(match_, Self::data_block);
-                out.push(FlatDataBinding {
+                out.push(IrBinding {
                     binder,
                     op: FlatDataOp::Match(match_),
                 });
@@ -351,7 +344,7 @@ impl Evaluator<'_> {
                 }
                 Folded::Op(op) => {
                     self.values.insert(name, op.clone());
-                    out.push(FlatDataBinding {
+                    out.push(IrBinding {
                         binder,
                         op: FlatDataOp::Data(op),
                     });
@@ -363,7 +356,7 @@ impl Evaluator<'_> {
                     body: self.data_block(body),
                 };
                 self.data_lambdas.insert(name, lambda.clone());
-                out.push(FlatDataBinding {
+                out.push(IrBinding {
                     binder,
                     op: FlatDataOp::Lambda(lambda),
                 });
@@ -382,36 +375,41 @@ impl Evaluator<'_> {
                     self.renames.insert(name, result);
                     return;
                 }
-                out.push(FlatDataBinding {
+                out.push(IrBinding {
                     binder,
                     op: FlatDataOp::Apply(closure, args),
                 });
             }
-            op @ FlatDataOp::Call(..) => out.push(FlatDataBinding { binder, op }),
+            op @ FlatDataOp::Call(..) => out.push(IrBinding { binder, op }),
         }
     }
 
-    /// The values of a selected arm join the values of the block, so they
-    /// still come before its Html.
+    fn html_bindings(&mut self, bindings: Vec<FlatBinding>, out: &mut Vec<FlatBinding>) {
+        let mut data = Vec::new();
+        for binding in bindings {
+            match binding {
+                FlatBinding::Data(binding) => {
+                    self.data_binding(binding, &mut data);
+                    out.extend(data.drain(..).map(FlatBinding::Data));
+                }
+                FlatBinding::Html(binding) => self.html_binding(binding, out),
+            }
+        }
+    }
+
     fn html_binding(
         &mut self,
-        binding: FlatHtmlBinding,
-        bindings: &mut Vec<FlatDataBinding>,
-        html: &mut Vec<FlatHtmlBinding>,
+        binding: IrBinding<IrFunctionHtmlType, FlatHtmlOp>,
+        out: &mut Vec<FlatBinding>,
     ) {
-        let FlatHtmlBinding { binder, mut op } = binding;
+        let IrBinding { binder, mut op } = binding;
         let name = binder.var;
         op.for_each_operand_mut(&mut |operand| *operand = self.resolve(*operand));
         let mut op = match op {
             FlatHtmlOp::Match(match_) => {
                 if let Some((index, bound)) = self.selected_arm(&match_) {
                     let arm = self.take_arm(match_, index, bound);
-                    for binding in arm.bindings {
-                        self.data_binding(binding, bindings);
-                    }
-                    for binding in arm.html {
-                        self.html_binding(binding, bindings, html);
-                    }
+                    self.html_bindings(arm.bindings, out);
                     let result = self.resolve(arm.result);
                     self.renames.insert(name, result);
                     return;
@@ -435,12 +433,7 @@ impl Evaluator<'_> {
                 if let Some(lambda) = self.html_lambdas.get(&closure) {
                     let body = Freshener::new(&mut *self.value_ids, arguments(lambda, &args))
                         .freshen_html_block(&lambda.body);
-                    for binding in body.bindings {
-                        self.data_binding(binding, bindings);
-                    }
-                    for binding in body.html {
-                        self.html_binding(binding, bindings, html);
-                    }
+                    self.html_bindings(body.bindings, out);
                     let result = self.resolve(body.result);
                     self.renames.insert(name, result);
                     return;
@@ -503,14 +496,18 @@ impl Evaluator<'_> {
             }
             op => op,
         };
-        op.for_each_operand_mut(&mut |operand| *operand = self.bind_concat(*operand, html));
-        html.push(FlatHtmlBinding { binder, op });
+        op.for_each_operand_mut(&mut |operand| *operand = self.bind_concat(*operand, out));
+        out.push(FlatBinding::Html(IrBinding { binder, op }));
     }
 
     /// Fold an op whose operands are resolved. Returns the constant or
     /// name it computes when the operands allow it, and the op unchanged
     /// otherwise.
-    fn fold(&mut self, op: IrDataOp, out: &mut Vec<FlatDataBinding>) -> Folded {
+    fn fold(
+        &mut self,
+        op: IrDataOp,
+        out: &mut Vec<IrBinding<IrFunctionDataType, FlatDataOp>>,
+    ) -> Folded {
         match op {
             IrDataOp::FieldAccess(record, field) => match self.values.get(&record) {
                 Some(IrDataOp::Record(fields)) => Folded::Name(
@@ -570,7 +567,7 @@ impl Evaluator<'_> {
                             let name = self.value_ids.next();
                             let op = IrDataOp::StringLiteral(CheapString::new(combined));
                             self.values.insert(name, op.clone());
-                            out.push(FlatDataBinding {
+                            out.push(IrBinding {
                                 binder: IrBinder {
                                     var: name,
                                     typ: IrFunctionDataType::Data(IrDataType::String),
@@ -848,8 +845,8 @@ mod tests {
                   let v6: Int = v4(v5)
                   let v7: Int = v4(v0)
                   let v8: String = v6.to_string()
-                  let v10: String = v7.to_string()
                   let v9: Html = escape(v8)
+                  let v10: String = v7.to_string()
                   let v11: Html = escape(v10)
                   let v12: Html = concat(v9, v11)
                   v12
@@ -866,8 +863,8 @@ mod tests {
                   let v13: Int = 11
                   let v14: Int = add(v0, v1)
                   let v8: String = "11"
-                  let v10: String = v14.to_string()
                   let v9: Html = text("11")
+                  let v10: String = v14.to_string()
                   let v11: Html = escape(v10)
                   let v12: Html = concat(v9, v11)
                   v12
@@ -1553,8 +1550,8 @@ mod tests {
             expect![[r#"
                 -- before --
                 entrypoint Test@e0() -> Html {
-                  let v1: String = "<b>"
                   let v0: Html = text("a ")
+                  let v1: String = "<b>"
                   let v2: Html = escape(v1)
                   let v3: Html = text(" c")
                   let v4: Html = concat(v0, v2, v3)
@@ -1563,8 +1560,8 @@ mod tests {
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v1: String = "<b>"
                   let v0: Html = text("a ")
+                  let v1: String = "<b>"
                   let v2: Html = text("&lt;b&gt;")
                   let v3: Html = text(" c")
                   let v4: Html = concat(v0, v2, v3)

@@ -2,16 +2,20 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction,
-    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
+    FlatBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction, FlatHtmlBlock,
+    FlatHtmlOp, FlatProgram,
 };
 use crate::ir::flat_transform::callees::{collect_data_callees, collect_html_callees};
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::function_id::FunctionId;
+use crate::ir::ir_binding::IrBinding;
+use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
+use crate::ir::ir_type::{IrFunctionDataType, IrFunctionHtmlType};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// A pass that replaces a call to a non-recursive function with the
@@ -34,10 +38,10 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
     for function in &functions {
         let mut callees = BTreeSet::new();
         match function {
-            FlatFunctionDeclaration::Data(function) => {
+            FlatFunction::Data(function) => {
                 collect_data_callees(&function.body, &mut callees);
             }
-            FlatFunctionDeclaration::Html(function) => {
+            FlatFunction::Html(function) => {
                 collect_html_callees(&function.body, &mut callees);
             }
         }
@@ -54,7 +58,7 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
 
     // Declaration order is part of the program's identity, so keep it.
     let order: Vec<FunctionId> = functions.iter().map(|f| f.function().id).collect();
-    let mut decls: HashMap<FunctionId, FlatFunctionDeclaration> = functions
+    let mut decls: HashMap<FunctionId, FlatFunction> = functions
         .into_iter()
         .map(|f| (f.function().id, f))
         .collect();
@@ -78,18 +82,14 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
             renames: &mut renames,
         };
         let decl = match decl {
-            FlatFunctionDeclaration::Data(function) => {
-                FlatFunctionDeclaration::Data(FlatFunction {
-                    body: inliner.data_block(function.body),
-                    ..function
-                })
-            }
-            FlatFunctionDeclaration::Html(function) => {
-                FlatFunctionDeclaration::Html(FlatFunction {
-                    body: inliner.html_block(function.body),
-                    ..function
-                })
-            }
+            FlatFunction::Data(function) => FlatFunction::Data(IrFunctionDeclaration {
+                body: inliner.data_block(function.body),
+                ..function
+            }),
+            FlatFunction::Html(function) => FlatFunction::Html(IrFunctionDeclaration {
+                body: inliner.html_block(function.body),
+                ..function
+            }),
         };
         decls.insert(id, decl);
     }
@@ -129,7 +129,7 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
 /// Inlines the calls of the blocks of one body, and rewrites their reads
 /// through `renames`, extended with the result of every call it inlines.
 struct Inliner<'a> {
-    decls: &'a HashMap<FunctionId, FlatFunctionDeclaration>,
+    decls: &'a HashMap<FunctionId, FlatFunction>,
     recursive: &'a HashSet<FunctionId>,
     value_ids: &'a mut ValueIdCounter,
     renames: &'a mut HashMap<ValueId, ValueId>,
@@ -142,7 +142,7 @@ impl<'a> Inliner<'a> {
 
     /// The declaration of the callee when the call is inlined, which it is
     /// unless the callee is recursive or is the function being inlined.
-    fn inlined(&self, function: &IrFunction) -> Option<&'a FlatFunctionDeclaration> {
+    fn inlined(&self, function: &IrFunction) -> Option<&'a FlatFunction> {
         let decls = self.decls;
         decls
             .get(&function.id)
@@ -151,7 +151,7 @@ impl<'a> Inliner<'a> {
 
     /// A freshener that reads each argument of the call for the parameter
     /// it is passed to.
-    fn freshener(&mut self, decl: &FlatFunctionDeclaration, args: Vec<ValueId>) -> Freshener<'_> {
+    fn freshener(&mut self, decl: &FlatFunction, args: Vec<ValueId>) -> Freshener<'_> {
         assert_eq!(
             args.len(),
             decl.parameters().len(),
@@ -172,26 +172,27 @@ impl<'a> Inliner<'a> {
         for binding in block.bindings {
             self.data_binding(binding, &mut bindings);
         }
-        FlatDataBlock {
+        IrBlock {
             bindings,
             result: self.rename(block.result),
         }
     }
 
-    /// The values of an inlined Html call join the values of the block, so
-    /// they still come before its Html.
+    /// The bindings of an inlined Html call take its place in the block.
     fn html_block(&mut self, block: FlatHtmlBlock) -> FlatHtmlBlock {
         let mut bindings = Vec::with_capacity(block.bindings.len());
+        let mut data = Vec::new();
         for binding in block.bindings {
-            self.data_binding(binding, &mut bindings);
+            match binding {
+                FlatBinding::Data(binding) => {
+                    self.data_binding(binding, &mut data);
+                    bindings.extend(data.drain(..).map(FlatBinding::Data));
+                }
+                FlatBinding::Html(binding) => self.html_binding(binding, &mut bindings),
+            }
         }
-        let mut html = Vec::with_capacity(block.html.len());
-        for binding in block.html {
-            self.html_binding(binding, &mut bindings, &mut html);
-        }
-        FlatHtmlBlock {
+        IrBlock {
             bindings,
-            html,
             result: self.rename(block.result),
         }
     }
@@ -214,13 +215,17 @@ impl<'a> Inliner<'a> {
         }
     }
 
-    fn data_binding(&mut self, binding: FlatDataBinding, out: &mut Vec<FlatDataBinding>) {
-        let FlatDataBinding { binder, mut op } = binding;
+    fn data_binding(
+        &mut self,
+        binding: IrBinding<IrFunctionDataType, FlatDataOp>,
+        out: &mut Vec<IrBinding<IrFunctionDataType, FlatDataOp>>,
+    ) {
+        let IrBinding { binder, mut op } = binding;
         op.for_each_operand_mut(&mut |operand| *operand = self.rename(*operand));
         let op = match op {
             FlatDataOp::Call(function, args) => match self.inlined(&function) {
                 Some(decl) => {
-                    let FlatFunctionDeclaration::Data(callee) = decl else {
+                    let FlatFunction::Data(callee) = decl else {
                         panic!("{function} is called for a value but returns Html");
                     };
                     let body = self.freshener(decl, args).freshen_data_block(&callee.body);
@@ -239,26 +244,24 @@ impl<'a> Inliner<'a> {
             }),
             op => op,
         };
-        out.push(FlatDataBinding { binder, op });
+        out.push(IrBinding { binder, op });
     }
 
     fn html_binding(
         &mut self,
-        binding: FlatHtmlBinding,
-        bindings: &mut Vec<FlatDataBinding>,
-        html: &mut Vec<FlatHtmlBinding>,
+        binding: IrBinding<IrFunctionHtmlType, FlatHtmlOp>,
+        out: &mut Vec<FlatBinding>,
     ) {
-        let FlatHtmlBinding { binder, mut op } = binding;
+        let IrBinding { binder, mut op } = binding;
         op.for_each_operand_mut(&mut |operand| *operand = self.rename(*operand));
         let op = match op {
             FlatHtmlOp::Call(function, args) => match self.inlined(&function) {
                 Some(decl) => {
-                    let FlatFunctionDeclaration::Html(callee) = decl else {
+                    let FlatFunction::Html(callee) = decl else {
                         panic!("{function} is called for Html but returns a value");
                     };
                     let body = self.freshener(decl, args).freshen_html_block(&callee.body);
-                    bindings.extend(body.bindings);
-                    html.extend(body.html);
+                    out.extend(body.bindings);
                     // The result is a fresh name or an argument, and neither
                     // is ever renamed, so no read goes through two renames.
                     self.renames.insert(binder.var, body.result);
@@ -278,7 +281,7 @@ impl<'a> Inliner<'a> {
             }),
             op => op,
         };
-        html.push(FlatHtmlBinding { binder, op });
+        out.push(FlatBinding::Html(IrBinding { binder, op }));
     }
 }
 

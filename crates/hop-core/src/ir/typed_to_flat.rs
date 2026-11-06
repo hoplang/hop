@@ -10,15 +10,18 @@ use crate::hop::typing::{
 };
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction,
-    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
+    FlatBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction, FlatHtmlBlock,
+    FlatHtmlOp, FlatProgram,
 };
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::index_vec::IndexVec;
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_binding::IrBinding;
+use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
@@ -96,7 +99,7 @@ pub fn typed_to_flat(
 
     // Compiling a body requests the specializations it calls, so this runs
     // until every request is compiled.
-    let mut functions: Vec<(usize, FlatFunctionDeclaration)> = Vec::new();
+    let mut functions: Vec<(usize, FlatFunction)> = Vec::new();
     let mut next = 0;
     while let Some(request) = compiler.specializations.get(next).cloned() {
         let (index, decl) = source[&(request.module, request.name)];
@@ -105,8 +108,7 @@ pub fn typed_to_flat(
         next += 1;
     }
     functions.sort_by_key(|(index, _)| *index);
-    let functions: Vec<FlatFunctionDeclaration> =
-        functions.into_iter().map(|(_, decl)| decl).collect();
+    let functions: Vec<FlatFunction> = functions.into_iter().map(|(_, decl)| decl).collect();
 
     let mut entrypoints = IndexVec::new();
     let pages = pages
@@ -183,12 +185,8 @@ struct Compiler<'a> {
     /// rest, each with the parameter that holds it, in the order they
     /// render. The spread reads these. They are not in scope by name.
     rest: Vec<(AttributeName, Type, ValueId)>,
-    /// The bindings of values of the block being compiled, in evaluation
-    /// order.
-    bindings: Vec<FlatDataBinding>,
-    /// The bindings of Html of the block being compiled, in evaluation
-    /// order.
-    html: Vec<FlatHtmlBinding>,
+    /// The bindings of the block being compiled, in evaluation order.
+    bindings: Vec<FlatBinding>,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
@@ -208,7 +206,6 @@ impl<'a> Compiler<'a> {
             params: HashMap::new(),
             rest: Vec::new(),
             bindings: Vec::new(),
-            html: Vec::new(),
             asset_path_rewriter,
         }
     }
@@ -218,7 +215,7 @@ impl<'a> Compiler<'a> {
         decl: &TypedFunctionDeclaration,
         shape: Vec<(AttributeName, Type)>,
         function: IrFunction,
-    ) -> FlatFunctionDeclaration {
+    ) -> FlatFunction {
         self.push_scope();
 
         let mut parameters = Vec::with_capacity(decl.params.len() + shape.len());
@@ -252,13 +249,13 @@ impl<'a> Compiler<'a> {
         }
 
         let declaration = match &decl.return_type {
-            Type::Html(_) => FlatFunctionDeclaration::Html(FlatFunction {
+            Type::Html(_) => FlatFunction::Html(IrFunctionDeclaration {
                 function,
                 parameters,
                 return_type: IrHtmlType,
                 body: self.compile_html_block(&decl.body),
             }),
-            Type::Data(return_type) => FlatFunctionDeclaration::Data(FlatFunction {
+            Type::Data(return_type) => FlatFunction::Data(IrFunctionDeclaration {
                 function,
                 parameters: parameters
                     .into_iter()
@@ -333,28 +330,24 @@ impl<'a> Compiler<'a> {
     /// so `f` pushes no Html.
     fn data_block(&mut self, f: impl FnOnce(&mut Self) -> ValueId) -> FlatDataBlock {
         let outer = std::mem::take(&mut self.bindings);
-        let outer_html = std::mem::take(&mut self.html);
         let result = f(self);
-        assert!(
-            self.html.is_empty(),
-            "a block that computes a value binds Html"
-        );
-        self.html = outer_html;
-        FlatDataBlock {
-            bindings: std::mem::replace(&mut self.bindings, outer),
-            result,
-        }
+        let bindings = std::mem::replace(&mut self.bindings, outer)
+            .into_iter()
+            .map(|binding| match binding {
+                FlatBinding::Data(binding) => binding,
+                FlatBinding::Html(_) => panic!("a block that computes a value binds Html"),
+            })
+            .collect();
+        IrBlock { bindings, result }
     }
 
     /// The block of the bindings `f` pushes, whose result is the Html `f`
     /// returns.
     fn html_block(&mut self, f: impl FnOnce(&mut Self) -> ValueId) -> FlatHtmlBlock {
         let outer = std::mem::take(&mut self.bindings);
-        let outer_html = std::mem::take(&mut self.html);
         let result = f(self);
-        FlatHtmlBlock {
+        IrBlock {
             bindings: std::mem::replace(&mut self.bindings, outer),
-            html: std::mem::replace(&mut self.html, outer_html),
             result,
         }
     }
@@ -366,10 +359,10 @@ impl<'a> Compiler<'a> {
             unreachable!("an op of a value produces a value");
         };
         let name = self.value_id_counter.next();
-        self.bindings.push(FlatDataBinding {
+        self.bindings.push(FlatBinding::Data(IrBinding {
             binder: IrBinder { var: name, typ },
             op,
-        });
+        }));
         name
     }
 
@@ -383,10 +376,10 @@ impl<'a> Compiler<'a> {
     /// and return the name.
     fn bind_html(&mut self, typ: IrFunctionHtmlType, op: FlatHtmlOp) -> ValueId {
         let name = self.value_id_counter.next();
-        self.html.push(FlatHtmlBinding {
+        self.bindings.push(FlatBinding::Html(IrBinding {
             binder: IrBinder { var: name, typ },
             op,
-        });
+        }));
         name
     }
 
@@ -1328,16 +1321,6 @@ mod tests {
                       v3
                     }
                   }
-                  let v11: Bool = match v0 {
-                    true => {
-                      let v9: Bool = true
-                      v9
-                    }
-                    false => {
-                      let v10: Bool = not(v1)
-                      v10
-                    }
-                  }
                   let v8: Html = match v4 {
                     true => {
                       let v5: Html = text("and")
@@ -1347,6 +1330,16 @@ mod tests {
                     false => {
                       let v7: Html = concat()
                       v7
+                    }
+                  }
+                  let v11: Bool = match v0 {
+                    true => {
+                      let v9: Bool = true
+                      v9
+                    }
+                    false => {
+                      let v10: Bool = not(v1)
+                      v10
                     }
                   }
                   let v15: Html = match v11 {
@@ -1538,11 +1531,11 @@ mod tests {
                 }
                 entrypoint body@e0() -> Html {
                   let v0: String = "a"
+                  let v1: Html = Button@f0(v0)
                   let v2: String = "b"
                   let v3: Bool = true
-                  let v5: String = "c"
-                  let v1: Html = Button@f0(v0)
                   let v4: Html = Button@f1(v2, v3)
+                  let v5: String = "c"
                   let v6: Html = Button@f0(v5)
                   let v7: Html = concat(v1, v4, v6)
                   v7
@@ -1845,10 +1838,10 @@ mod tests {
                     v3
                   }
                   let v13: (String) -> Html = fn(v5: String) {
+                    let v6: Html = escape(v5)
                     let v7: Int = 2
                     let v8: Int = v4(v7)
                     let v9: String = v8.to_string()
-                    let v6: Html = escape(v5)
                     let v10: Html = escape(v9)
                     let v11: Html = concat(v6, v10)
                     let v12: Html = element("li", {}, v11)

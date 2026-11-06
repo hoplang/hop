@@ -6,8 +6,10 @@ use super::Doc;
 use super::transpiler::Transpiler;
 use crate::dependency_graph::DependencyGraph;
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::ir_type::{
@@ -16,8 +18,7 @@ use crate::ir::ir_type::{
 use crate::ir::ir_type_declarations::{IrEnum, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
-    WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterOp,
-    WriterPageDeclaration, WriterProgram, WriterStmt,
+    WriterBlock, WriterFunctionBody, WriterOp, WriterPageDeclaration, WriterProgram, WriterStmt,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -213,7 +214,10 @@ impl RustTranspiler {
     /// bound and owns moves out, since nothing after the block can read it.
     /// Anything else is copied or cloned.
     fn block_result<'a>(&self, arena: &'a Arena<'a>, block: &WriterBlock) -> Doc<'a> {
-        let bound_here = block.bindings.iter().any(|let_| let_.name == block.result);
+        let bound_here = block
+            .bindings
+            .iter()
+            .any(|let_| let_.binder.var == block.result);
         if bound_here && self.name_binding(block.result) == Binding::Owned {
             arena.text(name_ident(block.result))
         } else {
@@ -921,7 +925,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_function_def<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        function: &'a WriterFunctionDeclaration,
+        function: &'a IrFunctionDeclaration<IrType, IrType, WriterFunctionBody>,
     ) -> Doc<'a> {
         let result = arena
             .text("fn ")
@@ -1048,32 +1052,33 @@ impl Transpiler for RustTranspiler {
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        let_: &'a WriterBinding,
+        let_: &'a IrBinding<IrType, WriterOp>,
     ) -> Doc<'a> {
         if let WriterOp::Lambda(lambda) = &let_.op {
             self.names
-                .insert(let_.name, (Binding::Owned, let_.typ.clone()));
+                .insert(let_.binder.var, (Binding::Owned, let_.binder.typ.clone()));
             return arena
                 .text("let ")
-                .append(arena.text(name_ident(let_.name)))
+                .append(arena.text(name_ident(let_.binder.var)))
                 .append(arena.text(" = "))
-                .append(self.transpile_lambda(arena, lambda, &let_.typ))
+                .append(self.transpile_lambda(arena, lambda, &let_.binder.typ))
                 .append(arena.text(";"));
         }
         let natural = self.natural_form(&let_.op);
-        let scalar = Self::is_scalar(&let_.typ);
+        let scalar = Self::is_scalar(&let_.binder.typ);
         let binding = match natural {
             NaturalForm::Temporary => Binding::Owned,
             NaturalForm::Reference | NaturalForm::Place if scalar => Binding::Owned,
             NaturalForm::Reference | NaturalForm::Place => Binding::Borrowed,
         };
-        self.names.insert(let_.name, (binding, let_.typ.clone()));
+        self.names
+            .insert(let_.binder.var, (binding, let_.binder.typ.clone()));
         let typ = match binding {
-            Binding::Owned => self.transpile_type(arena, &let_.typ),
-            Binding::Borrowed => self.transpile_param_type(arena, &let_.typ),
+            Binding::Owned => self.transpile_type(arena, &let_.binder.typ),
+            Binding::Borrowed => self.transpile_param_type(arena, &let_.binder.typ),
             Binding::BorrowedBoxed => unreachable!("a let never binds through a Box"),
         };
-        let value = self.transpile_op(arena, &let_.op, &let_.typ);
+        let value = self.transpile_op(arena, &let_.op, &let_.binder.typ);
         let value = match natural {
             NaturalForm::Temporary => value,
             NaturalForm::Reference if scalar => arena.text("*").append(value),
@@ -1083,7 +1088,7 @@ impl Transpiler for RustTranspiler {
         };
         arena
             .text("let ")
-            .append(arena.text(name_ident(let_.name)))
+            .append(arena.text(name_ident(let_.binder.var)))
             .append(arena.text(": "))
             .append(typ)
             .append(arena.text(" = "))

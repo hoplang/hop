@@ -4,15 +4,18 @@ use crate::html::HtmlElementKind;
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_lint::{self, FlatLintError};
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction,
-    FlatFunctionDeclaration, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
+    FlatBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction, FlatHtmlBlock,
+    FlatHtmlOp, FlatProgram,
 };
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::index_vec::IndexVec;
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_binding::IrBinding;
+use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
@@ -173,7 +176,7 @@ impl FlatProgramBuilder {
             .into_iter()
             .map(|declared| match declared.return_type {
                 IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
-                    FlatFunctionDeclaration::Html(FlatFunction {
+                    FlatFunction::Html(IrFunctionDeclaration {
                         function: declared.function,
                         parameters: declared.parameters,
                         return_type: IrHtmlType,
@@ -181,7 +184,7 @@ impl FlatProgramBuilder {
                     })
                 }
                 IrType::Data(IrFunctionDataType::Data(return_type)) => {
-                    FlatFunctionDeclaration::Data(FlatFunction {
+                    FlatFunction::Data(IrFunctionDeclaration {
                         parameters: declared
                             .parameters
                             .into_iter()
@@ -221,28 +224,27 @@ pub struct DeclaredFunction {
 }
 
 struct BuiltBlock {
-    bindings: Vec<FlatDataBinding>,
-    html: Vec<FlatHtmlBinding>,
+    bindings: Vec<FlatBinding>,
     result: ValueId,
     typ: IrType,
 }
 
 impl BuiltBlock {
     fn into_data(self) -> FlatDataBlock {
-        assert!(
-            self.html.is_empty(),
-            "a block that computes a value binds Html"
-        );
-        FlatDataBlock {
-            bindings: self.bindings,
+        IrBlock {
+            bindings: (self.bindings.into_iter())
+                .map(|binding| match binding {
+                    FlatBinding::Data(binding) => binding,
+                    FlatBinding::Html(_) => panic!("a block that computes a value binds Html"),
+                })
+                .collect(),
             result: self.result,
         }
     }
 
     fn into_html(self) -> FlatHtmlBlock {
-        FlatHtmlBlock {
+        IrBlock {
             bindings: self.bindings,
-            html: self.html,
             result: self.result,
         }
     }
@@ -251,8 +253,7 @@ impl BuiltBlock {
 pub struct FlatBlockBuilder<'a> {
     program: &'a FlatProgramBuilder,
     parameters: &'a [IrParameter<IrType>],
-    bindings: RefCell<Vec<FlatDataBinding>>,
-    html: RefCell<Vec<FlatHtmlBinding>>,
+    bindings: RefCell<Vec<FlatBinding>>,
 }
 
 impl<'a> FlatBlockBuilder<'a> {
@@ -265,13 +266,11 @@ impl<'a> FlatBlockBuilder<'a> {
             program,
             parameters,
             bindings: RefCell::new(Vec::new()),
-            html: RefCell::new(Vec::new()),
         };
         let result = body_fn(&builder);
         BuiltBlock {
             typ: builder.typ(result),
             bindings: builder.bindings.into_inner(),
-            html: builder.html.into_inner(),
             result,
         }
     }
@@ -293,10 +292,12 @@ impl<'a> FlatBlockBuilder<'a> {
         let IrType::Data(typ) = typ else {
             panic!("an op of a value produces a value");
         };
-        self.bindings.borrow_mut().push(FlatDataBinding {
-            binder: IrBinder { var: name, typ },
-            op,
-        });
+        self.bindings
+            .borrow_mut()
+            .push(FlatBinding::Data(IrBinding {
+                binder: IrBinder { var: name, typ },
+                op,
+            }));
         name
     }
 
@@ -306,10 +307,12 @@ impl<'a> FlatBlockBuilder<'a> {
 
     fn push_html_typed(&self, typ: IrFunctionHtmlType, op: FlatHtmlOp) -> ValueId {
         let name = self.program.binder(IrType::Html(typ.clone()));
-        self.html.borrow_mut().push(FlatHtmlBinding {
-            binder: IrBinder { var: name, typ },
-            op,
-        });
+        self.bindings
+            .borrow_mut()
+            .push(FlatBinding::Html(IrBinding {
+                binder: IrBinder { var: name, typ },
+                op,
+            }));
         name
     }
 

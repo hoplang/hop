@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::ir::flat_program::{FlatFunctionDeclaration, FlatProgram};
+use crate::ir::flat_program::{FlatFunction, FlatProgram};
 use crate::ir::function_id::FunctionId;
 
 use super::callees::{collect_data_callees, collect_html_callees};
@@ -17,10 +17,10 @@ pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
             .find(|function| function.function().id == id)
             .unwrap()
         {
-            FlatFunctionDeclaration::Data(function) => {
+            FlatFunction::Data(function) => {
                 collect_data_callees(&function.body, &mut callees);
             }
-            FlatFunctionDeclaration::Html(function) => {
+            FlatFunction::Html(function) => {
                 collect_html_callees(&function.body, &mut callees);
             }
         }

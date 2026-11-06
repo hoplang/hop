@@ -1,9 +1,10 @@
 use crate::hop::typing::Ty;
 use crate::ir::entrypoint_id::EntrypointId;
-use crate::ir::flat_program::{FlatFunctionDeclaration, FlatProgram};
+use crate::ir::flat_program::{FlatDataBlock, FlatFunction, FlatHtmlBlock, FlatProgram};
 use crate::ir::flat_program_builder::{
     DeclaredFunction, FlatBlockBuilder, FlatProgramBuilder, Pat,
 };
+use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_type::{
     IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
 };
@@ -1457,9 +1458,7 @@ impl FlatGenerator<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::flat_program::{
-        FlatDataBinding, FlatDataBlock, FlatDataOp, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp,
-    };
+    use crate::ir::flat_program::{FlatBinding, FlatDataOp, FlatHtmlOp};
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use expect_test::{Expect, expect};
@@ -1481,15 +1480,15 @@ mod tests {
 
     #[derive(Clone, Copy)]
     enum Binding<'a> {
-        Data(&'a FlatDataBinding),
-        Html(&'a FlatHtmlBinding),
+        Data(&'a IrBinding<IrFunctionDataType, FlatDataOp>),
+        Html(&'a IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
     }
 
     impl<'a> Block<'a> {
-        fn of(function: &'a FlatFunctionDeclaration) -> Self {
+        fn of(function: &'a FlatFunction) -> Self {
             match function {
-                FlatFunctionDeclaration::Data(function) => Block::Data(&function.body),
-                FlatFunctionDeclaration::Html(function) => Block::Html(&function.body),
+                FlatFunction::Data(function) => Block::Data(&function.body),
+                FlatFunction::Html(function) => Block::Html(&function.body),
             }
         }
 
@@ -1503,11 +1502,11 @@ mod tests {
         fn bindings(self) -> Vec<Binding<'a>> {
             match self {
                 Block::Data(block) => block.bindings.iter().map(Binding::Data).collect(),
-                Block::Html(block) => block
-                    .bindings
-                    .iter()
-                    .map(Binding::Data)
-                    .chain(block.html.iter().map(Binding::Html))
+                Block::Html(block) => (block.bindings.iter())
+                    .map(|binding| match binding {
+                        FlatBinding::Data(binding) => Binding::Data(binding),
+                        FlatBinding::Html(binding) => Binding::Html(binding),
+                    })
                     .collect(),
             }
         }
@@ -1556,7 +1555,7 @@ mod tests {
                 names
             };
             match self {
-                Binding::Data(FlatDataBinding {
+                Binding::Data(IrBinding {
                     op: FlatDataOp::Match(match_),
                     ..
                 }) => match_
@@ -1564,7 +1563,7 @@ mod tests {
                     .iter()
                     .map(|arm| (bound(&arm.pattern), Block::Data(&arm.body)))
                     .collect(),
-                Binding::Html(FlatHtmlBinding {
+                Binding::Html(IrBinding {
                     op: FlatHtmlOp::Match(match_),
                     ..
                 }) => match_
@@ -1572,21 +1571,21 @@ mod tests {
                     .iter()
                     .map(|arm| (bound(&arm.pattern), Block::Html(&arm.body)))
                     .collect(),
-                Binding::Html(FlatHtmlBinding {
+                Binding::Html(IrBinding {
                     op: FlatHtmlOp::For(for_),
                     ..
                 }) => {
                     let var = for_.var.iter().map(|binder| binder.var).collect();
                     vec![(var, Block::Html(&for_.body))]
                 }
-                Binding::Data(FlatDataBinding {
+                Binding::Data(IrBinding {
                     op: FlatDataOp::Lambda(lambda),
                     ..
                 }) => {
                     let params = lambda.parameters.iter().map(|param| param.var).collect();
                     vec![(params, Block::Data(&lambda.body))]
                 }
-                Binding::Html(FlatHtmlBinding {
+                Binding::Html(IrBinding {
                     op: FlatHtmlOp::Lambda(lambda),
                     ..
                 }) => {
@@ -1600,10 +1599,10 @@ mod tests {
         fn is_lambda(self) -> bool {
             matches!(
                 self,
-                Binding::Data(FlatDataBinding {
+                Binding::Data(IrBinding {
                     op: FlatDataOp::Lambda(_),
                     ..
-                }) | Binding::Html(FlatHtmlBinding {
+                }) | Binding::Html(IrBinding {
                     op: FlatHtmlOp::Lambda(_),
                     ..
                 })
@@ -1697,11 +1696,11 @@ mod tests {
         fn count_block(&mut self, block: Block<'_>) {
             for binding in block.bindings() {
                 let arms = match binding {
-                    Binding::Data(FlatDataBinding {
+                    Binding::Data(IrBinding {
                         op: FlatDataOp::Match(m),
                         ..
                     }) => m.arms.iter().map(|arm| &arm.pattern).collect(),
-                    Binding::Html(FlatHtmlBinding {
+                    Binding::Html(IrBinding {
                         op: FlatHtmlOp::Match(m),
                         ..
                     }) => m.arms.iter().map(|arm| &arm.pattern).collect(),

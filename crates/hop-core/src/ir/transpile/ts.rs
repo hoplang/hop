@@ -5,7 +5,9 @@ use pretty::{Arena, DocAllocator};
 use super::Doc;
 use super::transpiler::Transpiler;
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
@@ -13,8 +15,7 @@ use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrHtmlType, IrSignature
 use crate::ir::ir_type_declarations::{IrEnum, IrRecord};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
-    WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration,
-    WriterPageDeclaration, WriterProgram, WriterStmt,
+    WriterBlock, WriterFunctionBody, WriterOp, WriterPageDeclaration, WriterProgram, WriterStmt,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -742,7 +743,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_function_def<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        function: &'a WriterFunctionDeclaration,
+        function: &'a IrFunctionDeclaration<IrType, IrType, WriterFunctionBody>,
     ) -> Doc<'a> {
         let param_docs: Vec<_> = function
             .parameters
@@ -861,14 +862,15 @@ impl Transpiler for TsTranspiler {
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        let_: &'a WriterBinding,
+        let_: &'a IrBinding<IrType, WriterOp>,
     ) -> Doc<'a> {
-        self.name_types.insert(let_.name, let_.typ.clone());
-        let binding_type = self.transpile_type(arena, &let_.typ);
-        let value = self.transpile_op(arena, &let_.op, &let_.typ);
+        self.name_types
+            .insert(let_.binder.var, let_.binder.typ.clone());
+        let binding_type = self.transpile_type(arena, &let_.binder.typ);
+        let value = self.transpile_op(arena, &let_.op, &let_.binder.typ);
         arena
             .text("const ")
-            .append(arena.text(name_ident(let_.name)))
+            .append(arena.text(name_ident(let_.binder.var)))
             .append(arena.text(": "))
             .append(binding_type)
             .append(arena.text(" = "))

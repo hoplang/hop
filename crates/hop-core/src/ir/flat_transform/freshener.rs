@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
 use crate::hop::typing::Pattern;
-use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp,
-};
+use crate::ir::flat_program::{FlatBinding, FlatDataBlock, FlatDataOp, FlatHtmlBlock, FlatHtmlOp};
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_binding::IrBinding;
+use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
+use crate::ir::ir_type::{IrFunctionDataType, IrFunctionHtmlType};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// Copies a block with fresh names, so the copy shares none of the names it
@@ -90,7 +91,7 @@ impl<'a> Freshener<'a> {
             .iter()
             .map(|binding| self.freshen_data_binding(binding))
             .collect();
-        FlatDataBlock {
+        IrBlock {
             bindings,
             result: self.name(block.result),
         }
@@ -100,21 +101,21 @@ impl<'a> Freshener<'a> {
         let bindings = block
             .bindings
             .iter()
-            .map(|binding| self.freshen_data_binding(binding))
+            .map(|binding| match binding {
+                FlatBinding::Data(binding) => FlatBinding::Data(self.freshen_data_binding(binding)),
+                FlatBinding::Html(binding) => FlatBinding::Html(self.freshen_html_binding(binding)),
+            })
             .collect();
-        let html = block
-            .html
-            .iter()
-            .map(|binding| self.freshen_html_binding(binding))
-            .collect();
-        FlatHtmlBlock {
+        IrBlock {
             bindings,
-            html,
             result: self.name(block.result),
         }
     }
 
-    fn freshen_data_binding(&mut self, binding: &FlatDataBinding) -> FlatDataBinding {
+    fn freshen_data_binding(
+        &mut self,
+        binding: &IrBinding<IrFunctionDataType, FlatDataOp>,
+    ) -> IrBinding<IrFunctionDataType, FlatDataOp> {
         let op = match &binding.op {
             FlatDataOp::Match(match_) => {
                 FlatDataOp::Match(self.freshen_match(match_, Self::freshen_data_block))
@@ -128,13 +129,16 @@ impl<'a> Freshener<'a> {
                 op
             }
         };
-        FlatDataBinding {
+        IrBinding {
             binder: self.fresh_binder(&binding.binder),
             op,
         }
     }
 
-    fn freshen_html_binding(&mut self, binding: &FlatHtmlBinding) -> FlatHtmlBinding {
+    fn freshen_html_binding(
+        &mut self,
+        binding: &IrBinding<IrFunctionHtmlType, FlatHtmlOp>,
+    ) -> IrBinding<IrFunctionHtmlType, FlatHtmlOp> {
         let op = match &binding.op {
             FlatHtmlOp::Match(match_) => {
                 FlatHtmlOp::Match(self.freshen_match(match_, Self::freshen_html_block))
@@ -157,7 +161,7 @@ impl<'a> Freshener<'a> {
                 op
             }
         };
-        FlatHtmlBinding {
+        IrBinding {
             binder: self.fresh_binder(&binding.binder),
             op,
         }

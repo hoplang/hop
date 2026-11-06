@@ -1,9 +1,12 @@
 use std::fmt::{self, Write};
 
 use crate::display::{Indent, join};
+use crate::ir::ir_binding::IrBinding;
+use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::IrSwitch;
 use crate::ir::ir_type::IrType;
@@ -26,7 +29,7 @@ use super::ir_parameter::IrParameter;
 pub struct WriterProgram {
     pub types: IrTypeDeclarations,
     pub pages: Vec<WriterPageDeclaration>,
-    pub functions: Vec<WriterFunctionDeclaration>,
+    pub functions: Vec<IrFunctionDeclaration<IrType, IrType, WriterFunctionBody>>,
 }
 
 #[derive(Debug)]
@@ -34,14 +37,6 @@ pub struct WriterPageDeclaration {
     pub name: TypeName,
     pub parameters: Vec<IrParameter<IrType>>,
     pub body: Vec<WriterStmt>,
-}
-
-#[derive(Debug)]
-pub struct WriterFunctionDeclaration {
-    pub function: IrFunction,
-    pub parameters: Vec<IrParameter<IrType>>,
-    pub return_type: IrType,
-    pub body: WriterFunctionBody,
 }
 
 #[derive(Debug)]
@@ -53,27 +48,15 @@ pub enum WriterFunctionBody {
     Returns(WriterBlock),
 }
 
-/// A value binding.
-#[derive(Debug)]
-pub struct WriterBinding {
-    pub name: ValueId,
-    pub typ: IrType,
-    pub op: WriterOp,
-}
-
 /// Bindings followed by the name of the result: a value function body or a
 /// match arm in value position.
-#[derive(Debug)]
-pub struct WriterBlock {
-    pub bindings: Vec<WriterBinding>,
-    pub result: ValueId,
-}
+pub type WriterBlock = IrBlock<IrBinding<IrType, WriterOp>>;
 
 /// A statement. Statements write to the ambient buffer, in order, or bind
 /// a value for the statements after them.
 #[derive(Debug)]
 pub enum WriterStmt {
-    Let(WriterBinding),
+    Let(IrBinding<IrType, WriterOp>),
     /// Write a constant string, unescaped.
     Write(String),
     /// Write a String name, escaped.
@@ -109,22 +92,6 @@ fn write_stmts(stmts: &[WriterStmt], w: &mut dyn Write) -> fmt::Result {
         write!(w, "\n{stmt}")?;
     }
     Ok(())
-}
-
-/// One line per binding and one for the result.
-impl fmt::Display for WriterBlock {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for binding in &self.bindings {
-            writeln!(f, "{binding}")?;
-        }
-        write!(f, "{}", self.result)
-    }
-}
-
-impl fmt::Display for WriterBinding {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "let {}: {} = {}", self.name, self.typ, self.op)
-    }
 }
 
 /// An HtmlFor, a Match or a let holding a Match or a Lambda spans lines,
@@ -170,20 +137,6 @@ impl WriterFunctionBody {
     }
 }
 
-impl fmt::Display for WriterFunctionDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "fn {}({}) -> {} {{",
-            self.function,
-            join(&self.parameters, ", "),
-            self.return_type
-        )?;
-        self.body.write(&mut Indent::new(f))?;
-        writeln!(f, "\n}}")
-    }
-}
-
 impl fmt::Display for WriterPageDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -200,7 +153,8 @@ impl fmt::Display for WriterPageDeclaration {
 impl fmt::Display for WriterProgram {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for function in &self.functions {
-            write!(f, "{function}")?;
+            function.write(f, WriterFunctionBody::write)?;
+            writeln!(f)?;
         }
         for page in &self.pages {
             write!(f, "{page}")?;

@@ -1,9 +1,9 @@
 use crate::hop::typing::{Constructor, Pattern, compile_arms};
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBlock, FlatHtmlOp,
-    FlatProgram,
+    FlatBinding, FlatDataBlock, FlatDataOp, FlatFunction, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
 };
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::IrAttribute;
@@ -59,8 +59,8 @@ fn check_html_affine(program: &FlatProgram) -> Result<(), FlatLintError> {
         .functions
         .iter()
         .filter_map(|function| match function {
-            FlatFunctionDeclaration::Html(function) => Some(function),
-            FlatFunctionDeclaration::Data(_) => None,
+            FlatFunction::Html(function) => Some(function),
+            FlatFunction::Data(_) => None,
         });
     for function in html_functions.clone() {
         for param in &function.parameters {
@@ -89,7 +89,10 @@ fn check_html_affine(program: &FlatProgram) -> Result<(), FlatLintError> {
 }
 
 fn collect_html(block: &FlatHtmlBlock, html: &mut [bool]) {
-    for binding in &block.html {
+    for binding in &block.bindings {
+        let FlatBinding::Html(binding) = binding else {
+            continue;
+        };
         if binding.binder.typ == IrFunctionHtmlType::Html(IrHtmlType) {
             html[binding.binder.var.index()] = true;
         }
@@ -118,7 +121,10 @@ fn check_block(
     mut scope: Vec<bool>,
     html: &[bool],
 ) -> Result<Vec<bool>, FlatLintError> {
-    for binding in &block.html {
+    for binding in &block.bindings {
+        let FlatBinding::Html(binding) = binding else {
+            continue;
+        };
         let mut operands = Ok(());
         binding.op.for_each_operand(&mut |operand| {
             if operands.is_ok() {
@@ -174,7 +180,7 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatLintError> {
     };
     for function in &program.functions {
         checker.scoped(|checker| match function {
-            FlatFunctionDeclaration::Data(data) => {
+            FlatFunction::Data(data) => {
                 for param in &data.parameters {
                     checker.bind(
                         param.binder.var,
@@ -184,7 +190,7 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatLintError> {
                 let expected = BoundType::Data(&data.return_type);
                 checker.data_block(&data.body, expected)
             }
-            FlatFunctionDeclaration::Html(html) => {
+            FlatFunction::Html(html) => {
                 for param in &html.parameters {
                     checker.bind(param.binder.var, BoundType::of(&param.binder.typ))?;
                 }
@@ -217,7 +223,7 @@ fn try_all<T>(
 
 struct Checker<'a> {
     declarations: &'a IrTypeDeclarations,
-    functions: &'a [FlatFunctionDeclaration],
+    functions: &'a [FlatFunction],
     names: Vec<Option<Name<'a>>>,
     // The names bound in the blocks being checked, innermost last.
     scope: Vec<ValueId>,
@@ -326,95 +332,104 @@ impl<'a> Checker<'a> {
         block: &'a FlatHtmlBlock,
         expected: BoundType<'a>,
     ) -> Result<(), FlatLintError> {
-        self.data_bindings(&block.bindings)?;
-        for binding in &block.html {
-            let declared = BoundType::of_function_html(&binding.binder.typ);
-            let html = declared == BoundType::Html;
-            let produces = match &binding.op {
-                FlatHtmlOp::Call(callee, args) => match self.callee(callee)? {
-                    FlatFunctionDeclaration::Html(callee) => {
-                        html && self.args(
-                            args,
-                            callee
-                                .parameters
-                                .iter()
-                                .map(|p| BoundType::of(&p.binder.typ)),
-                        )?
-                    }
-                    FlatFunctionDeclaration::Data(_) => false,
-                },
-                FlatHtmlOp::Match(match_) => {
-                    if !html {
-                        return Err(FlatLintError::MatchProducesClosure);
-                    }
-                    let subject = self.typ(match_.subject)?;
-                    for arm in &match_.arms {
-                        self.scoped(|checker| {
-                            checker.pattern(&arm.pattern, subject)?;
-                            checker.html_block(&arm.body, declared)
-                        })?;
-                    }
-                    self.arms(match_)?;
-                    true
-                }
-                FlatHtmlOp::Text(_) => html,
-                FlatHtmlOp::Escape(name) => html && self.typ(*name)?.is(&IrType::STRING),
-                FlatHtmlOp::Concat(parts) => {
-                    html && try_all(parts, |part| Ok(self.typ(*part)?.is(&IrType::HTML)))?
-                }
-                FlatHtmlOp::Element(element) => {
-                    let attributes = try_all(element.attributes.values(), |attribute| {
-                        Ok(match attribute {
-                            IrAttribute::Value(name) => self.typ(*name)?.is(&IrType::STRING),
-                            IrAttribute::Presence(name) => self.typ(*name)?.is(&IrType::BOOL),
-                            IrAttribute::Constant(_) => true,
-                        })
-                    })?;
-                    html && attributes && self.typ(element.children)?.is(&IrType::HTML)
-                }
-                FlatHtmlOp::For(for_) => {
-                    let Some(IrDataType::Array(element)) = self.data(for_.array)? else {
-                        return Err(FlatLintError::IllTypedBinding);
-                    };
-                    self.scoped(|checker| {
-                        if let Some(var) = &for_.var {
-                            if var.typ != **element {
-                                return Err(FlatLintError::IllTypedBinding);
-                            }
-                            checker.bind(var.var, BoundType::Data(&var.typ))?;
-                        }
-                        checker.html_block(&for_.body, BoundType::Html)
-                    })?;
-                    html
-                }
-                FlatHtmlOp::Lambda(lambda) => {
-                    let BoundType::HtmlFunction(signature) = declared else {
-                        return Err(FlatLintError::IllTypedBinding);
-                    };
-                    self.scoped(|checker| {
-                        checker.lambda_parameters(
-                            &lambda.parameters,
-                            signature.parameters.iter().map(BoundType::of),
-                            BoundType::of,
-                        )?;
-                        checker.html_block(&lambda.body, BoundType::Html)
-                    })?;
-                    self.lambdas -= 1;
-                    true
-                }
-                FlatHtmlOp::Apply(closure, args) => match self.typ(*closure)? {
-                    BoundType::HtmlFunction(signature) => {
-                        html && self.args(args, signature.parameters.iter().map(BoundType::of))?
-                    }
-                    _ => false,
-                },
-            };
-            if !produces {
-                return Err(FlatLintError::IllTypedBinding);
+        for binding in &block.bindings {
+            match binding {
+                FlatBinding::Data(binding) => self.data_binding(binding)?,
+                FlatBinding::Html(binding) => self.html_binding(binding)?,
             }
-            self.bind(binding.binder.var, declared)?;
         }
         self.block_result(block.result, expected)
+    }
+
+    fn html_binding(
+        &mut self,
+        binding: &'a IrBinding<IrFunctionHtmlType, FlatHtmlOp>,
+    ) -> Result<(), FlatLintError> {
+        let declared = BoundType::of_function_html(&binding.binder.typ);
+        let html = declared == BoundType::Html;
+        let produces = match &binding.op {
+            FlatHtmlOp::Call(callee, args) => match self.callee(callee)? {
+                FlatFunction::Html(callee) => {
+                    html && self.args(
+                        args,
+                        callee
+                            .parameters
+                            .iter()
+                            .map(|p| BoundType::of(&p.binder.typ)),
+                    )?
+                }
+                FlatFunction::Data(_) => false,
+            },
+            FlatHtmlOp::Match(match_) => {
+                if !html {
+                    return Err(FlatLintError::MatchProducesClosure);
+                }
+                let subject = self.typ(match_.subject)?;
+                for arm in &match_.arms {
+                    self.scoped(|checker| {
+                        checker.pattern(&arm.pattern, subject)?;
+                        checker.html_block(&arm.body, declared)
+                    })?;
+                }
+                self.arms(match_)?;
+                true
+            }
+            FlatHtmlOp::Text(_) => html,
+            FlatHtmlOp::Escape(name) => html && self.typ(*name)?.is(&IrType::STRING),
+            FlatHtmlOp::Concat(parts) => {
+                html && try_all(parts, |part| Ok(self.typ(*part)?.is(&IrType::HTML)))?
+            }
+            FlatHtmlOp::Element(element) => {
+                let attributes = try_all(element.attributes.values(), |attribute| {
+                    Ok(match attribute {
+                        IrAttribute::Value(name) => self.typ(*name)?.is(&IrType::STRING),
+                        IrAttribute::Presence(name) => self.typ(*name)?.is(&IrType::BOOL),
+                        IrAttribute::Constant(_) => true,
+                    })
+                })?;
+                html && attributes && self.typ(element.children)?.is(&IrType::HTML)
+            }
+            FlatHtmlOp::For(for_) => {
+                let Some(IrDataType::Array(element)) = self.data(for_.array)? else {
+                    return Err(FlatLintError::IllTypedBinding);
+                };
+                self.scoped(|checker| {
+                    if let Some(var) = &for_.var {
+                        if var.typ != **element {
+                            return Err(FlatLintError::IllTypedBinding);
+                        }
+                        checker.bind(var.var, BoundType::Data(&var.typ))?;
+                    }
+                    checker.html_block(&for_.body, BoundType::Html)
+                })?;
+                html
+            }
+            FlatHtmlOp::Lambda(lambda) => {
+                let BoundType::HtmlFunction(signature) = declared else {
+                    return Err(FlatLintError::IllTypedBinding);
+                };
+                self.scoped(|checker| {
+                    checker.lambda_parameters(
+                        &lambda.parameters,
+                        signature.parameters.iter().map(BoundType::of),
+                        BoundType::of,
+                    )?;
+                    checker.html_block(&lambda.body, BoundType::Html)
+                })?;
+                self.lambdas -= 1;
+                true
+            }
+            FlatHtmlOp::Apply(closure, args) => match self.typ(*closure)? {
+                BoundType::HtmlFunction(signature) => {
+                    html && self.args(args, signature.parameters.iter().map(BoundType::of))?
+                }
+                _ => false,
+            },
+        };
+        if !produces {
+            return Err(FlatLintError::IllTypedBinding);
+        }
+        self.bind(binding.binder.var, declared)
     }
 
     fn block_result(&self, result: ValueId, expected: BoundType<'a>) -> Result<(), FlatLintError> {
@@ -425,76 +440,86 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
-    fn data_bindings(&mut self, bindings: &'a [FlatDataBinding]) -> Result<(), FlatLintError> {
+    fn data_bindings(
+        &mut self,
+        bindings: &'a [IrBinding<IrFunctionDataType, FlatDataOp>],
+    ) -> Result<(), FlatLintError> {
         for binding in bindings {
-            let declared = BoundType::of_function_data(&binding.binder.typ);
-            let produces = match &binding.op {
-                FlatDataOp::Data(op) => match declared {
-                    BoundType::Data(declared) => self.data_op(op, declared)?,
-                    _ => false,
-                },
-                FlatDataOp::Call(callee, args) => match self.callee(callee)? {
-                    FlatFunctionDeclaration::Data(callee) => {
-                        declared == BoundType::Data(&callee.return_type)
-                            && self.args(
-                                args,
-                                callee
-                                    .parameters
-                                    .iter()
-                                    .map(|p| BoundType::of_function_data(&p.binder.typ)),
-                            )?
-                    }
-                    FlatFunctionDeclaration::Html(_) => false,
-                },
-                FlatDataOp::Match(match_) => {
-                    if !matches!(declared, BoundType::Data(_)) {
-                        return Err(FlatLintError::MatchProducesClosure);
-                    }
-                    let subject = self.typ(match_.subject)?;
-                    for arm in &match_.arms {
-                        self.scoped(|checker| {
-                            checker.pattern(&arm.pattern, subject)?;
-                            checker.data_block(&arm.body, declared)
-                        })?;
-                    }
-                    self.arms(match_)?;
-                    true
-                }
-                FlatDataOp::Lambda(lambda) => {
-                    let BoundType::DataFunction(signature) = declared else {
-                        return Err(FlatLintError::IllTypedBinding);
-                    };
-                    self.scoped(|checker| {
-                        checker.lambda_parameters(
-                            &lambda.parameters,
-                            signature.parameters.iter().map(BoundType::of_function_data),
-                            BoundType::of_function_data,
-                        )?;
-                        checker.data_block(&lambda.body, BoundType::Data(&signature.result))
-                    })?;
-                    self.lambdas -= 1;
-                    true
-                }
-                FlatDataOp::Apply(closure, args) => match self.typ(*closure)? {
-                    BoundType::DataFunction(signature) => {
-                        declared == BoundType::Data(&signature.result)
-                            && self.args(
-                                args,
-                                signature.parameters.iter().map(BoundType::of_function_data),
-                            )?
-                    }
-                    _ => false,
-                },
-            };
-            if !produces {
-                return Err(FlatLintError::IllTypedBinding);
-            }
-            self.bind(binding.binder.var, declared)?;
+            self.data_binding(binding)?;
         }
         Ok(())
     }
 
-    fn callee(&self, callee: &IrFunction) -> Result<&'a FlatFunctionDeclaration, FlatLintError> {
+    fn data_binding(
+        &mut self,
+        binding: &'a IrBinding<IrFunctionDataType, FlatDataOp>,
+    ) -> Result<(), FlatLintError> {
+        let declared = BoundType::of_function_data(&binding.binder.typ);
+        let produces = match &binding.op {
+            FlatDataOp::Data(op) => match declared {
+                BoundType::Data(declared) => self.data_op(op, declared)?,
+                _ => false,
+            },
+            FlatDataOp::Call(callee, args) => match self.callee(callee)? {
+                FlatFunction::Data(callee) => {
+                    declared == BoundType::Data(&callee.return_type)
+                        && self.args(
+                            args,
+                            callee
+                                .parameters
+                                .iter()
+                                .map(|p| BoundType::of_function_data(&p.binder.typ)),
+                        )?
+                }
+                FlatFunction::Html(_) => false,
+            },
+            FlatDataOp::Match(match_) => {
+                if !matches!(declared, BoundType::Data(_)) {
+                    return Err(FlatLintError::MatchProducesClosure);
+                }
+                let subject = self.typ(match_.subject)?;
+                for arm in &match_.arms {
+                    self.scoped(|checker| {
+                        checker.pattern(&arm.pattern, subject)?;
+                        checker.data_block(&arm.body, declared)
+                    })?;
+                }
+                self.arms(match_)?;
+                true
+            }
+            FlatDataOp::Lambda(lambda) => {
+                let BoundType::DataFunction(signature) = declared else {
+                    return Err(FlatLintError::IllTypedBinding);
+                };
+                self.scoped(|checker| {
+                    checker.lambda_parameters(
+                        &lambda.parameters,
+                        signature.parameters.iter().map(BoundType::of_function_data),
+                        BoundType::of_function_data,
+                    )?;
+                    checker.data_block(&lambda.body, BoundType::Data(&signature.result))
+                })?;
+                self.lambdas -= 1;
+                true
+            }
+            FlatDataOp::Apply(closure, args) => match self.typ(*closure)? {
+                BoundType::DataFunction(signature) => {
+                    declared == BoundType::Data(&signature.result)
+                        && self.args(
+                            args,
+                            signature.parameters.iter().map(BoundType::of_function_data),
+                        )?
+                }
+                _ => false,
+            },
+        };
+        if !produces {
+            return Err(FlatLintError::IllTypedBinding);
+        }
+        self.bind(binding.binder.var, declared)
+    }
+
+    fn callee(&self, callee: &IrFunction) -> Result<&'a FlatFunction, FlatLintError> {
         self.functions
             .iter()
             .find(|declared| declared.function().id == callee.id)

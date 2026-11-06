@@ -6,15 +6,16 @@ use rpds::HashTrieMap;
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
-    FlatDataBinding, FlatDataBlock, FlatDataOp, FlatFunctionDeclaration, FlatHtmlBlock, FlatHtmlOp,
-    FlatProgram,
+    FlatBinding, FlatDataBlock, FlatDataOp, FlatFunction, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
 };
+use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_page::IrPage;
+use crate::ir::ir_type::IrFunctionDataType;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::html_node::{Html, HtmlAttribute, HtmlNode};
@@ -40,9 +41,6 @@ const STRING_LENGTH_LIMIT_ERROR: EvalError = EvalError::StringLengthLimit {
     limit: MAX_STRING_LENGTH,
 };
 
-/// Evaluate a page from the entrypoints it points at, each called with
-/// the arguments named by the page's parameters. With a shell, the page
-/// renders as a whole document, the shell around its head and its body.
 pub fn evaluate_page<'a>(
     program: &'a FlatProgram,
     pages: &[IrPage],
@@ -80,7 +78,6 @@ pub fn evaluate_page<'a>(
     Ok(html)
 }
 
-/// Evaluate an entrypoint on the arguments named by its parameters.
 pub fn evaluate_entrypoint<'a>(
     program: &'a FlatProgram,
     entrypoint_id: EntrypointId,
@@ -100,11 +97,8 @@ pub fn evaluate_entrypoint<'a>(
     evaluate_html_block(&entrypoint.body, &env, &program.functions, 1, &mut 0)
 }
 
-/// Evaluate a function on its arguments, one for each parameter in the
-/// order they are declared, with `depth` frames already active. A call from
-/// outside any function has depth zero.
 fn evaluate_function<'a>(
-    functions: &'a [FlatFunctionDeclaration],
+    functions: &'a [FlatFunction],
     function: &IrFunction,
     args: Vec<Value<'a>>,
     depth: usize,
@@ -120,7 +114,7 @@ fn evaluate_function<'a>(
         .find(|decl| decl.function().id == function.id)
         .unwrap();
     match decl {
-        FlatFunctionDeclaration::Data(decl) => {
+        FlatFunction::Data(decl) => {
             let vars = decl.parameters.iter().map(|param| param.binder.var);
             evaluate_data_block(
                 &decl.body,
@@ -130,7 +124,7 @@ fn evaluate_function<'a>(
                 op_count,
             )
         }
-        FlatFunctionDeclaration::Html(decl) => {
+        FlatFunction::Html(decl) => {
             let vars = decl.parameters.iter().map(|param| param.binder.var);
             evaluate_html_block(
                 &decl.body,
@@ -143,72 +137,79 @@ fn evaluate_function<'a>(
     }
 }
 
-/// Evaluate the bindings in order and produce the result. The block extends
-/// a copy of `env` and leaves `env` as it is, so its bindings are out of
-/// scope again when it returns.
 fn evaluate_data_block<'a>(
     block: &'a FlatDataBlock,
     env: &HashTrieMap<ValueId, Value<'a>>,
-    functions: &'a [FlatFunctionDeclaration],
+    functions: &'a [FlatFunction],
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
     let mut env = env.clone();
-    evaluate_data_bindings(&block.bindings, &mut env, functions, depth, op_count)?;
-    Ok(env[&block.result].clone())
-}
-
-/// Evaluate the values and then the Html in order and produce the result,
-/// leaving `env` as it is like `evaluate_data_block`.
-fn evaluate_html_block<'a>(
-    block: &'a FlatHtmlBlock,
-    env: &HashTrieMap<ValueId, Value<'a>>,
-    functions: &'a [FlatFunctionDeclaration],
-    depth: usize,
-    op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
-    let mut env = env.clone();
-    evaluate_data_bindings(&block.bindings, &mut env, functions, depth, op_count)?;
-    for binding in &block.html {
-        let value = evaluate_html_op(&binding.op, &env, functions, depth, op_count)?;
-        env.insert_mut(binding.binder.var, value);
-    }
-    Ok(env[&block.result].clone())
-}
-
-fn evaluate_data_bindings<'a>(
-    bindings: &'a [FlatDataBinding],
-    env: &mut HashTrieMap<ValueId, Value<'a>>,
-    functions: &'a [FlatFunctionDeclaration],
-    depth: usize,
-    op_count: &mut usize,
-) -> Result<(), EvalError> {
-    for binding in bindings {
+    for binding in &block.bindings {
         *op_count += 1;
         if *op_count > MAX_OP_COUNT {
             return Err(EvalError::OpCountLimit {
                 limit: MAX_OP_COUNT,
             });
         }
-        let value = match &binding.op {
-            FlatDataOp::Data(op) => evaluate_data_op(op, env)?,
-            FlatDataOp::Call(function, args) => {
-                evaluate_call(function, args, env, functions, depth, op_count)?
-            }
-            FlatDataOp::Match(match_) => {
-                let (body, env) = enter_arm(match_, env);
-                evaluate_data_block(body, &env, functions, depth, op_count)?
-            }
-            FlatDataOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
-                lambda: Lambda::Data(lambda),
-                env: env.clone(),
-            })),
-            FlatDataOp::Apply(closure, args) => {
-                evaluate_apply(*closure, args, env, functions, depth, op_count)?
-            }
-        };
-        env.insert_mut(binding.binder.var, value);
+        evaluate_data_binding(binding, &mut env, functions, depth, op_count)?;
     }
+    Ok(env[&block.result].clone())
+}
+
+fn evaluate_html_block<'a>(
+    block: &'a FlatHtmlBlock,
+    env: &HashTrieMap<ValueId, Value<'a>>,
+    functions: &'a [FlatFunction],
+    depth: usize,
+    op_count: &mut usize,
+) -> Result<Value<'a>, EvalError> {
+    let mut env = env.clone();
+    for binding in &block.bindings {
+        *op_count += 1;
+        if *op_count > MAX_OP_COUNT {
+            return Err(EvalError::OpCountLimit {
+                limit: MAX_OP_COUNT,
+            });
+        }
+        match binding {
+            FlatBinding::Data(binding) => {
+                evaluate_data_binding(binding, &mut env, functions, depth, op_count)?;
+            }
+            FlatBinding::Html(binding) => {
+                let value = evaluate_html_op(&binding.op, &env, functions, depth, op_count)?;
+                env.insert_mut(binding.binder.var, value);
+            }
+        }
+    }
+    Ok(env[&block.result].clone())
+}
+
+fn evaluate_data_binding<'a>(
+    binding: &'a IrBinding<IrFunctionDataType, FlatDataOp>,
+    env: &mut HashTrieMap<ValueId, Value<'a>>,
+    functions: &'a [FlatFunction],
+    depth: usize,
+    op_count: &mut usize,
+) -> Result<(), EvalError> {
+    let value = match &binding.op {
+        FlatDataOp::Data(op) => evaluate_data_op(op, env)?,
+        FlatDataOp::Call(function, args) => {
+            evaluate_call(function, args, env, functions, depth, op_count)?
+        }
+        FlatDataOp::Match(match_) => {
+            let (body, env) = enter_arm(match_, env);
+            evaluate_data_block(body, &env, functions, depth, op_count)?
+        }
+        FlatDataOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
+            lambda: Lambda::Data(lambda),
+            env: env.clone(),
+        })),
+        FlatDataOp::Apply(closure, args) => {
+            evaluate_apply(*closure, args, env, functions, depth, op_count)?
+        }
+    };
+    env.insert_mut(binding.binder.var, value);
     Ok(())
 }
 
@@ -216,7 +217,7 @@ fn evaluate_call<'a>(
     function: &IrFunction,
     args: &[ValueId],
     env: &HashTrieMap<ValueId, Value<'a>>,
-    functions: &'a [FlatFunctionDeclaration],
+    functions: &'a [FlatFunction],
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -224,14 +225,11 @@ fn evaluate_call<'a>(
     evaluate_function(functions, function, values, depth, op_count)
 }
 
-// The body of the closure's lambda runs in the scope where the lambda was
-// evaluated, with its parameters bound to the arguments, in a frame of its
-// own as a call's body does.
 fn evaluate_apply<'a>(
     closure: ValueId,
     args: &[ValueId],
     env: &HashTrieMap<ValueId, Value<'a>>,
-    functions: &'a [FlatFunctionDeclaration],
+    functions: &'a [FlatFunction],
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -258,8 +256,6 @@ fn evaluate_apply<'a>(
     }
 }
 
-/// The body of the first arm the subject matches, with `env` extended by
-/// the names its pattern binds.
 fn enter_arm<'a, B>(
     match_: &'a IrMatch<B>,
     env: &HashTrieMap<ValueId, Value<'a>>,
@@ -285,16 +281,10 @@ fn enter_arm<'a, B>(
 fn evaluate_html_op<'a>(
     op: &'a FlatHtmlOp,
     env: &HashTrieMap<ValueId, Value<'a>>,
-    functions: &'a [FlatFunctionDeclaration],
+    functions: &'a [FlatFunction],
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
-    *op_count += 1;
-    if *op_count > MAX_OP_COUNT {
-        return Err(EvalError::OpCountLimit {
-            limit: MAX_OP_COUNT,
-        });
-    }
     Ok(match op {
         FlatHtmlOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.to_string()))?),
 
@@ -1089,8 +1079,8 @@ mod tests {
                   let v6: Int = 2
                   let v7: Int = v3(v6)
                   let v8: String = v5.to_string()
-                  let v10: String = v7.to_string()
                   let v9: Html = escape(v8)
+                  let v10: String = v7.to_string()
                   let v11: Html = escape(v10)
                   let v12: Html = concat(v9, v11)
                   v12

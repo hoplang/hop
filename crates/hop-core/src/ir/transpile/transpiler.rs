@@ -1,8 +1,10 @@
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::ir_binder::IrBinder;
+use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
+use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::IrSwitch;
 use crate::ir::ir_type::{
@@ -10,8 +12,7 @@ use crate::ir::ir_type::{
 };
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
-    WriterBinding, WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterOp,
-    WriterPageDeclaration, WriterProgram, WriterStmt,
+    WriterBlock, WriterFunctionBody, WriterOp, WriterPageDeclaration, WriterProgram, WriterStmt,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -40,7 +41,7 @@ pub trait Transpiler {
     fn transpile_function_def<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        function: &'a WriterFunctionDeclaration,
+        function: &'a IrFunctionDeclaration<IrType, IrType, WriterFunctionBody>,
     ) -> Doc<'a>;
 
     // Statements
@@ -66,7 +67,7 @@ pub trait Transpiler {
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        let_: &'a WriterBinding,
+        let_: &'a IrBinding<IrType, WriterOp>,
     ) -> Doc<'a>;
     fn transpile_match_statement<'a>(
         &mut self,
