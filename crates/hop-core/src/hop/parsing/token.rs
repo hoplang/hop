@@ -80,6 +80,7 @@ pub enum LangToken {
     RightBrace,
     Colon,
     ColonColon,
+    ColonAssign,
     Question,
     Comma,
     Semicolon,
@@ -106,6 +107,7 @@ pub enum LangToken {
     TypeFloat,
     TypeBool,
     TypeHtml,
+    TypeEffect,
     TypeArray,
     TypeOption,
 }
@@ -286,6 +288,7 @@ impl fmt::Display for LangToken {
             LangToken::LeftBrace => write!(f, "{{"),
             LangToken::RightBrace => write!(f, "}}"),
             LangToken::Colon => write!(f, ":"),
+            LangToken::ColonAssign => write!(f, ":="),
             LangToken::ColonColon => write!(f, "::"),
             LangToken::Question => write!(f, "?"),
             LangToken::Comma => write!(f, ","),
@@ -311,6 +314,7 @@ impl fmt::Display for LangToken {
             LangToken::TypeFloat => write!(f, "Float"),
             LangToken::TypeBool => write!(f, "Bool"),
             LangToken::TypeHtml => write!(f, "Html"),
+            LangToken::TypeEffect => write!(f, "Effect"),
             LangToken::TypeArray => write!(f, "Array"),
             LangToken::TypeOption => write!(f, "Option"),
         }

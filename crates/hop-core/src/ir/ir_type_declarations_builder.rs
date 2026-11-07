@@ -135,6 +135,7 @@ impl IrTypeDeclarations {
 fn ir_type(ty: Ty, records: &[String], enums: &[String]) -> IrType {
     match ty {
         Ty::Html => IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
+        Ty::Effect => IrType::EFFECT,
         Ty::Function { parameters, result } => {
             let parameters = parameters
                 .into_iter()
@@ -156,6 +157,7 @@ fn data_type(ty: Ty, records: &[String], enums: &[String]) -> IrDataType {
         Ty::Bool => IrDataType::Bool,
         Ty::Float => IrDataType::Float,
         Ty::Html => panic!("Html is not a data type"),
+        Ty::Effect => panic!("Effect is not a data type"),
         Ty::Function { .. } => panic!("a function type is not a data type"),
         Ty::Array(ty) => IrDataType::Array(element(ty)),
         Ty::Option(ty) => IrDataType::Option(element(ty)),

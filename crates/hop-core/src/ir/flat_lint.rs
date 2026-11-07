@@ -1,6 +1,7 @@
 use crate::hop::typing::{Constructor, Pattern, compile_arms};
 use crate::ir::flat_program::{
-    FlatBinding, FlatDataBlock, FlatDataOp, FlatFunction, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
+    FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram, FlatPureBlock,
+    FlatPureOp,
 };
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
@@ -9,13 +10,14 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_match::{IrMatch, IrPattern};
 use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrResultType, IrSignature,
+    IrType,
 };
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlatLintError {
     /// A function reads an Html value when the path has already read it,
     /// or in a loop or lambda body that the value is bound outside of.
@@ -46,6 +48,13 @@ pub enum FlatLintError {
     /// A pattern binder binds a type other than the one it is matched
     /// against.
     BinderMismatch,
+    /// A loop has a key that is neither an Int nor a String.
+    KeyNotIntOrString,
+    /// A cell write writes a name that no cell binds.
+    CellWriteToNonCell,
+    /// A click names a value that is not a closure from no parameters to
+    /// an Effect.
+    ClickNotHandler,
 }
 
 pub fn lint(program: &FlatProgram) -> Result<(), FlatLintError> {
@@ -60,7 +69,7 @@ fn check_html_affine(program: &FlatProgram) -> Result<(), FlatLintError> {
         .iter()
         .filter_map(|function| match function {
             FlatFunction::Html(function) => Some(function),
-            FlatFunction::Data(_) => None,
+            FlatFunction::Pure(_) => None,
         });
     for function in html_functions.clone() {
         for param in &function.parameters {
@@ -90,7 +99,7 @@ fn check_html_affine(program: &FlatProgram) -> Result<(), FlatLintError> {
 
 fn collect_html(block: &FlatHtmlBlock, html: &mut [bool]) {
     for binding in &block.bindings {
-        let FlatBinding::Html(binding) = binding else {
+        let FlatHtmlBinding::Html(binding) = binding else {
             continue;
         };
         if binding.binder.typ == IrFunctionHtmlType::Html(IrHtmlType) {
@@ -122,7 +131,7 @@ fn check_block(
     html: &[bool],
 ) -> Result<Vec<bool>, FlatLintError> {
     for binding in &block.bindings {
-        let FlatBinding::Html(binding) = binding else {
+        let FlatHtmlBinding::Html(binding) = binding else {
             continue;
         };
         let mut operands = Ok(());
@@ -180,15 +189,15 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatLintError> {
     };
     for function in &program.functions {
         checker.scoped(|checker| match function {
-            FlatFunction::Data(data) => {
-                for param in &data.parameters {
+            FlatFunction::Pure(pure) => {
+                for param in &pure.parameters {
                     checker.bind(
                         param.binder.var,
                         BoundType::of_function_data(&param.binder.typ),
                     )?;
                 }
-                let expected = BoundType::Data(&data.return_type);
-                checker.data_block(&data.body, expected)
+                let expected = BoundType::of_result(&pure.return_type);
+                checker.pure_block(&pure.body, expected)
             }
             FlatFunction::Html(html) => {
                 for param in &html.parameters {
@@ -235,12 +244,14 @@ struct Name<'a> {
     typ: BoundType<'a>,
     lambdas: usize,
     in_scope: bool,
+    cell: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BoundType<'a> {
     Data(&'a IrDataType),
-    DataFunction(&'a IrSignature<IrFunctionDataType, IrDataType>),
+    Effect,
+    DataFunction(&'a IrSignature<IrFunctionDataType, IrResultType>),
     Html,
     HtmlFunction(&'a IrSignature<IrType, IrHtmlType>),
 }
@@ -256,8 +267,20 @@ impl<'a> BoundType<'a> {
     fn of_function_data(typ: &'a IrFunctionDataType) -> Self {
         match typ {
             IrFunctionDataType::Data(data) => BoundType::Data(data),
+            IrFunctionDataType::Effect => BoundType::Effect,
             IrFunctionDataType::Function(signature) => BoundType::DataFunction(signature),
         }
+    }
+
+    fn of_result(typ: &'a IrResultType) -> Self {
+        match typ {
+            IrResultType::Data(data) => BoundType::Data(data),
+            IrResultType::Effect => BoundType::Effect,
+        }
+    }
+
+    fn is_result(self) -> bool {
+        matches!(self, BoundType::Data(_) | BoundType::Effect)
     }
 
     fn of_function_html(typ: &'a IrFunctionHtmlType) -> Self {
@@ -274,10 +297,20 @@ impl<'a> BoundType<'a> {
 
 impl<'a> Checker<'a> {
     fn bind(&mut self, name: ValueId, typ: BoundType<'a>) -> Result<(), FlatLintError> {
+        self.bind_name(name, typ, false)
+    }
+
+    fn bind_name(
+        &mut self,
+        name: ValueId,
+        typ: BoundType<'a>,
+        cell: bool,
+    ) -> Result<(), FlatLintError> {
         let bound = Name {
             typ,
             lambdas: self.lambdas,
             in_scope: true,
+            cell,
         };
         if self.names[name.index()].replace(bound).is_some() {
             return Err(FlatLintError::BoundTwice);
@@ -314,16 +347,21 @@ impl<'a> Checker<'a> {
     fn data(&self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatLintError> {
         Ok(match self.typ(name)? {
             BoundType::Data(data) => Some(data),
-            BoundType::DataFunction(_) | BoundType::Html | BoundType::HtmlFunction(_) => None,
+            BoundType::Effect
+            | BoundType::DataFunction(_)
+            | BoundType::Html
+            | BoundType::HtmlFunction(_) => None,
         })
     }
 
-    fn data_block(
+    fn pure_block(
         &mut self,
-        block: &'a FlatDataBlock,
+        block: &'a FlatPureBlock,
         expected: BoundType<'a>,
     ) -> Result<(), FlatLintError> {
-        self.data_bindings(&block.bindings)?;
+        for binding in &block.bindings {
+            self.pure_binding(binding)?;
+        }
         self.block_result(block.result, expected)
     }
 
@@ -334,8 +372,15 @@ impl<'a> Checker<'a> {
     ) -> Result<(), FlatLintError> {
         for binding in &block.bindings {
             match binding {
-                FlatBinding::Data(binding) => self.data_binding(binding)?,
-                FlatBinding::Html(binding) => self.html_binding(binding)?,
+                FlatHtmlBinding::Pure(binding) => self.pure_binding(binding)?,
+                FlatHtmlBinding::Cell(binder, initial) => {
+                    let declared = BoundType::Data(&binder.typ);
+                    if self.typ(*initial)? != declared {
+                        return Err(FlatLintError::IllTypedBinding);
+                    }
+                    self.bind_name(binder.var, declared, true)?;
+                }
+                FlatHtmlBinding::Html(binding) => self.html_binding(binding)?,
             }
         }
         self.block_result(block.result, expected)
@@ -358,7 +403,7 @@ impl<'a> Checker<'a> {
                             .map(|p| BoundType::of(&p.binder.typ)),
                     )?
                 }
-                FlatFunction::Data(_) => false,
+                FlatFunction::Pure(_) => false,
             },
             FlatHtmlOp::Match(match_) => {
                 if !html {
@@ -387,6 +432,15 @@ impl<'a> Checker<'a> {
                         IrAttribute::Constant(_) => true,
                     })
                 })?;
+                if let Some(handler) = element.on_click {
+                    let BoundType::DataFunction(signature) = self.typ(handler)? else {
+                        return Err(FlatLintError::ClickNotHandler);
+                    };
+                    if !signature.parameters.is_empty() || signature.result != IrResultType::Effect
+                    {
+                        return Err(FlatLintError::ClickNotHandler);
+                    }
+                }
                 html && attributes && self.typ(element.children)?.is(&IrType::HTML)
             }
             FlatHtmlOp::For(for_) => {
@@ -399,6 +453,18 @@ impl<'a> Checker<'a> {
                             return Err(FlatLintError::IllTypedBinding);
                         }
                         checker.bind(var.var, BoundType::Data(&var.typ))?;
+                    }
+                    if let Some(key) = &for_.key {
+                        checker.scoped(|checker| {
+                            for binding in &key.bindings {
+                                checker.pure_binding(binding)?;
+                            }
+                            let typ = checker.typ(key.result)?;
+                            if !typ.is(&IrType::INT) && !typ.is(&IrType::STRING) {
+                                return Err(FlatLintError::KeyNotIntOrString);
+                            }
+                            Ok(())
+                        })?;
                     }
                     checker.html_block(&for_.body, BoundType::Html)
                 })?;
@@ -440,29 +506,19 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
-    fn data_bindings(
+    fn pure_binding(
         &mut self,
-        bindings: &'a [IrBinding<IrFunctionDataType, FlatDataOp>],
-    ) -> Result<(), FlatLintError> {
-        for binding in bindings {
-            self.data_binding(binding)?;
-        }
-        Ok(())
-    }
-
-    fn data_binding(
-        &mut self,
-        binding: &'a IrBinding<IrFunctionDataType, FlatDataOp>,
+        binding: &'a IrBinding<IrFunctionDataType, FlatPureOp>,
     ) -> Result<(), FlatLintError> {
         let declared = BoundType::of_function_data(&binding.binder.typ);
         let produces = match &binding.op {
-            FlatDataOp::Data(op) => match declared {
+            FlatPureOp::Data(op) => match declared {
                 BoundType::Data(declared) => self.data_op(op, declared)?,
                 _ => false,
             },
-            FlatDataOp::Call(callee, args) => match self.callee(callee)? {
-                FlatFunction::Data(callee) => {
-                    declared == BoundType::Data(&callee.return_type)
+            FlatPureOp::Call(callee, args) => match self.callee(callee)? {
+                FlatFunction::Pure(callee) => {
+                    declared == BoundType::of_result(&callee.return_type)
                         && self.args(
                             args,
                             callee
@@ -473,21 +529,32 @@ impl<'a> Checker<'a> {
                 }
                 FlatFunction::Html(_) => false,
             },
-            FlatDataOp::Match(match_) => {
-                if !matches!(declared, BoundType::Data(_)) {
+            FlatPureOp::Match(match_) => {
+                if !declared.is_result() {
                     return Err(FlatLintError::MatchProducesClosure);
                 }
                 let subject = self.typ(match_.subject)?;
                 for arm in &match_.arms {
                     self.scoped(|checker| {
                         checker.pattern(&arm.pattern, subject)?;
-                        checker.data_block(&arm.body, declared)
+                        checker.pure_block(&arm.body, declared)
                     })?;
                 }
                 self.arms(match_)?;
                 true
             }
-            FlatDataOp::Lambda(lambda) => {
+            FlatPureOp::CellWrite(cell, value) => {
+                let typ = self.typ(*cell)?;
+                if !self.names[cell.index()].is_some_and(|name| name.cell) {
+                    return Err(FlatLintError::CellWriteToNonCell);
+                }
+                declared == BoundType::Effect && typ == self.typ(*value)?
+            }
+            FlatPureOp::EffectConcat(parts) => {
+                declared == BoundType::Effect
+                    && try_all(parts, |part| Ok(self.typ(*part)? == BoundType::Effect))?
+            }
+            FlatPureOp::Lambda(lambda) => {
                 let BoundType::DataFunction(signature) = declared else {
                     return Err(FlatLintError::IllTypedBinding);
                 };
@@ -497,14 +564,14 @@ impl<'a> Checker<'a> {
                         signature.parameters.iter().map(BoundType::of_function_data),
                         BoundType::of_function_data,
                     )?;
-                    checker.data_block(&lambda.body, BoundType::Data(&signature.result))
+                    checker.pure_block(&lambda.body, BoundType::of_result(&signature.result))
                 })?;
                 self.lambdas -= 1;
                 true
             }
-            FlatDataOp::Apply(closure, args) => match self.typ(*closure)? {
+            FlatPureOp::Apply(closure, args) => match self.typ(*closure)? {
                 BoundType::DataFunction(signature) => {
-                    declared == BoundType::Data(&signature.result)
+                    declared == BoundType::of_result(&signature.result)
                         && self.args(
                             args,
                             signature.parameters.iter().map(BoundType::of_function_data),
@@ -711,9 +778,13 @@ impl<'a> Checker<'a> {
         match (pattern, typ) {
             (Pattern::Wildcard, _) => Ok(()),
             (_, BoundType::Data(data)) => self.data_pattern(pattern, data),
-            (_, BoundType::DataFunction(_) | BoundType::Html | BoundType::HtmlFunction(_)) => {
-                Err(FlatLintError::PatternMismatch)
-            }
+            (
+                _,
+                BoundType::Effect
+                | BoundType::DataFunction(_)
+                | BoundType::Html
+                | BoundType::HtmlFunction(_),
+            ) => Err(FlatLintError::PatternMismatch),
         }
     }
 
@@ -942,6 +1013,23 @@ mod tests {
     }
 
     #[test]
+    fn should_reject_a_read_of_a_name_bound_in_the_key_of_a_loop_in_its_body() {
+        let key = Cell::new(None);
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
+                t.html_for_keyed(t.param("items"), |t, item| {
+                    let doubled = t.add(item, item);
+                    key.set(Some(doubled));
+                    doubled
+                })
+                .body(|t, _| t.escape(t.int_to_string(key.get().unwrap())))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ReadOutOfScope);
+    }
+
+    #[test]
     fn should_reject_a_read_of_a_parameter_of_a_lambda_after_the_lambda() {
         let param = Cell::new(None);
         let error = FlatProgramBuilder::new()
@@ -974,5 +1062,115 @@ mod tests {
             .build()
             .unwrap_err();
         assert_eq!(error, FlatLintError::ReadOutOfScope);
+    }
+
+    #[test]
+    fn should_reject_a_cell_write_of_a_cell_of_an_arm_after_the_match() {
+        let inner = Cell::new(None);
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [("on", Ty::Bool)], |t| {
+                let picked = t.match_(t.param("on"), |m| {
+                    m.arm(Pat::True, |t, _| {
+                        let cell = t.cell(t.int(1));
+                        inner.set(Some(cell));
+                        t.text("on")
+                    });
+                    m.arm(Pat::False, |t, _| t.text("off"));
+                });
+                let reset = t.event_handler(|t| t.cell_write(inner.get().unwrap(), t.int(0)));
+                let button = t.element_on_click("button", vec![], reset, t.text("x"));
+                t.html_concat([picked, button])
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ReadOutOfScope);
+    }
+
+    #[test]
+    fn should_reject_a_cell_write_of_a_name_no_cell_binds() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.int(0);
+                let reset = t.event_handler(|t| t.cell_write(count, t.int(1)));
+                t.element_on_click("button", vec![], reset, t.text("x"))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::CellWriteToNonCell);
+    }
+
+    #[test]
+    fn should_reject_a_cell_write_of_a_value_of_another_type() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.cell(t.int(0));
+                let flip = t.event_handler(|t| t.cell_write(count, t.bool(true)));
+                t.element_on_click("button", vec![], flip, t.text("x"))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::IllTypedBinding);
+    }
+
+    #[test]
+    fn should_reject_a_click_whose_handler_is_a_value() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                t.element_on_click("button", vec![], t.int(1), t.text("x"))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ClickNotHandler);
+    }
+
+    #[test]
+    fn should_reject_a_click_whose_handler_is_an_effect() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.cell(t.int(0));
+                let reset = t.cell_write(count, t.int(0));
+                t.element_on_click("button", vec![], reset, t.text("x"))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ClickNotHandler);
+    }
+
+    #[test]
+    fn should_reject_a_click_whose_handler_takes_a_parameter() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.cell(t.int(0));
+                let set = t.lambda([IrType::INT], |t, params| t.cell_write(count, params[0]));
+                t.element_on_click("button", vec![], set, t.text("x"))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ClickNotHandler);
+    }
+
+    #[test]
+    fn should_reject_a_click_whose_handler_gives_a_value() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.cell(t.int(0));
+                let next = t.lambda([], |t, _| t.add(count, t.int(1)));
+                t.element_on_click("button", vec![], next, t.text("x"))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::ClickNotHandler);
+    }
+
+    #[test]
+    fn should_reject_an_effect_concat_of_a_value() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let effect = t.event_handler(|t| t.effect_concat([t.int(1)]));
+                t.element_on_click("button", vec![], effect, t.text("x"))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::IllTypedBinding);
     }
 }

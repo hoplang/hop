@@ -150,9 +150,10 @@ pub enum TypedExpr {
     /// Greater than or equal expression
     GreaterThanOrEqual { left: Box<Self>, right: Box<Self> },
 
-    /// A let binding expression
+    /// A let binding expression.
     Let {
         var: VarName,
+        cell: bool,
         value: Box<Self>,
         body: Box<Self>,
         typ: Type,
@@ -162,9 +163,16 @@ pub enum TypedExpr {
     For {
         var_name: Option<VarName>,
         source: Box<TypedLoopSource>,
+        key: Option<Box<Self>>,
         body: Box<Self>,
         typ: Type,
     },
+
+    /// A write of a cell.
+    CellWrite { cell: VarName, value: Box<Self> },
+
+    /// The effects in order.
+    EffectConcat { parts: Vec<Self> },
 
     /// Array length expression, e.g. items.len()
     ArrayLength { array: Box<Self> },
@@ -213,6 +221,8 @@ pub enum TypedExpr {
         element: HtmlElementKind,
         attrs: TypedAttrs,
         children: Box<Self>,
+        /// The handler of a click on the element, of type `fn() -> Effect`.
+        on_click: Option<Box<Self>>,
     },
 
     /// An asset reference, e.g. asset!("/logo.svg"), resolved to a path
@@ -337,6 +347,8 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Type::INT,
 
+            TypedExpr::CellWrite { .. } | TypedExpr::EffectConcat { .. } => Type::Effect,
+
             TypedExpr::HtmlConcat { .. }
             | TypedExpr::HtmlText { .. }
             | TypedExpr::HtmlEscape { .. }
@@ -455,8 +467,17 @@ impl Display for TypedExpr {
                 f.write_str(if arms.is_empty() { "}" } else { "\n}" })
             }
             TypedExpr::Let {
-                var, value, body, ..
-            } => write!(f, "let {} = {value} in {body}", var.as_str()),
+                var,
+                cell,
+                value,
+                body,
+                ..
+            } => {
+                let mutable = if *cell { "mut " } else { "" };
+                write!(f, "let {mutable}{} = {value} in {body}", var.as_str())
+            }
+            TypedExpr::CellWrite { cell, value } => write!(f, "write({}, {value})", cell.as_str()),
+            TypedExpr::EffectConcat { parts } => write!(f, "effects!({})", join(parts, ", ")),
             TypedExpr::ArrayLength { array } => write!(f, "{array}.len()"),
             TypedExpr::ArrayIsEmpty { array } => write!(f, "{array}.is_empty()"),
             TypedExpr::StringIsEmpty { string } => write!(f, "{string}.is_empty()"),
@@ -474,16 +495,21 @@ impl Display for TypedExpr {
             TypedExpr::For {
                 var_name,
                 source,
+                key,
                 body,
                 ..
             } => {
                 let var = var_name.as_ref().map_or("_", |name| name.as_str());
                 match &**source {
-                    TypedLoopSource::Array(array) => write!(f, "for {var} in {array} {{")?,
+                    TypedLoopSource::Array(array) => write!(f, "for {var} in {array}")?,
                     TypedLoopSource::RangeInclusive { start, end } => {
-                        write!(f, "for {var} in {start}..={end} {{")?;
+                        write!(f, "for {var} in {start}..={end}")?;
                     }
                 }
+                if let Some(key) = key {
+                    write!(f, " key {key}")?;
+                }
+                f.write_str(" {")?;
                 write!(Indent::new(f), "\n{body}")?;
                 f.write_str("\n}")
             }
@@ -491,6 +517,7 @@ impl Display for TypedExpr {
                 element,
                 attrs,
                 children,
+                on_click,
             } => {
                 f.write_str("element(")?;
                 {
@@ -499,6 +526,9 @@ impl Display for TypedExpr {
                     write!(args, "\nattrs: {attrs},")?;
                     if !element.is_void() {
                         write!(args, "\nchildren: {children},")?;
+                    }
+                    if let Some(on_click) = on_click {
+                        write!(args, "\non_click: {on_click},")?;
                     }
                 }
                 f.write_str("\n)")

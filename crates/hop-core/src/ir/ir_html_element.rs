@@ -5,13 +5,12 @@ use crate::html::HtmlElementKind;
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 
-/// An element with its attributes, by name in the order they render, and
-/// its children.
 #[derive(Debug, Clone)]
 pub struct IrHtmlElement<Children> {
     pub element: HtmlElementKind,
     pub attributes: IndexMap<AttributeName, IrAttribute>,
     pub children: Children,
+    pub on_click: Option<ValueId>,
 }
 
 /// The value of an attribute.

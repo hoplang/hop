@@ -20,6 +20,8 @@ mod html;
 mod ir;
 mod itertools;
 mod project_root;
+#[cfg(test)]
+mod reactive_end_to_end_tests;
 mod root_contained_file_path;
 mod root_relative_file_path;
 mod root_relative_path;

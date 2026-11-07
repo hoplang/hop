@@ -11,7 +11,9 @@ use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrHtmlType, IrSignature, IrType};
+use crate::ir::ir_type::{
+    IrDataType, IrFunctionDataType, IrHtmlType, IrResultType, IrSignature, IrType,
+};
 use crate::ir::ir_type_declarations::{IrEnum, IrRecord};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
@@ -1452,12 +1454,12 @@ impl Transpiler for TsTranspiler {
     fn transpile_value_function_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrSignature<IrFunctionDataType, IrDataType>,
+        signature: &IrSignature<IrFunctionDataType, IrResultType>,
     ) -> Doc<'a> {
         let parameters: Vec<IrType> = (signature.parameters.iter().cloned())
             .map(IrType::Data)
             .collect();
-        let result = self.transpile_data_type(arena, &signature.result);
+        let result = self.transpile_result_type(arena, &signature.result);
         self.transpile_function_type(arena, &parameters, result)
     }
 
@@ -1504,7 +1506,7 @@ impl Transpiler for TsTranspiler {
                 WriterFunctionBody::Returns(block),
                 IrType::Data(IrFunctionDataType::Function(signature)),
             ) => (
-                self.transpile_data_type(arena, &signature.result),
+                self.transpile_result_type(arena, &signature.result),
                 self.transpile_value_block(arena, block),
             ),
             (WriterFunctionBody::Returns(_), _) => {

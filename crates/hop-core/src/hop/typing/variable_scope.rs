@@ -40,13 +40,14 @@ pub enum ScopeEntry {
     Function(FunctionScopeEntry),
 }
 
-/// A variable in scope: its type, the range where it was bound, and
-/// whether it has been accessed.
+/// A variable in scope: its type, the range where it was bound, whether
+/// it has been accessed, and whether it is a cell.
 #[derive(Debug, Clone)]
 pub struct VariableScopeEntry {
     pub typ: Type,
     pub range: DocumentRange,
     pub accessed: bool,
+    pub cell: bool,
     /// The number of loop and lambda bodies around the binding.
     bodies: usize,
     /// Whether the code checked so far uses the Html value on the path
@@ -113,6 +114,16 @@ impl VariableScope {
     /// Returns an error if the name is already defined, as a variable or as
     /// a function.
     pub fn push(&mut self, name: VarName, typ: Type, range: DocumentRange) -> Result<(), ()> {
+        self.bind(name, typ, range, false)
+    }
+
+    pub fn bind(
+        &mut self,
+        name: VarName,
+        typ: Type,
+        range: DocumentRange,
+        cell: bool,
+    ) -> Result<(), ()> {
         if self.entries.contains_key(name.as_str()) {
             return Err(());
         }
@@ -122,6 +133,7 @@ impl VariableScope {
                 typ,
                 range,
                 accessed: false,
+                cell,
                 bodies: self.bodies.len(),
                 used: false,
             }),

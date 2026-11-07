@@ -3,15 +3,13 @@ use std::fmt::{self, Write};
 use crate::display::{Indent, join};
 use crate::ir::ir_binder::IrBinder;
 
-// The body runs once for each application, so it reads no Html bound
-// outside it.
 #[derive(Debug, Clone)]
-pub struct IrLambda<T, Body> {
-    pub parameters: Vec<IrBinder<T>>,
+pub struct IrLambda<Param, Body> {
+    pub parameters: Vec<IrBinder<Param>>,
     pub body: Body,
 }
 
-impl<T: fmt::Display, Body> IrLambda<T, Body> {
+impl<Param: fmt::Display, Body> IrLambda<Param, Body> {
     /// The parameters, then the body, which starts with a line break and is
     /// indented.
     pub fn write(

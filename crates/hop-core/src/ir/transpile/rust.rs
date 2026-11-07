@@ -13,7 +13,8 @@ use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrResultType, IrSignature,
+    IrType,
 };
 use crate::ir::ir_type_declarations::{IrEnum, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::ValueId;
@@ -444,7 +445,7 @@ impl RustTranspiler {
                 | IrDataType::Option(_),
             ))
             | IrType::Html(IrFunctionHtmlType::Html(IrHtmlType))
-            | IrType::Data(IrFunctionDataType::Function(_))
+            | IrType::Data(IrFunctionDataType::Effect | IrFunctionDataType::Function(_))
             | IrType::Html(IrFunctionHtmlType::Function(_)) => false,
         }
     }
@@ -458,6 +459,9 @@ impl RustTranspiler {
             IrType::Data(IrFunctionDataType::Data(IrDataType::Int)) => arena.text("i32"),
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 unreachable!("Html is written, never held")
+            }
+            IrType::Data(IrFunctionDataType::Effect) => {
+                unreachable!("flat_to_writer makes an effect the unit tuple")
             }
             IrType::Data(IrFunctionDataType::Data(IrDataType::Array(elem))) => arena
                 .text("&[")
@@ -479,7 +483,7 @@ impl RustTranspiler {
                 let parameters: Vec<IrType> = (signature.parameters.iter().cloned())
                     .map(IrType::Data)
                     .collect();
-                let result = self.transpile_data_type(arena, &signature.result);
+                let result = self.transpile_result_type(arena, &signature.result);
                 self.transpile_fn_type(arena, None, &parameters, Some(result))
             }
             IrType::Html(IrFunctionHtmlType::Function(signature)) => {
@@ -1312,7 +1316,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_value_function_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrSignature<IrFunctionDataType, IrDataType>,
+        signature: &IrSignature<IrFunctionDataType, IrResultType>,
     ) -> Doc<'a> {
         self.transpile_param_type(
             arena,
@@ -1359,7 +1363,7 @@ impl Transpiler for RustTranspiler {
                 WriterFunctionBody::Returns(block),
                 IrType::Data(IrFunctionDataType::Function(signature)),
             ) => {
-                let result = self.transpile_data_type(arena, &signature.result);
+                let result = self.transpile_result_type(arena, &signature.result);
                 (
                     head.append(arena.text(" -> ")).append(result),
                     self.transpile_value_block(arena, block),

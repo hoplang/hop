@@ -32,10 +32,12 @@ pub enum Callee<'a> {
     },
     /// An element, whose row has no fields and an optional parameter for each
     /// attribute as its tail, which are the parameters a rest adds when it is
-    /// spread into the element. Its content is not an argument.
+    /// spread into the element. Its content and the handler of a click on
+    /// it are not arguments.
     Element {
         element: &'a HtmlElementKind,
         content: TypedExpr,
+        on_click: Option<Box<TypedExpr>>,
     },
 }
 
@@ -525,10 +527,15 @@ pub fn typecheck_call(
                 typ: signature.return_type.clone(),
             })
         }
-        Callee::Element { element, content } => Some(TypedExpr::Element {
+        Callee::Element {
+            element,
+            content,
+            on_click,
+        } => Some(TypedExpr::Element {
             element: element.clone(),
             attrs,
             children: Box::new(content),
+            on_click,
         }),
     }
 }

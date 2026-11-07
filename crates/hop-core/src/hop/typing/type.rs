@@ -8,6 +8,7 @@ use crate::symbols::type_name::TypeName;
 pub enum Type {
     Data(DataType),
     Html(HtmlType),
+    Effect,
     Function(FunctionType),
 }
 
@@ -73,13 +74,13 @@ impl Type {
     pub fn as_data(&self) -> Option<&DataType> {
         match self {
             Type::Data(data) => Some(data),
-            Type::Html(_) | Type::Function(_) => None,
+            Type::Html(_) | Type::Effect | Type::Function(_) => None,
         }
     }
 
     pub fn renders_html(&self) -> bool {
         match self {
-            Type::Data(_) => false,
+            Type::Data(_) | Type::Effect => false,
             Type::Html(_) => true,
             Type::Function(function) => function.result.renders_html(),
         }
@@ -104,6 +105,7 @@ impl Type {
             ) => true,
             Type::Data(DataType::String | DataType::Int | DataType::Float | DataType::Array(_))
             | Type::Html(_)
+            | Type::Effect
             | Type::Function(_) => false,
         }
     }
@@ -155,6 +157,7 @@ impl fmt::Display for Type {
         match self {
             Type::Data(data) => write!(f, "{data}"),
             Type::Html(html) => write!(f, "{html}"),
+            Type::Effect => f.write_str("Effect"),
             Type::Function(function) => write!(
                 f,
                 "fn({}) -> {}",

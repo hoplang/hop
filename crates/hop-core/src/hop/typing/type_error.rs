@@ -384,6 +384,18 @@ pub enum TypeErrorKind {
         }
     )]
     DuplicateName { target: Target, name: AttributeName },
+
+    #[error("A cell can only be bound in a block that returns Html")]
+    CellOutsideHtml,
+
+    #[error("A cell cannot hold {typ}")]
+    CellNotData { typ: Type },
+
+    #[error("{name} is not a cell: only a variable bound with let mut can be written")]
+    NotACell { name: VarName },
+
+    #[error("Expected Int or String got {found}")]
+    KeyTypeMismatch { found: Type },
 }
 
 /// What a name is supplied to: an element takes it as an attribute and a
@@ -431,6 +443,10 @@ pub enum TypeMismatchContext {
     MethodArgument,
     /// An argument of a function call.
     FunctionArgument,
+    /// The value written to a cell, compared to the type of the cell.
+    CellWrite,
+    /// The handler of a click.
+    ClickHandler,
 }
 
 impl TypeErrorKind {

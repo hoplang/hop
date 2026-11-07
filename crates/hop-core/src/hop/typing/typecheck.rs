@@ -957,6 +957,7 @@ fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString
         }
         ParsedType::String { .. }
         | ParsedType::Bool { .. }
+        | ParsedType::Effect { .. }
         | ParsedType::Int { .. }
         | ParsedType::Float { .. }
         | ParsedType::Html { .. } => {}
@@ -14874,6 +14875,427 @@ mod tests {
                 1 | fn Main() -> Int {
                 2 |   let label = fn(n: Int) -> String { n };
                   |                                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_cells_clicks_keys_and_effects() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn both(first: fn() -> Effect, second: fn() -> Effect) -> Effect {
+                  effects!(first(), second())
+                }
+                fn Main(ids: Array[Int]) -> Html {
+                  let mut count = 0;
+                  let mut on = false;
+                  let bump = fn() { count := count + 1 };
+                  let flip = fn() -> Effect { on := !on };
+                  <>
+                    <button on:click={fn() { both(bump, flip) }}>
+                      {count.to_string()}
+                    </button>
+                    {for id in ids key id {
+                      <b>{id.to_string()}</b>
+                    }}
+                  </>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(ids: Array[Int]) -> Html {
+                  let mut count = 0 in let mut on = false in let bump = fn() -> Effect {
+                    write(count, add(count, 1))
+                  } in let flip = fn() -> Effect {
+                    write(on, not(on))
+                  } in concat(
+                    element(
+                      tag: "button",
+                      attrs: [],
+                      children: concat(
+                        escape(count.to_string()),
+                      ),
+                      on_click: fn() -> Effect {
+                        both(first: bump, second: flip)
+                      },
+                    ),
+                    for id in ids key id {
+                      element(
+                        tag: "b",
+                        attrs: [],
+                        children: concat(
+                          escape(id.to_string()),
+                        ),
+                      )
+                    },
+                  )
+                }
+
+                fn both(first: fn() -> Effect, second: fn() -> Effect) -> Effect {
+                  effects!(first(), second())
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_write_of_a_variable_that_is_not_a_cell_or_of_a_value_of_another_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Fixed() -> Html {
+                  let count = 0;
+                  <button on:click={fn() { count := count + 1 }}>x</button>
+                }
+                fn Counter() -> Html {
+                  let mut count = 0;
+                  <button on:click={fn() { count := "one" }}>{count.to_string()}</button>
+                }
+            "#},
+            expect![[r#"
+                error: count is not a cell: only a variable bound with let mut can be written
+                  --> main.hop (line 3, col 28)
+                2 |   let count = 0;
+                3 |   <button on:click={fn() { count := count + 1 }}>x</button>
+                  |                            ^^^^^
+
+                error: Expected Int got String
+                  --> main.hop (line 7, col 37)
+                6 |   let mut count = 0;
+                7 |   <button on:click={fn() { count := "one" }}>{count.to_string()}</button>
+                  |                                     ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_cell_in_a_function_or_a_lambda_that_does_not_render_html() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn counter() -> Int {
+                  let mut count = 0;
+                  count
+                }
+                fn Main() -> Html {
+                  let mut count = 0;
+                  <button on:click={fn() {
+                    let mut last = count;
+                    count := last + 1
+                  }}>{count.to_string()}</button>
+                }
+            "#},
+            expect![[r#"
+                error: A cell can only be bound in a block that returns Html
+                  --> main.hop (line 2, col 11)
+                 1 | fn counter() -> Int {
+                 2 |   let mut count = 0;
+                   |           ^^^^^
+
+                error: A cell can only be bound in a block that returns Html
+                  --> main.hop (line 8, col 13)
+                 7 |   <button on:click={fn() {
+                 8 |     let mut last = count;
+                   |             ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_cell_in_a_block_of_its_own_that_computes_a_value() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(open: Bool, name: Option[String]) -> Html {
+                  let bump = match open {
+                    true => {
+                      let mut count = 0;
+                      count := count + 1
+                    },
+                    false => effects!(),
+                  };
+                  let seen = open && {
+                    let mut first = true;
+                    first
+                  };
+                  let shut = open || {
+                    let mut last = false;
+                    last
+                  };
+                  let label = name.unwrap_or({
+                    let mut fallback = "anon";
+                    fallback
+                  });
+                  <>
+                    <button on:click={fn() { bump }} disabled={seen}>{label}</button>
+                    <button disabled={shut}>x</button>
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: A cell can only be bound in a block that returns Html
+                  --> main.hop (line 4, col 15)
+                 3 |     true => {
+                 4 |       let mut count = 0;
+                   |               ^^^^^
+
+                error: A cell can only be bound in a block that returns Html
+                  --> main.hop (line 10, col 13)
+                 9 |   let seen = open && {
+                10 |     let mut first = true;
+                   |             ^^^^^
+
+                error: A cell can only be bound in a block that returns Html
+                  --> main.hop (line 14, col 13)
+                13 |   let shut = open || {
+                14 |     let mut last = false;
+                   |             ^^^^
+
+                error: A cell can only be bound in a block that returns Html
+                  --> main.hop (line 18, col 13)
+                17 |   let label = name.unwrap_or({
+                18 |     let mut fallback = "anon";
+                   |             ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_cell_in_an_arm_of_a_match_that_renders_html() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(open: Bool) -> Html {
+                  match open {
+                    true => {
+                      let mut count = 0;
+                      <button on:click={fn() { count := count + 1 }}>{count.to_string()}</button>
+                    },
+                    false => <i>closed</i>,
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(open: Bool) -> Html {
+                  match open {
+                    true => let mut count = 0 in element(
+                      tag: "button",
+                      attrs: [],
+                      children: concat(
+                        escape(count.to_string()),
+                      ),
+                      on_click: fn() -> Effect {
+                        write(count, add(count, 1))
+                      },
+                    ),
+                    false => element(
+                      tag: "i",
+                      attrs: [],
+                      children: concat(
+                        text("closed"),
+                      ),
+                    ),
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_cell_in_a_lambda_that_renders_html() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let row = fn(label: String) {
+                    let mut open = false;
+                    <li on:click={fn() { open := !open }}>{label}</li>
+                  };
+                  <ul>{row("a")}{row("b")}</ul>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let row = fn(label: String) -> Html {
+                    let mut open = false in element(
+                      tag: "li",
+                      attrs: [],
+                      children: concat(
+                        escape(label),
+                      ),
+                      on_click: fn() -> Effect {
+                        write(open, not(open))
+                      },
+                    )
+                  } in element(
+                    tag: "ul",
+                    attrs: [],
+                    children: concat(
+                      row("a"),
+                      row("b"),
+                    ),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_key_that_binds_a_cell_or_is_neither_an_int_nor_a_string() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Seen(ids: Array[Int]) -> Html {
+                  for id in ids key {
+                    let mut seen = id;
+                    seen
+                  } {
+                    <b>{id.to_string()}</b>
+                  }
+                }
+                fn Positive(ids: Array[Int]) -> Html {
+                  for id in ids key id > 0 {
+                    <b>{id.to_string()}</b>
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: A cell can only be bound in a block that returns Html
+                  --> main.hop (line 3, col 13)
+                 2 |   for id in ids key {
+                 3 |     let mut seen = id;
+                   |             ^^^^
+
+                error: Expected Int or String got Bool
+                  --> main.hop (line 10, col 21)
+                 9 | fn Positive(ids: Array[Int]) -> Html {
+                10 |   for id in ids key id > 0 {
+                   |                     ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_cell_that_holds_html() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let mut shown = <b>x</b>;
+                  shown
+                }
+            "#},
+            expect![[r#"
+                error: A cell cannot hold Html
+                  --> main.hop (line 2, col 19)
+                1 | fn Main() -> Html {
+                2 |   let mut shown = <b>x</b>;
+                  |                   ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_click_handler_of_another_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let mut count = 0;
+                  <>
+                    <button on:click={count := count + 1}>{count.to_string()}</button>
+                    <button on:click="go()">x</button>
+                    <button on:click>y</button>
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: Expected fn() -> Effect got Effect
+                  --> main.hop (line 4, col 23)
+                3 |   <>
+                4 |     <button on:click={count := count + 1}>{count.to_string()}</button>
+                  |                       ^^^^^^^^^^^^^^^^^^
+
+                error: Expected fn() -> Effect got String
+                  --> main.hop (line 5, col 22)
+                4 |     <button on:click={count := count + 1}>{count.to_string()}</button>
+                5 |     <button on:click="go()">x</button>
+                  |                      ^^^^^^
+
+                error: Attribute 'on:click' needs a value
+                  --> main.hop (line 6, col 13)
+                5 |     <button on:click="go()">x</button>
+                6 |     <button on:click>y</button>
+                  |             ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_second_click_handler_and_a_click_handler_on_a_markup_call() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Button(children: Html) -> Html {
+                  <button>{children}</button>
+                }
+                fn Twice() -> Html {
+                  let mut count = 0;
+                  <button on:click={fn() { count := 1 }} on:click={fn() { count := 2 }}>
+                    {count.to_string()}
+                  </button>
+                }
+                fn Main() -> Html {
+                  let mut count = 0;
+                  <Button on:click={fn() { count := count + 1 }}>{count.to_string()}</Button>
+                }
+            "#},
+            expect![[r#"
+                error: Duplicate attribute 'on:click'
+                  --> main.hop (line 6, col 42)
+                 5 |   let mut count = 0;
+                 6 |   <button on:click={fn() { count := 1 }} on:click={fn() { count := 2 }}>
+                   |                                          ^^^^^^^^
+
+                error: Function Button does not accept argument 'on:click'
+                  --> main.hop (line 12, col 11)
+                11 |   let mut count = 0;
+                12 |   <Button on:click={fn() { count := count + 1 }}>{count.to_string()}</Button>
+                   |           ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_value_as_an_effect_and_an_effect_inside_another_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let mut count = 0;
+                  <button on:click={fn() { effects!(count := 1, 2) }}>{count.to_string()}</button>
+                }
+                fn Listed() -> Html {
+                  let mut count = 0;
+                  let writes = [count := 1];
+                  <b>{count.to_string()}</b>
+                }
+            "#},
+            expect![[r#"
+                error: Expected Effect got Int
+                  --> main.hop (line 3, col 49)
+                2 |   let mut count = 0;
+                3 |   <button on:click={fn() { effects!(count := 1, 2) }}>{count.to_string()}</button>
+                  |                                                 ^
+
+                error: Effect is not allowed inside another type
+                  --> main.hop (line 7, col 17)
+                6 |   let mut count = 0;
+                7 |   let writes = [count := 1];
+                  |                 ^^^^^^^^^^
             "#]],
         );
     }

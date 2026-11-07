@@ -278,7 +278,7 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
         kinds.extend([P::Array, P::Option, P::Tuple, P::Function]);
     }
     match u.choose(&kinds)? {
-        P::Scalar => out.push_str(u.choose(&["Int", "String", "Bool", "Float", "Html"])?),
+        P::Scalar => out.push_str(u.choose(&["Int", "String", "Bool", "Float", "Html", "Effect"])?),
         P::Named => out.push_str(u.choose(TYPE_NAMES)?),
         P::Array => {
             out.push_str("Array[");
@@ -312,6 +312,10 @@ fn block_body(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Resul
     for _ in 0..u.int_in_range(0..=2)? {
         out.push_str("let");
         ws(u, out)?;
+        if u.arbitrary()? {
+            out.push_str("mut");
+            ws(u, out)?;
+        }
         out.push_str(u.choose(VAR_NAMES)?);
         if u.arbitrary()? {
             out.push_str(": ");
@@ -333,6 +337,12 @@ fn expr(
     restrictions: Restrictions,
     out: &mut String,
 ) -> Result<()> {
+    if u.int_in_range(0..=11)? == 11 {
+        out.push_str(u.choose(VAR_NAMES)?);
+        ws(u, out)?;
+        out.push_str(":=");
+        ws(u, out)?;
+    }
     unary(u, depth, restrictions, out)?;
     if u.int_in_range(0..=7)? == 7 {
         let mut comparison_since_logical = false;
@@ -493,7 +503,11 @@ fn primary(
             out.push(')');
         }
         P::Macro => {
-            out.push_str(u.choose(VAR_NAMES)?);
+            out.push_str(if u.arbitrary()? {
+                "effects"
+            } else {
+                u.choose(VAR_NAMES)?
+            });
             out.push_str("!(");
             list(u, 0..=3, out, |u, _, out| expr(u, depth - 1, inner, out))?;
             out.push(')');
@@ -553,6 +567,12 @@ fn primary(
             expr(u, depth - 1, BEFORE_BRACE, out)?;
             if u.arbitrary()? {
                 out.push_str("..=");
+                expr(u, depth - 1, BEFORE_BRACE, out)?;
+            }
+            if u.arbitrary()? {
+                ws(u, out)?;
+                out.push_str("key");
+                ws(u, out)?;
                 expr(u, depth - 1, BEFORE_BRACE, out)?;
             }
             out.push_str(" {");
@@ -751,14 +771,30 @@ fn attributes(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Resul
         String,
         Spread,
         Expression,
+        OnClick,
     }
     let mut kinds = vec![P::KeyOnly, P::String, P::Spread];
     if depth > 0 {
-        kinds.push(P::Expression);
+        kinds.extend([P::Expression, P::OnClick]);
     }
     for _ in 0..u.int_in_range(0..=3)? {
         out.push(' ');
         match u.choose(&kinds)? {
+            P::OnClick => {
+                out.push_str("on:click={");
+                ws(u, out)?;
+                if u.arbitrary()? {
+                    out.push_str("fn() {");
+                    ws(u, out)?;
+                    block_body(u, depth - 1, out)?;
+                    ws(u, out)?;
+                    out.push('}');
+                } else {
+                    block_body(u, depth - 1, out)?;
+                }
+                ws(u, out)?;
+                out.push('}');
+            }
             P::Spread => {
                 out.push_str("...");
                 out.push_str(u.choose(VAR_NAMES)?);

@@ -2,12 +2,11 @@ use std::collections::HashSet;
 
 use crate::hop::typing::Pattern;
 use crate::ir::flat_program::{
-    FlatBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction, FlatHtmlBlock,
-    FlatHtmlOp, FlatProgram,
+    FlatEntrypoint, FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
+    FlatPureBlock, FlatPureOp,
 };
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
-use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
@@ -18,15 +17,19 @@ use crate::ir::value_id::ValueId;
 ///
 /// Every op is pure, so a binding whose name no later binding, nested
 /// block or result reads computes nothing anyone sees, and goes away with
-/// the blocks nested in it. A loop variable or binding of a pattern that
-/// nothing reads any more goes away too, and becomes `_`.
+/// the blocks nested in it. A cell nothing reads or writes has a value
+/// nobody sees, and an element whose Html nothing reads is never shown, so
+/// the state of its node is never seen. A click reads its handler, a cell
+/// write the cell and the value it writes, and an effect or a handler
+/// nothing performs goes away. A loop variable or binding of a
+/// pattern that nothing reads any more goes away too, and becomes `_`.
 pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
     let functions = program
         .functions
         .into_iter()
         .map(|function| match function {
-            FlatFunction::Data(function) => FlatFunction::Data(IrFunctionDeclaration {
-                body: eliminate_data(function.body, &mut HashSet::new()),
+            FlatFunction::Pure(function) => FlatFunction::Pure(IrFunctionDeclaration {
+                body: eliminate_pure(function.body, &mut HashSet::new()),
                 ..function
             }),
             FlatFunction::Html(function) => FlatFunction::Html(IrFunctionDeclaration {
@@ -50,10 +53,15 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
     }
 }
 
-fn eliminate_data(block: FlatDataBlock, live: &mut HashSet<ValueId>) -> FlatDataBlock {
+fn eliminate_pure(block: FlatPureBlock, live: &mut HashSet<ValueId>) -> FlatPureBlock {
     live.insert(block.result);
+    let mut kept = Vec::with_capacity(block.bindings.len());
+    for binding in block.bindings.into_iter().rev() {
+        kept.extend(eliminate_pure_binding(binding, live));
+    }
+    kept.reverse();
     IrBlock {
-        bindings: eliminate_data_bindings(block.bindings, live),
+        bindings: kept,
         result: block.result,
     }
 }
@@ -63,11 +71,18 @@ fn eliminate_html(block: FlatHtmlBlock, live: &mut HashSet<ValueId>) -> FlatHtml
     let mut kept = Vec::with_capacity(block.bindings.len());
     for binding in block.bindings.into_iter().rev() {
         let binding = match binding {
-            FlatBinding::Data(binding) => {
-                eliminate_data_binding(binding, live).map(FlatBinding::Data)
+            FlatHtmlBinding::Pure(binding) => {
+                eliminate_pure_binding(binding, live).map(FlatHtmlBinding::Pure)
             }
-            FlatBinding::Html(binding) => {
-                eliminate_html_binding(binding, live).map(FlatBinding::Html)
+            FlatHtmlBinding::Cell(binder, initial) => {
+                if !live.contains(&binder.var) {
+                    continue;
+                }
+                live.insert(initial);
+                Some(FlatHtmlBinding::Cell(binder, initial))
+            }
+            FlatHtmlBinding::Html(binding) => {
+                eliminate_html_binding(binding, live).map(FlatHtmlBinding::Html)
             }
         };
         kept.extend(binding);
@@ -79,33 +94,21 @@ fn eliminate_html(block: FlatHtmlBlock, live: &mut HashSet<ValueId>) -> FlatHtml
     }
 }
 
-fn eliminate_data_bindings(
-    bindings: Vec<IrBinding<IrFunctionDataType, FlatDataOp>>,
+fn eliminate_pure_binding(
+    binding: IrBinding<IrFunctionDataType, FlatPureOp>,
     live: &mut HashSet<ValueId>,
-) -> Vec<IrBinding<IrFunctionDataType, FlatDataOp>> {
-    let mut kept = Vec::with_capacity(bindings.len());
-    for binding in bindings.into_iter().rev() {
-        kept.extend(eliminate_data_binding(binding, live));
-    }
-    kept.reverse();
-    kept
-}
-
-fn eliminate_data_binding(
-    binding: IrBinding<IrFunctionDataType, FlatDataOp>,
-    live: &mut HashSet<ValueId>,
-) -> Option<IrBinding<IrFunctionDataType, FlatDataOp>> {
+) -> Option<IrBinding<IrFunctionDataType, FlatPureOp>> {
     if !live.contains(&binding.binder.var) {
         return None;
     }
     let IrBinding { binder, op } = binding;
     let op = match op {
-        FlatDataOp::Match(match_) => {
-            FlatDataOp::Match(eliminate_match(match_, live, eliminate_data))
+        FlatPureOp::Match(match_) => {
+            FlatPureOp::Match(eliminate_match(match_, live, eliminate_pure))
         }
-        FlatDataOp::Lambda(IrLambda { parameters, body }) => FlatDataOp::Lambda(IrLambda {
+        FlatPureOp::Lambda(IrLambda { parameters, body }) => FlatPureOp::Lambda(IrLambda {
             parameters,
-            body: eliminate_data(body, live),
+            body: eliminate_pure(body, live),
         }),
         op => op,
     };
@@ -127,10 +130,21 @@ fn eliminate_html_binding(
         FlatHtmlOp::Match(match_) => {
             FlatHtmlOp::Match(eliminate_match(match_, live, eliminate_html))
         }
-        FlatHtmlOp::For(IrFor { var, array, body }) => {
+        FlatHtmlOp::For(FlatFor {
+            var,
+            array,
+            key,
+            body,
+        }) => {
             let body = eliminate_html(body, live);
+            let key = key.map(|key| eliminate_pure(key, live));
             let var = var.filter(|binder| live.contains(&binder.var));
-            FlatHtmlOp::For(IrFor { var, array, body })
+            FlatHtmlOp::For(FlatFor {
+                var,
+                array,
+                key,
+                body,
+            })
         }
         FlatHtmlOp::Lambda(IrLambda { parameters, body }) => FlatHtmlOp::Lambda(IrLambda {
             parameters,
@@ -236,6 +250,101 @@ mod tests {
         let before = program.to_string();
         let after = eliminate_dead_bindings(program).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
+    }
+
+    #[test]
+    fn should_keep_a_cell_that_a_click_writes_and_nothing_reads() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [], |t| {
+                    let n = t.cell(t.int(0));
+                    let set = t.event_handler(|t| t.cell_write(n, t.int(1)));
+                    t.element_on_click("button", [], set, t.text("x"))
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- before --
+                entrypoint Test@e0() -> Html {
+                  let v0: Int = 0
+                  let v1: Int = cell(v0)
+                  let v4: () -> Effect = fn() {
+                    let v2: Int = 1
+                    let v3: Effect = v1 := v2
+                    v3
+                  }
+                  let v5: Html = text("x")
+                  let v6: Html = element("button", {}, v5) on_click v4
+                  v6
+                }
+
+                -- after --
+                entrypoint Test@e0() -> Html {
+                  let v0: Int = 0
+                  let v1: Int = cell(v0)
+                  let v4: () -> Effect = fn() {
+                    let v2: Int = 1
+                    let v3: Effect = v1 := v2
+                    v3
+                  }
+                  let v5: Html = text("x")
+                  let v6: Html = element("button", {}, v5) on_click v4
+                  v6
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_drop_an_effect_nothing_performs_and_keep_the_cell_a_click_writes() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [], |t| {
+                    let n = t.cell(t.int(0));
+                    let unseen = t.cell(t.int(0));
+                    let _idle = t.cell_write(unseen, t.int(1));
+                    let bump = t.cell_write(n, t.add(n, t.int(1)));
+                    let bump = t.event_handler(|_| bump);
+                    t.element_on_click("button", [], bump, t.text("x"))
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- before --
+                entrypoint Test@e0() -> Html {
+                  let v0: Int = 0
+                  let v1: Int = cell(v0)
+                  let v2: Int = 0
+                  let v3: Int = cell(v2)
+                  let v4: Int = 1
+                  let v5: Effect = v3 := v4
+                  let v6: Int = 1
+                  let v7: Int = add(v1, v6)
+                  let v8: Effect = v1 := v7
+                  let v9: () -> Effect = fn() {
+                    v8
+                  }
+                  let v10: Html = text("x")
+                  let v11: Html = element("button", {}, v10) on_click v9
+                  v11
+                }
+
+                -- after --
+                entrypoint Test@e0() -> Html {
+                  let v0: Int = 0
+                  let v1: Int = cell(v0)
+                  let v6: Int = 1
+                  let v7: Int = add(v1, v6)
+                  let v8: Effect = v1 := v7
+                  let v9: () -> Effect = fn() {
+                    v8
+                  }
+                  let v10: Html = text("x")
+                  let v11: Html = element("button", {}, v10) on_click v9
+                  v11
+                }
+            "#]],
+        );
     }
 
     #[test]

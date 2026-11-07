@@ -50,7 +50,28 @@ pub fn parse_expr_with(
     errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    parse_binary(iter, comments, errors, restrictions, Bound::Unbounded)
+    let expr = parse_binary(iter, comments, errors, restrictions, Bound::Unbounded)?;
+    if next_if_eq(iter, comments, errors, LangToken::ColonAssign).is_none() {
+        return Ok(expr);
+    }
+    let ParsedExpr::VariableReference {
+        value: cell,
+        range: cell_range,
+    } = expr
+    else {
+        let target_range = expr.range().clone();
+        return Err(errors.emit(ParseErrorKind::CellWriteTargetNotVariable {}, target_range));
+    };
+    let value = parse_binary(iter, comments, errors, restrictions, Bound::Unbounded)?;
+    if let Some(range) = next_if_eq(iter, comments, errors, LangToken::ColonAssign) {
+        return Err(errors.emit(ParseErrorKind::ChainedCellWrite, range));
+    }
+    Ok(ParsedExpr::CellWrite {
+        range: cell_range.clone().to(value.range().clone()),
+        cell,
+        cell_range,
+        value: Box::new(value),
+    })
 }
 
 fn parse_binary(
@@ -167,6 +188,11 @@ pub fn parse_block(
         |iter, comments, errors| {
             let mut bindings = Vec::new();
             while let Some(let_range) = next_if_eq(iter, comments, errors, LangToken::Let) {
+                let mutable = next_if_map(iter, comments, errors, |token| match token {
+                    LangToken::Identifier(name) if name.as_str() == "mut" => Some(()),
+                    _ => None,
+                })
+                .is_some();
                 let (var_name, var_name_range) = expect_identifier(iter, comments, errors)?;
                 let var_type = if next_if_eq(iter, comments, errors, LangToken::Colon).is_some() {
                     Some(parse_type(iter, comments, errors)?)
@@ -181,15 +207,23 @@ pub fn parse_block(
                         errors.emit(ParseErrorKind::BlockMissingTailExpression {}, semicolon)
                     );
                 }
-                bindings.push((let_range, var_name, var_name_range, var_type, value_expr));
+                bindings.push((
+                    let_range,
+                    mutable,
+                    var_name,
+                    var_name_range,
+                    var_type,
+                    value_expr,
+                ));
             }
             let mut expr = parse_expr(iter, comments, errors)?;
-            for (let_range, var_name, var_name_range, var_type, value_expr) in
+            for (let_range, mutable, var_name, var_name_range, var_type, value_expr) in
                 bindings.into_iter().rev()
             {
                 let range = let_range.to(expr.range().clone());
                 expr = ParsedExpr::Let {
                     binding: Box::new(ParsedLetBinding {
+                        mutable,
                         var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
                         var_name_range,
                         var_type,
@@ -706,12 +740,27 @@ fn parse_for(
     } else {
         ParsedLoopSource::Array(start_expr)
     };
+    let key = match next_if_map(iter, comments, errors, |token| match token {
+        LangToken::Identifier(name) if name.as_str() == "key" => Some(()),
+        _ => None,
+    }) {
+        Some(_) => Some(Box::new(parse_expr_with(
+            iter,
+            comments,
+            errors,
+            Restrictions {
+                forbid_record_expressions: true,
+            },
+        )?)),
+        None => None,
+    };
     let left_brace = expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
     let (body, braces) = parse_block(iter, comments, errors, &left_brace)?;
     Ok(ParsedExpr::For {
         var_name,
         var_name_range,
         source: Box::new(source),
+        key,
         body: Box::new(body),
         range: for_range.to(braces),
     })
@@ -2502,6 +2551,65 @@ mod tests {
                      ^^^^^^^^^
                 -- ast --
                 and(a, lt(lt(b, c), d))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_cell_write_whose_value_binds_tighter() {
+        accept(
+            "a := b || c && d < e + 1",
+            expect![[r#"
+                write(a, or(b, and(c, lt(d, add(e, 1)))))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_cell_write_in_parentheses_and_arguments() {
+        accept(
+            "f((a := 1) == x, b := 2)",
+            expect![[r#"
+                f(eq(write(a, 1), x), write(b, 2))
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_cell_write_of_a_field() {
+        reject(
+            "a.b := c",
+            expect![[r#"
+                -- errors --
+                error: Only a variable can be written with :=
+                a.b := c
+                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_cell_write_of_a_binary_expression() {
+        reject(
+            "a + b := c",
+            expect![[r#"
+                -- errors --
+                error: Only a variable can be written with :=
+                a + b := c
+                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_chained_cell_writes() {
+        reject(
+            "a := b := c",
+            expect![[r#"
+                -- errors --
+                error: Cell writes cannot be chained: combine them with effects!
+                a := b := c
+                       ^^
             "#]],
         );
     }

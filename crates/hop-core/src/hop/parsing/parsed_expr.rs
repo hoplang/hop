@@ -113,7 +113,15 @@ pub enum ParsedExpr {
         var_name: Option<VarName>,
         var_name_range: Option<DocumentRange>,
         source: Box<ParsedLoopSource>,
+        key: Option<Box<Self>>,
         body: Box<Self>,
+        range: DocumentRange,
+    },
+
+    CellWrite {
+        cell: VarName,
+        cell_range: DocumentRange,
+        value: Box<Self>,
         range: DocumentRange,
     },
 
@@ -220,6 +228,7 @@ pub struct ParsedFieldInitializer {
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedLetBinding {
+    pub mutable: bool,
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: Option<ParsedType>,
@@ -262,6 +271,7 @@ pub enum ParsedBinaryOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {
+    CellWrite,
     LogicalOr,
     LogicalAnd,
     Comparison,
@@ -499,7 +509,9 @@ impl ParsedExpr {
                     f(&arm.body);
                 }
             }
-            ParsedExpr::For { source, body, .. } => {
+            ParsedExpr::For {
+                source, key, body, ..
+            } => {
                 match source.as_ref() {
                     ParsedLoopSource::Array(expr) => f(expr),
                     ParsedLoopSource::RangeInclusive { start, end } => {
@@ -507,8 +519,12 @@ impl ParsedExpr {
                         f(end);
                     }
                 }
+                if let Some(key) = key {
+                    f(key);
+                }
                 f(body);
             }
+            ParsedExpr::CellWrite { value, .. } => f(value),
             ParsedExpr::Option { value, .. } => {
                 if let Some(value) = value {
                     f(value);
@@ -572,6 +588,7 @@ impl ParsedExpr {
             | ParsedExpr::Binary { .. }
             | ParsedExpr::Match { .. }
             | ParsedExpr::For { .. }
+            | ParsedExpr::CellWrite { .. }
             | ParsedExpr::Macro { .. }
             | ParsedExpr::Call { .. }
             | ParsedExpr::Lambda { .. } => false,
@@ -595,6 +612,7 @@ impl ParsedExpr {
             | ParsedExpr::Binary { range, .. }
             | ParsedExpr::Match { range, .. }
             | ParsedExpr::For { range, .. }
+            | ParsedExpr::CellWrite { range, .. }
             | ParsedExpr::Option { range, .. }
             | ParsedExpr::Macro { range, .. }
             | ParsedExpr::Call { range, .. }
@@ -607,6 +625,7 @@ impl ParsedExpr {
     pub fn precedence(&self) -> Precedence {
         match self {
             ParsedExpr::Binary { operator, .. } => operator.precedence(),
+            ParsedExpr::CellWrite { .. } => Precedence::CellWrite,
             ParsedExpr::Unary { .. }
             | ParsedExpr::IntLiteral {
                 minus_range: Some(_),
@@ -792,11 +811,16 @@ impl Display for ParsedExpr {
             ParsedExpr::For {
                 var_name,
                 source,
+                key,
                 body,
                 ..
             } => {
                 let var = var_name.as_ref().map_or("_", |name| name.as_str());
-                write!(f, "for {var} in {source} {{")?;
+                write!(f, "for {var} in {source}")?;
+                if let Some(key) = key {
+                    write!(f, " key {key}")?;
+                }
+                f.write_str(" {")?;
                 write!(Indent::new(f), "\n{body}")?;
                 f.write_str("\n}")
             }
@@ -822,8 +846,12 @@ impl Display for ParsedExpr {
                 write!(Indent::new(f), "\n{body}")?;
                 f.write_str("\n}")
             }
+            ParsedExpr::CellWrite { cell, value, .. } => {
+                write!(f, "write({}, {value})", cell.as_str())
+            }
             ParsedExpr::Let { binding, body, .. } => {
-                write!(f, "let {}", binding.var_name.as_str())?;
+                let mutable = if binding.mutable { "mut " } else { "" };
+                write!(f, "let {mutable}{}", binding.var_name.as_str())?;
                 if let Some(var_type) = &binding.var_type {
                     write!(f, ": {var_type}")?;
                 }

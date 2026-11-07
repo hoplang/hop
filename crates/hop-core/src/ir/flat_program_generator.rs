@@ -1,12 +1,14 @@
 use crate::hop::typing::Ty;
 use crate::ir::entrypoint_id::EntrypointId;
-use crate::ir::flat_program::{FlatDataBlock, FlatFunction, FlatHtmlBlock, FlatProgram};
+use crate::ir::flat_program::FlatProgram;
 use crate::ir::flat_program_builder::{
     DeclaredFunction, FlatBlockBuilder, FlatProgramBuilder, Pat,
 };
 use crate::ir::ir_binding::IrBinding;
+use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrResultType, IrSignature,
+    IrType,
 };
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
@@ -33,8 +35,21 @@ const MAX_LITERAL_DEPTH: usize = 5;
 /// How deep the patterns of a match nest.
 const MAX_PATTERN_DEPTH: usize = 2;
 
-/// One block in this many binds a value nothing asked for.
-const DEAD_BINDING_ODDS: usize = 64;
+/// How often a block binds a value nothing asked for.
+const DEAD_BINDING_ODDS: u8 = 10;
+
+/// How often a value that a block that renders Html binds is a cell.
+const CELL_ODDS: u8 = 64;
+
+/// How often an element has a click.
+const CLICK_ODDS: u8 = 204;
+
+/// How often a loop that binds its variable has a key.
+const KEY_ODDS: u8 = 204;
+
+/// How often an op that renders Html may be a toggle: a cell, a match on
+/// it and a click that writes it.
+const TOGGLE_ODDS: u8 = 64;
 
 const FLOATS: &[f64] = &[
     0.0,
@@ -99,38 +114,60 @@ const STRING_LITERALS: &[&str] = &[
     "cr\rtab\t",
 ];
 
-// Each name with whether the path has used it, which only Html can be.
+#[derive(Clone, Copy)]
+struct Name {
+    var: ValueId,
+    /// Whether the path has used the Html.
+    used: bool,
+    /// Whether a cell binds the name, which a cell write can then write.
+    cell: bool,
+}
+
+/// The names a path can read.
 #[derive(Clone, Default)]
 struct Scope {
-    names: Vec<(ValueId, bool)>,
+    names: Vec<Name>,
+    html: bool,
 }
 
 impl Scope {
     fn push(&mut self, value: ValueId) -> ValueId {
-        self.names.push((value, false));
-        value
+        self.push_name(value, false)
+    }
+
+    fn push_cell(&mut self, var: ValueId) -> ValueId {
+        self.push_name(var, true)
+    }
+
+    fn push_name(&mut self, var: ValueId, cell: bool) -> ValueId {
+        self.names.push(Name {
+            var,
+            used: false,
+            cell,
+        });
+        var
     }
 
     fn set_used(&mut self, value: ValueId, used: bool) {
-        if let Some((_, flag)) = self.names.iter_mut().rev().find(|(name, _)| *name == value) {
-            *flag = used;
+        if let Some(name) = self.names.iter_mut().rev().find(|name| name.var == value) {
+            name.used = used;
         }
     }
 
-    // The body of a loop or a lambda cannot read Html bound outside it.
-    fn without_html(&self, types: &[IrType]) -> Scope {
+    fn inner(&self, types: &[IrType], html: bool) -> Scope {
         Scope {
             names: (self.names.iter().copied())
-                .filter(|(name, _)| types[name.index()] != IrType::HTML)
+                .filter(|name| types[name.var.index()] != IrType::HTML)
                 .collect(),
+            html,
         }
     }
 
     // `arm` is this scope with names pushed after it forked, and after the
     // fork a name is used when any path used it.
     fn join(&mut self, arm: &Scope) {
-        for ((_, used), (_, arm_used)) in self.names.iter_mut().zip(&arm.names) {
-            *used |= *arm_used;
+        for (name, arm_name) in self.names.iter_mut().zip(&arm.names) {
+            name.used |= arm_name.used;
         }
     }
 
@@ -141,8 +178,14 @@ impl Scope {
     ) -> impl Iterator<Item = ValueId> + 'a {
         self.names
             .iter()
-            .filter(move |(name, used)| !used && fits(&types[name.index()]))
-            .map(|(name, _)| *name)
+            .filter(move |name| !name.used && fits(&types[name.var.index()]))
+            .map(|name| name.var)
+    }
+
+    fn cells(&self) -> impl Iterator<Item = ValueId> + '_ {
+        (self.names.iter())
+            .filter(|name| name.cell)
+            .map(|name| name.var)
     }
 }
 
@@ -193,7 +236,6 @@ struct FlatGenerator<'a, 'b> {
     types: IrTypeDeclarations,
 }
 
-/// Generate a random well-typed Flat program.
 pub fn random_program(u: &mut Unstructured<'_>) -> FlatProgram {
     random_program_inner(u, false)
 }
@@ -279,14 +321,16 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
     for name in &function_names {
         let html = g.coin();
         let return_type = if html {
-            Ty::Html
+            IrType::HTML
         } else {
-            g.random_type_where(2, NamedTypes::Any, false)
+            IrType::result(&g.random_result_type())
         };
         let params: Vec<(String, IrType)> = (0..g.count(0..=8))
             .map(|i| {
                 let typ = if g.index(4) == 0 {
                     g.random_closure_type(html, 1)
+                } else if g.index(8) == 0 {
+                    IrType::EFFECT
                 } else {
                     let ty = g.random_type_where(2, NamedTypes::Any, html);
                     g.ir_type(ty)
@@ -294,7 +338,6 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
                 (format!("p{i}"), typ)
             })
             .collect();
-        let return_type = g.ir_type(return_type);
         builder = builder.declare_with_types(
             name,
             params.iter().map(|(n, t)| (n.as_str(), t.clone())),
@@ -357,7 +400,7 @@ pub fn random_entrypoint_args(
                 .parameters
                 .iter()
                 .map(|param| {
-                    let value = random_value(rng, &param.widen().binder.typ, &program.types);
+                    let value = random_value(rng, &param.binder.typ, &program.types);
                     (param.name.clone(), value)
                 })
                 .collect();
@@ -377,6 +420,10 @@ impl FlatGenerator<'_, '_> {
 
     fn coin(&mut self) -> bool {
         self.u.arbitrary().unwrap()
+    }
+
+    fn chance(&mut self, odds: u8) -> bool {
+        self.u.ratio(odds, u8::MAX).unwrap()
     }
 
     fn zigzag(&mut self, magnitude: i32) -> i32 {
@@ -467,19 +514,29 @@ impl FlatGenerator<'_, '_> {
     fn random_value_signature(
         &mut self,
         depth: usize,
-        result: Option<IrDataType>,
-    ) -> IrSignature<IrFunctionDataType, IrDataType> {
+        result: Option<IrResultType>,
+    ) -> IrSignature<IrFunctionDataType, IrResultType> {
         let parameters = (0..self.count(0..=2))
             .map(|_| {
                 if depth > 0 && self.index(4) == 0 {
                     IrFunctionDataType::Function(self.random_value_signature(depth - 1, None))
+                } else if self.index(8) == 0 {
+                    IrFunctionDataType::Effect
                 } else {
                     IrFunctionDataType::Data(self.random_data_type(1))
                 }
             })
             .collect();
-        let result = result.unwrap_or_else(|| self.random_data_type(1));
+        let result = result.unwrap_or_else(|| self.random_result_type());
         IrSignature { parameters, result }
+    }
+
+    fn random_result_type(&mut self) -> IrResultType {
+        if self.index(4) == 0 {
+            IrResultType::Effect
+        } else {
+            IrResultType::Data(self.random_data_type(1))
+        }
     }
 
     fn random_html_signature(&mut self, depth: usize) -> IrSignature<IrType, IrHtmlType> {
@@ -561,6 +618,43 @@ impl FlatGenerator<'_, '_> {
         }
     }
 
+    fn for_loop(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &Scope,
+        array: ValueId,
+        depth: usize,
+    ) -> ValueId {
+        if !self.chance(KEY_ODDS) {
+            return b.html_for(array, |b, var| {
+                self.for_loop_body(b, scope, Some(var), depth - 1)
+            });
+        }
+        b.html_for_keyed(array, |b, var| self.key(b, scope, var, depth - 1))
+            .body(|b, var| self.for_loop_body(b, scope, Some(var), depth - 1))
+    }
+
+    fn key(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &Scope,
+        var: ValueId,
+        depth: usize,
+    ) -> ValueId {
+        let mut scope = scope.inner(&b.value_types(), false);
+        scope.push(var);
+        let typ = b.value_types()[var.index()].clone();
+        if (typ == IrType::INT || typ == IrType::STRING) && self.index(4) != 0 {
+            return var;
+        }
+        let target = if self.coin() {
+            IrDataType::Int
+        } else {
+            IrDataType::String
+        };
+        self.data_op(b, &mut scope, &target, depth, MAX_EXPRESSION_DEPTH)
+    }
+
     fn for_loop_body(
         &mut self,
         b: &FlatBlockBuilder<'_>,
@@ -568,7 +662,7 @@ impl FlatGenerator<'_, '_> {
         var: Option<ValueId>,
         depth: usize,
     ) -> ValueId {
-        let mut scope = scope.without_html(&b.value_types());
+        let mut scope = scope.inner(&b.value_types(), true);
         if let Some(var) = var {
             scope.push(var);
         }
@@ -576,7 +670,8 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn html_block(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
-        if self.index(DEAD_BINDING_ODDS) == DEAD_BINDING_ODDS - 1 {
+        scope.html = true;
+        if self.chance(DEAD_BINDING_ODDS) {
             let ty = self.random_type(1);
             let typ = self.ir_type(ty);
             let dead = self.op_of_type(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
@@ -593,7 +688,8 @@ impl FlatGenerator<'_, '_> {
         target: &IrDataType,
         depth: usize,
     ) -> ValueId {
-        if self.index(DEAD_BINDING_ODDS) == DEAD_BINDING_ODDS - 1 {
+        scope.html = false;
+        if self.chance(DEAD_BINDING_ODDS) {
             let typ = self.random_data_type(1);
             self.data_op(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
         }
@@ -612,6 +708,7 @@ impl FlatGenerator<'_, '_> {
                 self.data_block(b, scope, target, depth)
             }
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => self.html_block(b, scope, depth),
+            IrType::Data(IrFunctionDataType::Effect) => self.effect_block(b, scope, depth),
             IrType::Data(IrFunctionDataType::Function(_))
             | IrType::Html(IrFunctionHtmlType::Function(_)) => {
                 unreachable!("a block produces no closure")
@@ -634,6 +731,7 @@ impl FlatGenerator<'_, '_> {
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 self.html_op(b, scope, depth, nesting)
             }
+            IrType::Data(IrFunctionDataType::Effect) => self.effect_op(b, scope, depth, nesting),
             IrType::Data(IrFunctionDataType::Function(_))
             | IrType::Html(IrFunctionHtmlType::Function(_)) => {
                 self.closure_op(b, scope, typ, depth, nesting)
@@ -662,12 +760,12 @@ impl FlatGenerator<'_, '_> {
                     .collect()
             }
             IrType::Html(IrFunctionHtmlType::Function(signature)) => signature.parameters.clone(),
-            IrType::Data(IrFunctionDataType::Data(_))
+            IrType::Data(IrFunctionDataType::Data(_) | IrFunctionDataType::Effect)
             | IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 unreachable!("closure_op makes closures")
             }
         };
-        let mut inner = scope.without_html(&b.value_types());
+        let mut inner = scope.inner(&b.value_types(), matches!(typ, IrType::Html(_)));
         let depth = depth.saturating_sub(1);
         let nesting = nesting.saturating_sub(1);
         let lambda = b.lambda(parameters, |b, params| {
@@ -675,9 +773,12 @@ impl FlatGenerator<'_, '_> {
                 inner.push(*param);
             }
             match typ {
-                IrType::Data(IrFunctionDataType::Function(signature)) => {
-                    self.data_op(b, &mut inner, &signature.result, depth, nesting)
-                }
+                IrType::Data(IrFunctionDataType::Function(signature)) => match &signature.result {
+                    IrResultType::Data(result) => {
+                        self.data_op(b, &mut inner, result, depth, nesting)
+                    }
+                    IrResultType::Effect => self.effect_op(b, &mut inner, depth, nesting),
+                },
                 _ => self.html_op(b, &mut inner, depth, nesting),
             }
         });
@@ -696,7 +797,11 @@ impl FlatGenerator<'_, '_> {
             (
                 IrType::Data(IrFunctionDataType::Function(signature)),
                 IrType::Data(IrFunctionDataType::Data(result)),
-            ) => signature.result == *result,
+            ) => signature.result == IrResultType::Data(result.clone()),
+            (
+                IrType::Data(IrFunctionDataType::Function(signature)),
+                IrType::Data(IrFunctionDataType::Effect),
+            ) => signature.result == IrResultType::Effect,
             (
                 IrType::Html(IrFunctionHtmlType::Function(_)),
                 IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
@@ -710,7 +815,12 @@ impl FlatGenerator<'_, '_> {
             let typ = match result {
                 IrType::Data(IrFunctionDataType::Data(result)) => {
                     IrType::Data(IrFunctionDataType::Function(
-                        self.random_value_signature(1, Some(result.clone())),
+                        self.random_value_signature(1, Some(IrResultType::Data(result.clone()))),
+                    ))
+                }
+                IrType::Data(IrFunctionDataType::Effect) => {
+                    IrType::Data(IrFunctionDataType::Function(
+                        self.random_value_signature(1, Some(IrResultType::Effect)),
                     ))
                 }
                 _ => IrType::Html(IrFunctionHtmlType::Function(self.random_html_signature(1))),
@@ -724,7 +834,7 @@ impl FlatGenerator<'_, '_> {
                     .collect()
             }
             IrType::Html(IrFunctionHtmlType::Function(signature)) => signature.parameters.clone(),
-            IrType::Data(IrFunctionDataType::Data(_))
+            IrType::Data(IrFunctionDataType::Data(_) | IrFunctionDataType::Effect)
             | IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 unreachable!("an application applies a closure")
             }
@@ -765,7 +875,7 @@ impl FlatGenerator<'_, '_> {
                         } else {
                             self.html_leaf(b, scope, depth - 1)
                         };
-                        b.element(tag, Vec::new(), children)
+                        self.element(b, scope, tag, Vec::new(), children, 0, 0)
                     }
                 };
                 scope.push(literal)
@@ -773,6 +883,24 @@ impl FlatGenerator<'_, '_> {
         };
         scope.set_used(value, true);
         value
+    }
+
+    fn element(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        tag: &str,
+        attributes: Vec<(AttributeName, IrAttribute)>,
+        children: ValueId,
+        depth: usize,
+        nesting: usize,
+    ) -> ValueId {
+        if !self.chance(CLICK_ODDS) {
+            return b.element(tag, attributes, children);
+        }
+        let handler_type = IrType::data_function([], IrType::EFFECT);
+        let handler = self.op_of_type(b, scope, &handler_type, depth, nesting);
+        b.element_on_click(tag, attributes, handler, children)
     }
 
     fn data_leaf(
@@ -787,22 +915,28 @@ impl FlatGenerator<'_, '_> {
             scope,
             &IrType::Data(IrFunctionDataType::Data(typ.clone())),
         ) {
-            return name;
+            return self.cell(b, scope, name);
         }
+        self.literal(b, scope, typ, depth)
+    }
+
+    fn literal(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        typ: &IrDataType,
+        depth: usize,
+    ) -> ValueId {
         let literal = match typ {
             IrDataType::String => b.str(self.u.choose(STRING_LITERALS).unwrap()),
-            IrDataType::Int => {
-                if self.count(0..=7) == 0 {
-                    b.int(
-                        *self
-                            .u
-                            .choose(&[i32::MIN, i32::MIN + 1, i32::MAX - 1, i32::MAX])
-                            .unwrap(),
-                    )
-                } else {
-                    b.int(self.zigzag(100))
-                }
-            }
+            IrDataType::Int => b.int(match self.index(8) {
+                0 => *self
+                    .u
+                    .choose(&[i32::MIN, i32::MIN + 1, i32::MAX - 1, i32::MAX])
+                    .unwrap(),
+                1 | 2 => self.zigzag(100),
+                _ => self.zigzag(2),
+            }),
             IrDataType::Bool => b.bool(self.coin()),
             IrDataType::Float => b.float(*self.u.choose(FLOATS).unwrap()),
             IrDataType::Array(inner) => {
@@ -861,7 +995,7 @@ impl FlatGenerator<'_, '_> {
                 b.tuple(values)
             }
         };
-        scope.push(literal)
+        self.bind(b, scope, literal)
     }
 
     fn constructors(
@@ -1041,6 +1175,7 @@ impl FlatGenerator<'_, '_> {
             ForArray,
             ForRange,
             Apply,
+            Toggle,
         }
         let mut productions = vec![P::Escape, P::Element, P::Concat];
         if Self::callees(b, &IrType::HTML).next().is_some() {
@@ -1048,6 +1183,9 @@ impl FlatGenerator<'_, '_> {
         }
         if depth > 0 {
             productions.extend([P::Match, P::ForArray, P::ForRange, P::Apply]);
+        }
+        if depth > 0 && scope.html && self.chance(TOGGLE_ODDS) {
+            productions.push(P::Toggle);
         }
         let value = match self.u.choose(&productions).unwrap() {
             P::Escape => {
@@ -1076,7 +1214,7 @@ impl FlatGenerator<'_, '_> {
                 } else {
                     b.html_concat(children)
                 };
-                b.element(tag, attributes, children)
+                self.element(b, scope, tag, attributes, children, depth, nesting - 1)
             }
             P::Concat => {
                 let parts: Vec<_> = (0..self.count(0..=4))
@@ -1084,6 +1222,7 @@ impl FlatGenerator<'_, '_> {
                     .collect();
                 b.html_concat(parts)
             }
+            P::Toggle => self.toggle(b, scope, depth),
             P::Call => self.call(b, scope, &IrType::HTML, depth, nesting),
             P::Match => self.match_(b, scope, &IrType::HTML, depth, nesting),
             P::Apply => self.apply(b, scope, &IrType::HTML, depth, nesting),
@@ -1096,21 +1235,17 @@ impl FlatGenerator<'_, '_> {
                         self.data_op(b, scope, &array_ty, depth, nesting - 1)
                     }
                 };
-                b.html_for(array, |b, var| {
-                    self.for_loop_body(b, scope, Some(var), depth - 1)
-                })
+                self.for_loop(b, scope, array, depth)
             }
             P::ForRange => {
                 let start = b.int(self.zigzag(3));
-                scope.push(start);
+                let start = self.bind(b, scope, start);
                 let end = b.int(self.zigzag(3));
-                scope.push(end);
+                let end = self.bind(b, scope, end);
                 let array = b.array_from_range(start, end);
-                scope.push(array);
+                let array = self.bind(b, scope, array);
                 if self.coin() {
-                    b.html_for(array, |b, var| {
-                        self.for_loop_body(b, scope, Some(var), depth - 1)
-                    })
+                    self.for_loop(b, scope, array, depth)
                 } else {
                     b.html_for_unbound(array, |b| self.for_loop_body(b, scope, None, depth - 1))
                 }
@@ -1119,6 +1254,32 @@ impl FlatGenerator<'_, '_> {
         scope.push(value);
         scope.set_used(value, true);
         value
+    }
+
+    // A cell, a click handler that writes a literal to it and a match on it
+    // that renders Html, in an element with the handler. The handler is in
+    // scope for the arms, so a click on an element of an arm can take the
+    // element away. A handler writing a value that a match on the cell gives
+    // instead, or the handler only in scope and not around the match, makes
+    // far fewer clicks switch an arm.
+    fn toggle(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
+        let subject_ty = self.branching_type(b.types());
+        let initial = self.literal(b, scope, &subject_ty, MAX_LITERAL_DEPTH);
+        let cell = scope.push_cell(b.cell(initial));
+        let mut inner = scope.inner(&b.value_types(), false);
+        let handler = b.lambda(Vec::new(), |b, _| {
+            let value = self.literal(b, &mut inner, &subject_ty, MAX_LITERAL_DEPTH);
+            b.cell_write(cell, value)
+        });
+        let handler = scope.push(handler);
+        let shown = self.match_on(b, scope, cell, subject_ty, &IrType::HTML, depth);
+        scope.push(shown);
+        scope.set_used(shown, true);
+        let tags: Vec<&str> = (ELEMENTS.iter())
+            .filter(|(_, void)| !void)
+            .map(|(tag, _)| *tag)
+            .collect();
+        b.element_on_click(self.u.choose(&tags).unwrap(), Vec::new(), handler, shown)
     }
 
     fn data_op(
@@ -1324,9 +1485,9 @@ impl FlatGenerator<'_, '_> {
             }
             P::ArrayFromRange => {
                 let start = b.int(self.zigzag(3));
-                scope.push(start);
+                let start = self.bind(b, scope, start);
                 let end = b.int(self.zigzag(3));
-                scope.push(end);
+                let end = self.bind(b, scope, end);
                 b.array_from_range(start, end)
             }
             P::TupleIndex => {
@@ -1391,6 +1552,109 @@ impl FlatGenerator<'_, '_> {
             P::Call => self.call(b, scope, &typ, depth, nesting),
             P::Apply => self.apply(b, scope, &typ, depth, nesting),
         };
+        self.bind(b, scope, value)
+    }
+
+    fn bind(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, value: ValueId) -> ValueId {
+        scope.push(value);
+        self.cell(b, scope, value)
+    }
+
+    fn cell(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, value: ValueId) -> ValueId {
+        if !scope.html || !self.chance(CELL_ODDS) {
+            return value;
+        }
+        scope.push_cell(b.cell(value))
+    }
+
+    fn effect_block(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        depth: usize,
+    ) -> ValueId {
+        scope.html = false;
+        self.effect_op(b, scope, depth, MAX_EXPRESSION_DEPTH)
+    }
+
+    fn cell_in_scope(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &Scope,
+    ) -> Option<(ValueId, IrDataType)> {
+        let cells: Vec<ValueId> = scope.cells().collect();
+        if cells.is_empty() {
+            return None;
+        }
+        let cell = cells[self.index(cells.len())];
+        let typ = b.value_types()[cell.index()]
+            .as_data()
+            .expect("a cell holds a value")
+            .clone();
+        Some((cell, typ))
+    }
+
+    fn effect_leaf(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope) -> ValueId {
+        if self.coin()
+            && let Some(name) = self.name_in_scope(b, scope, &IrType::EFFECT)
+        {
+            return name;
+        }
+        let leaf = match self.cell_in_scope(b, scope) {
+            Some((cell, typ)) if self.index(4) != 0 => {
+                let value = self.literal(b, scope, &typ, MAX_LITERAL_DEPTH);
+                b.cell_write(cell, value)
+            }
+            _ => b.effect_concat(Vec::new()),
+        };
+        scope.push(leaf)
+    }
+
+    fn effect_op(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        depth: usize,
+        nesting: usize,
+    ) -> ValueId {
+        if nesting == 0 || self.index(3) == 0 {
+            return self.effect_leaf(b, scope);
+        }
+        enum P {
+            CellWrite,
+            Concat,
+            Call,
+            Match,
+            Apply,
+        }
+        let mut productions = vec![P::Concat];
+        if scope.cells().next().is_some() {
+            productions.push(P::CellWrite);
+        }
+        if Self::callees(b, &IrType::EFFECT).next().is_some() {
+            productions.push(P::Call);
+        }
+        if depth > 0 {
+            productions.extend([P::Match, P::Apply]);
+        }
+        let value = match self.u.choose(&productions).unwrap() {
+            P::CellWrite => {
+                let (cell, typ) = self
+                    .cell_in_scope(b, scope)
+                    .expect("a cell write is made when a cell is in scope");
+                let value = self.data_op(b, scope, &typ, depth, nesting - 1);
+                b.cell_write(cell, value)
+            }
+            P::Concat => {
+                let parts: Vec<_> = (0..self.count(0..=2))
+                    .map(|_| self.effect_op(b, scope, depth, nesting - 1))
+                    .collect();
+                b.effect_concat(parts)
+            }
+            P::Call => self.call(b, scope, &IrType::EFFECT, depth, nesting),
+            P::Match => self.match_(b, scope, &IrType::EFFECT, depth, nesting),
+            P::Apply => self.apply(b, scope, &IrType::EFFECT, depth, nesting),
+        };
         scope.push(value)
     }
 
@@ -1434,6 +1698,18 @@ impl FlatGenerator<'_, '_> {
                 )
             }
         };
+        self.match_on(b, scope, subject, subject_ty, target, depth)
+    }
+
+    fn match_on(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        subject: ValueId,
+        subject_ty: IrDataType,
+        target: &IrType,
+        depth: usize,
+    ) -> ValueId {
         let arms = self.partition(b, &subject_ty, MAX_PATTERN_DEPTH, true, &mut 0);
         let mut joined = scope.clone();
         let value = b.match_(subject, |m| {
@@ -1458,12 +1734,18 @@ impl FlatGenerator<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::flat_program::{FlatBinding, FlatDataOp, FlatHtmlOp};
+    use crate::ir::flat_program::{
+        FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatPureBlock, FlatPureOp,
+    };
+    use crate::ir::ir_binder::IrBinder;
     use crate::ir::runtime::EvalError;
-    use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
+    use crate::ir::runtime::clicks::clicks;
+    use crate::ir::runtime::flat_evaluator::invoke_entrypoint;
+    use crate::ir::runtime::html_node::Html;
+    use crate::ir::runtime::state::{Place, State, Step};
     use expect_test::{Expect, expect};
     use rand::{RngExt, SeedableRng, rngs::SmallRng};
-    use std::collections::{BTreeMap, HashSet};
+    use std::collections::{BTreeMap, BTreeSet, HashSet};
 
     fn check(seed: u64, len: usize, expected: Expect) {
         let mut rng = SmallRng::seed_from_u64(seed);
@@ -1474,38 +1756,40 @@ mod tests {
 
     #[derive(Clone, Copy)]
     enum Block<'a> {
-        Data(&'a FlatDataBlock),
+        Pure(&'a FlatPureBlock),
         Html(&'a FlatHtmlBlock),
     }
 
     #[derive(Clone, Copy)]
     enum Binding<'a> {
-        Data(&'a IrBinding<IrFunctionDataType, FlatDataOp>),
+        Pure(&'a IrBinding<IrFunctionDataType, FlatPureOp>),
+        Cell(&'a IrBinder<IrDataType>, ValueId),
         Html(&'a IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
     }
 
     impl<'a> Block<'a> {
         fn of(function: &'a FlatFunction) -> Self {
             match function {
-                FlatFunction::Data(function) => Block::Data(&function.body),
+                FlatFunction::Pure(function) => Block::Pure(&function.body),
                 FlatFunction::Html(function) => Block::Html(&function.body),
             }
         }
 
         fn result(self) -> ValueId {
             match self {
-                Block::Data(block) => block.result,
+                Block::Pure(block) => block.result,
                 Block::Html(block) => block.result,
             }
         }
 
         fn bindings(self) -> Vec<Binding<'a>> {
             match self {
-                Block::Data(block) => block.bindings.iter().map(Binding::Data).collect(),
+                Block::Pure(block) => block.bindings.iter().map(Binding::Pure).collect(),
                 Block::Html(block) => (block.bindings.iter())
                     .map(|binding| match binding {
-                        FlatBinding::Data(binding) => Binding::Data(binding),
-                        FlatBinding::Html(binding) => Binding::Html(binding),
+                        FlatHtmlBinding::Pure(binding) => Binding::Pure(binding),
+                        FlatHtmlBinding::Cell(binder, initial) => Binding::Cell(binder, *initial),
+                        FlatHtmlBinding::Html(binding) => Binding::Html(binding),
                     })
                     .collect(),
             }
@@ -1515,21 +1799,24 @@ mod tests {
     impl<'a> Binding<'a> {
         fn var(self) -> ValueId {
             match self {
-                Binding::Data(binding) => binding.binder.var,
+                Binding::Pure(binding) => binding.binder.var,
+                Binding::Cell(binder, _) => binder.var,
                 Binding::Html(binding) => binding.binder.var,
             }
         }
 
         fn for_each_operand(self, f: &mut impl FnMut(ValueId)) {
             match self {
-                Binding::Data(binding) => binding.op.for_each_operand(f),
+                Binding::Pure(binding) => binding.op.for_each_operand(f),
+                Binding::Cell(_, initial) => f(initial),
                 Binding::Html(binding) => binding.op.for_each_operand(f),
             }
         }
 
         fn kind(self) -> String {
             let debug = match self {
-                Binding::Data(binding) => format!("{:?}", binding.op),
+                Binding::Pure(binding) => format!("{:?}", binding.op),
+                Binding::Cell(..) => return "Cell".to_string(),
                 Binding::Html(binding) => format!("{:?}", binding.op),
             };
             let kind = debug
@@ -1544,6 +1831,15 @@ mod tests {
                 {
                     format!("Html{kind}")
                 }
+                Binding::Pure(binding)
+                    if binding.binder.typ == IrFunctionDataType::Effect
+                        && matches!(
+                            binding.op,
+                            FlatPureOp::Call(..) | FlatPureOp::Match(_) | FlatPureOp::Apply(..)
+                        ) =>
+                {
+                    format!("Effect{kind}")
+                }
                 _ => kind.to_string(),
             }
         }
@@ -1555,13 +1851,13 @@ mod tests {
                 names
             };
             match self {
-                Binding::Data(IrBinding {
-                    op: FlatDataOp::Match(match_),
+                Binding::Pure(IrBinding {
+                    op: FlatPureOp::Match(match_),
                     ..
                 }) => match_
                     .arms
                     .iter()
-                    .map(|arm| (bound(&arm.pattern), Block::Data(&arm.body)))
+                    .map(|arm| (bound(&arm.pattern), Block::Pure(&arm.body)))
                     .collect(),
                 Binding::Html(IrBinding {
                     op: FlatHtmlOp::Match(match_),
@@ -1575,15 +1871,20 @@ mod tests {
                     op: FlatHtmlOp::For(for_),
                     ..
                 }) => {
-                    let var = for_.var.iter().map(|binder| binder.var).collect();
-                    vec![(var, Block::Html(&for_.body))]
+                    let var: Vec<ValueId> = for_.var.iter().map(|binder| binder.var).collect();
+                    let mut nested = Vec::new();
+                    if let Some(key) = &for_.key {
+                        nested.push((var.clone(), Block::Pure(key)));
+                    }
+                    nested.push((var, Block::Html(&for_.body)));
+                    nested
                 }
-                Binding::Data(IrBinding {
-                    op: FlatDataOp::Lambda(lambda),
+                Binding::Pure(IrBinding {
+                    op: FlatPureOp::Lambda(lambda),
                     ..
                 }) => {
                     let params = lambda.parameters.iter().map(|param| param.var).collect();
-                    vec![(params, Block::Data(&lambda.body))]
+                    vec![(params, Block::Pure(&lambda.body))]
                 }
                 Binding::Html(IrBinding {
                     op: FlatHtmlOp::Lambda(lambda),
@@ -1599,8 +1900,8 @@ mod tests {
         fn is_lambda(self) -> bool {
             matches!(
                 self,
-                Binding::Data(IrBinding {
-                    op: FlatDataOp::Lambda(_),
+                Binding::Pure(IrBinding {
+                    op: FlatPureOp::Lambda(_),
                     ..
                 }) | Binding::Html(IrBinding {
                     op: FlatHtmlOp::Lambda(_),
@@ -1687,17 +1988,84 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct MatchStats {
+    struct ShapeStats {
         arm_counts: Vec<usize>,
         binding_arms: usize,
+        loops: usize,
+        keyed_loops: usize,
+        elements: usize,
+        clicks: usize,
+        /// The parameters of the functions and the lambdas of the program
+        /// seen so far. Per program.
+        parameters: HashSet<ValueId>,
+        /// How many clicks each handler of the program has.
+        handler_clicks: HashMap<ValueId, usize>,
+        /// Handlers with more than one click.
+        shared_handlers: usize,
+        /// Clicks whose handler is bound outside the block of the element.
+        clicks_from_outside: usize,
+        /// Clicks whose handler is a parameter.
+        clicks_on_parameters: usize,
+        cells: usize,
     }
 
-    impl MatchStats {
+    impl ShapeStats {
+        /// Fold what was counted by name for the program into the totals,
+        /// before the names of the next program.
+        fn finish_program(&mut self) {
+            self.shared_handlers += self
+                .handler_clicks
+                .values()
+                .filter(|uses| **uses > 1)
+                .count();
+            self.handler_clicks.clear();
+            self.parameters.clear();
+        }
+
         fn count_block(&mut self, block: Block<'_>) {
+            let here: HashSet<ValueId> = block.bindings().iter().map(|b| b.var()).collect();
             for binding in block.bindings() {
+                match binding {
+                    Binding::Html(IrBinding {
+                        op: FlatHtmlOp::For(for_),
+                        ..
+                    }) => {
+                        self.loops += 1;
+                        self.keyed_loops += usize::from(for_.key.is_some());
+                    }
+                    Binding::Html(IrBinding {
+                        op: FlatHtmlOp::Element(element),
+                        ..
+                    }) => {
+                        self.elements += 1;
+                        if let Some(handler) = element.on_click {
+                            self.clicks += 1;
+                            *self.handler_clicks.entry(handler).or_default() += 1;
+                            self.clicks_from_outside += usize::from(!here.contains(&handler));
+                            self.clicks_on_parameters +=
+                                usize::from(self.parameters.contains(&handler));
+                        }
+                    }
+                    Binding::Html(IrBinding {
+                        op: FlatHtmlOp::Lambda(lambda),
+                        ..
+                    }) => {
+                        self.parameters
+                            .extend(lambda.parameters.iter().map(|param| param.var));
+                    }
+                    Binding::Pure(IrBinding {
+                        op: FlatPureOp::Lambda(lambda),
+                        ..
+                    }) => {
+                        self.parameters
+                            .extend(lambda.parameters.iter().map(|param| param.var));
+                    }
+                    Binding::Cell(..) => self.cells += 1,
+                    _ => {}
+                }
                 let arms = match binding {
-                    Binding::Data(IrBinding {
-                        op: FlatDataOp::Match(m),
+                    Binding::Pure(IrBinding {
+                        op: FlatPureOp::Match(m),
                         ..
                     }) => m.arms.iter().map(|arm| &arm.pattern).collect(),
                     Binding::Html(IrBinding {
@@ -1722,6 +2090,145 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct ClickStats {
+        /// The clicks rendered, over all programs.
+        clicks: usize,
+        /// Programs with a click.
+        clicked: usize,
+        /// Programs with a click that writes a cell a value other than the
+        /// one it holds.
+        changing: usize,
+        /// Programs with a click after which the page renders differently.
+        rerendering: usize,
+        /// Programs with a click after which an element is evaluated or no
+        /// longer evaluated although each iteration it is in is evaluated
+        /// both before and after, as a match took another arm.
+        switching_arms: usize,
+        /// Programs with a click after which a cell is bound or no longer
+        /// bound although each iteration it is in is evaluated both before
+        /// and after, as a match took another arm. A cell that is no longer
+        /// bound starts over when its arm is taken again.
+        switching_cells: usize,
+        /// Programs with a click after which a loop has other iterations:
+        /// it gained, lost or re-keyed some. A match that takes another arm
+        /// with a loop in it counts here as well.
+        changing_loops: usize,
+        /// Programs with a click that changes an array cell.
+        changing_arrays: usize,
+        /// What the clicks of the program being counted have done so far.
+        program: Clicked,
+    }
+
+    #[derive(Default)]
+    struct Clicked {
+        any: bool,
+        changing: bool,
+        rerendering: bool,
+        switching_arms: bool,
+        switching_cells: bool,
+        changing_loops: bool,
+        changing_arrays: bool,
+    }
+
+    /// The iterations of the places, each as the steps up to and including
+    /// it.
+    fn iterations<'p>(places: impl Iterator<Item = &'p Place>) -> BTreeSet<Vec<Step>> {
+        let mut iterations = BTreeSet::new();
+        for place in places {
+            let steps: Vec<Step> = place.iter().cloned().collect();
+            for (index, step) in steps.iter().enumerate() {
+                if matches!(step, Step::Iteration(..)) {
+                    iterations.insert(steps[..=index].to_vec());
+                }
+            }
+        }
+        iterations
+    }
+
+    /// Whether each iteration of the place is in `both`, the iterations two
+    /// invocations both evaluate, so that a place only one of them
+    /// evaluates is not explained by a loop.
+    fn in_both_iterations(place: &Place, both: &BTreeSet<Vec<Step>>) -> bool {
+        let steps: Vec<Step> = place.iter().cloned().collect();
+        (steps.iter().enumerate()).all(|(index, step)| {
+            !matches!(step, Step::Iteration(..)) || both.contains(&steps[..=index])
+        })
+    }
+
+    impl ClickStats {
+        fn finish_program(&mut self) {
+            let program = std::mem::take(&mut self.program);
+            self.clicked += usize::from(program.any);
+            self.changing += usize::from(program.changing);
+            self.rerendering += usize::from(program.rerendering);
+            self.switching_arms += usize::from(program.switching_arms);
+            self.switching_cells += usize::from(program.switching_cells);
+            self.changing_loops += usize::from(program.changing_loops);
+            self.changing_arrays += usize::from(program.changing_arrays);
+        }
+
+        fn count<'a>(
+            &mut self,
+            program: &'a FlatProgram,
+            entrypoint: EntrypointId,
+            args: &HashMap<AttributeName, Value<'a>>,
+            html: &Html<'a>,
+            state: &State<'a>,
+        ) {
+            let mut markup = String::new();
+            html.write(&mut markup);
+            for (_, target) in clicks(&program.functions, html) {
+                self.clicks += 1;
+                self.program.any = true;
+                let Ok(writes) = target else {
+                    continue;
+                };
+                let changed: Vec<&Value<'_>> = writes
+                    .iter()
+                    .filter(|(place, value)| !state.cells[place].total_eq(value))
+                    .map(|(_, value)| value)
+                    .collect();
+                if changed.is_empty() {
+                    continue;
+                }
+                self.program.changing = true;
+                self.program.changing_arrays |=
+                    changed.iter().any(|value| matches!(value, Value::Array(_)));
+                let mut next = state.clone();
+                next.apply_writes(&writes);
+                if let Ok((value, next_state)) =
+                    invoke_entrypoint(program, entrypoint, args.clone(), &next)
+                {
+                    let mut next_markup = String::new();
+                    value.unwrap_html().write(&mut next_markup);
+                    self.program.rerendering |= markup != next_markup;
+                    // A loop iteration can hold cells and no elements, so
+                    // the iterations come from both.
+                    let before = iterations(state.elements.keys().chain(state.cells.keys()));
+                    let after =
+                        iterations(next_state.elements.keys().chain(next_state.cells.keys()));
+                    let both = before.intersection(&after).cloned().collect();
+                    self.program.changing_loops |= before != after;
+                    let (elements, next_elements) = (&state.elements, &next_state.elements);
+                    let dropped =
+                        (elements.keys()).filter(|place| !next_elements.contains_key(*place));
+                    let bound =
+                        (next_elements.keys()).filter(|place| !elements.contains_key(*place));
+                    self.program.switching_arms |= dropped
+                        .chain(bound)
+                        .any(|place| in_both_iterations(place, &both));
+                    let (cells, next_cells) = (&state.cells, &next_state.cells);
+                    let dropped = (cells.keys()).filter(|place| !next_cells.contains_key(*place));
+                    let bound = (next_cells.keys()).filter(|place| !cells.contains_key(*place));
+                    self.program.switching_cells |= dropped
+                        .chain(bound)
+                        .any(|place| in_both_iterations(place, &both));
+                }
+            }
+        }
+    }
+
     #[test]
     fn should_report_generator_stats() {
         const SAMPLES: usize = 100;
@@ -1737,9 +2244,13 @@ mod tests {
         let mut consumed = 0;
         let mut most_consumed = 0;
         let mut exhausted = 0;
+        const SIZE_EDGES: [usize; 5] = [256, 1024, 4096, 16384, INPUT_LEN];
+        let mut sizes = [0usize; SIZE_EDGES.len() + 1];
         let mut html_bindings = 0;
         let mut shared_html = 0;
-        let mut match_stats = MatchStats::default();
+        let mut cells_bound = 0;
+        let mut shape_stats = ShapeStats::default();
+        let mut click_stats = ClickStats::default();
         for _ in 0..SAMPLES {
             let bytes: Vec<u8> = (0..INPUT_LEN).map(|_| rng.random()).collect();
             let mut u = Unstructured::new(&bytes);
@@ -1748,9 +2259,12 @@ mod tests {
             consumed += used;
             most_consumed = most_consumed.max(used);
             exhausted += u.is_empty() as usize;
+            let bucket = SIZE_EDGES.iter().position(|edge| used < *edge);
+            sizes[bucket.unwrap_or(SIZE_EDGES.len())] += 1;
             for (entrypoint, args) in random_entrypoint_args(&program, &mut rng) {
                 entrypoints += 1;
-                let result = evaluate_entrypoint(&program, entrypoint, args);
+                let result =
+                    invoke_entrypoint(&program, entrypoint, args.clone(), &State::default());
                 call_depth_limit +=
                     matches!(result, Err(EvalError::CallDepthLimit { .. })) as usize;
                 array_len_limit +=
@@ -1759,7 +2273,13 @@ mod tests {
                     matches!(result, Err(EvalError::StringLengthLimit { .. })) as usize;
                 html_size_limit += matches!(result, Err(EvalError::HtmlSizeLimit { .. })) as usize;
                 op_count_limit += matches!(result, Err(EvalError::OpCountLimit { .. })) as usize;
+                if let Ok((value, state)) = result {
+                    cells_bound += state.cells.len();
+                    let html = value.unwrap_html();
+                    click_stats.count(&program, entrypoint, &args, &html, &state);
+                }
             }
+            click_stats.finish_program();
             let mut live = HashSet::new();
             let mut dynamic = HashSet::new();
             let bodies: Vec<Block<'_>> = program
@@ -1788,8 +2308,12 @@ mod tests {
                 mark_live(*body, &mut live);
                 dynamic.extend(parameters.iter().map(|param| param.binder.var));
                 mark_dynamic(*body, &mut dynamic);
-                match_stats.count_block(*body);
+                shape_stats
+                    .parameters
+                    .extend(parameters.iter().map(|param| param.binder.var));
+                shape_stats.count_block(*body);
             }
+            shape_stats.finish_program();
             let mut program_counts = BTreeMap::new();
             for body in &bodies {
                 count_ops(*body, &live, &dynamic, &mut program_counts);
@@ -1812,24 +2336,85 @@ mod tests {
                 .filter(|name| references.get(name).copied().unwrap_or(0) > 1)
                 .count();
         }
-        let MatchStats {
+        let ShapeStats {
             arm_counts,
             binding_arms,
-        } = match_stats;
+            loops,
+            keyed_loops,
+            elements,
+            clicks,
+            parameters: _,
+            handler_clicks: _,
+            shared_handlers,
+            clicks_from_outside,
+            clicks_on_parameters,
+            cells,
+        } = shape_stats;
+        let ClickStats {
+            clicks: targets,
+            clicked,
+            changing,
+            rerendering,
+            switching_arms,
+            switching_cells,
+            changing_loops,
+            changing_arrays,
+            program: _,
+        } = click_stats;
         let arms: usize = arm_counts.iter().sum();
         let fewest_arms = arm_counts.iter().min().unwrap();
         let most_arms = arm_counts.iter().max().unwrap();
+        let size_labels = [
+            "under 256",
+            "under 1K",
+            "under 4K",
+            "under 16K",
+            "under 64K",
+            "at 64K",
+        ];
+        let widest = sizes.iter().copied().max().unwrap().max(1);
+        let sizes: String = size_labels
+            .iter()
+            .zip(sizes)
+            .map(|(label, count)| {
+                let bar = "#".repeat(count * 40 / widest);
+                let line = format!("{label:<10}{count:>5}  {bar}");
+                format!("{}\n", line.trim_end())
+            })
+            .collect();
         let mut report = format!(
-            "{} of {INPUT_LEN} input bytes consumed per program on average, at most {most_consumed}\n\
-             {exhausted} of {SAMPLES} programs exhaust the input\n\
-             {call_depth_limit} of {entrypoints} entrypoints hit the call depth limit\n\
-             {array_len_limit} of {entrypoints} entrypoints hit the array length limit\n\
-             {string_len_limit} of {entrypoints} entrypoints hit the string length limit\n\
-             {html_size_limit} of {entrypoints} entrypoints hit the Html size limit\n\
-             {op_count_limit} of {entrypoints} entrypoints hit the op count limit\n\
+            "-- generation --\n\
+             {} of {INPUT_LEN} input bytes consumed per program on average, at most {most_consumed}\n\
+             {exhausted} of {SAMPLES} programs exhaust the input\n\n\
+             -- sizes --\n\
+             {sizes}\n\
+             -- programs --\n\
              {shared_html} of {html_bindings} Html bindings have more than one reference\n\
              {:.1} arms per match on average, at least {fewest_arms} and at most {most_arms}\n\
-             {binding_arms} of {arms} match arms bind names\n\n\
+             {binding_arms} of {arms} match arms bind names\n\
+             {cells} cells\n\
+             {keyed_loops} of {loops} loops have a key\n\
+             {clicks} of {elements} elements have a click\n\
+             {shared_handlers} handlers have more than one click\n\
+             {clicks_from_outside} clicks apply a handler bound outside their block, \
+             {clicks_on_parameters} of them a parameter\n\n\
+             -- invocations --\n\
+             {entrypoints} invocations\n\
+             {call_depth_limit} invocations hit the call depth limit\n\
+             {array_len_limit} invocations hit the array length limit\n\
+             {string_len_limit} invocations hit the string length limit\n\
+             {html_size_limit} invocations hit the Html size limit\n\
+             {op_count_limit} invocations hit the op count limit\n\
+             {cells_bound} cells bound\n\n\
+             {targets} clicks\n\
+             {clicked} programs have a click\n\
+             {changing} programs have a click that changes a cell\n\
+             {rerendering} programs have a click that changes the page\n\
+             {switching_arms} programs have a click that switches an arm of a match\n\
+             {switching_cells} programs have a click that switches an arm of a match that binds cells\n\
+             {changing_loops} programs have a click that changes the iterations of a loop\n\
+             {changing_arrays} programs have a click that changes an array cell\n\n\
+             -- ops --\n\
              {:<20}{:>12}{:>8}{:>8}{:>8}\n",
             consumed / SAMPLES,
             arms as f64 / arm_counts.len() as f64,
@@ -1849,59 +2434,95 @@ mod tests {
             ));
         }
         expect![[r#"
-            7841 of 65536 input bytes consumed per program on average, at most 60960
-            0 of 100 programs exhaust the input
-            7 of 190 entrypoints hit the call depth limit
-            0 of 190 entrypoints hit the array length limit
-            0 of 190 entrypoints hit the string length limit
-            0 of 190 entrypoints hit the Html size limit
-            0 of 190 entrypoints hit the op count limit
-            65 of 6409 Html bindings have more than one reference
-            2.8 arms per match on average, at least 2 and at most 18
-            11428 of 26760 match arms bind names
+            -- generation --
+            7829 of 65536 input bytes consumed per program on average, at most 65536
+            1 of 100 programs exhaust the input
 
+            -- sizes --
+            under 256     7  #####
+            under 1K      6  ####
+            under 4K     25  ###################
+            under 16K    52  ########################################
+            under 64K     9  ######
+            at 64K        1
+
+            -- programs --
+            89 of 12470 Html bindings have more than one reference
+            2.4 arms per match on average, at least 2 and at most 18
+            8582 of 23166 match arms bind names
+            6209 cells
+            471 of 817 loops have a key
+            2202 of 2683 elements have a click
+            347 handlers have more than one click
+            729 clicks apply a handler bound outside their block, 13 of them a parameter
+
+            -- invocations --
+            209 invocations
+            7 invocations hit the call depth limit
+            0 invocations hit the array length limit
+            0 invocations hit the string length limit
+            0 invocations hit the Html size limit
+            2 invocations hit the op count limit
+            1498 cells bound
+
+            511 clicks
+            63 programs have a click
+            35 programs have a click that changes a cell
+            20 programs have a click that changes the page
+            8 programs have a click that switches an arm of a match
+            9 programs have a click that switches an arm of a match that binds cells
+            9 programs have a click that changes the iterations of a loop
+            3 programs have a click that changes an array cell
+
+            -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                       90.1    86.0    97.8    77.8
-            Array                      217.3    89.0    97.1    15.6
-            ArrayFromRange               4.0    71.0    98.8     0.0
-            ArrayIsEmpty                 1.2    49.0    95.8    57.1
-            ArrayLength                 12.4    76.0    97.6    58.4
-            BoolLiteral                 81.5    87.0    96.6     0.0
-            BoolNegation                 1.2    49.0    98.3    50.0
-            Call                         4.5    47.0    99.3    86.3
-            Enum                       149.4    66.0    96.9    18.8
-            Equals                       1.2    47.0    99.2    67.2
-            FieldAccess                  3.8    36.0    96.6    61.3
-            FloatLiteral                88.4    86.0    96.7     0.0
-            FloatToInt                  12.2    77.0    96.4    49.2
-            HtmlApply                    2.7    55.0   100.0    82.7
-            HtmlConcat                  21.4    81.0   100.0    34.8
-            HtmlElement                 12.6    77.0    99.9    51.2
-            HtmlEscape                   8.3    77.0   100.0    46.8
-            HtmlFor                      5.7    75.0   100.0    73.3
-            HtmlLambda                   3.3    58.0   100.0    61.5
-            HtmlText                     4.1    59.0   100.0     0.0
-            IntLiteral                  81.6    90.0    97.5     0.0
-            IntToFloat                  13.2    73.0    96.4    52.7
-            IntToString                 11.6    72.0    98.9    47.2
-            Lambda                     110.8    87.0    97.9    62.4
-            LessThan                     1.1    50.0    98.2    64.2
-            LessThanOrEqual              1.0    47.0    99.0    82.8
-            Match                       95.7    86.0    97.8    89.3
-            NumericAdd                  24.9    76.0    96.2    68.2
-            NumericMultiply             25.4    77.0    96.6    67.7
-            NumericNegation             26.9    80.0    96.6    53.1
-            NumericSubtract             25.5    76.0    95.7    68.8
-            OptionIsNone                 1.0    44.0    96.9    61.9
-            OptionIsSome                 1.0    50.0    97.0    63.0
-            OptionNone                 142.4    86.0    97.3     0.0
-            OptionSome                  79.8    85.0    97.0    25.2
-            Record                     110.4    69.0    97.6    19.0
-            StringConcat                12.1    73.0    99.1    48.1
-            StringIsEmpty                1.0    43.0    97.9    50.0
-            StringLiteral               73.6    91.0    97.4     0.0
-            Tuple                      848.2    90.0    97.2    48.6
-            TupleIndex                 521.2    88.0    96.8    70.2
+            Apply                       84.0    95.0    90.5    68.3
+            Array                      188.5    98.0    88.2    14.6
+            ArrayFromRange               5.4    78.0    95.3     0.0
+            ArrayIsEmpty                 1.4    50.0    93.4    46.0
+            ArrayLength                 13.8    86.0    93.1    47.3
+            BoolLiteral                 62.7    96.0    87.1     0.0
+            BoolNegation                 1.4    55.0    91.4    44.3
+            Call                         5.1    49.0    98.8    78.0
+            Cell                        62.1    92.0    98.4    43.1
+            CellWrite                   14.1    83.0    95.0    45.1
+            EffectApply                  5.2    85.0    92.6    56.5
+            EffectCall                   3.0    10.0    94.6    87.8
+            EffectConcat                28.3    93.0    89.3    12.5
+            EffectMatch                  4.9    79.0    92.1    75.4
+            Enum                       106.4    69.0    82.9    15.9
+            Equals                       1.5    55.0    96.6    73.5
+            FieldAccess                  5.7    47.0    93.3    52.5
+            FloatLiteral                76.5    97.0    87.7     0.0
+            FloatToInt                  12.7    86.0    92.0    42.9
+            HtmlApply                    4.3    68.0    99.5    82.6
+            HtmlConcat                  45.0    89.0    99.9    40.7
+            HtmlElement                 26.8    85.0    99.9    68.0
+            HtmlEscape                  17.2    89.0    99.6    56.2
+            HtmlFor                      8.2    81.0    99.6    71.8
+            HtmlLambda                   4.9    71.0    99.8    64.8
+            HtmlText                     9.0    72.0    99.9     0.0
+            IntLiteral                  75.8    94.0    87.9     0.0
+            IntToFloat                  12.6    86.0    88.3    44.9
+            IntToString                 18.4    91.0    97.5    47.7
+            Lambda                     117.7    95.0    91.3    52.1
+            LessThan                     1.4    52.0    94.4    59.9
+            LessThanOrEqual              1.5    57.0    92.7    62.9
+            Match                       89.9    95.0    90.4    78.8
+            NumericAdd                  26.0    88.0    90.9    61.0
+            NumericMultiply             25.1    89.0    90.4    61.7
+            NumericNegation             26.3    87.0    90.1    47.8
+            NumericSubtract             25.7    89.0    91.3    61.3
+            OptionIsNone                 1.5    58.0    91.3    38.3
+            OptionIsSome                 1.5    54.0    91.5    39.9
+            OptionNone                 137.8    95.0    86.4     0.0
+            OptionSome                  74.5    94.0    87.6    22.2
+            Record                     101.5    66.0    90.0    24.7
+            StringConcat                19.4    83.0    97.6    52.8
+            StringIsEmpty                1.4    51.0    93.0    56.3
+            StringLiteral               63.4    99.0    88.4     0.0
+            Tuple                      687.2    97.0    86.7    41.4
+            TupleIndex                 442.3    96.0    87.2    61.5
         "#]]
         .assert_eq(&report);
     }
@@ -1914,8 +2535,10 @@ mod tests {
             expect![[r#"
 
                 entrypoint V0@e0() -> Html {
-                  let v0: Html = concat()
-                  v0
+                  let v0: Int = -2147483648
+                  let v1: Int = cell(v0)
+                  let v2: Html = concat()
+                  v2
                 }
             "#]],
         );
@@ -1948,16 +2571,21 @@ mod tests {
                   W1 {f0: ()},
                 }
 
-                fn C0@f0(p0@v0: (Option[Bool], (R0, String, Bool)) -> (E1,), p1@v1: ((Array[E0]) -> (R1,), (Int) -> Html) -> Html, p2@v2: E1, p3@v3: Float, p4@v4: R1, p5@v5: E0) -> Html {
-                  let v9: Html = concat()
-                  v9
+                fn C0@f0(p0@v0: ((Bool, E1), (Option[String]) -> (Float, E1, Bool)) -> Array[Int], p1@v1: Html, p2@v2: Html, p3@v3: () -> E1, p4@v4: Array[R0], p5@v5: E0) -> Html {
+                  let v9: Int = -2147483648
+                  let v10: Int = cell(v9)
+                  v1
                 }
-                fn C1@f1(p0@v6: String, p1@v7: Html, p2@v8: ((Float, E1, R1), Array[R1]) -> Int) -> Html {
+                fn C1@f1(p0@v6: ((), String, R1), p1@v7: Html, p2@v8: ((R1, Int),)) -> Html {
+                  let v11: Int = -2147483648
+                  let v12: Int = cell(v11)
                   v7
                 }
                 entrypoint V0@e0() -> Html {
-                  let v10: Html = concat()
-                  v10
+                  let v13: Int = -2147483648
+                  let v14: Int = cell(v13)
+                  let v15: Html = concat()
+                  v15
                 }
             "#]],
         );
@@ -1985,8 +2613,12 @@ mod tests {
                 }
                 entrypoint V1@e1() -> Html {
                   let v3: Html = concat()
-                  let v4: Html = element("section", {}, v3)
-                  v4
+                  let v5: () -> Effect = fn() {
+                    let v4: Effect = effect_concat()
+                    v4
+                  }
+                  let v6: Html = element("section", {}, v3) on_click v5
+                  v6
                 }
             "#]],
         );

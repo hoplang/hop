@@ -45,7 +45,10 @@ pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
         '}' => LexStep::Token(LangToken::RightBrace, start),
         ':' => match iter.next_if(|s| s.ch() == ':') {
             Some(end) => LexStep::Token(LangToken::ColonColon, start.to(end)),
-            None => LexStep::Token(LangToken::Colon, start),
+            None => match iter.next_if(|s| s.ch() == '=') {
+                Some(end) => LexStep::Token(LangToken::ColonAssign, start.to(end)),
+                None => LexStep::Token(LangToken::Colon, start),
+            },
         },
         '?' => LexStep::Token(LangToken::Question, start),
         ',' => LexStep::Token(LangToken::Comma, start),
@@ -151,6 +154,7 @@ pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
                 "Array" => LangToken::TypeArray,
                 "Bool" => LangToken::TypeBool,
                 "Float" => LangToken::TypeFloat,
+                "Effect" => LangToken::TypeEffect,
                 "Html" => LangToken::TypeHtml,
                 "Int" => LangToken::TypeInt,
                 "Option" => LangToken::TypeOption,

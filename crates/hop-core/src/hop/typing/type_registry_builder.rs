@@ -27,6 +27,7 @@ pub enum Ty {
     Bool,
     Float,
     Html,
+    Effect,
     Named(String),
     Array(Box<Ty>),
     Option(Box<Ty>),
@@ -66,6 +67,7 @@ impl From<Ty> for Type {
     fn from(ty: Ty) -> Type {
         match ty {
             Ty::Html => Type::HTML,
+            Ty::Effect => Type::Effect,
             Ty::Function { parameters, result } => {
                 let function = FunctionType {
                     parameters: parameters.into_iter().map(Type::from).collect(),
@@ -89,6 +91,7 @@ impl From<Ty> for DataType {
             Ty::Bool => DataType::Bool,
             Ty::Float => DataType::Float,
             Ty::Html => panic!("Html is not a data type"),
+            Ty::Effect => panic!("Effect is not a data type"),
             Ty::Function { .. } => panic!("a function type is not a data type"),
             Ty::Named(name) => DataType::Named {
                 module: test_module(),

@@ -14,15 +14,22 @@ pub fn optimize_flat(program: FlatProgram) -> FlatProgram {
 mod tests {
     use super::*;
     use crate::hop::typing::Ty;
+    use crate::ir::entrypoint_id::EntrypointId;
     use crate::ir::flat_lint;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::ir_type::IrType;
     use crate::ir::runtime::EvalError;
-    use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
+    use crate::ir::runtime::clicks::clicks;
+    use crate::ir::runtime::flat_evaluator::invoke_entrypoint;
+    use crate::ir::runtime::html_node::{Html, HtmlNode};
+    use crate::ir::runtime::labels::Labels;
+    use crate::ir::runtime::state::State;
     use crate::ir::runtime::value::Value;
+    use crate::symbols::attribute_name::AttributeName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
+    use std::collections::HashMap;
 
     #[test]
     fn fuzz_random_programs_evaluate_identically_after_optimization() {
@@ -30,44 +37,115 @@ mod tests {
             let program = random_program(u);
             let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
             let entrypoint_args = random_entrypoint_args(&program, &mut rng);
+            // The elements clicked on each entrypoint, one after each render,
+            // each an index into the clicks of that render, wrapped around.
+            let mut clicked = Vec::with_capacity(entrypoint_args.len());
+            for _ in &entrypoint_args {
+                let count = u.int_in_range(0..=4)?;
+                clicked.push(
+                    (0..count)
+                        .map(|_| u.arbitrary())
+                        .collect::<Result<Vec<usize>, _>>()?,
+                );
+            }
 
-            let before_program = program.clone();
-            let before: Vec<Option<String>> = entrypoint_args
-                .iter()
-                .map(|(entrypoint, args)| {
-                    match evaluate_entrypoint(&program, *entrypoint, args.clone())
-                        .map(Value::into_markup)
-                    {
-                        Ok(output) => Some(output),
-                        Err(
-                            EvalError::CallDepthLimit { .. }
-                            | EvalError::OpCountLimit { .. }
-                            | EvalError::HtmlSizeLimit { .. }
-                            | EvalError::StringLengthLimit { .. },
-                        ) => None,
-                        Err(error) => panic!("{error}"),
-                    }
-                })
-                .collect();
+            let optimized = optimize_flat(program.clone());
+            flat_lint::lint(&optimized).unwrap();
 
-            let program = optimize_flat(program);
-            flat_lint::lint(&program).unwrap();
-
-            for ((entrypoint, args), before) in entrypoint_args.iter().zip(&before) {
-                // An entrypoint that hit a limit has no output to preserve.
-                let Some(before) = before else {
-                    continue;
-                };
-                let after = evaluate_entrypoint(&program, *entrypoint, args.clone())
-                    .unwrap()
-                    .into_markup();
-                assert_eq!(
-                    before, &after,
-                    "entrypoint {entrypoint}\n-- before --\n{before_program}\n-- after --\n{program}"
+            for ((entrypoint, args), clicked) in entrypoint_args.iter().zip(&clicked) {
+                let before = observe(&program, *entrypoint, args, clicked);
+                let after = observe(&optimized, *entrypoint, args, clicked);
+                // What follows a render or a click that hit a limit before
+                // has nothing to preserve.
+                assert!(
+                    after.len() >= before.len() && before == after[..before.len()],
+                    "entrypoint {entrypoint}, clicked {clicked:?}\n\
+                     -- before --\n{program}\n{before:#?}\n\
+                     -- after --\n{optimized}\n{after:#?}"
                 );
             }
             Ok(())
         });
+    }
+
+    /// What a page shows over an invocation and a click after each render:
+    /// the markup of each render, how many of its elements have a click, and
+    /// the tag and label of each element it shows, so that an element keeps
+    /// its label exactly when it keeps its node. Ends at the first
+    /// invocation or click that hits a limit of the evaluator.
+    fn observe(
+        program: &FlatProgram,
+        entrypoint: EntrypointId,
+        args: &HashMap<AttributeName, Value<'static>>,
+        clicked: &[usize],
+    ) -> Vec<String> {
+        fn shown(html: &Html<'_>, labels: &mut Labels, out: &mut Vec<String>) {
+            match html.node() {
+                HtmlNode::Element {
+                    element,
+                    children,
+                    node,
+                    ..
+                } => {
+                    out.push(format!("{}@e{}", element.as_str(), labels.label(*node)));
+                    shown(children, labels, out);
+                }
+                HtmlNode::Concat(parts) => {
+                    for part in parts {
+                        shown(part, labels, out);
+                    }
+                }
+                HtmlNode::Text(_) | HtmlNode::Escape(_) => {}
+            }
+        }
+        let is_limit = |error: &EvalError| {
+            matches!(
+                error,
+                EvalError::CallDepthLimit { .. }
+                    | EvalError::OpCountLimit { .. }
+                    | EvalError::HtmlSizeLimit { .. }
+                    | EvalError::StringLengthLimit { .. }
+                    // A cell keeps a value from a click, so a range between
+                    // two cells may exceed the array length limit.
+                    | EvalError::ArrayLengthLimit { .. }
+            )
+        };
+        let mut out = Vec::new();
+        let mut state = State::default();
+        let mut labels = Labels::default();
+        for step in 0..=clicked.len() {
+            let (value, next_state) =
+                match invoke_entrypoint(program, entrypoint, args.clone(), &state) {
+                    Ok(invoked) => invoked,
+                    Err(error) if is_limit(&error) => break,
+                    Err(error) => panic!("{error}"),
+                };
+            let html = value.unwrap_html();
+            let targets = clicks(&program.functions, &html);
+            let mut markup = String::new();
+            html.write(&mut markup);
+            let mut elements = Vec::new();
+            shown(&html, &mut labels, &mut elements);
+            out.push(format!(
+                "{markup}\n{} clicks, shown: {}",
+                targets.len(),
+                elements.join(" ")
+            ));
+            let Some(choice) = clicked.get(step) else {
+                break;
+            };
+            if targets.is_empty() {
+                break;
+            }
+            let writes = match &targets[choice % targets.len()].1 {
+                Ok(writes) => writes,
+                Err(error) if is_limit(error) => break,
+                Err(error) => panic!("{error}"),
+            };
+            state = next_state;
+            state.apply_writes(writes);
+        }
+        out
     }
 
     fn check(program: FlatProgram, expected: Expect) {

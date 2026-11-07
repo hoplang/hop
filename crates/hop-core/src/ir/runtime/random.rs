@@ -1,8 +1,6 @@
 use super::bounded_vec::BoundedVec;
-use super::html_node::{Html, HtmlNode};
 use super::value::{MAX_ARRAY_LENGTH, Value};
-use crate::html::HtmlElementKind;
-use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrType};
+use crate::ir::ir_type::IrDataType;
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations, IrVariant};
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
@@ -74,7 +72,6 @@ fn enum_variants<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrV
         .variants
 }
 
-/// Generates a random [`Value`] matching the given [`IrType`].
 ///
 /// Recursively generates values for nested types (arrays, options, records, enums).
 ///
@@ -83,26 +80,12 @@ fn enum_variants<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrV
 /// re-entering a type already being expanded.
 ///
 /// Panics if the type has no finite values at all, e.g. a record whose
-/// fields require the record itself, or if it is the type of a closure,
-/// which no entrypoint takes.
-pub fn random_value(rng: &mut impl Rng, ty: &IrType, types: &IrTypeDeclarations) -> Value<'static> {
-    match ty {
-        IrType::Data(IrFunctionDataType::Data(data)) => {
-            random_value_at_depth(rng, data, types, 0, &mut Vec::new())
-        }
-        IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => Value::Html(
-            Html::new(HtmlNode::Element {
-                element: HtmlElementKind::Span,
-                attributes: Vec::new(),
-                children: Html::new(HtmlNode::Text("sample".to_string())).unwrap(),
-            })
-            .unwrap(),
-        ),
-        IrType::Data(IrFunctionDataType::Function(_))
-        | IrType::Html(IrFunctionHtmlType::Function(_)) => {
-            panic!("an entrypoint takes no closure")
-        }
-    }
+pub fn random_value(
+    rng: &mut impl Rng,
+    ty: &IrDataType,
+    types: &IrTypeDeclarations,
+) -> Value<'static> {
+    random_value_at_depth(rng, ty, types, 0, &mut Vec::new())
 }
 
 fn random_value_at_depth(
@@ -240,7 +223,7 @@ mod tests {
                 ],
             )
             .build();
-        let ty = types.ty(Ty::named("Tree"));
+        let ty = IrDataType::Enum(TypeName::parse("Tree").unwrap());
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, &types);
@@ -255,7 +238,7 @@ mod tests {
                 [("value", Ty::Int), ("next", Ty::option(Ty::named("Node")))],
             )
             .build();
-        let ty = types.ty(Ty::named("Node"));
+        let ty = IrDataType::Record(TypeName::parse("Node").unwrap());
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, &types);
@@ -283,7 +266,7 @@ mod tests {
                 ],
             )
             .build();
-        let ty = types.ty(Ty::named("Expr"));
+        let ty = IrDataType::Enum(TypeName::parse("Expr").unwrap());
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, &types);
@@ -296,14 +279,14 @@ mod tests {
         let types = IrTypeDeclarationsBuilder::new()
             .record("Node", [("value", Ty::Int), ("next", Ty::named("Node"))])
             .build();
-        let ty = types.ty(Ty::named("Node"));
+        let ty = IrDataType::Record(TypeName::parse("Node").unwrap());
         let mut rng = SmallRng::seed_from_u64(0);
         random_value(&mut rng, &ty, &types);
     }
 
     #[test]
     fn array_length_defaults_to_zero_through_five() {
-        let ty = IrType::array(IrDataType::Int);
+        let ty = IrDataType::Array(Box::new(IrDataType::Int));
         let types = IrTypeDeclarations::default();
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);

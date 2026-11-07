@@ -2,35 +2,33 @@ use std::rc::Rc;
 
 use crate::html::{HtmlElementKind, write_escaped_html};
 use crate::ir::runtime::eval_error::EvalError;
+use crate::ir::runtime::state::NodeId;
+use crate::ir::runtime::value::Closure;
 use crate::symbols::attribute_name::AttributeName;
 
 /// The largest size an Html value may have.
 pub const MAX_HTML_SIZE: usize = 10_000_000;
 
 #[derive(Debug, Clone)]
-pub struct Html {
-    node: Rc<HtmlNode>,
+pub struct Html<'a> {
+    node: Rc<HtmlNode<'a>>,
     size: usize,
 }
 
-/// A node of an evaluated Html value.
 #[derive(Debug)]
-pub enum HtmlNode {
-    /// Text that renders as written. What a HtmlText evaluates to.
+pub enum HtmlNode<'a> {
     Text(String),
-
-    /// A string that renders escaped. What a HtmlEscape evaluates to.
     Escape(Rc<str>),
-
-    /// An element with the attributes that render, in the order they
-    /// render.
     Element {
         element: HtmlElementKind,
         attributes: Vec<HtmlAttribute>,
-        children: Html,
+        children: Html<'a>,
+        #[cfg_attr(not(test), allow(dead_code))]
+        on_click: Option<Rc<Closure<'a>>>,
+        #[cfg_attr(not(test), allow(dead_code))]
+        node: NodeId,
     },
-
-    Concat(Vec<Html>),
+    Concat(Vec<Html<'a>>),
 }
 
 /// An attribute that renders. The value is unescaped and escapes when
@@ -41,9 +39,9 @@ pub struct HtmlAttribute {
     pub value: Option<Rc<str>>,
 }
 
-impl Html {
+impl<'a> Html<'a> {
     /// The node as Html, unless it exceeds the Html size limit.
-    pub fn new(node: HtmlNode) -> Result<Self, EvalError> {
+    pub fn new(node: HtmlNode<'a>) -> Result<Self, EvalError> {
         let size = match &node {
             HtmlNode::Text(text) => text.len().max(1),
             HtmlNode::Escape(text) => text.len().max(1),
@@ -72,6 +70,11 @@ impl Html {
         })
     }
 
+    #[cfg(test)]
+    pub fn node(&self) -> &HtmlNode<'a> {
+        &self.node
+    }
+
     pub fn empty() -> Self {
         Html {
             node: Rc::new(HtmlNode::Concat(Vec::new())),
@@ -87,6 +90,7 @@ impl Html {
                 element,
                 attributes,
                 children,
+                ..
             } => {
                 out.push('<');
                 out.push_str(element.as_str());

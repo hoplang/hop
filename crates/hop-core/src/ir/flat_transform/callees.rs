@@ -1,25 +1,25 @@
 use std::collections::BTreeSet;
 
-use crate::ir::flat_program::{FlatBinding, FlatDataBlock, FlatDataOp, FlatHtmlBlock, FlatHtmlOp};
+use crate::ir::flat_program::{
+    FlatFor, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatPureBlock, FlatPureOp,
+};
 use crate::ir::function_id::FunctionId;
-use crate::ir::ir_binding::IrBinding;
-use crate::ir::ir_for::IrFor;
-use crate::ir::ir_type::IrFunctionDataType;
 
-pub fn collect_data_callees(block: &FlatDataBlock, out: &mut BTreeSet<FunctionId>) {
+pub fn collect_pure_callees(block: &FlatPureBlock, out: &mut BTreeSet<FunctionId>) {
     for binding in &block.bindings {
-        collect_data_binding_callees(binding, out);
+        collect_pure_op_callees(&binding.op, out);
     }
 }
 
 pub fn collect_html_callees(block: &FlatHtmlBlock, out: &mut BTreeSet<FunctionId>) {
     for binding in &block.bindings {
         let binding = match binding {
-            FlatBinding::Data(binding) => {
-                collect_data_binding_callees(binding, out);
+            FlatHtmlBinding::Pure(binding) => {
+                collect_pure_op_callees(&binding.op, out);
                 continue;
             }
-            FlatBinding::Html(binding) => binding,
+            FlatHtmlBinding::Cell(..) => continue,
+            FlatHtmlBinding::Html(binding) => binding,
         };
         match &binding.op {
             FlatHtmlOp::Call(function, ..) => {
@@ -30,33 +30,40 @@ pub fn collect_html_callees(block: &FlatHtmlBlock, out: &mut BTreeSet<FunctionId
                     collect_html_callees(&arm.body, out);
                 }
             }
-            FlatHtmlOp::For(IrFor { body, .. }) => {
+            FlatHtmlOp::For(FlatFor { key, body, .. }) => {
+                if let Some(key) = key {
+                    collect_pure_callees(key, out);
+                }
                 collect_html_callees(body, out);
             }
             FlatHtmlOp::Lambda(lambda) => {
                 collect_html_callees(&lambda.body, out);
             }
-            _ => {}
+            FlatHtmlOp::Text(_)
+            | FlatHtmlOp::Escape(_)
+            | FlatHtmlOp::Concat(_)
+            | FlatHtmlOp::Element(_)
+            | FlatHtmlOp::Apply(..) => {}
         }
     }
 }
 
-fn collect_data_binding_callees(
-    binding: &IrBinding<IrFunctionDataType, FlatDataOp>,
-    out: &mut BTreeSet<FunctionId>,
-) {
-    match &binding.op {
-        FlatDataOp::Call(function, ..) => {
+fn collect_pure_op_callees(op: &FlatPureOp, out: &mut BTreeSet<FunctionId>) {
+    match op {
+        FlatPureOp::Call(function, ..) => {
             out.insert(function.id);
         }
-        FlatDataOp::Match(match_) => {
+        FlatPureOp::Match(match_) => {
             for arm in &match_.arms {
-                collect_data_callees(&arm.body, out);
+                collect_pure_callees(&arm.body, out);
             }
         }
-        FlatDataOp::Lambda(lambda) => {
-            collect_data_callees(&lambda.body, out);
+        FlatPureOp::Lambda(lambda) => {
+            collect_pure_callees(&lambda.body, out);
         }
-        FlatDataOp::Data(_) | FlatDataOp::Apply(..) => {}
+        FlatPureOp::Data(_)
+        | FlatPureOp::CellWrite(..)
+        | FlatPureOp::EffectConcat(_)
+        | FlatPureOp::Apply(..) => {}
     }
 }

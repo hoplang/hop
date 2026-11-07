@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use crate::ir::flat_program::{FlatFunction, FlatProgram};
 use crate::ir::function_id::FunctionId;
 
-use super::callees::{collect_data_callees, collect_html_callees};
+use super::callees::{collect_html_callees, collect_pure_callees};
 
 pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
     let mut reached = BTreeSet::new();
@@ -17,8 +17,8 @@ pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
             .find(|function| function.function().id == id)
             .unwrap()
         {
-            FlatFunction::Data(function) => {
-                collect_data_callees(&function.body, &mut callees);
+            FlatFunction::Pure(function) => {
+                collect_pure_callees(&function.body, &mut callees);
             }
             FlatFunction::Html(function) => {
                 collect_html_callees(&function.body, &mut callees);
@@ -201,6 +201,51 @@ mod tests {
                     v9
                   }
                   v10
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_keep_the_callee_of_a_loop_key() {
+        check(
+            FlatProgramBuilder::new()
+                .function("key", [("n", Ty::Int)], Ty::Int, |t| t.param("n"))
+                .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
+                    t.html_for_keyed(t.param("items"), |t, item| t.call("key", [item]))
+                        .body(|t, _| t.text("row"))
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- before --
+                fn key@f0(n@v0: Int) -> Int {
+                  v0
+                }
+                entrypoint Test@e0(items@v1: Array[Int]) -> Html {
+                  let v5: Html = for v2: Int in v1 key {
+                    let v3: Int = key@f0(v2)
+                    v3
+                  } {
+                    let v4: Html = text("row")
+                    v4
+                  }
+                  v5
+                }
+
+                -- after --
+                fn key@f0(n@v0: Int) -> Int {
+                  v0
+                }
+                entrypoint Test@e0(items@v1: Array[Int]) -> Html {
+                  let v5: Html = for v2: Int in v1 key {
+                    let v3: Int = key@f0(v2)
+                    v3
+                  } {
+                    let v4: Html = text("row")
+                    v4
+                  }
+                  v5
                 }
             "#]],
         );

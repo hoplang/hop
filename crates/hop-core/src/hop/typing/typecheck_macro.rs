@@ -13,6 +13,49 @@ use crate::hover_annotation::HoverAnnotation;
 use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::symbols::var_name::VarName;
 
+pub fn typecheck_effects(
+    args: &[ParsedExpr],
+    forwarded_params: &[VarName],
+    var_env: &mut VariableScope,
+    type_env: &TypeEnv,
+    registry: &TypeRegistry,
+    annotations: &mut Vec<HoverAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+    errors: &mut Vec<TypeError>,
+) -> Option<TypedExpr> {
+    let mut parts = Vec::with_capacity(args.len());
+    for arg in args {
+        let Some(typed) = typecheck_expr(
+            arg,
+            Some(&Type::Effect),
+            forwarded_params,
+            var_env,
+            type_env,
+            registry,
+            annotations,
+            definition_links,
+            asset_references,
+            errors,
+        ) else {
+            continue;
+        };
+        if typed.typ() != Type::Effect {
+            errors.push(TypeError::new(
+                TypeErrorKind::TypeMismatch {
+                    context: TypeMismatchContext::MacroArgument,
+                    expected: Type::Effect,
+                    found: typed.typ(),
+                },
+                arg.range().clone(),
+            ));
+            continue;
+        }
+        parts.push(typed);
+    }
+    (parts.len() == args.len()).then_some(TypedExpr::EffectConcat { parts })
+}
+
 pub fn typecheck_join(
     args: &[ParsedExpr],
     forwarded_params: &[VarName],

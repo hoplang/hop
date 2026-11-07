@@ -794,7 +794,14 @@ fn format_let_binding<'a>(
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, binding.var_name_range.start());
-    let mut doc = leading_comments.append(arena.text(binding.var_name.as_str()));
+    let mutable = if binding.mutable {
+        arena.text("mut ")
+    } else {
+        arena.nil()
+    };
+    let mut doc = leading_comments
+        .append(mutable)
+        .append(arena.text(binding.var_name.as_str()));
     if let Some(var_type) = &binding.var_type {
         doc = doc
             .append(arena.text(": "))
@@ -866,6 +873,9 @@ fn contains_exterior_record_literal(expr: &ParsedExpr) -> bool {
             receiver.precedence() >= Precedence::Postfix
                 && contains_exterior_record_literal(receiver)
         }
+        ParsedExpr::CellWrite { value, .. } => {
+            value.precedence() > Precedence::CellWrite && contains_exterior_record_literal(value)
+        }
         _ => false,
     }
 }
@@ -877,6 +887,7 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
         ParsedType::Int { .. } => arena.text("Int"),
         ParsedType::Float { .. } => arena.text("Float"),
         ParsedType::Html { .. } => arena.text("Html"),
+        ParsedType::Effect { .. } => arena.text("Effect"),
         ParsedType::Option { element, .. } => arena
             .text("Option[")
             .append(format_type(arena, element))
@@ -974,6 +985,7 @@ fn format_expr<'a>(
         ParsedExpr::For {
             var_name,
             source,
+            key,
             body,
             ..
         } => arena
@@ -984,6 +996,12 @@ fn format_expr<'a>(
             })
             .append(arena.text(" in "))
             .append(format_loop_source(arena, source, comments))
+            .append(match key {
+                Some(key) => arena
+                    .text(" key ")
+                    .append(format_expr_before_brace(arena, key, comments)),
+                None => arena.nil(),
+            })
             .append(arena.text(" {"))
             .append(
                 arena
@@ -1182,6 +1200,15 @@ fn format_expr<'a>(
                 .append(arena.text(" "))
                 .append(format_expr_in_slot(arena, right, right_bound, comments))
         }
+        ParsedExpr::CellWrite { cell, value, .. } => arena
+            .text(cell.as_str())
+            .append(arena.text(" := "))
+            .append(format_expr_in_slot(
+                arena,
+                value,
+                Bound::Excluded(Precedence::CellWrite),
+                comments,
+            )),
         ParsedExpr::Enum {
             type_name,
             variant_name,
@@ -6005,6 +6032,46 @@ mod tests {
                       {name}
                     </li>
                   }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_format_cells_clicks_keys_and_effects() {
+        check(
+            indoc! {r#"
+                fn Counter(ids: Array[Int]) -> Html {
+                  let   mut count:Int = 0;
+                  let mut on = false;
+                  <ul on:click={fn()->Effect{effects!(count:=count+1,on:=!on)}}>
+                    {for id in ids key id*2 {
+                      <li>{id.to_string()}</li>
+                    }}
+                    {for i in 1..=3 key (Item {id: i}).id {
+                      <li>{(count := i == 1).to_string()}</li>
+                    }}
+                  </ul>
+                }
+            "#},
+            expect![[r#"
+                fn Counter(ids: Array[Int]) -> Html {
+                  let mut count: Int = 0;
+                  let mut on = false;
+                  <ul on:click={fn() -> Effect {
+                    effects!(count := count + 1, on := !on)
+                  }}>
+                    {for id in ids key id * 2 {
+                      <li>
+                        {id.to_string()}
+                      </li>
+                    }}
+                    {for i in 1..=3 key (Item {id: i}.id) {
+                      <li>
+                        {(count := i == 1).to_string()}
+                      </li>
+                    }}
+                  </ul>
                 }
             "#]],
         );

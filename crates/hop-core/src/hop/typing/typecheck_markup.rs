@@ -1,10 +1,11 @@
+use super::r#type::FunctionType;
 use super::{Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::hop::parsing::{ParsedAttribute, ParsedExpr, ParsedMarkup};
 use crate::hop::typing::type_env::TypeEnv;
-use crate::hop::typing::type_error::{TypeError, TypeErrorKind};
+use crate::hop::typing::type_error::{Target, TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::type_registry::TypeRegistry;
 use crate::hop::typing::typecheck_call::{
     Argument, CallArguments, Callee, NamedArgument, typecheck_call,
@@ -15,6 +16,73 @@ use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::var_name::VarName;
+
+fn typecheck_on_click(
+    attribute: &ParsedAttribute,
+    forwarded_params: &[VarName],
+    registry: &TypeRegistry,
+    errors: &mut Vec<TypeError>,
+    var_env: &mut VariableScope,
+    type_env: &TypeEnv,
+    annotations: &mut Vec<HoverAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+) -> Option<TypedExpr> {
+    let handler_type = Type::Function(FunctionType {
+        parameters: Vec::new(),
+        result: Box::new(Type::Effect),
+    });
+    let value = match attribute {
+        ParsedAttribute::Expression { value, .. } => value,
+        ParsedAttribute::String { quoted_range, .. } => {
+            errors.push(TypeError::new(
+                TypeErrorKind::TypeMismatch {
+                    context: TypeMismatchContext::ClickHandler,
+                    expected: handler_type,
+                    found: Type::STRING,
+                },
+                quoted_range.clone(),
+            ));
+            return None;
+        }
+        ParsedAttribute::KeyOnly { name_range, .. } => {
+            errors.push(TypeError::new(
+                TypeErrorKind::AttributeWithoutValue {
+                    attr: name_range.as_str().to_string(),
+                    expected: handler_type,
+                },
+                name_range.clone(),
+            ));
+            return None;
+        }
+        ParsedAttribute::Spread { .. } => unreachable!("a spread has no name"),
+    };
+    let typed = typecheck_expr(
+        value,
+        Some(&handler_type),
+        forwarded_params,
+        var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    )?;
+    let found = typed.typ();
+    if found != handler_type {
+        errors.push(TypeError::new(
+            TypeErrorKind::TypeMismatch {
+                context: TypeMismatchContext::ClickHandler,
+                expected: handler_type,
+                found,
+            },
+            value.range().clone(),
+        ));
+        return None;
+    }
+    Some(typed)
+}
 
 pub fn typecheck_markup(
     markup: &ParsedMarkup,
@@ -240,7 +308,47 @@ pub fn typecheck_markup(
 
             let mut arguments: Vec<NamedArgument<'_>> = Vec::new();
             let mut spread = None;
+            let mut on_click = None;
+            let mut seen_on_click = false;
             for attribute in attributes {
+                let attribute_name = match attribute {
+                    ParsedAttribute::Expression {
+                        name, name_range, ..
+                    }
+                    | ParsedAttribute::String {
+                        name, name_range, ..
+                    }
+                    | ParsedAttribute::KeyOnly { name, name_range } => Some((name, name_range)),
+                    ParsedAttribute::Spread { .. } => None,
+                };
+                if let Some((name, name_range)) = attribute_name
+                    && name.as_str().eq_ignore_ascii_case("on:click")
+                {
+                    if seen_on_click {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::DuplicateName {
+                                target: Target::Element(element.clone()),
+                                name: name.clone(),
+                            },
+                            name_range.clone(),
+                        ));
+                        continue;
+                    }
+                    seen_on_click = true;
+                    on_click = typecheck_on_click(
+                        attribute,
+                        forwarded_params,
+                        registry,
+                        errors,
+                        var_env,
+                        type_env,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                    )
+                    .map(Box::new);
+                    continue;
+                }
                 let (name, name_range, argument) = match attribute {
                     ParsedAttribute::Expression {
                         name,
@@ -283,6 +391,7 @@ pub fn typecheck_markup(
                     content: TypedExpr::HtmlConcat {
                         parts: typed_children,
                     },
+                    on_click,
                 },
                 CallArguments::Named { arguments, spread },
                 forwarded_params,

@@ -3,12 +3,11 @@ use std::rc::Rc;
 use rpds::HashTrieMap;
 
 use crate::hop::typing::{Constructor, Pattern};
-use crate::ir::flat_program::{FlatDataBlock, FlatHtmlBlock};
-use crate::ir::ir_lambda::IrLambda;
+use crate::ir::flat_program::{FlatHtmlLambda, FlatPureLambda};
 use crate::ir::ir_match::IrPattern;
-use crate::ir::ir_type::{IrFunctionDataType, IrType};
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::html_node::Html;
+use crate::ir::runtime::state::Place;
 use crate::ir::value_id::ValueId;
 use crate::symbols::{field_name::FieldName, type_name::TypeName};
 
@@ -21,7 +20,7 @@ pub const MAX_STRING_LENGTH: usize = 10_000_000;
 #[derive(Debug, Clone)]
 pub enum Value<'a> {
     String(Rc<str>),
-    Html(Html),
+    Html(Html<'a>),
     Bool(bool),
     Int(i32),
     Float(f64),
@@ -31,20 +30,22 @@ pub enum Value<'a> {
     Option(Option<Rc<Value<'a>>>),
     Enum(TypeName, Rc<[(FieldName, Value<'a>)]>),
     Closure(Rc<Closure<'a>>),
+    Effect(Effect<'a>),
 }
 
-// A closure: its lambda, and the names in scope where the lambda was
-// evaluated.
+pub type Effect<'a> = Rc<[(Place, Value<'a>)]>;
+
 #[derive(Debug)]
 pub struct Closure<'a> {
     pub lambda: Lambda<'a>,
     pub env: HashTrieMap<ValueId, Value<'a>>,
+    pub cells: HashTrieMap<ValueId, Place>,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Lambda<'a> {
-    Data(&'a IrLambda<IrFunctionDataType, FlatDataBlock>),
-    Html(&'a IrLambda<IrType, FlatHtmlBlock>),
+    Pure(&'a FlatPureLambda),
+    Html(&'a FlatHtmlLambda),
 }
 
 impl<'a> Value<'a> {
@@ -65,7 +66,7 @@ impl<'a> Value<'a> {
     }
 
     /// Panics if the value is not Html.
-    pub fn unwrap_html(self) -> Html {
+    pub fn unwrap_html(self) -> Html<'a> {
         match self {
             Value::Html(html) => html,
             _ => panic!("Expected Html value, found {self:?}"),
@@ -78,6 +79,43 @@ impl<'a> Value<'a> {
         let mut markup = String::new();
         self.unwrap_html().write(&mut markup);
         markup
+    }
+
+    /// Structural equality of data, comparing floats as `f64::total_cmp`
+    /// does, by their bits: NaN is equal to itself, and 0.0 is not -0.0. It
+    /// is an equivalence relation, so values that share an allocation are
+    /// equal without looking inside, as a value that nests a shared part in
+    /// itself can be exponentially larger as a tree than in memory. Panics
+    /// on Html, a closure or an Effect.
+    #[cfg(test)]
+    pub fn total_eq(&self, other: &Value<'_>) -> bool {
+        fn all(a: &[Value<'_>], b: &[Value<'_>]) -> bool {
+            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.total_eq(b))
+        }
+        fn fields(a: &[(FieldName, Value<'_>)], b: &[(FieldName, Value<'_>)]) -> bool {
+            a.len() == b.len()
+                && (a.iter().zip(b))
+                    .all(|((a_name, a), (b_name, b))| a_name == b_name && a.total_eq(b))
+        }
+        match (self, other) {
+            (Value::Html(_) | Value::Closure(_) | Value::Effect(_), _)
+            | (_, Value::Html(_) | Value::Closure(_) | Value::Effect(_)) => {
+                panic!("total_eq compares data, not {self:?} and {other:?}")
+            }
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Int(a), Value::Int(b)) => a == b,
+            (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
+            (Value::Array(a), Value::Array(b)) => Rc::ptr_eq(a, b) || all(a, b),
+            (Value::Tuple(a), Value::Tuple(b)) => Rc::ptr_eq(a, b) || all(a, b),
+            (Value::Record(a), Value::Record(b)) => Rc::ptr_eq(a, b) || fields(a, b),
+            (Value::Option(Some(a)), Value::Option(Some(b))) => Rc::ptr_eq(a, b) || a.total_eq(b),
+            (Value::Option(None), Value::Option(None)) => true,
+            (Value::Enum(a_name, a), Value::Enum(b_name, b)) => {
+                a_name == b_name && (Rc::ptr_eq(a, b) || fields(a, b))
+            }
+            _ => false,
+        }
     }
 
     /// Panics if the value is not a Bool.
@@ -140,6 +178,14 @@ impl<'a> Value<'a> {
         match self {
             Value::Closure(closure) => closure,
             _ => panic!("Expected a Closure value, found {self:?}"),
+        }
+    }
+
+    /// Panics if the value is not an Effect.
+    pub fn as_effect(&self) -> &Effect<'a> {
+        match self {
+            Value::Effect(effect) => effect,
+            _ => panic!("Expected an Effect value, found {self:?}"),
         }
     }
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use rpds::HashTrieMap;
@@ -6,11 +6,11 @@ use rpds::HashTrieMap;
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
-    FlatBinding, FlatDataBlock, FlatDataOp, FlatFunction, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
+    FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram, FlatPureBlock,
+    FlatPureOp,
 };
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_data_op::IrDataOp;
-use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_match::IrMatch;
@@ -19,6 +19,7 @@ use crate::ir::ir_type::IrFunctionDataType;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::html_node::{Html, HtmlAttribute, HtmlNode};
+use crate::ir::runtime::state::{IterationKey, Place, State, Step};
 use crate::ir::runtime::value::{Closure, Lambda, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value};
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
@@ -81,8 +82,18 @@ pub fn evaluate_page<'a>(
 pub fn evaluate_entrypoint<'a>(
     program: &'a FlatProgram,
     entrypoint_id: EntrypointId,
-    mut args: HashMap<AttributeName, Value<'a>>,
+    args: HashMap<AttributeName, Value<'a>>,
 ) -> Result<Value<'a>, EvalError> {
+    let (value, _) = invoke_entrypoint(program, entrypoint_id, args, &State::default())?;
+    Ok(value)
+}
+
+pub fn invoke_entrypoint<'a>(
+    program: &'a FlatProgram,
+    entrypoint_id: EntrypointId,
+    mut args: HashMap<AttributeName, Value<'a>>,
+    state: &State<'a>,
+) -> Result<(Value<'a>, State<'a>), EvalError> {
     let entrypoint = &program.entrypoints[entrypoint_id];
     let mut env = HashTrieMap::new();
     for param in &entrypoint.parameters {
@@ -94,10 +105,62 @@ pub fn evaluate_entrypoint<'a>(
             })?;
         env.insert_mut(param.binder.var, value);
     }
-    evaluate_html_block(&entrypoint.body, &env, &program.functions, 1, &mut 0)
+    let mut new_state = State {
+        cells: BTreeMap::new(),
+        elements: BTreeMap::new(),
+        node_counter: state.node_counter,
+    };
+    let value = evaluate_html_block(
+        &entrypoint.body,
+        &env,
+        &HashTrieMap::new(),
+        &program.functions,
+        &Place::new(),
+        state,
+        &mut new_state,
+        1,
+        &mut 0,
+    )?;
+    Ok((value, new_state))
 }
 
-fn evaluate_function<'a>(
+fn evaluate_html_function<'a>(
+    functions: &'a [FlatFunction],
+    function: &IrFunction,
+    args: Vec<Value<'a>>,
+    place: &Place,
+    old_state: &State<'a>,
+    new_state: &mut State<'a>,
+    depth: usize,
+    op_count: &mut usize,
+) -> Result<Value<'a>, EvalError> {
+    if depth >= MAX_CALL_DEPTH {
+        return Err(EvalError::CallDepthLimit {
+            limit: MAX_CALL_DEPTH,
+        });
+    }
+    let decl = functions
+        .iter()
+        .find(|decl| decl.function().id == function.id)
+        .unwrap();
+    let FlatFunction::Html(decl) = decl else {
+        panic!("an Html call calls {function}, which computes a value");
+    };
+    let vars = decl.parameters.iter().map(|param| param.binder.var);
+    evaluate_html_block(
+        &decl.body,
+        &vars.zip(args).collect(),
+        &HashTrieMap::new(),
+        functions,
+        place,
+        old_state,
+        new_state,
+        depth + 1,
+        op_count,
+    )
+}
+
+fn evaluate_pure_function<'a>(
     functions: &'a [FlatFunction],
     function: &IrFunction,
     args: Vec<Value<'a>>,
@@ -113,33 +176,24 @@ fn evaluate_function<'a>(
         .iter()
         .find(|decl| decl.function().id == function.id)
         .unwrap();
-    match decl {
-        FlatFunction::Data(decl) => {
-            let vars = decl.parameters.iter().map(|param| param.binder.var);
-            evaluate_data_block(
-                &decl.body,
-                &vars.zip(args).collect(),
-                functions,
-                depth + 1,
-                op_count,
-            )
-        }
-        FlatFunction::Html(decl) => {
-            let vars = decl.parameters.iter().map(|param| param.binder.var);
-            evaluate_html_block(
-                &decl.body,
-                &vars.zip(args).collect(),
-                functions,
-                depth + 1,
-                op_count,
-            )
-        }
-    }
+    let FlatFunction::Pure(decl) = decl else {
+        panic!("a Pure call calls {function}, which is not Pure");
+    };
+    let vars = decl.parameters.iter().map(|param| param.binder.var);
+    evaluate_pure_block(
+        &decl.body,
+        &vars.zip(args).collect(),
+        &HashTrieMap::new(),
+        functions,
+        depth + 1,
+        op_count,
+    )
 }
 
-fn evaluate_data_block<'a>(
-    block: &'a FlatDataBlock,
+fn evaluate_pure_block<'a>(
+    block: &'a FlatPureBlock,
     env: &HashTrieMap<ValueId, Value<'a>>,
+    cells: &HashTrieMap<ValueId, Place>,
     functions: &'a [FlatFunction],
     depth: usize,
     op_count: &mut usize,
@@ -152,7 +206,7 @@ fn evaluate_data_block<'a>(
                 limit: MAX_OP_COUNT,
             });
         }
-        evaluate_data_binding(binding, &mut env, functions, depth, op_count)?;
+        evaluate_pure_binding(binding, &mut env, cells, functions, depth, op_count)?;
     }
     Ok(env[&block.result].clone())
 }
@@ -160,11 +214,16 @@ fn evaluate_data_block<'a>(
 fn evaluate_html_block<'a>(
     block: &'a FlatHtmlBlock,
     env: &HashTrieMap<ValueId, Value<'a>>,
+    cells: &HashTrieMap<ValueId, Place>,
     functions: &'a [FlatFunction],
+    place: &Place,
+    old_state: &State<'a>,
+    new_state: &mut State<'a>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
     let mut env = env.clone();
+    let mut cells = cells.clone();
     for binding in &block.bindings {
         *op_count += 1;
         if *op_count > MAX_OP_COUNT {
@@ -173,11 +232,27 @@ fn evaluate_html_block<'a>(
             });
         }
         match binding {
-            FlatBinding::Data(binding) => {
-                evaluate_data_binding(binding, &mut env, functions, depth, op_count)?;
+            FlatHtmlBinding::Pure(binding) => {
+                evaluate_pure_binding(binding, &mut env, &cells, functions, depth, op_count)?;
             }
-            FlatBinding::Html(binding) => {
-                let value = evaluate_html_op(&binding.op, &env, functions, depth, op_count)?;
+            FlatHtmlBinding::Cell(binder, initial) => {
+                let place = place.push_back(Step::Name(binder.var));
+                let value = new_state.bind_cell(old_state, &place, &env[initial]);
+                cells.insert_mut(binder.var, place);
+                env.insert_mut(binder.var, value);
+            }
+            FlatHtmlBinding::Html(binding) => {
+                let value = evaluate_html_op(
+                    &binding.op,
+                    &env,
+                    &cells,
+                    functions,
+                    &place.push_back(Step::Name(binding.binder.var)),
+                    old_state,
+                    new_state,
+                    depth,
+                    op_count,
+                )?;
                 env.insert_mut(binding.binder.var, value);
             }
         }
@@ -185,50 +260,50 @@ fn evaluate_html_block<'a>(
     Ok(env[&block.result].clone())
 }
 
-fn evaluate_data_binding<'a>(
-    binding: &'a IrBinding<IrFunctionDataType, FlatDataOp>,
+fn evaluate_pure_binding<'a>(
+    binding: &'a IrBinding<IrFunctionDataType, FlatPureOp>,
     env: &mut HashTrieMap<ValueId, Value<'a>>,
+    cells: &HashTrieMap<ValueId, Place>,
     functions: &'a [FlatFunction],
     depth: usize,
     op_count: &mut usize,
 ) -> Result<(), EvalError> {
     let value = match &binding.op {
-        FlatDataOp::Data(op) => evaluate_data_op(op, env)?,
-        FlatDataOp::Call(function, args) => {
-            evaluate_call(function, args, env, functions, depth, op_count)?
+        FlatPureOp::Data(op) => evaluate_data_op(op, env)?,
+        FlatPureOp::Call(function, args) => {
+            let values = args.iter().map(|arg| env[arg].clone()).collect();
+            evaluate_pure_function(functions, function, values, depth, op_count)?
         }
-        FlatDataOp::Match(match_) => {
+        FlatPureOp::Match(match_) => {
             let (body, env) = enter_arm(match_, env);
-            evaluate_data_block(body, &env, functions, depth, op_count)?
+            evaluate_pure_block(body, &env, cells, functions, depth, op_count)?
         }
-        FlatDataOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
-            lambda: Lambda::Data(lambda),
+        FlatPureOp::CellWrite(cell, value) => {
+            Value::Effect(Rc::from(vec![(cells[cell].clone(), env[value].clone())]))
+        }
+        FlatPureOp::EffectConcat(parts) => {
+            let writes: Vec<_> = (parts.iter())
+                .flat_map(|part| env[part].as_effect().iter().cloned())
+                .collect();
+            Value::Effect(Rc::from(writes))
+        }
+        FlatPureOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
+            lambda: Lambda::Pure(lambda),
             env: env.clone(),
+            cells: cells.clone(),
         })),
-        FlatDataOp::Apply(closure, args) => {
-            evaluate_apply(*closure, args, env, functions, depth, op_count)?
+        FlatPureOp::Apply(closure, args) => {
+            let args = args.iter().map(|arg| env[arg].clone()).collect();
+            evaluate_pure_apply(env[closure].as_closure(), args, functions, depth, op_count)?
         }
     };
     env.insert_mut(binding.binder.var, value);
     Ok(())
 }
 
-fn evaluate_call<'a>(
-    function: &IrFunction,
-    args: &[ValueId],
-    env: &HashTrieMap<ValueId, Value<'a>>,
-    functions: &'a [FlatFunction],
-    depth: usize,
-    op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
-    let values = args.iter().map(|arg| env[arg].clone()).collect();
-    evaluate_function(functions, function, values, depth, op_count)
-}
-
-fn evaluate_apply<'a>(
-    closure: ValueId,
-    args: &[ValueId],
-    env: &HashTrieMap<ValueId, Value<'a>>,
+pub fn evaluate_pure_apply<'a>(
+    closure: &Closure<'a>,
+    args: Vec<Value<'a>>,
     functions: &'a [FlatFunction],
     depth: usize,
     op_count: &mut usize,
@@ -238,22 +313,56 @@ fn evaluate_apply<'a>(
             limit: MAX_CALL_DEPTH,
         });
     }
-    let closure = env[&closure].as_closure();
+    let Lambda::Pure(lambda) = closure.lambda else {
+        panic!("a Pure application applies a closure that renders Html");
+    };
     let mut body_env = closure.env.clone();
-    match closure.lambda {
-        Lambda::Data(lambda) => {
-            for (param, arg) in lambda.parameters.iter().zip(args) {
-                body_env.insert_mut(param.var, env[arg].clone());
-            }
-            evaluate_data_block(&lambda.body, &body_env, functions, depth + 1, op_count)
-        }
-        Lambda::Html(lambda) => {
-            for (param, arg) in lambda.parameters.iter().zip(args) {
-                body_env.insert_mut(param.var, env[arg].clone());
-            }
-            evaluate_html_block(&lambda.body, &body_env, functions, depth + 1, op_count)
-        }
+    for (param, arg) in lambda.parameters.iter().zip(args) {
+        body_env.insert_mut(param.var, arg);
     }
+    evaluate_pure_block(
+        &lambda.body,
+        &body_env,
+        &closure.cells,
+        functions,
+        depth + 1,
+        op_count,
+    )
+}
+
+fn evaluate_html_apply<'a>(
+    closure: &Closure<'a>,
+    args: Vec<Value<'a>>,
+    functions: &'a [FlatFunction],
+    place: &Place,
+    old_state: &State<'a>,
+    new_state: &mut State<'a>,
+    depth: usize,
+    op_count: &mut usize,
+) -> Result<Value<'a>, EvalError> {
+    if depth >= MAX_CALL_DEPTH {
+        return Err(EvalError::CallDepthLimit {
+            limit: MAX_CALL_DEPTH,
+        });
+    }
+    let Lambda::Html(lambda) = closure.lambda else {
+        panic!("an Html application applies a closure that computes a value");
+    };
+    let mut body_env = closure.env.clone();
+    for (param, arg) in lambda.parameters.iter().zip(args) {
+        body_env.insert_mut(param.var, arg);
+    }
+    evaluate_html_block(
+        &lambda.body,
+        &body_env,
+        &closure.cells,
+        functions,
+        place,
+        old_state,
+        new_state,
+        depth + 1,
+        op_count,
+    )
 }
 
 fn enter_arm<'a, B>(
@@ -281,7 +390,11 @@ fn enter_arm<'a, B>(
 fn evaluate_html_op<'a>(
     op: &'a FlatHtmlOp,
     env: &HashTrieMap<ValueId, Value<'a>>,
+    cells: &HashTrieMap<ValueId, Place>,
     functions: &'a [FlatFunction],
+    place: &Place,
+    old_state: &State<'a>,
+    new_state: &mut State<'a>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -303,6 +416,7 @@ fn evaluate_html_op<'a>(
             element,
             attributes,
             children,
+            on_click,
         }) => {
             let mut rendered = Vec::new();
             for (name, attribute) in attributes {
@@ -330,30 +444,59 @@ fn evaluate_html_op<'a>(
             } else {
                 env[children].clone().unwrap_html()
             };
+            let on_click = on_click.map(|handler| match &env[&handler] {
+                Value::Closure(closure) => closure.clone(),
+                value => panic!("Expected a Closure value, found {value:?}"),
+            });
+            let node = new_state.bind_element(old_state, place);
             Value::Html(Html::new(HtmlNode::Element {
                 element: element.clone(),
                 attributes: rendered,
                 children,
+                on_click,
+                node,
             })?)
         }
 
         FlatHtmlOp::Call(function, args) => {
-            evaluate_call(function, args, env, functions, depth, op_count)?
+            let values = args.iter().map(|arg| env[arg].clone()).collect();
+            evaluate_html_function(
+                functions, function, values, place, old_state, new_state, depth, op_count,
+            )?
         }
 
         FlatHtmlOp::Match(match_) => {
             let (body, env) = enter_arm(match_, env);
-            evaluate_html_block(body, &env, functions, depth, op_count)?
+            evaluate_html_block(
+                body, &env, cells, functions, place, old_state, new_state, depth, op_count,
+            )?
         }
 
-        FlatHtmlOp::For(IrFor { var, array, body }) => {
+        FlatHtmlOp::For(FlatFor {
+            var,
+            array,
+            key,
+            body,
+        }) => {
             let mut parts = Vec::new();
-            for item in env[array].as_array() {
+            let mut occurrences: BTreeMap<IterationKey, usize> = BTreeMap::new();
+            for (index, item) in env[array].as_array().iter().enumerate() {
                 let mut env = env.clone();
                 if let Some(binder) = var {
                     env.insert_mut(binder.var, item.clone());
                 }
-                let part = evaluate_html_block(body, &env, functions, depth, op_count)?;
+                let key = match key {
+                    Some(key) => IterationKey::from_value(evaluate_pure_block(
+                        key, &env, cells, functions, depth, op_count,
+                    )?),
+                    None => IterationKey::Int(index as i32),
+                };
+                let occurrence = occurrences.entry(key.clone()).or_default();
+                let iteration = place.push_back(Step::Iteration(key, *occurrence));
+                *occurrence += 1;
+                let part = evaluate_html_block(
+                    body, &env, cells, functions, &iteration, old_state, new_state, depth, op_count,
+                )?;
                 parts.push(part.unwrap_html());
             }
             Value::Html(Html::new(HtmlNode::Concat(parts))?)
@@ -362,10 +505,21 @@ fn evaluate_html_op<'a>(
         FlatHtmlOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
             lambda: Lambda::Html(lambda),
             env: env.clone(),
+            cells: cells.clone(),
         })),
 
         FlatHtmlOp::Apply(closure, args) => {
-            evaluate_apply(*closure, args, env, functions, depth, op_count)?
+            let args = args.iter().map(|arg| env[arg].clone()).collect();
+            evaluate_html_apply(
+                env[closure].as_closure(),
+                args,
+                functions,
+                place,
+                old_state,
+                new_state,
+                depth,
+                op_count,
+            )?
         }
     })
 }
@@ -479,7 +633,9 @@ mod tests {
     use crate::ir::index_vec::Idx;
     use crate::ir::ir_type::IrType;
     use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
+    use crate::ir::runtime::clicks::clicks;
     use crate::ir::runtime::value_builder::ValueBuilder;
+    use crate::symbols::function_name::FunctionName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
 
@@ -510,7 +666,7 @@ mod tests {
         expected: Expect,
     ) {
         let before = program.to_string();
-        let args: HashMap<AttributeName, Value<'_>> = args(&ValueBuilder::new(&program.types))
+        let args: HashMap<AttributeName, Value<'static>> = args(&ValueBuilder::new(&program.types))
             .into_iter()
             .map(|(name, value)| (AttributeName::parse(name).unwrap(), value))
             .collect();
@@ -1316,9 +1472,123 @@ mod tests {
             .build()
             .unwrap();
         let result = evaluate_entrypoint(&program, EntrypointId::new(0), HashMap::new());
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("Missing required parameter"));
-        assert!(err.to_string().contains("name"));
+        assert_eq!(
+            result.unwrap_err(),
+            EvalError::MissingParameter {
+                entrypoint: FunctionName::parse("Test").unwrap(),
+                param: AttributeName::parse("name").unwrap(),
+            }
+        );
+    }
+
+    fn writes_are_equal(a: &[(Place, Value<'_>)], b: &[(Place, Value<'_>)]) -> bool {
+        a.len() == b.len()
+            && (a.iter().zip(b))
+                .all(|((a_place, a), (b_place, b))| a_place == b_place && a.total_eq(b))
+    }
+
+    fn observations_are_equal<'a>(
+        functions: &'a [FlatFunction],
+        a: &Html<'a>,
+        b: &Html<'a>,
+    ) -> bool {
+        let (mut a_markup, mut b_markup) = (String::new(), String::new());
+        a.write(&mut a_markup);
+        b.write(&mut b_markup);
+        let (a_clicks, b_clicks) = (clicks(functions, a), clicks(functions, b));
+        a_markup == b_markup
+            && a_clicks.len() == b_clicks.len()
+            && (a_clicks.iter().zip(&b_clicks)).all(|((a_node, a), (b_node, b))| {
+                a_node == b_node
+                    && match (a, b) {
+                        (Ok(a), Ok(b)) => writes_are_equal(a, b),
+                        (Err(a), Err(b)) => a == b,
+                        _ => false,
+                    }
+            })
+    }
+
+    #[test]
+    fn fuzz_random_programs_keep_cells_and_clicks_and_evaluate_to_a_fixed_point() {
+        arbtest::arbtest(|u| {
+            let program = random_program(u);
+            let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
+            // The state of each entrypoint, in the order the program declares
+            // them, which each invocation takes from the one before it.
+            let mut states = Vec::new();
+            for _ in 0..u.int_in_range(1..=4)? {
+                let invocations = random_entrypoint_args(&program, &mut rng);
+                states.resize(invocations.len(), State::default());
+                for ((entrypoint, args), state) in invocations.into_iter().zip(&mut states) {
+                    // An invocation, then a few clicks, each followed by an
+                    // invocation on the same arguments, as a page follows
+                    // them.
+                    for _ in 0..u.int_in_range(1..=4)? {
+                        let (value, new_state) =
+                            match invoke_entrypoint(&program, entrypoint, args.clone(), state) {
+                                Ok(evaluated) => evaluated,
+                                // A cell keeps a value from an earlier
+                                // invocation or a click, so a range between two
+                                // cells may exceed the array length limit where
+                                // the Flat program does not.
+                                Err(
+                                    EvalError::CallDepthLimit { .. }
+                                    | EvalError::ArrayLengthLimit { .. }
+                                    | EvalError::StringLengthLimit { .. }
+                                    | EvalError::HtmlSizeLimit { .. }
+                                    | EvalError::OpCountLimit { .. },
+                                ) => break,
+                                Err(error) => panic!("{error}"),
+                            };
+                        let html = value.unwrap_html();
+                        let targets = clicks(&program.functions, &html);
+                        // A cell or an element bound at the same place as in
+                        // the invocation before keeps its value or node,
+                        // although the arguments differ, and a click wrote
+                        // the cell. An element at a new place has a new node.
+                        for (place, kept) in &new_state.cells {
+                            if let Some(before) = state.cells.get(place) {
+                                assert!(kept.total_eq(before), "{kept:?} is not {before:?}");
+                            }
+                        }
+                        for (place, node) in &new_state.elements {
+                            match state.elements.get(place) {
+                                Some(before) => assert_eq!(node, before),
+                                None => assert!(*node > state.node_counter),
+                            }
+                        }
+                        // Invoking on the new state gives the same result and
+                        // state.
+                        let (again, again_state) =
+                            invoke_entrypoint(&program, entrypoint, args.clone(), &new_state)
+                                .unwrap();
+                        assert!(observations_are_equal(
+                            &program.functions,
+                            &again.unwrap_html(),
+                            &html
+                        ));
+                        assert_eq!(again_state, new_state);
+                        *state = new_state;
+                        if targets.is_empty() {
+                            break;
+                        }
+                        // A click whose handler reaches a limit of the
+                        // evaluator performs nothing to compare.
+                        match &u.choose(&targets)?.1 {
+                            Ok(effect) => state.apply_writes(effect),
+                            Err(
+                                EvalError::CallDepthLimit { .. }
+                                | EvalError::ArrayLengthLimit { .. }
+                                | EvalError::StringLengthLimit { .. }
+                                | EvalError::HtmlSizeLimit { .. }
+                                | EvalError::OpCountLimit { .. },
+                            ) => break,
+                            Err(error) => panic!("{error}"),
+                        }
+                    }
+                }
+            }
+            Ok(())
+        });
     }
 }

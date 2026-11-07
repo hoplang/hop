@@ -2,15 +2,14 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
 use crate::ir::flat_program::{
-    FlatBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction, FlatHtmlBlock,
-    FlatHtmlOp, FlatProgram,
+    FlatEntrypoint, FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
+    FlatPureBlock, FlatPureOp,
 };
-use crate::ir::flat_transform::callees::{collect_data_callees, collect_html_callees};
+use crate::ir::flat_transform::callees::{collect_html_callees, collect_pure_callees};
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
-use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
@@ -25,7 +24,10 @@ use crate::ir::value_id::{ValueId, ValueIdCounter};
 /// A call's arguments are names, computed before the call, so a parameter
 /// is bound by reading the argument's name in its place. The body is copied
 /// with fresh names, its bindings join the block the call sits in, and
-/// every read of the call's name becomes a read of the body's result.
+/// every read of the call's name becomes a read of the body's result. A
+/// call is transparent for state, and each copy has names of its own, so a
+/// cell or an element of the copy is identified from one invocation to the
+/// next exactly as the one of the callee at the call was.
 pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
     let FlatProgram {
         types,
@@ -38,8 +40,8 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
     for function in &functions {
         let mut callees = BTreeSet::new();
         match function {
-            FlatFunction::Data(function) => {
-                collect_data_callees(&function.body, &mut callees);
+            FlatFunction::Pure(function) => {
+                collect_pure_callees(&function.body, &mut callees);
             }
             FlatFunction::Html(function) => {
                 collect_html_callees(&function.body, &mut callees);
@@ -82,8 +84,8 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
             renames: &mut renames,
         };
         let decl = match decl {
-            FlatFunction::Data(function) => FlatFunction::Data(IrFunctionDeclaration {
-                body: inliner.data_block(function.body),
+            FlatFunction::Pure(function) => FlatFunction::Pure(IrFunctionDeclaration {
+                body: inliner.pure_block(function.body),
                 ..function
             }),
             FlatFunction::Html(function) => FlatFunction::Html(IrFunctionDeclaration {
@@ -167,10 +169,10 @@ impl<'a> Inliner<'a> {
         Freshener::new(self.value_ids, arguments)
     }
 
-    fn data_block(&mut self, block: FlatDataBlock) -> FlatDataBlock {
+    fn pure_block(&mut self, block: FlatPureBlock) -> FlatPureBlock {
         let mut bindings = Vec::with_capacity(block.bindings.len());
         for binding in block.bindings {
-            self.data_binding(binding, &mut bindings);
+            self.pure_binding(binding, &mut bindings);
         }
         IrBlock {
             bindings,
@@ -178,17 +180,20 @@ impl<'a> Inliner<'a> {
         }
     }
 
-    /// The bindings of an inlined Html call take its place in the block.
+    /// The bindings of an inlined call take its place in the block.
     fn html_block(&mut self, block: FlatHtmlBlock) -> FlatHtmlBlock {
         let mut bindings = Vec::with_capacity(block.bindings.len());
-        let mut data = Vec::new();
+        let mut pure = Vec::new();
         for binding in block.bindings {
             match binding {
-                FlatBinding::Data(binding) => {
-                    self.data_binding(binding, &mut data);
-                    bindings.extend(data.drain(..).map(FlatBinding::Data));
+                FlatHtmlBinding::Pure(binding) => {
+                    self.pure_binding(binding, &mut pure);
+                    bindings.extend(pure.drain(..).map(FlatHtmlBinding::Pure));
                 }
-                FlatBinding::Html(binding) => self.html_binding(binding, &mut bindings),
+                FlatHtmlBinding::Cell(binder, initial) => {
+                    bindings.push(FlatHtmlBinding::Cell(binder, self.rename(initial)));
+                }
+                FlatHtmlBinding::Html(binding) => self.html_binding(binding, &mut bindings),
             }
         }
         IrBlock {
@@ -215,32 +220,32 @@ impl<'a> Inliner<'a> {
         }
     }
 
-    fn data_binding(
+    fn pure_binding(
         &mut self,
-        binding: IrBinding<IrFunctionDataType, FlatDataOp>,
-        out: &mut Vec<IrBinding<IrFunctionDataType, FlatDataOp>>,
+        binding: IrBinding<IrFunctionDataType, FlatPureOp>,
+        out: &mut Vec<IrBinding<IrFunctionDataType, FlatPureOp>>,
     ) {
         let IrBinding { binder, mut op } = binding;
         op.for_each_operand_mut(&mut |operand| *operand = self.rename(*operand));
         let op = match op {
-            FlatDataOp::Call(function, args) => match self.inlined(&function) {
+            FlatPureOp::Call(function, args) => match self.inlined(&function) {
                 Some(decl) => {
-                    let FlatFunction::Data(callee) = decl else {
+                    let FlatFunction::Pure(callee) = decl else {
                         panic!("{function} is called for a value but returns Html");
                     };
-                    let body = self.freshener(decl, args).freshen_data_block(&callee.body);
+                    let body = self.freshener(decl, args).freshen_pure_block(&callee.body);
                     out.extend(body.bindings);
                     // The result is a fresh name or an argument, and neither
                     // is ever renamed, so no read goes through two renames.
                     self.renames.insert(binder.var, body.result);
                     return;
                 }
-                None => FlatDataOp::Call(function, args),
+                None => FlatPureOp::Call(function, args),
             },
-            FlatDataOp::Match(match_) => FlatDataOp::Match(self.match_(match_, Self::data_block)),
-            FlatDataOp::Lambda(IrLambda { parameters, body }) => FlatDataOp::Lambda(IrLambda {
+            FlatPureOp::Match(match_) => FlatPureOp::Match(self.match_(match_, Self::pure_block)),
+            FlatPureOp::Lambda(IrLambda { parameters, body }) => FlatPureOp::Lambda(IrLambda {
                 parameters,
-                body: self.data_block(body),
+                body: self.pure_block(body),
             }),
             op => op,
         };
@@ -250,7 +255,7 @@ impl<'a> Inliner<'a> {
     fn html_binding(
         &mut self,
         binding: IrBinding<IrFunctionHtmlType, FlatHtmlOp>,
-        out: &mut Vec<FlatBinding>,
+        out: &mut Vec<FlatHtmlBinding>,
     ) {
         let IrBinding { binder, mut op } = binding;
         op.for_each_operand_mut(&mut |operand| *operand = self.rename(*operand));
@@ -270,9 +275,15 @@ impl<'a> Inliner<'a> {
                 None => FlatHtmlOp::Call(function, args),
             },
             FlatHtmlOp::Match(match_) => FlatHtmlOp::Match(self.match_(match_, Self::html_block)),
-            FlatHtmlOp::For(IrFor { var, array, body }) => FlatHtmlOp::For(IrFor {
+            FlatHtmlOp::For(FlatFor {
                 var,
                 array,
+                key,
+                body,
+            }) => FlatHtmlOp::For(FlatFor {
+                var,
+                array,
+                key: key.map(|key| self.pure_block(key)),
                 body: self.html_block(body),
             }),
             FlatHtmlOp::Lambda(IrLambda { parameters, body }) => FlatHtmlOp::Lambda(IrLambda {
@@ -281,7 +292,7 @@ impl<'a> Inliner<'a> {
             }),
             op => op,
         };
-        out.push(FlatBinding::Html(IrBinding { binder, op }));
+        out.push(FlatHtmlBinding::Html(IrBinding { binder, op }));
     }
 }
 
@@ -555,6 +566,146 @@ mod tests {
                   }
                   let v9: Html = concat(v13, v17)
                   v9
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_give_each_copy_of_a_cell_a_fresh_cell_that_its_writes_write() {
+        check(
+            FlatProgramBuilder::new()
+                .function("counter", [], Ty::Html, |t| {
+                    let n = t.cell(t.int(0));
+                    let bump = t.event_handler(|t| t.cell_write(n, t.add(n, t.int(1))));
+                    t.element_on_click("button", [], bump, t.escape(t.int_to_string(n)))
+                })
+                .entrypoint("Test", [], |t| {
+                    t.html_concat([t.call("counter", []), t.call("counter", [])])
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- before --
+                fn counter@f0() -> Html {
+                  let v0: Int = 0
+                  let v1: Int = cell(v0)
+                  let v5: () -> Effect = fn() {
+                    let v2: Int = 1
+                    let v3: Int = add(v1, v2)
+                    let v4: Effect = v1 := v3
+                    v4
+                  }
+                  let v6: String = v1.to_string()
+                  let v7: Html = escape(v6)
+                  let v8: Html = element("button", {}, v7) on_click v5
+                  v8
+                }
+                entrypoint Test@e0() -> Html {
+                  let v9: Html = counter@f0()
+                  let v10: Html = counter@f0()
+                  let v11: Html = concat(v9, v10)
+                  v11
+                }
+
+                -- after --
+                entrypoint Test@e0() -> Html {
+                  let v12: Int = 0
+                  let v13: Int = cell(v12)
+                  let v17: () -> Effect = fn() {
+                    let v14: Int = 1
+                    let v15: Int = add(v13, v14)
+                    let v16: Effect = v13 := v15
+                    v16
+                  }
+                  let v18: String = v13.to_string()
+                  let v19: Html = escape(v18)
+                  let v20: Html = element("button", {}, v19) on_click v17
+                  let v21: Int = 0
+                  let v22: Int = cell(v21)
+                  let v26: () -> Effect = fn() {
+                    let v23: Int = 1
+                    let v24: Int = add(v22, v23)
+                    let v25: Effect = v22 := v24
+                    v25
+                  }
+                  let v27: String = v22.to_string()
+                  let v28: Html = escape(v27)
+                  let v29: Html = element("button", {}, v28) on_click v26
+                  let v11: Html = concat(v20, v29)
+                  v11
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_inline_a_function_that_gives_an_effect_into_a_handler() {
+        check(
+            FlatProgramBuilder::new()
+                .function(
+                    "both",
+                    [("first", Ty::Effect), ("second", Ty::Effect)],
+                    Ty::Effect,
+                    |t| t.effect_concat([t.param("first"), t.param("second")]),
+                )
+                .entrypoint("Test", [], |t| {
+                    let count = t.cell(t.int(0));
+                    let on = t.cell(t.bool(false));
+                    let both = t.event_handler(|t| {
+                        let bump = t.cell_write(count, t.add(count, t.int(1)));
+                        let flip = t.cell_write(on, t.not(on));
+                        t.call("both", [bump, flip])
+                    });
+                    t.element_on_click("button", [], both, t.escape(t.int_to_string(count)))
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- before --
+                fn both@f0(first@v0: Effect, second@v1: Effect) -> Effect {
+                  let v2: Effect = effect_concat(v0, v1)
+                  v2
+                }
+                entrypoint Test@e0() -> Html {
+                  let v3: Int = 0
+                  let v4: Int = cell(v3)
+                  let v5: Bool = false
+                  let v6: Bool = cell(v5)
+                  let v13: () -> Effect = fn() {
+                    let v7: Int = 1
+                    let v8: Int = add(v4, v7)
+                    let v9: Effect = v4 := v8
+                    let v10: Bool = not(v6)
+                    let v11: Effect = v6 := v10
+                    let v12: Effect = both@f0(v9, v11)
+                    v12
+                  }
+                  let v14: String = v4.to_string()
+                  let v15: Html = escape(v14)
+                  let v16: Html = element("button", {}, v15) on_click v13
+                  v16
+                }
+
+                -- after --
+                entrypoint Test@e0() -> Html {
+                  let v3: Int = 0
+                  let v4: Int = cell(v3)
+                  let v5: Bool = false
+                  let v6: Bool = cell(v5)
+                  let v13: () -> Effect = fn() {
+                    let v7: Int = 1
+                    let v8: Int = add(v4, v7)
+                    let v9: Effect = v4 := v8
+                    let v10: Bool = not(v6)
+                    let v11: Effect = v6 := v10
+                    let v17: Effect = effect_concat(v9, v11)
+                    v17
+                  }
+                  let v14: String = v4.to_string()
+                  let v15: Html = escape(v14)
+                  let v16: Html = element("button", {}, v15) on_click v13
+                  v16
                 }
             "#]],
         );

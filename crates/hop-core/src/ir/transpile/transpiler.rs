@@ -8,7 +8,8 @@ use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::IrSwitch;
 use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrResultType, IrSignature,
+    IrType,
 };
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
@@ -134,7 +135,7 @@ pub trait Transpiler {
     fn transpile_value_function_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrSignature<IrFunctionDataType, IrDataType>,
+        signature: &IrSignature<IrFunctionDataType, IrResultType>,
     ) -> Doc<'a>;
     fn transpile_html_function_type<'a>(
         &mut self,
@@ -167,12 +168,21 @@ pub trait Transpiler {
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 unreachable!("Html is written, never held")
             }
+            IrType::Data(IrFunctionDataType::Effect) => {
+                unreachable!("flat_to_writer makes an effect the unit tuple")
+            }
             IrType::Data(IrFunctionDataType::Function(signature)) => {
                 self.transpile_value_function_type(arena, signature)
             }
             IrType::Html(IrFunctionHtmlType::Function(signature)) => {
                 self.transpile_html_function_type(arena, signature)
             }
+        }
+    }
+    fn transpile_result_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrResultType) -> Doc<'a> {
+        match t {
+            IrResultType::Data(data) => self.transpile_data_type(arena, data),
+            IrResultType::Effect => unreachable!("flat_to_writer makes an effect the unit tuple"),
         }
     }
     fn transpile_data_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrDataType) -> Doc<'a> {

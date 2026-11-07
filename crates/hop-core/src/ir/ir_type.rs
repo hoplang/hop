@@ -13,7 +13,14 @@ pub enum IrType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrFunctionDataType {
     Data(IrDataType),
-    Function(IrSignature<IrFunctionDataType, IrDataType>),
+    Effect,
+    Function(IrSignature<IrFunctionDataType, IrResultType>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IrResultType {
+    Data(IrDataType),
+    Effect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +58,18 @@ impl IrType {
     pub const BOOL: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Bool));
     pub const INT: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Int));
     pub const FLOAT: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Float));
+    pub const EFFECT: IrType = IrType::Data(IrFunctionDataType::Effect);
+
+    pub fn result(result: &IrResultType) -> IrType {
+        IrType::Data(IrFunctionDataType::result(result))
+    }
+
+    pub fn as_result(&self) -> Option<IrResultType> {
+        match self {
+            IrType::Data(data) => data.as_result(),
+            IrType::Html(_) => None,
+        }
+    }
 
     pub fn array(element: IrDataType) -> IrType {
         IrType::Data(IrFunctionDataType::Data(IrDataType::Array(Box::new(
@@ -64,7 +83,6 @@ impl IrType {
         ))))
     }
 
-    // Panics unless the parameters are values and the result is data.
     pub fn data_function(parameters: impl IntoIterator<Item = IrType>, result: IrType) -> IrType {
         let parameters = parameters
             .into_iter()
@@ -73,7 +91,7 @@ impl IrType {
                 IrType::Html(_) => panic!("a closure that computes a value takes {parameter}"),
             })
             .collect();
-        let IrType::Data(IrFunctionDataType::Data(result)) = result else {
+        let Some(result) = result.as_result() else {
             panic!("a closure that computes a value returns {result}");
         };
         IrType::Data(IrFunctionDataType::Function(IrSignature {
@@ -96,7 +114,8 @@ impl IrType {
     pub fn as_data(&self) -> Option<&IrDataType> {
         match self {
             IrType::Data(IrFunctionDataType::Data(data)) => Some(data),
-            IrType::Data(IrFunctionDataType::Function(_)) | IrType::Html(_) => None,
+            IrType::Data(IrFunctionDataType::Effect | IrFunctionDataType::Function(_))
+            | IrType::Html(_) => None,
         }
     }
 
@@ -110,6 +129,24 @@ impl IrType {
 
     pub fn as_numeric_type(&self) -> Option<NumericType> {
         self.as_data()?.as_numeric_type()
+    }
+}
+
+#[cfg(test)]
+impl IrFunctionDataType {
+    pub fn result(result: &IrResultType) -> IrFunctionDataType {
+        match result {
+            IrResultType::Data(data) => IrFunctionDataType::Data(data.clone()),
+            IrResultType::Effect => IrFunctionDataType::Effect,
+        }
+    }
+
+    pub fn as_result(&self) -> Option<IrResultType> {
+        match self {
+            IrFunctionDataType::Data(data) => Some(IrResultType::Data(data.clone())),
+            IrFunctionDataType::Effect => Some(IrResultType::Effect),
+            IrFunctionDataType::Function(_) => None,
+        }
     }
 }
 
@@ -170,6 +207,7 @@ impl fmt::Display for IrFunctionDataType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             IrFunctionDataType::Data(data) => data.fmt(f),
+            IrFunctionDataType::Effect => f.write_str("Effect"),
             IrFunctionDataType::Function(signature) => signature.fmt(f),
         }
     }
@@ -180,6 +218,15 @@ impl fmt::Display for IrFunctionHtmlType {
         match self {
             IrFunctionHtmlType::Html(html) => html.fmt(f),
             IrFunctionHtmlType::Function(signature) => signature.fmt(f),
+        }
+    }
+}
+
+impl fmt::Display for IrResultType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IrResultType::Data(data) => data.fmt(f),
+            IrResultType::Effect => f.write_str("Effect"),
         }
     }
 }

@@ -10,8 +10,8 @@ use crate::hop::typing::{
 };
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
-    FlatBinding, FlatDataBlock, FlatDataOp, FlatEntrypoint, FlatFunction, FlatHtmlBlock,
-    FlatHtmlOp, FlatProgram,
+    FlatEntrypoint, FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
+    FlatPureBlock, FlatPureOp,
 };
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::index_vec::IndexVec;
@@ -19,14 +19,14 @@ use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
-use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrSignature, IrType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrResultType, IrSignature,
+    IrType,
 };
 use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
@@ -186,7 +186,7 @@ struct Compiler<'a> {
     /// render. The spread reads these. They are not in scope by name.
     rest: Vec<(AttributeName, Type, ValueId)>,
     /// The bindings of the block being compiled, in evaluation order.
-    bindings: Vec<FlatBinding>,
+    bindings: Vec<FlatHtmlBinding>,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
@@ -255,7 +255,7 @@ impl<'a> Compiler<'a> {
                 return_type: IrHtmlType,
                 body: self.compile_html_block(&decl.body),
             }),
-            Type::Data(return_type) => FlatFunction::Data(IrFunctionDeclaration {
+            Type::Data(return_type) => FlatFunction::Pure(IrFunctionDeclaration {
                 function,
                 parameters: parameters
                     .into_iter()
@@ -265,10 +265,23 @@ impl<'a> Compiler<'a> {
                             .expect("a function that returns a value takes values only")
                     })
                     .collect(),
-                return_type: lower_data_type(self.registry, return_type),
-                body: self.compile_data_block(&decl.body),
+                return_type: IrResultType::Data(lower_data_type(self.registry, return_type)),
+                body: self.compile_pure_block(&decl.body),
             }),
-            Type::Function(_) => unreachable!("a function returns data or Html"),
+            Type::Effect => FlatFunction::Pure(IrFunctionDeclaration {
+                function,
+                parameters: parameters
+                    .into_iter()
+                    .map(|param| {
+                        param
+                            .into_function_data()
+                            .expect("a function that gives an effect takes values only")
+                    })
+                    .collect(),
+                return_type: IrResultType::Effect,
+                body: self.compile_pure_block(&decl.body),
+            }),
+            Type::Function(_) => unreachable!("a function returns data, Html or an effect"),
         };
         self.pop_scope();
         self.params.clear();
@@ -315,7 +328,7 @@ impl<'a> Compiler<'a> {
 
     /// Compile `expr`, which computes a value, as a block of its own,
     /// holding the bindings of its parts outside any nested block.
-    fn compile_data_block(&mut self, expr: &TypedExpr) -> FlatDataBlock {
+    fn compile_pure_block(&mut self, expr: &TypedExpr) -> FlatPureBlock {
         self.data_block(|cx| cx.compile_expr(expr))
     }
 
@@ -327,15 +340,19 @@ impl<'a> Compiler<'a> {
 
     /// The block of the bindings `f` pushes, whose result is the value `f`
     /// returns. The Html of an expression that computes a value is erased,
-    /// so `f` pushes no Html.
-    fn data_block(&mut self, f: impl FnOnce(&mut Self) -> ValueId) -> FlatDataBlock {
+    /// so `f` pushes no Html, and the typechecker rejects a cell in a block
+    /// that computes a value, so `f` pushes no cell.
+    fn data_block(&mut self, f: impl FnOnce(&mut Self) -> ValueId) -> FlatPureBlock {
         let outer = std::mem::take(&mut self.bindings);
         let result = f(self);
         let bindings = std::mem::replace(&mut self.bindings, outer)
             .into_iter()
             .map(|binding| match binding {
-                FlatBinding::Data(binding) => binding,
-                FlatBinding::Html(_) => panic!("a block that computes a value binds Html"),
+                FlatHtmlBinding::Pure(binding) => binding,
+                FlatHtmlBinding::Cell(..) => {
+                    unreachable!("the typechecker rejects a cell in a block that computes a value")
+                }
+                FlatHtmlBinding::Html(_) => panic!("a block that computes a value binds Html"),
             })
             .collect();
         IrBlock { bindings, result }
@@ -354,12 +371,12 @@ impl<'a> Compiler<'a> {
 
     /// Bind `op` to a fresh name of type `typ`, which is a value, in the
     /// block being compiled, and return the name.
-    fn push(&mut self, typ: Type, op: FlatDataOp) -> ValueId {
+    fn push(&mut self, typ: Type, op: FlatPureOp) -> ValueId {
         let IrType::Data(typ) = lower_type(self.registry, &typ) else {
             unreachable!("an op of a value produces a value");
         };
         let name = self.value_id_counter.next();
-        self.bindings.push(FlatBinding::Data(IrBinding {
+        self.bindings.push(FlatHtmlBinding::Pure(IrBinding {
             binder: IrBinder { var: name, typ },
             op,
         }));
@@ -376,7 +393,7 @@ impl<'a> Compiler<'a> {
     /// and return the name.
     fn bind_html(&mut self, typ: IrFunctionHtmlType, op: FlatHtmlOp) -> ValueId {
         let name = self.value_id_counter.next();
-        self.bindings.push(FlatBinding::Html(IrBinding {
+        self.bindings.push(FlatHtmlBinding::Html(IrBinding {
             binder: IrBinder { var: name, typ },
             op,
         }));
@@ -467,22 +484,22 @@ impl<'a> Compiler<'a> {
         let op = match expr {
             TypedExpr::Var { value, .. } => return self.resolve(value),
             TypedExpr::ForwardedParam { value, .. } => return self.params[value],
-            TypedExpr::FieldAccess { record, field, .. } => FlatDataOp::Data(
+            TypedExpr::FieldAccess { record, field, .. } => FlatPureOp::Data(
                 IrDataOp::FieldAccess(self.compile_expr(record), field.clone()),
             ),
             TypedExpr::BoolNegation { operand, .. } => {
-                FlatDataOp::Data(IrDataOp::BoolNegation(self.compile_expr(operand)))
+                FlatPureOp::Data(IrDataOp::BoolNegation(self.compile_expr(operand)))
             }
             TypedExpr::NumericNegation { operand, .. } => {
-                FlatDataOp::Data(IrDataOp::NumericNegation(self.compile_expr(operand)))
+                FlatPureOp::Data(IrDataOp::NumericNegation(self.compile_expr(operand)))
             }
-            TypedExpr::Array { elements, .. } => FlatDataOp::Data(IrDataOp::Array(
+            TypedExpr::Array { elements, .. } => FlatPureOp::Data(IrDataOp::Array(
                 elements.iter().map(|e| self.compile_expr(e)).collect(),
             )),
-            TypedExpr::Tuple { elements, .. } => FlatDataOp::Data(IrDataOp::Tuple(
+            TypedExpr::Tuple { elements, .. } => FlatPureOp::Data(IrDataOp::Tuple(
                 elements.iter().map(|e| self.compile_expr(e)).collect(),
             )),
-            TypedExpr::Record { fields, .. } => FlatDataOp::Data(IrDataOp::Record(
+            TypedExpr::Record { fields, .. } => FlatPureOp::Data(IrDataOp::Record(
                 fields
                     .iter()
                     .map(|(k, v)| (k.clone(), self.compile_expr(v)))
@@ -490,7 +507,7 @@ impl<'a> Compiler<'a> {
             )),
             TypedExpr::RecordUpdate { base, fields, .. } => {
                 let base = self.compile_expr(base);
-                FlatDataOp::Data(IrDataOp::Record(
+                FlatPureOp::Data(IrDataOp::Record(
                     fields
                         .iter()
                         .map(|(name, field)| {
@@ -498,7 +515,7 @@ impl<'a> Compiler<'a> {
                                 TypedRecordUpdateField::Explicit(value) => self.compile_expr(value),
                                 TypedRecordUpdateField::FromBase(field_typ) => self.push(
                                     field_typ.clone(),
-                                    FlatDataOp::Data(IrDataOp::FieldAccess(base, name.clone())),
+                                    FlatPureOp::Data(IrDataOp::FieldAccess(base, name.clone())),
                                 ),
                             };
                             (name.clone(), value)
@@ -507,36 +524,36 @@ impl<'a> Compiler<'a> {
                 ))
             }
             TypedExpr::StringLiteral { value, .. } => {
-                FlatDataOp::Data(IrDataOp::StringLiteral(value.clone()))
+                FlatPureOp::Data(IrDataOp::StringLiteral(value.clone()))
             }
             TypedExpr::Asset { path } => {
                 let value = match &self.asset_path_rewriter {
                     Some(rewriter) => rewriter.rewrite(path),
                     None => format!("/{}", path.as_str()),
                 };
-                FlatDataOp::Data(IrDataOp::StringLiteral(CheapString::new(value)))
+                FlatPureOp::Data(IrDataOp::StringLiteral(CheapString::new(value)))
             }
-            TypedExpr::BoolLiteral { value, .. } => FlatDataOp::Data(IrDataOp::BoolLiteral(*value)),
+            TypedExpr::BoolLiteral { value, .. } => FlatPureOp::Data(IrDataOp::BoolLiteral(*value)),
             TypedExpr::FloatLiteral { value, .. } => {
-                FlatDataOp::Data(IrDataOp::FloatLiteral(*value))
+                FlatPureOp::Data(IrDataOp::FloatLiteral(*value))
             }
-            TypedExpr::IntLiteral { value, .. } => FlatDataOp::Data(IrDataOp::IntLiteral(*value)),
-            TypedExpr::StringConcat { parts, .. } => FlatDataOp::Data(IrDataOp::StringConcat(
+            TypedExpr::IntLiteral { value, .. } => FlatPureOp::Data(IrDataOp::IntLiteral(*value)),
+            TypedExpr::StringConcat { parts, .. } => FlatPureOp::Data(IrDataOp::StringConcat(
                 parts.iter().map(|part| self.compile_expr(part)).collect(),
             )),
-            TypedExpr::Equals { left, right } => FlatDataOp::Data(IrDataOp::Equals(
+            TypedExpr::Equals { left, right } => FlatPureOp::Data(IrDataOp::Equals(
                 self.compile_expr(left),
                 self.compile_expr(right),
             )),
             TypedExpr::NotEquals { left, right } => {
                 // Desugar NotEquals into BoolNegation(Equals(...))
-                let equals = FlatDataOp::Data(IrDataOp::Equals(
+                let equals = FlatPureOp::Data(IrDataOp::Equals(
                     self.compile_expr(left),
                     self.compile_expr(right),
                 ));
-                FlatDataOp::Data(IrDataOp::BoolNegation(self.push(Type::BOOL, equals)))
+                FlatPureOp::Data(IrDataOp::BoolNegation(self.push(Type::BOOL, equals)))
             }
-            TypedExpr::LessThan { left, right } => FlatDataOp::Data(IrDataOp::LessThan(
+            TypedExpr::LessThan { left, right } => FlatPureOp::Data(IrDataOp::LessThan(
                 self.compile_expr(left),
                 self.compile_expr(right),
             )),
@@ -544,20 +561,20 @@ impl<'a> Compiler<'a> {
             TypedExpr::GreaterThan { left, right } => {
                 let left = self.compile_expr(left);
                 let right = self.compile_expr(right);
-                FlatDataOp::Data(IrDataOp::LessThan(right, left))
+                FlatPureOp::Data(IrDataOp::LessThan(right, left))
             }
-            TypedExpr::LessThanOrEqual { left, right } => FlatDataOp::Data(
+            TypedExpr::LessThanOrEqual { left, right } => FlatPureOp::Data(
                 IrDataOp::LessThanOrEqual(self.compile_expr(left), self.compile_expr(right)),
             ),
             // Convert a >= b to b <= a
             TypedExpr::GreaterThanOrEqual { left, right } => {
                 let left = self.compile_expr(left);
                 let right = self.compile_expr(right);
-                FlatDataOp::Data(IrDataOp::LessThanOrEqual(right, left))
+                FlatPureOp::Data(IrDataOp::LessThanOrEqual(right, left))
             }
             // The right operand runs only when the left one is true, so it
             // becomes the true arm. The false arm is false.
-            TypedExpr::BoolLogicalAnd { left, right, .. } => FlatDataOp::Match(IrMatch {
+            TypedExpr::BoolLogicalAnd { left, right, .. } => FlatPureOp::Match(IrMatch {
                 subject: self.compile_expr(left),
                 arms: vec![
                     IrMatchArm {
@@ -566,7 +583,7 @@ impl<'a> Compiler<'a> {
                             args: Vec::new(),
                             fields: Vec::new(),
                         },
-                        body: self.compile_data_block(right),
+                        body: self.compile_pure_block(right),
                     },
                     IrMatchArm {
                         pattern: Pattern::Constructor {
@@ -575,14 +592,14 @@ impl<'a> Compiler<'a> {
                             fields: Vec::new(),
                         },
                         body: self.data_block(|cx| {
-                            cx.push(Type::BOOL, FlatDataOp::Data(IrDataOp::BoolLiteral(false)))
+                            cx.push(Type::BOOL, FlatPureOp::Data(IrDataOp::BoolLiteral(false)))
                         }),
                     },
                 ],
             }),
             // The right operand runs only when the left one is false, so it
             // becomes the false arm. The true arm is true.
-            TypedExpr::BoolLogicalOr { left, right, .. } => FlatDataOp::Match(IrMatch {
+            TypedExpr::BoolLogicalOr { left, right, .. } => FlatPureOp::Match(IrMatch {
                 subject: self.compile_expr(left),
                 arms: vec![
                     IrMatchArm {
@@ -592,7 +609,7 @@ impl<'a> Compiler<'a> {
                             fields: Vec::new(),
                         },
                         body: self.data_block(|cx| {
-                            cx.push(Type::BOOL, FlatDataOp::Data(IrDataOp::BoolLiteral(true)))
+                            cx.push(Type::BOOL, FlatPureOp::Data(IrDataOp::BoolLiteral(true)))
                         }),
                     },
                     IrMatchArm {
@@ -601,25 +618,25 @@ impl<'a> Compiler<'a> {
                             args: Vec::new(),
                             fields: Vec::new(),
                         },
-                        body: self.compile_data_block(right),
+                        body: self.compile_pure_block(right),
                     },
                 ],
             }),
-            TypedExpr::NumericAdd { left, right, .. } => FlatDataOp::Data(IrDataOp::NumericAdd(
+            TypedExpr::NumericAdd { left, right, .. } => FlatPureOp::Data(IrDataOp::NumericAdd(
                 self.compile_expr(left),
                 self.compile_expr(right),
             )),
-            TypedExpr::NumericSubtract { left, right, .. } => FlatDataOp::Data(
+            TypedExpr::NumericSubtract { left, right, .. } => FlatPureOp::Data(
                 IrDataOp::NumericSubtract(self.compile_expr(left), self.compile_expr(right)),
             ),
-            TypedExpr::NumericMultiply { left, right, .. } => FlatDataOp::Data(
+            TypedExpr::NumericMultiply { left, right, .. } => FlatPureOp::Data(
                 IrDataOp::NumericMultiply(self.compile_expr(left), self.compile_expr(right)),
             ),
             TypedExpr::Enum {
                 variant_name,
                 fields,
                 ..
-            } => FlatDataOp::Data(IrDataOp::Enum(
+            } => FlatPureOp::Data(IrDataOp::Enum(
                 variant_name.clone(),
                 fields
                     .iter()
@@ -634,10 +651,10 @@ impl<'a> Compiler<'a> {
                     let arms = self.compile_arms(arms, Self::compile_html_block);
                     return self.push_html(FlatHtmlOp::Match(IrMatch { subject, arms }));
                 }
-                let arms = self.compile_arms(arms, Self::compile_data_block);
-                FlatDataOp::Match(IrMatch { subject, arms })
+                let arms = self.compile_arms(arms, Self::compile_pure_block);
+                FlatPureOp::Match(IrMatch { subject, arms })
             }
-            TypedExpr::Option { value, .. } => FlatDataOp::Data(match value {
+            TypedExpr::Option { value, .. } => FlatPureOp::Data(match value {
                 Some(value) => IrDataOp::OptionSome(self.compile_expr(value)),
                 None => IrDataOp::OptionNone,
             }),
@@ -669,6 +686,7 @@ impl<'a> Compiler<'a> {
                 element,
                 attrs,
                 children,
+                on_click,
             } => {
                 let mut attributes =
                     IndexMap::with_capacity(attrs.attributes.len() + self.rest.len());
@@ -698,11 +716,13 @@ impl<'a> Compiler<'a> {
                         assert!(previous.is_none(), "an attribute is set twice");
                     }
                 }
+                let on_click = on_click.as_ref().map(|handler| self.compile_expr(handler));
                 let children = self.compile_expr(children);
                 return self.push_html(FlatHtmlOp::Element(IrHtmlElement {
                     element: element.clone(),
                     attributes,
                     children,
+                    on_click,
                 }));
             }
             TypedExpr::Call {
@@ -774,7 +794,7 @@ impl<'a> Compiler<'a> {
                 if typ == Type::HTML {
                     return self.push_html(FlatHtmlOp::Call(function, compiled_args));
                 }
-                FlatDataOp::Call(function, compiled_args)
+                FlatPureOp::Call(function, compiled_args)
             }
             TypedExpr::Let { value, body, .. }
                 if !typ.renders_html() && value.typ().renders_html() =>
@@ -782,19 +802,49 @@ impl<'a> Compiler<'a> {
                 return self.compile_expr(body);
             }
             // A let binds nothing. Its variable is the name of its value,
-            // in a scope of its own that holds the body.
+            // in a scope of its own that holds the body. A let mut binds a
+            // cell, whose initial value is the value, and its variable is the
+            // name of the cell.
             TypedExpr::Let {
-                var, value, body, ..
+                var,
+                cell,
+                value,
+                body,
+                ..
             } => {
-                let value = self.compile_expr(value);
+                let initial = self.compile_expr(value);
+                let value = if *cell {
+                    let Type::Data(typ) = value.typ() else {
+                        unreachable!("a cell holds data");
+                    };
+                    let name = self.value_id_counter.next();
+                    self.bindings.push(FlatHtmlBinding::Cell(
+                        IrBinder {
+                            var: name,
+                            typ: lower_data_type(self.registry, &typ),
+                        },
+                        initial,
+                    ));
+                    name
+                } else {
+                    initial
+                };
                 self.scopes.push(vec![(var.clone(), value)]);
                 let body = self.compile_expr(body);
                 self.pop_scope();
                 return body;
             }
+            TypedExpr::CellWrite { cell, value } => {
+                let cell = self.resolve(cell);
+                FlatPureOp::CellWrite(cell, self.compile_expr(value))
+            }
+            TypedExpr::EffectConcat { parts } => {
+                FlatPureOp::EffectConcat(parts.iter().map(|part| self.compile_expr(part)).collect())
+            }
             TypedExpr::For {
                 var_name,
                 source,
+                key,
                 body,
                 ..
             } => {
@@ -806,7 +856,7 @@ impl<'a> Compiler<'a> {
                 let array = match &**source {
                     TypedLoopSource::Array(array_expr) => self.compile_expr(array_expr),
                     TypedLoopSource::RangeInclusive { start, end } => {
-                        let op = FlatDataOp::Data(IrDataOp::ArrayFromRange(
+                        let op = FlatPureOp::Data(IrDataOp::ArrayFromRange(
                             self.compile_expr(start),
                             self.compile_expr(end),
                         ));
@@ -827,9 +877,15 @@ impl<'a> Compiler<'a> {
                     var: self.bind(name),
                     typ: element_type,
                 });
+                let key = key.as_ref().map(|key| self.compile_pure_block(key));
                 let body = self.compile_html_block(body);
                 self.pop_scope();
-                return self.push_html(FlatHtmlOp::For(IrFor { var, array, body }));
+                return self.push_html(FlatHtmlOp::For(FlatFor {
+                    var,
+                    array,
+                    key,
+                    body,
+                }));
             }
             TypedExpr::Lambda { params, body, .. } => {
                 self.push_scope();
@@ -851,9 +907,9 @@ impl<'a> Compiler<'a> {
                         FlatHtmlOp::Lambda(IrLambda { parameters, body }),
                     );
                 }
-                let body = self.compile_data_block(body);
+                let body = self.compile_pure_block(body);
                 self.pop_scope();
-                FlatDataOp::Lambda(IrLambda {
+                FlatPureOp::Lambda(IrLambda {
                     parameters: parameters
                         .into_iter()
                         .map(|binder| {
@@ -875,22 +931,22 @@ impl<'a> Compiler<'a> {
                 if typ == Type::HTML {
                     return self.push_html(FlatHtmlOp::Apply(closure, args));
                 }
-                FlatDataOp::Apply(closure, args)
+                FlatPureOp::Apply(closure, args)
             }
             TypedExpr::ArrayLength { array } => {
-                FlatDataOp::Data(IrDataOp::ArrayLength(self.compile_expr(array)))
+                FlatPureOp::Data(IrDataOp::ArrayLength(self.compile_expr(array)))
             }
             TypedExpr::ArrayIsEmpty { array } => {
-                FlatDataOp::Data(IrDataOp::ArrayIsEmpty(self.compile_expr(array)))
+                FlatPureOp::Data(IrDataOp::ArrayIsEmpty(self.compile_expr(array)))
             }
             TypedExpr::StringIsEmpty { string } => {
-                FlatDataOp::Data(IrDataOp::StringIsEmpty(self.compile_expr(string)))
+                FlatPureOp::Data(IrDataOp::StringIsEmpty(self.compile_expr(string)))
             }
             TypedExpr::OptionIsSome { option } => {
-                FlatDataOp::Data(IrDataOp::OptionIsSome(self.compile_expr(option)))
+                FlatPureOp::Data(IrDataOp::OptionIsSome(self.compile_expr(option)))
             }
             TypedExpr::OptionIsNone { option } => {
-                FlatDataOp::Data(IrDataOp::OptionIsNone(self.compile_expr(option)))
+                FlatPureOp::Data(IrDataOp::OptionIsNone(self.compile_expr(option)))
             }
             TypedExpr::OptionUnwrapOr {
                 option, default, ..
@@ -900,7 +956,7 @@ impl<'a> Compiler<'a> {
                 };
                 let subject = self.compile_expr(option);
                 let binding = self.value_id_counter.next();
-                FlatDataOp::Match(IrMatch {
+                FlatPureOp::Match(IrMatch {
                     subject,
                     arms: vec![
                         IrMatchArm {
@@ -920,19 +976,19 @@ impl<'a> Compiler<'a> {
                                 args: Vec::new(),
                                 fields: Vec::new(),
                             },
-                            body: self.compile_data_block(default),
+                            body: self.compile_pure_block(default),
                         },
                     ],
                 })
             }
             TypedExpr::IntToString { value } => {
-                FlatDataOp::Data(IrDataOp::IntToString(self.compile_expr(value)))
+                FlatPureOp::Data(IrDataOp::IntToString(self.compile_expr(value)))
             }
             TypedExpr::FloatToInt { value } => {
-                FlatDataOp::Data(IrDataOp::FloatToInt(self.compile_expr(value)))
+                FlatPureOp::Data(IrDataOp::FloatToInt(self.compile_expr(value)))
             }
             TypedExpr::IntToFloat { value } => {
-                FlatDataOp::Data(IrDataOp::IntToFloat(self.compile_expr(value)))
+                FlatPureOp::Data(IrDataOp::IntToFloat(self.compile_expr(value)))
             }
         };
         self.push(typ, op)
@@ -977,6 +1033,7 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
     match typ {
         Type::Data(data) => IrType::Data(IrFunctionDataType::Data(lower_data_type(registry, data))),
         Type::Html(_) => IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
+        Type::Effect => IrType::Data(IrFunctionDataType::Effect),
         Type::Function(function) => match function.result.as_ref() {
             Type::Html(_) => IrType::Html(IrFunctionHtmlType::Function(IrSignature {
                 parameters: function
@@ -986,20 +1043,25 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
                     .collect(),
                 result: IrHtmlType,
             })),
-            Type::Data(result) => IrType::Data(IrFunctionDataType::Function(IrSignature {
-                parameters: function
-                    .parameters
-                    .iter()
-                    .map(|parameter| match lower_type(registry, parameter) {
-                        IrType::Data(parameter) => parameter,
-                        IrType::Html(_) => {
-                            unreachable!("a function that returns data takes no Html")
-                        }
-                    })
-                    .collect(),
-                result: lower_data_type(registry, result),
-            })),
-            Type::Function(_) => unreachable!("a function returns data or Html"),
+            result @ (Type::Data(_) | Type::Effect) => {
+                IrType::Data(IrFunctionDataType::Function(IrSignature {
+                    parameters: function
+                        .parameters
+                        .iter()
+                        .map(|parameter| match lower_type(registry, parameter) {
+                            IrType::Data(parameter) => parameter,
+                            IrType::Html(_) => {
+                                unreachable!("a function that returns a value takes no Html")
+                            }
+                        })
+                        .collect(),
+                    result: match result {
+                        Type::Data(result) => IrResultType::Data(lower_data_type(registry, result)),
+                        _ => IrResultType::Effect,
+                    },
+                }))
+            }
+            Type::Function(_) => unreachable!("a function returns data, Html or an effect"),
         },
     }
 }
@@ -2028,6 +2090,132 @@ mod tests {
                   let v4: Html = concat(v3)
                   let v5: Html = Tip@f0(v0, v4)
                   v5
+                }
+                page Test: e0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_cells_clicks_keys_and_effects() {
+        check(
+            indoc! {r#"
+                record Item {
+                  id: Int,
+                  label: String,
+                }
+                fn Counter(label: String) -> Html {
+                  let mut count = 0;
+                  let mut clicked = false;
+                  <button on:click={fn() { effects!(count := count + 1, clicked := true) }}>
+                    {label} {count.to_string()}
+                  </button>
+                }
+                page Test() {
+                  fn body() -> Html {
+                    let items = [Item {id: 1, label: "a"}, Item {id: 2, label: "b"}];
+                    <ul>
+                      {for item in items key item.id {
+                        <li><Counter label={item.label}/></li>
+                      }}
+                    </ul>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn Counter@f0(label@v16: String) -> Html {
+                  let v17: Int = 0
+                  let v18: Int = cell(v17)
+                  let v19: Bool = false
+                  let v20: Bool = cell(v19)
+                  let v27: () -> Effect = fn() {
+                    let v21: Int = 1
+                    let v22: Int = add(v18, v21)
+                    let v23: Effect = v18 := v22
+                    let v24: Bool = true
+                    let v25: Effect = v20 := v24
+                    let v26: Effect = effect_concat(v23, v25)
+                    v26
+                  }
+                  let v28: Html = escape(v16)
+                  let v29: Html = text(" ")
+                  let v30: String = v18.to_string()
+                  let v31: Html = escape(v30)
+                  let v32: Html = concat(v28, v29, v31)
+                  let v33: Html = element("button", {}, v32) on_click v27
+                  v33
+                }
+                entrypoint body@e0() -> Html {
+                  let v0: Int = 1
+                  let v1: String = "a"
+                  let v2: Item = {id: v0, label: v1}
+                  let v3: Int = 2
+                  let v4: String = "b"
+                  let v5: Item = {id: v3, label: v4}
+                  let v6: Array[Item] = [v2, v5]
+                  let v13: Html = for v7: Item in v6 key {
+                    let v8: Int = v7.id
+                    v8
+                  } {
+                    let v9: String = v7.label
+                    let v10: Html = Counter@f0(v9)
+                    let v11: Html = concat(v10)
+                    let v12: Html = element("li", {}, v11)
+                    v12
+                  }
+                  let v14: Html = concat(v13)
+                  let v15: Html = element("ul", {}, v14)
+                  v15
+                }
+                page Test: e0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_pass_a_handler_to_an_element_through_a_parameter() {
+        check(
+            indoc! {r#"
+                fn Button(on_press: fn() -> Effect, children: Html) -> Html {
+                  <button on:click={on_press}>{children}</button>
+                }
+                page Test() {
+                  fn body() -> Html {
+                    let mut on = false;
+                    <Button on_press={fn() { on := !on }}>
+                      {match on {true => "on", false => "off"}}
+                    </Button>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn Button@f0(on_press@v11: () -> Effect, children@v12: Html) -> Html {
+                  let v13: Html = concat(v12)
+                  let v14: Html = element("button", {}, v13) on_click v11
+                  v14
+                }
+                entrypoint body@e0() -> Html {
+                  let v0: Bool = false
+                  let v1: Bool = cell(v0)
+                  let v4: () -> Effect = fn() {
+                    let v2: Bool = not(v1)
+                    let v3: Effect = v1 := v2
+                    v3
+                  }
+                  let v7: String = match v1 {
+                    true => {
+                      let v5: String = "on"
+                      v5
+                    }
+                    false => {
+                      let v6: String = "off"
+                      v6
+                    }
+                  }
+                  let v8: Html = escape(v7)
+                  let v9: Html = concat(v8)
+                  let v10: Html = Button@f0(v4, v9)
+                  v10
                 }
                 page Test: e0
             "#]],

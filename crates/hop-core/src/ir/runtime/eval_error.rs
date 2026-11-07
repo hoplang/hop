@@ -3,7 +3,7 @@ use thiserror::Error;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::{attribute_name::AttributeName, type_name::TypeName};
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum EvalError {
     #[error("Page '{page}' not found in program")]
     PageNotFound { page: TypeName },

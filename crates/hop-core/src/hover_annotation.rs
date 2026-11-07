@@ -52,6 +52,9 @@ pub enum HoverAnnotation {
     Asset {
         range: DocumentRange,
     },
+    Effects {
+        range: DocumentRange,
+    },
 }
 
 impl HoverAnnotation {
@@ -71,6 +74,7 @@ impl HoverAnnotation {
             HoverAnnotation::Join { range } => range,
             HoverAnnotation::Format { range } => range,
             HoverAnnotation::Asset { range } => range,
+            HoverAnnotation::Effects { range } => range,
         }
     }
 }
@@ -153,6 +157,11 @@ impl Display for HoverAnnotation {
                 "The path must start with `/`, which denotes the project root. \
                  Resolves to a content-hashed URL prefixed by \
                  `assets.production_prefix` in production builds.",
+            ),
+            HoverAnnotation::Effects { .. } => format_builtin(
+                f,
+                "effects!(Effect, ...) -> Effect",
+                "Performs the effects in order.",
             ),
         }
     }

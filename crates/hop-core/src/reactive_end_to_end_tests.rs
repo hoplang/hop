@@ -1,0 +1,1126 @@
+use crate::document::Document;
+use crate::html::write_escaped_html;
+use crate::ir::flat_program::FlatProgram;
+use crate::ir::ir_page::IrPage;
+use crate::ir::optimize_flat;
+use crate::ir::runtime::clicks::clicks;
+use crate::ir::runtime::flat_evaluator::invoke_entrypoint;
+use crate::ir::runtime::html_node::{Html, HtmlNode};
+use crate::ir::runtime::labels::Labels;
+use crate::ir::runtime::state::State;
+use crate::root_contained_file_path::RootContainedFilePath;
+use crate::session::Session;
+use expect_test::{Expect, expect};
+use indoc::indoc;
+use std::collections::{BTreeMap, HashMap};
+
+enum Event {
+    Click(usize),
+}
+
+fn check(source: &str, events: &[Event], expected: Expect) {
+    let document_id = RootContainedFilePath::new("main.hop").unwrap();
+    let mut session = Session::new();
+    session.update_hop_document(
+        &document_id,
+        Document::new(document_id.clone(), source.to_string()),
+    );
+    let diagnostics = session.diagnostics();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    let (program, pages) = session.compile_flat(None, None);
+    let page = pages
+        .iter()
+        .find(|page| page.name.as_str() == "Test")
+        .expect("the source declares a page Test");
+    let out = run(&program, page, events);
+    let optimized = optimize_flat(program);
+    assert_eq!(
+        run(&optimized, page, events),
+        out,
+        "the optimized program renders differently"
+    );
+    expected.assert_eq(&out);
+}
+
+fn run(program: &FlatProgram, page: &IrPage, events: &[Event]) -> String {
+    let mut view = View::default();
+    let mut out = String::from("-- render --\n");
+    let (mut html, mut state) = view.render(program, page, &State::default(), &mut out);
+    for event in events {
+        match *event {
+            Event::Click(label) => {
+                let tag =
+                    (view.shown.get(&label)).unwrap_or_else(|| panic!("e{label} is not shown"));
+                out.push_str(&format!("-- click {tag}@e{label} --\n"));
+                let node = view.labels.node(label);
+                let targets = clicks(&program.functions, &html);
+                match targets.iter().find(|(target, _)| *target == node) {
+                    Some((_, Ok(effect))) => state.apply_writes(effect),
+                    None => {}
+                    Some((_, Err(error))) => {
+                        out.push_str(&format!("error: {error}\n"));
+                        continue;
+                    }
+                }
+            }
+        }
+        (html, state) = view.render(program, page, &state, &mut out);
+    }
+    out
+}
+
+#[derive(Default)]
+struct View {
+    labels: Labels,
+    shown: BTreeMap<usize, String>,
+}
+
+enum Item<'h, 'a> {
+    Element(&'h Html<'a>),
+    Text(String),
+}
+
+impl View {
+    fn render<'a>(
+        &mut self,
+        program: &'a FlatProgram,
+        page: &IrPage,
+        state: &State<'a>,
+        out: &mut String,
+    ) -> (Html<'a>, State<'a>) {
+        let (value, state) = invoke_entrypoint(program, page.body, HashMap::new(), state).unwrap();
+        let html = value.unwrap_html();
+        self.shown.clear();
+        let mut items = Vec::new();
+        collect_items(&html, &mut items);
+        self.write_items(&items, 0, out);
+        (html, state)
+    }
+
+    fn write_items(&mut self, items: &[Item<'_, '_>], depth: usize, out: &mut String) {
+        for item in items {
+            match item {
+                Item::Text(text) => {
+                    let text = text.trim();
+                    if !text.is_empty() {
+                        out.push_str(&"  ".repeat(depth));
+                        out.push_str(text);
+                        out.push('\n');
+                    }
+                }
+                Item::Element(html) => self.write_element(html, depth, out),
+            }
+        }
+    }
+
+    fn write_element(&mut self, html: &Html<'_>, depth: usize, out: &mut String) {
+        let HtmlNode::Element {
+            element,
+            attributes,
+            children,
+            node,
+            ..
+        } = html.node()
+        else {
+            unreachable!("an item is an element or text");
+        };
+        let label = self.labels.label(*node);
+        out.push_str(&"  ".repeat(depth));
+        out.push_str(&format!("<{}@e{label}", element.as_str()));
+        for attribute in attributes {
+            out.push(' ');
+            out.push_str(attribute.name.as_str());
+            if let Some(value) = &attribute.value {
+                out.push_str("=\"");
+                write_escaped_html(value, out);
+                out.push('"');
+            }
+        }
+        out.push('>');
+        (self.shown).insert(label, element.as_str().to_string());
+        if element.is_void() {
+            out.push('\n');
+            return;
+        }
+        let mut items = Vec::new();
+        collect_items(children, &mut items);
+        if let [Item::Text(text)] = items.as_slice() {
+            out.push_str(text);
+        } else if !items.is_empty() {
+            out.push('\n');
+            self.write_items(&items, depth + 1, out);
+            out.push_str(&"  ".repeat(depth));
+        }
+        out.push_str(&format!("</{}>\n", element.as_str()));
+    }
+}
+
+fn collect_items<'h, 'a>(html: &'h Html<'a>, out: &mut Vec<Item<'h, 'a>>) {
+    let push_text = |out: &mut Vec<Item<'h, 'a>>, text: &str| match out.last_mut() {
+        Some(Item::Text(last)) => last.push_str(text),
+        _ => out.push(Item::Text(text.to_string())),
+    };
+    match html.node() {
+        HtmlNode::Text(text) => push_text(out, text),
+        HtmlNode::Escape(text) => {
+            let mut escaped = String::new();
+            write_escaped_html(text, &mut escaped);
+            push_text(out, &escaped);
+        }
+        HtmlNode::Element { .. } => out.push(Item::Element(html)),
+        HtmlNode::Concat(parts) => {
+            for part in parts {
+                collect_items(part, out);
+            }
+        }
+    }
+}
+
+#[test]
+fn each_call_has_cells_of_its_own() {
+    check(
+        indoc! {r#"
+            fn Counter() -> Html {
+              let mut count = 0;
+              <button on:click={fn() { count := count + 1 }}>{count.to_string()}</button>
+            }
+            page Test {
+              fn body() -> Html {
+                <><Counter/><Counter/></>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(2), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            <button@e2>0</button>
+            -- click button@e2 --
+            <button@e1>0</button>
+            <button@e2>1</button>
+            -- click button@e2 --
+            <button@e1>0</button>
+            <button@e2>2</button>
+            -- click button@e1 --
+            <button@e1>1</button>
+            <button@e2>2</button>
+        "#]],
+    );
+}
+
+#[test]
+fn the_cells_of_a_keyed_loop_follow_the_keys() {
+    check(
+        indoc! {r#"
+            fn Counter(label: String) -> Html {
+              let mut count = 0;
+              <button on:click={fn() { count := count + 1 }}>{label}:{count.to_string()}</button>
+            }
+            page Test {
+              fn body() -> Html {
+                let mut reversed = false;
+                let ids = match reversed {
+                  true => [2, 1],
+                  false => [1, 2],
+                };
+                <>
+                  <b on:click={fn() { reversed := !reversed }}>flip</b>
+                  {for id in ids key id {
+                    <Counter label={id.to_string()}/>
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>flip</b>
+            <button@e2>1:0</button>
+            <button@e3>2:0</button>
+            -- click button@e2 --
+            <b@e1>flip</b>
+            <button@e2>1:1</button>
+            <button@e3>2:0</button>
+            -- click b@e1 --
+            <b@e1>flip</b>
+            <button@e3>2:0</button>
+            <button@e2>1:1</button>
+        "#]],
+    );
+}
+
+#[test]
+fn the_cells_of_a_loop_without_a_key_follow_the_index() {
+    check(
+        indoc! {r#"
+            fn Counter(label: String) -> Html {
+              let mut count = 0;
+              <button on:click={fn() { count := count + 1 }}>{label}:{count.to_string()}</button>
+            }
+            page Test {
+              fn body() -> Html {
+                let mut reversed = false;
+                let ids = match reversed {
+                  true => [2, 1],
+                  false => [1, 2],
+                };
+                <>
+                  <b on:click={fn() { reversed := !reversed }}>flip</b>
+                  {for id in ids {
+                    <Counter label={id.to_string()}/>
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>flip</b>
+            <button@e2>1:0</button>
+            <button@e3>2:0</button>
+            -- click button@e2 --
+            <b@e1>flip</b>
+            <button@e2>1:1</button>
+            <button@e3>2:0</button>
+            -- click b@e1 --
+            <b@e1>flip</b>
+            <button@e2>2:1</button>
+            <button@e3>1:0</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_cell_of_a_call_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
+    check(
+        indoc! {r#"
+            fn Counter() -> Html {
+              let mut count = 0;
+              <button on:click={fn() { count := count + 1 }}>{count.to_string()}</button>
+            }
+            page Test {
+              fn body() -> Html {
+                let mut open = true;
+                <>
+                  <b on:click={fn() { open := !open }}>toggle</b>
+                  {match open {
+                    true => <Counter/>,
+                    false => <i>closed</i>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(1),
+        ],
+        expect![[r#"
+            -- render --
+            <b@e1>toggle</b>
+            <button@e2>0</button>
+            -- click button@e2 --
+            <b@e1>toggle</b>
+            <button@e2>1</button>
+            -- click button@e2 --
+            <b@e1>toggle</b>
+            <button@e2>2</button>
+            -- click b@e1 --
+            <b@e1>toggle</b>
+            <i@e3>closed</i>
+            -- click b@e1 --
+            <b@e1>toggle</b>
+            <button@e4>0</button>
+        "#]],
+    );
+}
+
+#[test]
+fn an_element_bound_outside_a_match_keeps_its_node_in_each_arm() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut on = true;
+                let field = <input/>;
+                <>
+                  <button on:click={fn() { on := !on }}>toggle</button>
+                  {match on {
+                    true => <div>{field}</div>,
+                    false => <p>{field}</p>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>toggle</button>
+            <div@e2>
+              <input@e3>
+            </div>
+            -- click button@e1 --
+            <button@e1>toggle</button>
+            <p@e4>
+              <input@e3>
+            </p>
+            -- click button@e1 --
+            <button@e1>toggle</button>
+            <div@e5>
+              <input@e3>
+            </div>
+        "#]],
+    );
+}
+
+#[test]
+fn the_writes_of_a_click_read_the_cells_as_rendered_and_the_last_write_wins() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                <button on:click={fn() { effects!(count := count + 1, count := count + 10) }}>
+                  {count.to_string()}
+                </button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            -- click button@e1 --
+            <button@e1>10</button>
+            -- click button@e1 --
+            <button@e1>20</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_click_runs_the_handlers_of_the_elements_around_it_innermost_first() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut clicked = "none";
+                let mut inner = 0;
+                <div on:click={fn() { clicked := "div" }}>
+                  <button on:click={fn() { effects!(clicked := "button", inner := inner + 1) }}>
+                    {clicked} {inner.to_string()}
+                  </button>
+                </div>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <div@e1>
+              <button@e2>none 0</button>
+            </div>
+            -- click button@e2 --
+            <div@e1>
+              <button@e2>div 1</button>
+            </div>
+            -- click div@e1 --
+            <div@e1>
+              <button@e2>div 1</button>
+            </div>
+        "#]],
+    );
+}
+
+#[test]
+fn a_handler_reaches_an_element_through_a_parameter() {
+    check(
+        indoc! {r#"
+            fn Button(on_press: fn() -> Effect, children: Html) -> Html {
+              <button on:click={on_press}>{children}</button>
+            }
+            page Test {
+              fn body() -> Html {
+                let mut on = false;
+                <Button on_press={fn() { on := !on }}>
+                  {match on {true => "on", false => "off"}}
+                </Button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>off</button>
+            -- click button@e1 --
+            <button@e1>on</button>
+            -- click button@e1 --
+            <button@e1>off</button>
+        "#]],
+    );
+}
+
+#[test]
+fn an_element_a_match_hides_keeps_its_node_while_it_is_evaluated() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut shown = true;
+                let field = <input/>;
+                <>
+                  <button on:click={fn() { shown := !shown }}>toggle</button>
+                  {match shown {
+                    true => <div>{field}</div>,
+                    false => <p>hidden</p>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>toggle</button>
+            <div@e2>
+              <input@e3>
+            </div>
+            -- click button@e1 --
+            <button@e1>toggle</button>
+            <p@e4>hidden</p>
+            -- click button@e1 --
+            <button@e1>toggle</button>
+            <div@e5>
+              <input@e3>
+            </div>
+        "#]],
+    );
+}
+
+#[test]
+fn a_click_whose_handler_fails_changes_nothing() {
+    check(
+        indoc! {r#"
+            fn forever(n: Int) -> Int {
+              forever(n + 1)
+            }
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                <>
+                  <button on:click={fn() { count := forever(count) }}>forever</button>
+                  <button on:click={fn() { count := count + 1 }}>{count.to_string()}</button>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <button@e1>forever</button>
+            <button@e2>0</button>
+            -- click button@e1 --
+            error: Program exceeded the call depth limit of 12
+            -- click button@e2 --
+            <button@e1>forever</button>
+            <button@e2>1</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_click_fails_and_changes_nothing_when_a_handler_around_the_element_fails() {
+    check(
+        indoc! {r#"
+            fn forever(n: Int) -> Int {
+              forever(n + 1)
+            }
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                <>
+                  <div on:click={fn() { count := forever(count) }}>
+                    <button on:click={fn() { count := count + 1 }}>{count.to_string()}</button>
+                  </div>
+                  <p>no handler</p>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(3)],
+        expect![[r#"
+            -- render --
+            <div@e1>
+              <button@e2>0</button>
+            </div>
+            <p@e3>no handler</p>
+            -- click button@e2 --
+            error: Program exceeded the call depth limit of 12
+            -- click p@e3 --
+            <div@e1>
+              <button@e2>0</button>
+            </div>
+            <p@e3>no handler</p>
+        "#]],
+    );
+}
+
+#[test]
+fn a_handler_whose_effect_is_empty_writes_nothing() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                <button on:click={fn() {
+                  match count < 1 {
+                    true => count := count + 1,
+                    false => effects!(),
+                  }
+                }}>{count.to_string()}</button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            -- click button@e1 --
+            <button@e1>1</button>
+            -- click button@e1 --
+            <button@e1>1</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_click_on_an_element_without_a_handler_runs_the_handlers_around_it() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                <>
+                  <button on:click={fn() { count := count + 1 }}>
+                    <b>{count.to_string()}</b>
+                  </button>
+                  <p>no handler</p>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(3)],
+        expect![[r#"
+            -- render --
+            <button@e1>
+              <b@e2>0</b>
+            </button>
+            <p@e3>no handler</p>
+            -- click b@e2 --
+            <button@e1>
+              <b@e2>1</b>
+            </button>
+            <p@e3>no handler</p>
+            -- click p@e3 --
+            <button@e1>
+              <b@e2>1</b>
+            </button>
+            <p@e3>no handler</p>
+        "#]],
+    );
+}
+
+#[test]
+fn a_cell_takes_its_initial_value_only_when_it_is_first_bound() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut a = 1;
+                let mut b = a * 10;
+                <>
+                  <button on:click={fn() { a := a + 1 }}>{a.to_string()}</button>
+                  <button on:click={fn() { b := b + 1 }}>{b.to_string()}</button>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(2), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>1</button>
+            <button@e2>10</button>
+            -- click button@e1 --
+            <button@e1>2</button>
+            <button@e2>10</button>
+            -- click button@e2 --
+            <button@e1>2</button>
+            <button@e2>11</button>
+            -- click button@e1 --
+            <button@e1>3</button>
+            <button@e2>11</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_cell_keeps_its_value_when_the_argument_its_initial_value_reads_changes() {
+    check(
+        indoc! {r#"
+            fn Counter(start: Int) -> Html {
+              let mut count = start;
+              <button on:click={fn() { count := count + 1 }}>
+                {start.to_string()}/{count.to_string()}
+              </button>
+            }
+            page Test {
+              fn body() -> Html {
+                let mut base = 0;
+                <>
+                  <b on:click={fn() { base := base + 100 }}>bump</b>
+                  <Counter start={base}/>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>bump</b>
+            <button@e2>0/0</button>
+            -- click button@e2 --
+            <b@e1>bump</b>
+            <button@e2>0/1</button>
+            -- click b@e1 --
+            <b@e1>bump</b>
+            <button@e2>100/1</button>
+        "#]],
+    );
+}
+
+#[test]
+fn each_application_of_a_lambda_has_cells_of_its_own_and_shares_the_cells_it_captures() {
+    check(
+        indoc! {r#"
+            fn Twice(row: fn() -> Html) -> Html {
+              <>{row()}{row()}</>
+            }
+            page Test {
+              fn body() -> Html {
+                let mut outer = 0;
+                <Twice row={fn() {
+                  let mut inner = 0;
+                  <button on:click={fn() { effects!(inner := inner + 1, outer := outer + 1) }}>
+                    {inner.to_string()}/{outer.to_string()}
+                  </button>
+                }}/>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(2), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0/0</button>
+            <button@e2>0/0</button>
+            -- click button@e2 --
+            <button@e1>0/1</button>
+            <button@e2>1/1</button>
+            -- click button@e2 --
+            <button@e1>0/2</button>
+            <button@e2>2/2</button>
+            -- click button@e1 --
+            <button@e1>1/3</button>
+            <button@e2>2/3</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_cell_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut left = true;
+                <>
+                  <b on:click={fn() { left := !left }}>switch</b>
+                  {match left {
+                    true => {
+                      let mut count = 0;
+                      <button on:click={fn() { count := count + 1 }}>left {count.to_string()}</button>
+                    },
+                    false => {
+                      let mut count = 100;
+                      <button on:click={fn() { count := count + 1 }}>right {count.to_string()}</button>
+                    },
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(3),
+            Event::Click(1),
+            Event::Click(1),
+        ],
+        expect![[r#"
+            -- render --
+            <b@e1>switch</b>
+            <button@e2>left 0</button>
+            -- click button@e2 --
+            <b@e1>switch</b>
+            <button@e2>left 1</button>
+            -- click button@e2 --
+            <b@e1>switch</b>
+            <button@e2>left 2</button>
+            -- click b@e1 --
+            <b@e1>switch</b>
+            <button@e3>right 100</button>
+            -- click button@e3 --
+            <b@e1>switch</b>
+            <button@e3>right 101</button>
+            -- click b@e1 --
+            <b@e1>switch</b>
+            <button@e4>left 0</button>
+            -- click b@e1 --
+            <b@e1>switch</b>
+            <button@e5>right 100</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_cell_bound_in_a_loop_follows_its_key_and_starts_over_when_the_key_comes_back() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut ids = [1, 2];
+                <>
+                  <b on:click={fn() { ids := [2, 1] }}>flip</b>
+                  <i on:click={fn() { ids := [2] }}>drop</i>
+                  {for id in ids key id {
+                    let mut count = 0;
+                    <button on:click={fn() { count := count + 1 }}>{id.to_string()}:{count.to_string()}</button>
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(3),
+            Event::Click(1),
+            Event::Click(2),
+            Event::Click(1),
+        ],
+        expect![[r#"
+            -- render --
+            <b@e1>flip</b>
+            <i@e2>drop</i>
+            <button@e3>1:0</button>
+            <button@e4>2:0</button>
+            -- click button@e3 --
+            <b@e1>flip</b>
+            <i@e2>drop</i>
+            <button@e3>1:1</button>
+            <button@e4>2:0</button>
+            -- click b@e1 --
+            <b@e1>flip</b>
+            <i@e2>drop</i>
+            <button@e4>2:0</button>
+            <button@e3>1:1</button>
+            -- click i@e2 --
+            <b@e1>flip</b>
+            <i@e2>drop</i>
+            <button@e4>2:0</button>
+            -- click b@e1 --
+            <b@e1>flip</b>
+            <i@e2>drop</i>
+            <button@e4>2:0</button>
+            <button@e5>1:0</button>
+        "#]],
+    );
+}
+
+#[test]
+fn the_iterations_of_a_repeated_key_follow_the_order_they_take_it_in() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut ids = [1, 1];
+                <>
+                  <b on:click={fn() { ids := [1] }}>drop</b>
+                  {for id in ids key id {
+                    let mut count = 0;
+                    <button on:click={fn() { count := count + 1 }}>{id.to_string()}:{count.to_string()}</button>
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(3), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>drop</b>
+            <button@e2>1:0</button>
+            <button@e3>1:0</button>
+            -- click button@e3 --
+            <b@e1>drop</b>
+            <button@e2>1:0</button>
+            <button@e3>1:1</button>
+            -- click b@e1 --
+            <b@e1>drop</b>
+            <button@e2>1:0</button>
+        "#]],
+    );
+}
+
+#[test]
+fn the_cells_of_nested_loops_follow_the_keys_of_both_loops() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut rows = ["a", "b"];
+                <>
+                  <b on:click={fn() { rows := ["b", "a"] }}>flip</b>
+                  {for row in rows key row {
+                    {for col in [1, 2] key col {
+                      let mut count = 0;
+                      <button on:click={fn() { count := count + 1 }}>
+                        {row}{col.to_string()}:{count.to_string()}
+                      </button>
+                    }}
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(4), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>flip</b>
+            <button@e2>a1:0</button>
+            <button@e3>a2:0</button>
+            <button@e4>b1:0</button>
+            <button@e5>b2:0</button>
+            -- click button@e4 --
+            <b@e1>flip</b>
+            <button@e2>a1:0</button>
+            <button@e3>a2:0</button>
+            <button@e4>b1:1</button>
+            <button@e5>b2:0</button>
+            -- click b@e1 --
+            <b@e1>flip</b>
+            <button@e4>b1:1</button>
+            <button@e5>b2:0</button>
+            <button@e2>a1:0</button>
+            <button@e3>a2:0</button>
+        "#]],
+    );
+}
+
+#[test]
+fn an_element_keeps_its_node_when_the_value_of_an_attribute_changes() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut on = false;
+                <button
+                  class={match on {true => "on", false => "off"}}
+                  on:click={fn() { on := !on }}
+                >toggle</button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1 class="off">toggle</button>
+            -- click button@e1 --
+            <button@e1 class="on">toggle</button>
+            -- click button@e1 --
+            <button@e1 class="off">toggle</button>
+        "#]],
+    );
+}
+
+#[test]
+fn each_level_of_a_recursive_call_has_cells_of_its_own() {
+    check(
+        indoc! {r#"
+            fn Level(depth: Int, levels: Int) -> Html {
+              let mut count = 0;
+              <div>
+                <button on:click={fn() { count := count + 1 }}>
+                  {depth.to_string()}:{count.to_string()}
+                </button>
+                {match depth + 1 < levels {
+                  true => <Level depth={depth + 1} levels={levels}/>,
+                  false => <></>,
+                }}
+              </div>
+            }
+            page Test {
+              fn body() -> Html {
+                let mut levels = 2;
+                <>
+                  <b on:click={fn() { levels := levels + 1 }}>deeper</b>
+                  <Level depth={0} levels={levels}/>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(5), Event::Click(3), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>deeper</b>
+            <div@e2>
+              <button@e3>0:0</button>
+              <div@e4>
+                <button@e5>1:0</button>
+              </div>
+            </div>
+            -- click button@e5 --
+            <b@e1>deeper</b>
+            <div@e2>
+              <button@e3>0:0</button>
+              <div@e4>
+                <button@e5>1:1</button>
+              </div>
+            </div>
+            -- click button@e3 --
+            <b@e1>deeper</b>
+            <div@e2>
+              <button@e3>0:1</button>
+              <div@e4>
+                <button@e5>1:1</button>
+              </div>
+            </div>
+            -- click b@e1 --
+            <b@e1>deeper</b>
+            <div@e2>
+              <button@e3>0:1</button>
+              <div@e4>
+                <button@e5>1:1</button>
+                <div@e6>
+                  <button@e7>2:0</button>
+                </div>
+              </div>
+            </div>
+        "#]],
+    );
+}
+
+#[test]
+fn a_handler_performs_the_effect_a_function_gives() {
+    check(
+        indoc! {r#"
+            fn both(first: fn() -> Effect, second: fn() -> Effect) -> Effect {
+              effects!(first(), second())
+            }
+            page Test {
+              fn body() -> Html {
+                let mut a = 0;
+                let mut b = 0;
+                <button on:click={fn() { both(fn() { a := a + 1 }, fn() { b := b + 10 }) }}>
+                  {a.to_string()}/{b.to_string()}
+                </button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0/0</button>
+            -- click button@e1 --
+            <button@e1>1/10</button>
+            -- click button@e1 --
+            <button@e1>2/20</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_handler_performs_an_effect_passed_as_a_parameter() {
+    check(
+        indoc! {r#"
+            fn Button(press: Effect, children: Html) -> Html {
+              <button on:click={fn() { press }}>{children}</button>
+            }
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                <>
+                  <Button press={count := count + 1}>{count.to_string()}</Button>
+                  <Button press={count := 0}>reset</Button>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            <button@e2>reset</button>
+            -- click button@e1 --
+            <button@e1>1</button>
+            <button@e2>reset</button>
+            -- click button@e1 --
+            <button@e1>2</button>
+            <button@e2>reset</button>
+            -- click button@e2 --
+            <button@e1>0</button>
+            <button@e2>reset</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_handler_updates_a_field_of_a_record_in_a_cell_and_keeps_the_others() {
+    check(
+        indoc! {r#"
+            enum Mode { Light, Dark }
+            record Setting { mode: Mode, level: Int }
+            page Test {
+              fn body() -> Html {
+                let mut setting = Setting {mode: Mode::Light, level: 1};
+                <>
+                  <button on:click={fn() { setting := Setting {...setting, mode: Mode::Dark} }}>dark</button>
+                  <button on:click={fn() { setting := Setting {...setting, level: setting.level + 1} }}>raise</button>
+                  <p>{match setting.mode {Mode::Light => "light", Mode::Dark => "dark"}} {setting.level.to_string()}</p>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(1), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <button@e1>dark</button>
+            <button@e2>raise</button>
+            <p@e3>light 1</p>
+            -- click button@e2 --
+            <button@e1>dark</button>
+            <button@e2>raise</button>
+            <p@e3>light 2</p>
+            -- click button@e1 --
+            <button@e1>dark</button>
+            <button@e2>raise</button>
+            <p@e3>dark 2</p>
+            -- click button@e2 --
+            <button@e1>dark</button>
+            <button@e2>raise</button>
+            <p@e3>dark 3</p>
+        "#]],
+    );
+}

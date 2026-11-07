@@ -6,7 +6,9 @@ use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_call::{Argument, CallArguments, Callee, NamedArgument, typecheck_call};
 use super::typecheck_lambda::typecheck_lambda;
-use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join};
+use super::typecheck_macro::{
+    typecheck_asset, typecheck_effects, typecheck_format, typecheck_join,
+};
 use super::typecheck_markup::typecheck_markup;
 use super::typecheck_match::typecheck_match;
 use super::variable_scope::{HtmlMisuse, RepeatedBody, ScopeEntry, VariableScope};
@@ -524,7 +526,7 @@ pub fn typecheck_expr(
                 }
                 let elem_type = match first_type? {
                     Type::Data(elem_type) => elem_type,
-                    typ @ (Type::Html(_) | Type::Function(_)) => {
+                    typ @ (Type::Html(_) | Type::Effect | Type::Function(_)) => {
                         errors.push(TypeError::new(
                             TypeErrorKind::NotData { typ },
                             elements[0].range().clone(),
@@ -572,10 +574,9 @@ pub fn typecheck_expr(
             for (typed_element, element) in typed_elements.iter().zip(elements) {
                 match typed_element.typ() {
                     Type::Data(element_type) => element_types.push(element_type),
-                    typ @ (Type::Html(_) | Type::Function(_)) => errors.push(TypeError::new(
-                        TypeErrorKind::NotData { typ },
-                        element.range().clone(),
-                    )),
+                    typ @ (Type::Html(_) | Type::Effect | Type::Function(_)) => errors.push(
+                        TypeError::new(TypeErrorKind::NotData { typ }, element.range().clone()),
+                    ),
                 }
             }
             if element_types.len() != elements.len() {
@@ -966,7 +967,7 @@ pub fn typecheck_expr(
                 )?;
                 let inner_type = match typed_inner.typ() {
                     Type::Data(inner_type) => inner_type,
-                    typ @ (Type::Html(_) | Type::Function(_)) => {
+                    typ @ (Type::Html(_) | Type::Effect | Type::Function(_)) => {
                         errors.push(TypeError::new(
                             TypeErrorKind::NotData { typ },
                             inner_expr.range().clone(),
@@ -996,6 +997,78 @@ pub fn typecheck_expr(
                 })
             }
         },
+        ParsedExpr::CellWrite {
+            cell,
+            cell_range,
+            value,
+            ..
+        } => {
+            let not_a_cell = || {
+                TypeError::new(
+                    TypeErrorKind::NotACell { name: cell.clone() },
+                    cell_range.clone(),
+                )
+            };
+            let cell_type = match var_env.lookup(cell.as_str()) {
+                Some(ScopeEntry::Variable(entry)) => {
+                    annotations.push(HoverAnnotation::VarName {
+                        range: cell_range.clone(),
+                        typ: entry.typ.clone(),
+                        var_name: cell.clone(),
+                    });
+                    definition_links.push(DefinitionLink {
+                        use_range: cell_range.clone(),
+                        definition_range: entry.range.clone(),
+                    });
+                    if entry.cell {
+                        Some(entry.typ.clone())
+                    } else {
+                        errors.push(not_a_cell());
+                        None
+                    }
+                }
+                Some(ScopeEntry::Function(_)) => {
+                    errors.push(not_a_cell());
+                    None
+                }
+                None => {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::UndefinedVariable { name: cell.clone() },
+                        cell_range.clone(),
+                    ));
+                    None
+                }
+            };
+            let typed_value = typecheck_expr(
+                value,
+                cell_type.as_ref(),
+                forwarded_params,
+                var_env,
+                type_env,
+                registry,
+                annotations,
+                definition_links,
+                asset_references,
+                errors,
+            );
+            let (cell_type, typed_value) = (cell_type?, typed_value?);
+            let value_type = typed_value.typ();
+            if value_type != cell_type {
+                errors.push(TypeError::new(
+                    TypeErrorKind::TypeMismatch {
+                        context: TypeMismatchContext::CellWrite,
+                        expected: cell_type,
+                        found: value_type,
+                    },
+                    value.range().clone(),
+                ));
+                return None;
+            }
+            Some(TypedExpr::CellWrite {
+                cell: cell.clone(),
+                value: Box::new(typed_value),
+            })
+        }
         ParsedExpr::Let { binding, body, .. } => {
             let declared_type = match &binding.var_type {
                 Some(parsed_type) => Some(resolve_type(
@@ -1023,14 +1096,23 @@ pub fn typecheck_expr(
                 (None, Some(typed_value)) => typed_value.typ(),
                 (None, None) => return None,
             };
+            if binding.mutable && binding_type.as_data().is_none() {
+                errors.push(TypeError::new(
+                    TypeErrorKind::CellNotData {
+                        typ: binding_type.clone(),
+                    },
+                    binding.value_expr.range().clone(),
+                ));
+            }
             // On a clash the body is still typechecked, with the name
             // resolving to the existing binding, so that its errors surface
             // and the existing binding is not reported unused.
             let pushed = var_env
-                .push(
+                .bind(
                     binding.var_name.clone(),
                     binding_type.clone(),
                     binding.var_name_range.clone(),
+                    binding.mutable,
                 )
                 .is_ok();
             if pushed {
@@ -1084,8 +1166,15 @@ pub fn typecheck_expr(
             }
             let typed_body = typed_body?;
             let typ = typed_body.typ();
+            if binding.mutable && !typ.renders_html() {
+                errors.push(TypeError::new(
+                    TypeErrorKind::CellOutsideHtml,
+                    binding.var_name_range.clone(),
+                ));
+            }
             Some(TypedExpr::Let {
                 var: binding.var_name.clone(),
+                cell: binding.mutable,
                 value: Box::new(typed_value?),
                 body: Box::new(typed_body),
                 typ,
@@ -1108,6 +1197,7 @@ pub fn typecheck_expr(
             var_name,
             var_name_range,
             source,
+            key,
             body,
             ..
         } => {
@@ -1223,6 +1313,30 @@ pub fn typecheck_expr(
             } else {
                 false
             };
+            let typed_key = key.as_ref().map(|key| {
+                let typed_key = typecheck_expr(
+                    key,
+                    None,
+                    forwarded_params,
+                    var_env,
+                    type_env,
+                    registry,
+                    annotations,
+                    definition_links,
+                    asset_references,
+                    errors,
+                );
+                let typed_key = typed_key?;
+                let key_type = typed_key.typ();
+                if key_type != Type::INT && key_type != Type::STRING {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::KeyTypeMismatch { found: key_type },
+                        key.range().clone(),
+                    ));
+                    return None;
+                }
+                Some(typed_key)
+            });
             var_env.enter(RepeatedBody::Loop);
             let typed_body = typecheck_expr(
                 body,
@@ -1259,9 +1373,14 @@ pub fn typecheck_expr(
                 ));
                 return None;
             }
+            let key = match typed_key {
+                Some(typed_key) => Some(Box::new(typed_key?)),
+                None => None,
+            };
             Some(TypedExpr::For {
                 var_name: var_name.clone(),
                 source: Box::new(typed_source),
+                key,
                 body: Box::new(typed_body),
                 typ: Type::HTML,
             })
@@ -1312,6 +1431,22 @@ pub fn typecheck_expr(
                         range: subject_range.clone(),
                     },
                     typecheck_asset(args, range, asset_references, errors),
+                ),
+                "effects" => (
+                    HoverAnnotation::Effects {
+                        range: subject_range.clone(),
+                    },
+                    typecheck_effects(
+                        args,
+                        forwarded_params,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        errors,
+                    ),
                 ),
                 _ => {
                     errors.push(TypeError::new(
