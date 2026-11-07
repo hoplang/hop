@@ -44,6 +44,10 @@ pub enum IrDataOp {
     ArrayLength(ValueId),
     /// Takes an Array. Produces a Bool.
     ArrayIsEmpty(ValueId),
+    /// Takes an Array and an Int. Produces an Option of the element type,
+    /// which holds the element at that index, or is None when the index is
+    /// negative or not less than the length.
+    ArrayGet(ValueId, ValueId),
     /// Takes a String. Produces a Bool.
     StringIsEmpty(ValueId),
     /// Takes an Option. Produces a Bool.
@@ -103,7 +107,8 @@ impl IrDataOp {
             | IrDataOp::Equals(left, right)
             | IrDataOp::LessThan(left, right)
             | IrDataOp::LessThanOrEqual(left, right)
-            | IrDataOp::ArrayFromRange(left, right) => {
+            | IrDataOp::ArrayFromRange(left, right)
+            | IrDataOp::ArrayGet(left, right) => {
                 f(*left);
                 f(*right);
             }
@@ -152,7 +157,8 @@ impl IrDataOp {
             | IrDataOp::Equals(left, right)
             | IrDataOp::LessThan(left, right)
             | IrDataOp::LessThanOrEqual(left, right)
-            | IrDataOp::ArrayFromRange(left, right) => {
+            | IrDataOp::ArrayFromRange(left, right)
+            | IrDataOp::ArrayGet(left, right) => {
                 f(left);
                 f(right);
             }
@@ -200,6 +206,7 @@ impl fmt::Display for IrDataOp {
             IrDataOp::BoolNegation(operand) => write!(f, "not({operand})"),
             IrDataOp::ArrayLength(operand) => write!(f, "{operand}.len()"),
             IrDataOp::ArrayIsEmpty(operand) => write!(f, "{operand}.is_empty()"),
+            IrDataOp::ArrayGet(array, index) => write!(f, "{array}.get({index})"),
             IrDataOp::StringIsEmpty(operand) => write!(f, "{operand}.is_empty()"),
             IrDataOp::OptionIsSome(operand) => write!(f, "{operand}.is_some()"),
             IrDataOp::OptionIsNone(operand) => write!(f, "{operand}.is_none()"),

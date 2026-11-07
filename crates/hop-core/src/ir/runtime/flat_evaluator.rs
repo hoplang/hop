@@ -614,6 +614,12 @@ fn evaluate_data_op<'a>(
         IrDataOp::BoolNegation(operand) => Value::Bool(!env[operand].as_bool()),
         IrDataOp::ArrayLength(operand) => Value::Int(env[operand].as_array().len() as i32),
         IrDataOp::ArrayIsEmpty(operand) => Value::Bool(env[operand].as_array().is_empty()),
+        IrDataOp::ArrayGet(array, index) => Value::Option(
+            usize::try_from(env[index].as_int())
+                .ok()
+                .and_then(|index| env[array].as_array().get(index))
+                .map(|element| Rc::new(element.clone())),
+        ),
         IrDataOp::StringIsEmpty(operand) => Value::Bool(env[operand].as_str().is_empty()),
         IrDataOp::OptionIsSome(operand) => Value::Bool(env[operand].as_option().is_some()),
         IrDataOp::OptionIsNone(operand) => Value::Bool(env[operand].as_option().is_none()),

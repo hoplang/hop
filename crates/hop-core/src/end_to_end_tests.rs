@@ -8195,6 +8195,142 @@ fn enum_match_with_shorthand_field_destructuring() {
 
 #[test]
 #[ignore]
+fn array_get_in_bounds() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            page Test() {
+              fn body() -> Html {
+                let items: Array[String] = ["a", "b", "c"];
+                <>{items.get(1).unwrap_or("none")}</>
+              }
+            }
+        "#},
+        "b",
+        expect![[r#"
+            -- ir (unoptimized) --
+            page Test() {
+              let v0: String = "a"
+              let v1: String = "b"
+              let v2: String = "c"
+              let v3: Array[String] = [v0, v1, v2]
+              let v4: Int = 1
+              let v5: Option[String] = v3.get(v4)
+              let v12: String = match v5 {
+                Some(v11: String) => {
+                  v11
+                }
+                None => {
+                  let v7: String = "none"
+                  v7
+                }
+              }
+              write_string(v12)
+            }
+            -- ir (optimized) --
+            page Test() {
+              write("b")
+            }
+            -- expected output --
+            b
+            -- eval (unoptimized) --
+            OK
+            -- eval (optimized) --
+            OK
+            -- ts (unoptimized) --
+            OK
+            -- rust (unoptimized) --
+            OK
+            -- ts (optimized) --
+            OK
+            -- rust (optimized) --
+            OK
+        "#]],
+    );
+}
+
+#[test]
+#[ignore]
+fn array_get_out_of_bounds() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            page Test() {
+              fn body() -> Html {
+                let items: Array[String] = ["a", "b"];
+                <>
+                  {for i in -1..=2 {
+                    match items.get(i) {
+                      Some(item) => <>{item}</>,
+                      None => <>-</>,
+                    }
+                  }}
+                </>
+              }
+            }
+        "#},
+        "-ab-",
+        expect![[r#"
+            -- ir (unoptimized) --
+            page Test() {
+              let v0: String = "a"
+              let v1: String = "b"
+              let v2: Array[String] = [v0, v1]
+              let v3: Int = -1
+              let v4: Int = 2
+              let v5: Array[Int] = v3..=v4
+              for v6: Int in v5 {
+                let v7: Option[String] = v2.get(v6)
+                match v7 {
+                  Some(v16: String) => {
+                    write_string(v16)
+                  }
+                  None => {
+                    write("-")
+                  }
+                }
+              }
+            }
+            -- ir (optimized) --
+            page Test() {
+              let v0: String = "a"
+              let v1: String = "b"
+              let v2: Array[String] = [v0, v1]
+              let v3: Int = -1
+              let v4: Int = 2
+              let v5: Array[Int] = v3..=v4
+              for v6: Int in v5 {
+                let v7: Option[String] = v2.get(v6)
+                match v7 {
+                  Some(v16: String) => {
+                    write_string(v16)
+                  }
+                  None => {
+                    write("-")
+                  }
+                }
+              }
+            }
+            -- expected output --
+            -ab-
+            -- eval (unoptimized) --
+            OK
+            -- eval (optimized) --
+            OK
+            -- ts (unoptimized) --
+            OK
+            -- rust (unoptimized) --
+            OK
+            -- ts (optimized) --
+            OK
+            -- rust (optimized) --
+            OK
+        "#]],
+    );
+}
+
+#[test]
+#[ignore]
 fn array_length_simple() {
     check(
         indoc! {r#"

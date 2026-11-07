@@ -144,6 +144,7 @@ impl RustTranspiler {
                 | IrDataOp::BoolNegation(_)
                 | IrDataOp::ArrayLength(_)
                 | IrDataOp::ArrayIsEmpty(_)
+                | IrDataOp::ArrayGet(..)
                 | IrDataOp::StringIsEmpty(_)
                 | IrDataOp::OptionIsSome(_)
                 | IrDataOp::OptionIsNone(_)
@@ -1940,6 +1941,23 @@ impl Transpiler for RustTranspiler {
         arena
             .text(name_ident(array))
             .append(arena.text(".is_empty()"))
+    }
+
+    /// A negative index fails the conversion to `usize`, so it reads as
+    /// out of bounds.
+    fn transpile_array_get<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: ValueId,
+        index: ValueId,
+        _element_type: &'a IrDataType,
+    ) -> Doc<'a> {
+        arena
+            .text("usize::try_from(")
+            .append(self.name_place(arena, index))
+            .append(arena.text(").ok().and_then(|index| "))
+            .append(arena.text(name_ident(array)))
+            .append(arena.text(".get(index)).cloned()"))
     }
 
     fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a> {

@@ -1483,6 +1483,7 @@ pub fn typecheck_expr(
                 (Type::Data(DataType::Option(inner)), "unwrap_or") => {
                     (1, Some(Type::Data(inner.as_ref().clone())))
                 }
+                (Type::Data(DataType::Array(_)), "get") => (1, Some(Type::INT)),
                 _ => (0, None),
             };
             let mut typed_args = Vec::with_capacity(args.len());
@@ -1517,6 +1518,36 @@ pub fn typecheck_expr(
                         array: Box::new(typed_receiver),
                     }),
                 ),
+                (Type::Data(DataType::Array(element)), "get") => {
+                    let typed = match (args.as_slice(), typed_args.pop().flatten()) {
+                        ([index], Some(typed_index)) => {
+                            if typed_index.typ() != Type::INT {
+                                errors.push(TypeError::new(
+                                    TypeErrorKind::TypeMismatch {
+                                        context: TypeMismatchContext::MethodArgument,
+                                        expected: Type::INT,
+                                        found: typed_index.typ(),
+                                    },
+                                    index.range().clone(),
+                                ));
+                                None
+                            } else {
+                                Some(TypedExpr::ArrayGet {
+                                    array: Box::new(typed_receiver),
+                                    index: Box::new(typed_index),
+                                    typ: Type::Data(DataType::Option(element.clone())),
+                                })
+                            }
+                        }
+                        _ => None,
+                    };
+                    (
+                        HoverAnnotation::ArrayGet {
+                            range: method_range.clone(),
+                        },
+                        typed,
+                    )
+                }
                 (Type::Data(DataType::Int), "to_string") => (
                     HoverAnnotation::IntToString {
                         range: method_range.clone(),
@@ -5252,6 +5283,68 @@ mod tests {
             expect![[r#"
                 error: Method 'foo' is not available on type Array[String]
                 items.foo()
+                ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_get_on_array() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("items", Ty::array(Ty::String))],
+            "items.get(0)",
+            expect!["Option[String]"],
+        );
+    }
+
+    #[test]
+    fn accepts_get_chained_with_unwrap_or() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("rows", Ty::array(Ty::array(Ty::Int)))],
+            "rows.get(1).unwrap_or([]).get(2).unwrap_or(0)",
+            expect!["Int"],
+        );
+    }
+
+    #[test]
+    fn rejects_get_with_non_int_index() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("items", Ty::array(Ty::String))],
+            r#"items.get("0")"#,
+            expect![[r#"
+                error: Expected Int got String
+                items.get("0")
+                          ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_get_without_arguments() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("items", Ty::array(Ty::String))],
+            "items.get()",
+            expect![[r#"
+                error: Method 'get' expects 1 argument(s), got 0
+                items.get()
+                ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_get_on_string() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("name", Ty::String)],
+            "name.get(0)",
+            expect![[r#"
+                error: Method 'get' is not available on type String
+                name.get(0)
                 ^^^^^^^^^^^
             "#]],
         );

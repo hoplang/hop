@@ -592,16 +592,17 @@ The built-in methods are listed below. Any other method name, or a different
 number of arguments, is a compile error.
 
 ```
-Receiver    Method         Result   Semantics
-Array[T]    len()          Int      number of elements
-Array[T]    is_empty()     Bool     true if the array has no elements
-String      is_empty()     Bool     true if the string is ""
-Int         to_string()    String   decimal representation, such as -42
-Int         to_float()     Float    the same value as a float (exact, since Int is 32-bit)
-Float       to_int()       Int      truncates toward zero, saturates at the Int bounds, NaN becomes 0
-Option[T]   is_some()      Bool     true if the option is Some(_)
-Option[T]   is_none()      Bool     true if the option is None
-Option[T]   unwrap_or(d)   T        x if the option is Some(x), otherwise d
+Receiver    Method         Result     Semantics
+Array[T]    len()          Int        number of elements
+Array[T]    is_empty()     Bool       true if the array has no elements
+Array[T]    get(i)         Option[T]  Some(x) for the element x at index i, None if i < 0 or i >= len()
+String      is_empty()     Bool       true if the string is ""
+Int         to_string()    String     decimal representation, such as -42
+Int         to_float()     Float      the same value as a float (exact, since Int is 32-bit)
+Float       to_int()       Int        truncates toward zero, saturates at the Int bounds, NaN becomes 0
+Option[T]   is_some()      Bool       true if the option is Some(_)
+Option[T]   is_none()      Bool       true if the option is None
+Option[T]   unwrap_or(d)   T          x if the option is Some(x), otherwise d
 ```
 
 <a id="operator-expressions"></a>
@@ -1813,14 +1814,14 @@ alias        and          as           assert       async        auto
 await        break        case         catch        comp         component
 const        constructor  continue     default      defer        elif
 else         entrypoint   export       extends      final        finally
-from         func         get          if           impl         implements
-include      interface    internal     is           loop         mod
-mut          namespace    new          newtype      nil          not
-null         of           or           out          package      priv
-private      public       return       self         set          static
-struct       super        this         throw        trait        try
-undefined    use          val          var          view         void
-when         where        while        yield
+from         func         if           impl         implements   include
+interface    internal     is           loop         mod          mut
+namespace    new          newtype      nil          not          null
+of           or           out          package      priv         private
+public       return       self         set          static       struct
+super        this         throw        trait        try          undefined
+use          val          var          view         void         when
+where        while        yield
 ```
 
 An `UppercaseIdentifier` that is one of these words is a compile error:

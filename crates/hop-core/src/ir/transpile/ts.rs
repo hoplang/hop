@@ -1406,6 +1406,30 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(".length === 0"))
     }
 
+    fn transpile_array_get<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: ValueId,
+        index: ValueId,
+        element_type: &'a IrDataType,
+    ) -> Doc<'a> {
+        self.needs_option = true;
+        let array = name_ident(array);
+        let index = name_ident(index);
+        let element_type = self.transpile_data_type(arena, element_type);
+        // The element is asserted present, since the bounds check guards it but
+        // `noUncheckedIndexedAccess` would otherwise type it as possibly
+        // undefined.
+        arena
+            .text(format!(
+                "0 <= {index} && {index} < {array}.length ? Option.some<"
+            ))
+            .append(element_type.clone())
+            .append(arena.text(format!(">({array}[{index}]!) : Option.none<")))
+            .append(element_type)
+            .append(arena.text(">()"))
+    }
+
     fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(string))

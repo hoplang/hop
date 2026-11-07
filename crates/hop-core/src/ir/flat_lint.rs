@@ -710,6 +710,15 @@ impl<'a> Checker<'a> {
                 matches!(self.data(*operand)?, Some(IrDataType::Array(_)))
                     && *declared == IrDataType::Bool
             }
+            IrDataOp::ArrayGet(array, index) => {
+                all(&[*index], IrType::INT)?
+                    && match (self.data(*array)?, declared_data) {
+                        (Some(IrDataType::Array(element)), Some(IrDataType::Option(inner))) => {
+                            element == inner
+                        }
+                        _ => false,
+                    }
+            }
             IrDataOp::StringIsEmpty(operand) => {
                 all(&[*operand], IrType::STRING)? && *declared == IrDataType::Bool
             }

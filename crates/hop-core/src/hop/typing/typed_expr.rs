@@ -180,6 +180,13 @@ pub enum TypedExpr {
     /// Array is empty expression, e.g. items.is_empty()
     ArrayIsEmpty { array: Box<Self> },
 
+    /// Array element lookup, e.g. items.get(0).
+    ArrayGet {
+        array: Box<Self>,
+        index: Box<Self>,
+        typ: Type,
+    },
+
     /// String is empty expression, e.g. name.is_empty()
     StringIsEmpty { string: Box<Self> },
 
@@ -307,6 +314,7 @@ impl TypedExpr {
             | TypedExpr::Let { typ, .. }
             | TypedExpr::For { typ, .. }
             | TypedExpr::OptionUnwrapOr { typ, .. }
+            | TypedExpr::ArrayGet { typ, .. }
             | TypedExpr::Lambda { typ, .. }
             | TypedExpr::Apply { typ, .. }
             | TypedExpr::Call { typ, .. } => typ.clone(),
@@ -480,6 +488,7 @@ impl Display for TypedExpr {
             TypedExpr::EffectConcat { parts } => write!(f, "effects!({})", join(parts, ", ")),
             TypedExpr::ArrayLength { array } => write!(f, "{array}.len()"),
             TypedExpr::ArrayIsEmpty { array } => write!(f, "{array}.is_empty()"),
+            TypedExpr::ArrayGet { array, index, .. } => write!(f, "{array}.get({index})"),
             TypedExpr::StringIsEmpty { string } => write!(f, "{string}.is_empty()"),
             TypedExpr::OptionIsSome { option } => write!(f, "{option}.is_some()"),
             TypedExpr::OptionIsNone { option } => write!(f, "{option}.is_none()"),

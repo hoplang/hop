@@ -815,6 +815,23 @@ impl<'a> Evaluator<'a> {
                         }
                         _ => None,
                     },
+                    IrDataOp::ArrayGet(array, index) => {
+                        match (self.values.get(array), self.values.get(index)) {
+                            (
+                                Some(IrDataOp::Array(elements)),
+                                Some(IrDataOp::IntLiteral(index)),
+                            ) => Some(
+                                match usize::try_from(*index)
+                                    .ok()
+                                    .and_then(|index| elements.get(index))
+                                {
+                                    Some(element) => IrDataOp::OptionSome(*element),
+                                    None => IrDataOp::OptionNone,
+                                },
+                            ),
+                            _ => None,
+                        }
+                    }
                     IrDataOp::OptionIsSome(operand) => match self.values.get(operand) {
                         Some(IrDataOp::OptionSome(_)) => Some(IrDataOp::BoolLiteral(true)),
                         Some(IrDataOp::OptionNone) => Some(IrDataOp::BoolLiteral(false)),

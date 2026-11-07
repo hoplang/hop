@@ -725,6 +725,17 @@ impl<'a> FlatBlockBuilder<'a> {
         )
     }
 
+    pub fn array_get(&self, array: ValueId, index: ValueId) -> ValueId {
+        let IrType::Data(IrFunctionDataType::Data(IrDataType::Array(element))) = self.typ(array)
+        else {
+            panic!();
+        };
+        self.push(
+            IrType::option(*element),
+            FlatPureOp::Data(IrDataOp::ArrayGet(array, index)),
+        )
+    }
+
     pub fn string_is_empty(&self, operand: ValueId) -> ValueId {
         self.push(
             IrType::BOOL,

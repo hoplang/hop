@@ -22,6 +22,9 @@ pub enum HoverAnnotation {
     ArrayIsEmpty {
         range: DocumentRange,
     },
+    ArrayGet {
+        range: DocumentRange,
+    },
     StringIsEmpty {
         range: DocumentRange,
     },
@@ -64,6 +67,7 @@ impl HoverAnnotation {
             HoverAnnotation::VarName { range, .. } => range,
             HoverAnnotation::ArrayLength { range } => range,
             HoverAnnotation::ArrayIsEmpty { range } => range,
+            HoverAnnotation::ArrayGet { range } => range,
             HoverAnnotation::StringIsEmpty { range } => range,
             HoverAnnotation::IntToString { range } => range,
             HoverAnnotation::IntToFloat { range } => range,
@@ -105,6 +109,11 @@ impl Display for HoverAnnotation {
                 f,
                 "Array::is_empty() -> Bool",
                 "Returns `true` if the array is empty.",
+            ),
+            HoverAnnotation::ArrayGet { .. } => format_builtin(
+                f,
+                "Array::get(index: Int) -> Option[T]",
+                "Returns the element at `index`, or `None` if `index` is negative or out of bounds.",
             ),
             HoverAnnotation::StringIsEmpty { .. } => format_builtin(
                 f,

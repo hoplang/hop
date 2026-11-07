@@ -359,6 +359,13 @@ pub trait Transpiler {
     ) -> Doc<'a>;
     fn transpile_array_length<'a>(&mut self, arena: &'a Arena<'a>, array: ValueId) -> Doc<'a>;
     fn transpile_array_is_empty<'a>(&mut self, arena: &'a Arena<'a>, array: ValueId) -> Doc<'a>;
+    fn transpile_array_get<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: ValueId,
+        index: ValueId,
+        element_type: &'a IrDataType,
+    ) -> Doc<'a>;
     fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a>;
     fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a>;
     fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a>;
@@ -497,6 +504,12 @@ pub trait Transpiler {
             WriterOp::Data(IrDataOp::ArrayIsEmpty(operand)) => {
                 self.transpile_array_is_empty(arena, *operand)
             }
+            WriterOp::Data(IrDataOp::ArrayGet(array, index)) => match typ {
+                IrType::Data(IrFunctionDataType::Data(IrDataType::Option(element_type))) => {
+                    self.transpile_array_get(arena, *array, *index, element_type)
+                }
+                _ => unreachable!("ArrayGet must produce an Option"),
+            },
             WriterOp::Data(IrDataOp::StringIsEmpty(operand)) => {
                 self.transpile_string_is_empty(arena, *operand)
             }
