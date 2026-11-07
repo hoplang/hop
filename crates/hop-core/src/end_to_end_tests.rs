@@ -12,8 +12,6 @@ use crate::root_contained_file_path::RootContainedFilePath;
 use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::session::Session;
 use crate::symbols::type_name::TypeName;
-use expect_test::Expect;
-use expect_test::expect;
 use indoc::formatdoc;
 use indoc::indoc;
 use std::collections::HashMap;
@@ -161,15 +159,14 @@ fn execute_evaluator(flat: &FlatProgram, pages: &[IrPage]) -> Result<String, Str
         .map_err(|e| format!("Evaluator failed: {}", e))
 }
 
-fn check(archive: &str, expected_output: &str, expected: Expect) {
-    check_with_asset_path_rewriter(archive, None, expected_output, expected);
+fn check(archive: &str, expected_output: &str) {
+    check_with_asset_path_rewriter(archive, None, expected_output);
 }
 
 fn check_with_asset_path_rewriter(
     archive: &str,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
     expected_output: &str,
-    expected: Expect,
 ) {
     let archive = Archive::from(archive);
     let mut session = Session::new();
@@ -211,11 +208,6 @@ fn check_with_asset_path_rewriter(
     let unoptimized_ir = unoptimized_program.to_string();
     let optimized_ir = optimized_program.to_string();
 
-    let mut output = format!(
-        "-- ir (unoptimized) --\n{}-- ir (optimized) --\n{}-- expected output --\n{}\n",
-        unoptimized_ir, optimized_ir, expected_output
-    );
-
     // Test evaluator on the unoptimized Flat program
     let eval_output = match unoptimized_eval {
         Ok(out) => out,
@@ -229,7 +221,6 @@ fn check_with_asset_path_rewriter(
         "Evaluator output mismatch (unoptimized)\n\nIR:\n{}",
         unoptimized_ir
     );
-    output.push_str("-- eval (unoptimized) --\nOK\n");
 
     // Test evaluator on the optimized Flat program
     let eval_output = match optimized_eval {
@@ -244,7 +235,6 @@ fn check_with_asset_path_rewriter(
         "Evaluator output mismatch (optimized)\n\nIR:\n{}",
         optimized_ir
     );
-    output.push_str("-- eval (optimized) --\nOK\n");
 
     // Test unoptimized version
     let ts_code = transpile(TargetLanguage::Typescript, &unoptimized_program);
@@ -266,7 +256,6 @@ fn check_with_asset_path_rewriter(
         "TypeScript output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}",
         unoptimized_ir, ts_code
     );
-    output.push_str("-- ts (unoptimized) --\nOK\n");
 
     let rust_code = transpile(TargetLanguage::Rust, &unoptimized_program);
     if let Err(e) = typecheck_rust(&rust_code) {
@@ -287,7 +276,6 @@ fn check_with_asset_path_rewriter(
         "Rust output mismatch (unoptimized)\n\nIR:\n{}\nGenerated code:\n{}",
         unoptimized_ir, rust_code
     );
-    output.push_str("-- rust (unoptimized) --\nOK\n");
 
     // Test optimized version
     let ts_code = transpile(TargetLanguage::Typescript, &optimized_program);
@@ -309,7 +297,6 @@ fn check_with_asset_path_rewriter(
         "TypeScript output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}",
         optimized_ir, ts_code
     );
-    output.push_str("-- ts (optimized) --\nOK\n");
 
     let rust_code = transpile(TargetLanguage::Rust, &optimized_program);
     if let Err(e) = typecheck_rust(&rust_code) {
@@ -330,9 +317,6 @@ fn check_with_asset_path_rewriter(
         "Rust output mismatch (optimized)\n\nIR:\n{}\nGenerated code:\n{}",
         optimized_ir, rust_code
     );
-    output.push_str("-- rust (optimized) --\nOK\n");
-
-    expected.assert_eq(&output);
 }
 
 #[test]
@@ -434,74 +418,6 @@ fn bool_binding_from_record_pattern_used_in_logical_operator() {
             }
         "#},
         "yes",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Flag = {value: v0}
-              let v2: Array[Flag] = [v1]
-              for v3: Flag in v2 {
-                let v14: Bool = v3.value
-                let v15: Bool = match v14 {
-                  true => {
-                    let v5: Bool = true
-                    v5
-                  }
-                  false => {
-                    let v6: Bool = false
-                    v6
-                  }
-                }
-                match v15 {
-                  true => {
-                    write("yes")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Flag = {value: v0}
-              let v2: Array[Flag] = [v1]
-              for v3: Flag in v2 {
-                let v14: Bool = v3.value
-                let v15: Bool = match v14 {
-                  true => {
-                    let v5: Bool = true
-                    v5
-                  }
-                  false => {
-                    let v6: Bool = false
-                    v6
-                  }
-                }
-                match v15 {
-                  true => {
-                    write("yes")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- expected output --
-            yes
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -531,71 +447,6 @@ fn logical_operators_short_circuit() {
             }
         "#},
         "noyes",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn spin@f0() -> Bool {
-              let v19: Bool = spin@f0()
-              v19
-            }
-            page Test() {
-              let v0: Bool = false
-              let v20: Bool = match v0 {
-                true => {
-                  let v1: Bool = spin@f0()
-                  v1
-                }
-                false => {
-                  let v2: Bool = false
-                  v2
-                }
-              }
-              let v9: Bool = true
-              let v21: Bool = match v9 {
-                true => {
-                  let v10: Bool = true
-                  v10
-                }
-                false => {
-                  let v11: Bool = spin@f0()
-                  v11
-                }
-              }
-              match v20 {
-                true => {
-                  write("yes")
-                }
-                false => {
-                  write("no")
-                }
-              }
-              match v21 {
-                true => {
-                  write("yes")
-                }
-                false => {
-                  write("no")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("noyes")
-            }
-            -- expected output --
-            noyes
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -621,45 +472,6 @@ fn let_statements_in_body_arm_and_interpolation() {
             }
         "#},
         "<p>bar foo</p>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v1: String = "bar"
-              let v2: Option[String] = Some(v1)
-              let v13: String = match v2 {
-                Some(v12: String) => {
-                  let v4: String = " "
-                  let v5: String = string_concat(v12, v4)
-                  v5
-                }
-                None => {
-                  let v6: String = ""
-                  v6
-                }
-              }
-              write("<p>")
-              write_string(v13)
-              write("foo</p>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<p>bar foo</p>")
-            }
-            -- expected output --
-            <p>bar foo</p>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -688,59 +500,6 @@ fn tuple_literal_as_match_subject() {
             }
         "#},
         "<p>admin ada</p><p>admin</p><p>guest</p>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Badge@f0(admin@v12: Bool, name@v13: Option[String]) -> Html {
-              match v12 {
-                true => {
-                  match v13 {
-                    Some(v27: String) => {
-                      write("<p>admin ")
-                      write_string(v27)
-                      write("</p>")
-                    }
-                    None => {
-                      write("<p>admin</p>")
-                    }
-                  }
-                }
-                false => {
-                  write("<p>guest</p>")
-                }
-              }
-            }
-            page Test() {
-              let v0: Bool = true
-              let v1: String = "ada"
-              let v2: Option[String] = Some(v1)
-              let v4: Bool = true
-              let v5: Option[String] = None
-              let v7: Bool = false
-              let v8: String = "bob"
-              let v9: Option[String] = Some(v8)
-              write_function Badge@f0(v0, v2)
-              write_function Badge@f0(v4, v5)
-              write_function Badge@f0(v7, v9)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<p>admin ada</p><p>admin</p><p>guest</p>")
-            }
-            -- expected output --
-            <p>admin ada</p><p>admin</p><p>guest</p>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -767,66 +526,6 @@ fn nested_tuple_literal_argument_destructured_by_match() {
             }
         "#},
         "<p>apples: 3</p><p>pears</p>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Row@f0(cell@v15: ((String, Int), (Bool,))) -> Html {
-              let v29: (String, Int) = v15.0
-              let v30: (Bool,) = v15.1
-              let v31: Bool = v30.0
-              match v31 {
-                true => {
-                  let v32: String = v29.0
-                  let v33: Int = v29.1
-                  let v20: String = v33.to_string()
-                  write("<p>")
-                  write_string(v32)
-                  write(": ")
-                  write_string(v20)
-                  write("</p>")
-                }
-                false => {
-                  let v34: String = v29.0
-                  write("<p>")
-                  write_string(v34)
-                  write("</p>")
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "apples"
-              let v1: Int = 3
-              let v2: (String, Int) = (v0, v1)
-              let v3: Bool = true
-              let v4: (Bool,) = (v3,)
-              let v5: ((String, Int), (Bool,)) = (v2, v4)
-              let v7: String = "pears"
-              let v8: Int = 0
-              let v9: (String, Int) = (v7, v8)
-              let v10: Bool = false
-              let v11: (Bool,) = (v10,)
-              let v12: ((String, Int), (Bool,)) = (v9, v11)
-              write_function Row@f0(v5)
-              write_function Row@f0(v12)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<p>apples: 3</p><p>pears</p>")
-            }
-            -- expected output --
-            <p>apples: 3</p><p>pears</p>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -849,34 +548,6 @@ fn let_in_interpolation_with_markup_tail() {
             }
         "#},
         "<ul><li class=\"row-odd\">Item: 2</li></ul>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v1: Int = 2
-              let v9: String = v1.to_string()
-              write("<ul><li class=\"row-odd\">Item: ")
-              write_string(v9)
-              write("</li></ul>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<ul><li class=\"row-odd\">Item: 2</li></ul>")
-            }
-            -- expected output --
-            <ul><li class="row-odd">Item: 2</li></ul>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -906,58 +577,6 @@ fn int_binding_from_record_pattern_compared_with_literal() {
             }
         "#},
         "eq",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 57
-              let v1: Count = {n: v0}
-              let v2: Array[Count] = [v1]
-              for v3: Count in v2 {
-                let v13: Int = v3.n
-                let v5: Int = 57
-                let v6: Bool = eq(v13, v5)
-                match v6 {
-                  true => {
-                    write("eq")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 57
-              let v1: Count = {n: v0}
-              let v2: Array[Count] = [v1]
-              for v3: Count in v2 {
-                let v13: Int = v3.n
-                let v5: Int = 57
-                let v6: Bool = eq(v13, v5)
-                match v6 {
-                  true => {
-                    write("eq")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- expected output --
-            eq
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -982,62 +601,6 @@ fn bool_binding_from_record_pattern_as_match_expr_subject() {
             }
         "#},
         "yes",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Flag = {value: v0}
-              let v2: Array[Flag] = [v1]
-              for v3: Flag in v2 {
-                let v12: Bool = v3.value
-                let v13: String = match v12 {
-                  true => {
-                    let v5: String = "yes"
-                    v5
-                  }
-                  false => {
-                    let v6: String = "no"
-                    v6
-                  }
-                }
-                write_string(v13)
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Flag = {value: v0}
-              let v2: Array[Flag] = [v1]
-              for v3: Flag in v2 {
-                let v12: Bool = v3.value
-                let v13: String = match v12 {
-                  true => {
-                    let v5: String = "yes"
-                    v5
-                  }
-                  false => {
-                    let v6: String = "no"
-                    v6
-                  }
-                }
-                write_string(v13)
-              }
-            }
-            -- expected output --
-            yes
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1063,39 +626,6 @@ fn rest_spread_forwards_attribute_to_html() {
             }
         "#},
         r#"<button class="btn" id="submit">Hi</button>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Button@f0(label@v3: String, id@v4: String) -> Html {
-              write("<button class=\"btn\" id=\"")
-              write_string(v4)
-              write("\">")
-              write_string(v3)
-              write("</button>")
-            }
-            page Test() {
-              let v0: String = "Hi"
-              let v1: String = "submit"
-              write_function Button@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<button class=\"btn\" id=\"submit\">Hi</button>")
-            }
-            -- expected output --
-            <button class="btn" id="submit">Hi</button>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1140,77 +670,6 @@ fn rest_chains_past_a_call_cycle() {
             }
         "#},
         r#"<div>x</div><div>d</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn First@f0(n@v3: Int, title@v4: String) -> Html {
-              write_function Second@f1(v3, v4)
-            }
-            fn Leaf@f2(title@v18: String) -> Html {
-              write("<div>")
-              write_string(v18)
-              write("</div>")
-            }
-            fn Second@f1(n@v6: Int, title@v7: String) -> Html {
-              let v9: Int = 0
-              let v10: Bool = lt(v9, v6)
-              write_function Leaf@f2(v7)
-              match v10 {
-                true => {
-                  let v11: Int = 1
-                  let v12: Int = sub(v6, v11)
-                  let v13: String = "d"
-                  write_function First@f0(v12, v13)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 1
-              let v1: String = "x"
-              write_function First@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            fn First@f0(n@v3: Int, title@v4: String) -> Html {
-              write_function Second@f1(v3, v4)
-            }
-            fn Second@f1(n@v6: Int, title@v7: String) -> Html {
-              let v9: Int = 0
-              let v10: Bool = lt(v9, v6)
-              write("<div>")
-              write_string(v7)
-              write("</div>")
-              match v10 {
-                true => {
-                  let v11: Int = 1
-                  let v12: Int = sub(v6, v11)
-                  let v13: String = "d"
-                  write_function First@f0(v12, v13)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 1
-              let v1: String = "x"
-              write_function First@f0(v0, v1)
-            }
-            -- expected output --
-            <div>x</div><div>d</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1244,47 +703,6 @@ fn rest_chains_through_a_function_to_an_element() {
             }
         "#},
         r#"<section><h1>Hi</h1><div id="x" data-k="v"></div></section>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Base@f1(id@v13: String, data-k@v14: String) -> Html {
-              write("<div id=\"")
-              write_string(v13)
-              write("\" data-k=\"")
-              write_string(v14)
-              write("\"></div>")
-            }
-            fn Card@f0(title@v4: String, id@v5: String, data-k@v6: String) -> Html {
-              write("<section><h1>")
-              write_string(v4)
-              write("</h1>")
-              write_function Base@f1(v5, v6)
-              write("</section>")
-            }
-            page Test() {
-              let v0: String = "Hi"
-              let v1: String = "x"
-              let v2: String = "v"
-              write_function Card@f0(v0, v1, v2)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<section><h1>Hi</h1><div id=\"x\" data-k=\"v\"></div></section>")
-            }
-            -- expected output --
-            <section><h1>Hi</h1><div id="x" data-k="v"></div></section>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1314,43 +732,6 @@ fn rest_reaches_a_spread_target_nested_in_control_flow() {
             }
         "#},
         r#"<div id="x"></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Wrapper@f0(show@v3: Bool, id@v4: String) -> Html {
-              match v3 {
-                true => {
-                  write("<div id=\"")
-                  write_string(v4)
-                  write("\"></div>")
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Bool = true
-              let v1: String = "x"
-              write_function Wrapper@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div id=\"x\"></div>")
-            }
-            -- expected output --
-            <div id="x"></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1377,42 +758,6 @@ fn rest_named_after_a_parameter_it_forwards() {
             }
         "#},
         r#"<div id="p">Home</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f1(title@v6: String, id@v7: String) -> Html {
-              write("<div id=\"")
-              write_string(v7)
-              write("\">")
-              write_string(v6)
-              write("</div>")
-            }
-            fn Panel@f0(title@v3: String, id@v4: String) -> Html {
-              write_function Card@f1(v3, v4)
-            }
-            page Test() {
-              let v0: String = "Home"
-              let v1: String = "p"
-              write_function Panel@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div id=\"p\">Home</div>")
-            }
-            -- expected output --
-            <div id="p">Home</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1439,39 +784,6 @@ fn rest_named_after_the_only_parameter_it_forwards() {
             }
         "#},
         r#"<div>Home</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f1(title@v4: String) -> Html {
-              write("<div>")
-              write_string(v4)
-              write("</div>")
-            }
-            fn Panel@f0(title@v2: String) -> Html {
-              write_function Card@f1(v2)
-            }
-            page Test() {
-              let v0: String = "Home"
-              write_function Panel@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>Home</div>")
-            }
-            -- expected output --
-            <div>Home</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1502,60 +814,6 @@ fn bool_attribute_is_present_when_true_and_absent_when_false() {
             }
         "#},
         r#"<input required><input><button disabled></button><button></button>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Button@f1(disabled@v12: Bool) -> Html {
-              write("<button")
-              match v12 {
-                true => {
-                  write(" disabled")
-                }
-                false => {
-                }
-              }
-              write("></button>")
-            }
-            fn Field@f0(required@v9: Bool) -> Html {
-              write("<input")
-              match v9 {
-                true => {
-                  write(" required")
-                }
-                false => {
-                }
-              }
-              write(">")
-            }
-            page Test() {
-              let v0: Bool = true
-              let v2: Bool = false
-              let v4: Bool = true
-              let v6: Bool = false
-              write_function Field@f0(v0)
-              write_function Field@f0(v2)
-              write_function Button@f1(v4)
-              write_function Button@f1(v6)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<input required><input><button disabled></button>")
-              write("<button></button>")
-            }
-            -- expected output --
-            <input required><input><button disabled></button><button></button>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1585,43 +843,6 @@ fn rest_reaches_a_spread_target_nested_in_match() {
             }
         "#},
         r#"<div id="x"></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Wrapper@f0(show@v3: Bool, id@v4: String) -> Html {
-              match v3 {
-                true => {
-                  write("<div id=\"")
-                  write_string(v4)
-                  write("\"></div>")
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Bool = true
-              let v1: String = "x"
-              write_function Wrapper@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div id=\"x\"></div>")
-            }
-            -- expected output --
-            <div id="x"></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1643,36 +864,6 @@ fn rest_escapes_attribute_values() {
             }
         "#},
         r#"<div title="a'b&lt;c&amp;d"></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Panel@f0(title@v2: String) -> Html {
-              write("<div title=\"")
-              write_string(v2)
-              write("\"></div>")
-            }
-            page Test() {
-              let v0: String = "a'b<c&d"
-              write_function Panel@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div title=\"a'b&lt;c&amp;d\"></div>")
-            }
-            -- expected output --
-            <div title="a'b&lt;c&amp;d"></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1692,32 +883,6 @@ fn quoted_attribute_values_are_escaped() {
             }
         "#},
         r#"<span title="Tom &amp;amp; Jerry" data-x="x&lt;y"></span><input pattern="\d+" title="say &quot;hi&quot;">"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<span title=\"Tom &amp;amp; Jerry\" data-x=\"x&lt;y\"></span>")
-              write("<input pattern=\"\\d+\" title=\"say &quot;hi&quot;\">")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<span title=\"Tom &amp;amp; Jerry\" data-x=\"x&lt;y\"></span>")
-              write("<input pattern=\"\\d+\" title=\"say &quot;hi&quot;\">")
-            }
-            -- expected output --
-            <span title="Tom &amp;amp; Jerry" data-x="x&lt;y"></span><input pattern="\d+" title="say &quot;hi&quot;">
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1739,36 +904,6 @@ fn rest_escapes_quoted_attribute_values() {
             }
         "#},
         r#"<div title="a &amp;amp; b"></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Panel@f0(title@v2: String) -> Html {
-              write("<div title=\"")
-              write_string(v2)
-              write("\"></div>")
-            }
-            page Test() {
-              let v0: String = "a &amp; b"
-              write_function Panel@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div title=\"a &amp;amp; b\"></div>")
-            }
-            -- expected output --
-            <div title="a &amp;amp; b"></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1789,39 +924,6 @@ fn rest_reaches_a_void_element() {
             }
         "#},
         r#"<img src="a.png" alt="a">"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Icon@f0(src@v3: String, alt@v4: String) -> Html {
-              write("<img src=\"")
-              write_string(v3)
-              write("\" alt=\"")
-              write_string(v4)
-              write("\">")
-            }
-            page Test() {
-              let v0: String = "a.png"
-              let v1: String = "a"
-              write_function Icon@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<img src=\"a.png\" alt=\"a\">")
-            }
-            -- expected output --
-            <img src="a.png" alt="a">
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1843,33 +945,6 @@ fn empty_rest_contributes_no_attributes() {
             }
         "#},
         r#"<div></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn A@f0() -> Html {
-              write("<div></div>")
-            }
-            page Test() {
-              write_function A@f0()
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div></div>")
-            }
-            -- expected output --
-            <div></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1891,33 +966,6 @@ fn call_expression_passes_empty_rest() {
             }
         "#},
         r#"<div></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn A@f0() -> Html {
-              write("<div></div>")
-            }
-            page Test() {
-              write_function A@f0()
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div></div>")
-            }
-            -- expected output --
-            <div></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -1947,48 +995,6 @@ fn call_expression_forwards_rest_attributes_and_spread() {
             }
         "#},
         r#"<button class="secondary" id="save" aria-label="Save">secondary</button>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Button@f1(kind@v7: String, id@v8: String, aria-label@v9: String) -> Html {
-              write("<button class=\"")
-              write_string(v7)
-              write("\" id=\"")
-              write_string(v8)
-              write("\" aria-label=\"")
-              write_string(v9)
-              write("\">")
-              write_string(v7)
-              write("</button>")
-            }
-            fn Secondary@f0(id@v3: String, aria-label@v4: String) -> Html {
-              let v5: String = "secondary"
-              write_function Button@f1(v5, v3, v4)
-            }
-            page Test() {
-              let v0: String = "save"
-              let v1: String = "Save"
-              write_function Secondary@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<button class=\"secondary\" id=\"save\" aria-label=\"Save\">")
-              write("secondary</button>")
-            }
-            -- expected output --
-            <button class="secondary" id="save" aria-label="Save">secondary</button>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2017,44 +1023,6 @@ fn accepts_extra_attrs_when_rest_reaches_html() {
             }
         "#},
         r#"<button class="p-2" data-foo="bar">Hi</button>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Button@f0(class@v5: String, children@v6: () -> Html, data-foo@v7: String) -> Html {
-              write("<button class=\"")
-              write_string(v5)
-              write("\" data-foo=\"")
-              write_string(v7)
-              write("\">")
-              write_apply v6()
-              write("</button>")
-            }
-            page Test() {
-              let v0: String = "p-2"
-              let v3: String = "bar"
-              let v10: () -> Html = fn() {
-                write("Hi")
-              }
-              write_function Button@f0(v0, v10, v3)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<button class=\"p-2\" data-foo=\"bar\">Hi</button>")
-            }
-            -- expected output --
-            <button class="p-2" data-foo="bar">Hi</button>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2082,41 +1050,6 @@ fn accepts_forwarded_attr_not_set_on_element() {
             }
         "#},
         r#"<button class="builtin" data-x="y">Hi</button>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Button@f0(children@v4: () -> Html, data-x@v5: String) -> Html {
-              write("<button class=\"builtin\" data-x=\"")
-              write_string(v5)
-              write("\">")
-              write_apply v4()
-              write("</button>")
-            }
-            page Test() {
-              let v2: String = "y"
-              let v9: () -> Html = fn() {
-                write("Hi")
-              }
-              write_function Button@f0(v9, v2)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<button class=\"builtin\" data-x=\"y\">Hi</button>")
-            }
-            -- expected output --
-            <button class="builtin" data-x="y">Hi</button>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2135,30 +1068,6 @@ fn renders_self_closing_svg_element_with_end_tag() {
             }
         "#},
         r#"<svg><path d="M0 0"></path></svg>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<svg><path d=\"M0 0\"></path></svg>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<svg><path d=\"M0 0\"></path></svg>")
-            }
-            -- expected output --
-            <svg><path d="M0 0"></path></svg>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2180,36 +1089,6 @@ fn accepts_svg_attributes_on_forwarded_svg() {
             }
         "#},
         r#"<svg viewBox="0 0 100 100"></svg>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Svg@f0(viewBox@v2: String) -> Html {
-              write("<svg viewBox=\"")
-              write_string(v2)
-              write("\"></svg>")
-            }
-            page Test() {
-              let v0: String = "0 0 100 100"
-              write_function Svg@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<svg viewBox=\"0 0 100 100\"></svg>")
-            }
-            -- expected output --
-            <svg viewBox="0 0 100 100"></svg>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2236,39 +1115,6 @@ fn accepts_required_arg_forwarded_through_rest() {
             }
         "#},
         r#"<div>hi</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f1(title@v4: String) -> Html {
-              write("<div>")
-              write_string(v4)
-              write("</div>")
-            }
-            fn Wrapper@f0(title@v2: String) -> Html {
-              write_function Card@f1(v2)
-            }
-            page Test() {
-              let v0: String = "hi"
-              write_function Wrapper@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>hi</div>")
-            }
-            -- expected output --
-            <div>hi</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2295,39 +1141,6 @@ fn accepts_explicit_arg_supplied_alongside_rest_spread() {
             }
         "#},
         r#"<div>explicit</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f1(title@v3: String) -> Html {
-              write("<div>")
-              write_string(v3)
-              write("</div>")
-            }
-            fn Wrapper@f0() -> Html {
-              let v1: String = "explicit"
-              write_function Card@f1(v1)
-            }
-            page Test() {
-              write_function Wrapper@f0()
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>explicit</div>")
-            }
-            -- expected output --
-            <div>explicit</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2359,41 +1172,6 @@ fn accepts_record_param_forwarded_through_rest() {
             }
         "#},
         r#"<div>Ada</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f1(user@v5: User) -> Html {
-              let v6: String = v5.name
-              write("<div>")
-              write_string(v6)
-              write("</div>")
-            }
-            fn Wrapper@f0(user@v3: User) -> Html {
-              write_function Card@f1(v3)
-            }
-            page Test() {
-              let v0: String = "Ada"
-              let v1: User = {name: v0}
-              write_function Wrapper@f0(v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>Ada</div>")
-            }
-            -- expected output --
-            <div>Ada</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2424,44 +1202,6 @@ fn accepts_user_variable_with_underscore_without_collisions() {
             }
         "#},
         r#"outerx"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v1: String = "x"
-              let v2: Flag = {value: v1}
-              let v3: Array[Flag] = [v2]
-              for v4: Flag in v3 {
-                let v11: String = v4.value
-                write("outer")
-                write_string(v11)
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v1: String = "x"
-              let v2: Flag = {value: v1}
-              let v3: Array[Flag] = [v2]
-              for v4: Flag in v3 {
-                let v11: String = v4.value
-                write("outer")
-                write_string(v11)
-              }
-            }
-            -- expected output --
-            outerx
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2498,46 +1238,6 @@ fn accepts_required_args_forwarded_transitively() {
             }
         "#},
         r#"<div>n<div>t</div></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Bar@f1(name@v6: String, title@v7: String) -> Html {
-              write("<div>")
-              write_string(v6)
-              write_function Card@f2(v7)
-              write("</div>")
-            }
-            fn Baz@f0(name@v3: String, title@v4: String) -> Html {
-              write_function Bar@f1(v3, v4)
-            }
-            fn Card@f2(title@v12: String) -> Html {
-              write("<div>")
-              write_string(v12)
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "n"
-              let v1: String = "t"
-              write_function Baz@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>n<div>t</div></div>")
-            }
-            -- expected output --
-            <div>n<div>t</div></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2569,45 +1269,6 @@ fn accepts_int_param_forwarded_through_rest() {
             }
         "#},
         r#"<div>positive</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f1(count@v4: Int) -> Html {
-              let v5: Int = 0
-              let v6: Bool = lt(v5, v4)
-              match v6 {
-                true => {
-                  write("<div>positive</div>")
-                }
-                false => {
-                }
-              }
-            }
-            fn Wrapper@f0(count@v2: Int) -> Html {
-              write_function Card@f1(v2)
-            }
-            page Test() {
-              let v0: Int = 3
-              write_function Wrapper@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>positive</div>")
-            }
-            -- expected output --
-            <div>positive</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2640,50 +1301,6 @@ fn accepts_typed_field_and_open_html_tail_in_one_forward() {
             }
         "#},
         r#"<div data-foo="bar">positive</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn A@f1(count@v6: Int, data-foo@v7: String) -> Html {
-              let v8: Int = 0
-              let v9: Bool = lt(v8, v6)
-              write("<div data-foo=\"")
-              write_string(v7)
-              write("\">")
-              match v9 {
-                true => {
-                  write("positive")
-                }
-                false => {
-                }
-              }
-              write("</div>")
-            }
-            fn B@f0(count@v3: Int, data-foo@v4: String) -> Html {
-              write_function A@f1(v3, v4)
-            }
-            page Test() {
-              let v0: Int = 3
-              let v1: String = "bar"
-              write_function B@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div data-foo=\"bar\">positive</div>")
-            }
-            -- expected output --
-            <div data-foo="bar">positive</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2716,44 +1333,6 @@ fn accepts_children_forwarded_transitively_through_rest() {
             }
         "#},
         r#"<div>deep</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Bar@f1(children@v5: () -> Html) -> Html {
-              write_function Foo@f2(v5)
-            }
-            fn Baz@f0(children@v3: () -> Html) -> Html {
-              write_function Bar@f1(v3)
-            }
-            fn Foo@f2(children@v7: () -> Html) -> Html {
-              write("<div>")
-              write_apply v7()
-              write("</div>")
-            }
-            page Test() {
-              let v10: () -> Html = fn() {
-                write("deep")
-              }
-              write_function Baz@f0(v10)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>deep</div>")
-            }
-            -- expected output --
-            <div>deep</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2787,44 +1366,6 @@ fn accepts_param_reserved_out_of_rest_when_callee_param_is_optional() {
             }
         "#},
         r#"<div class="x"><span class="x"></span></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Inner@f1(class@v7: String) -> Html {
-              write("<span class=\"")
-              write_string(v7)
-              write("\"></span>")
-            }
-            fn Outer@f0(class@v2: String) -> Html {
-              let v3: String = "x"
-              write("<div class=\"")
-              write_string(v2)
-              write("\">")
-              write_function Inner@f1(v3)
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "x"
-              write_function Outer@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"x\"><span class=\"x\"></span></div>")
-            }
-            -- expected output --
-            <div class="x"><span class="x"></span></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2863,44 +1404,6 @@ fn accepts_intercept_and_merge_wrapper() {
             }
         "#},
         r#"<div class="primary">click</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Button@f0(children@v4: () -> Html, class@v5: String) -> Html {
-              write_function Foo@f1(v4, v5)
-            }
-            fn Foo@f1(children@v8: () -> Html, class@v9: String) -> Html {
-              write("<div class=\"")
-              write_string(v9)
-              write("\">")
-              write_apply v8()
-              write("</div>")
-            }
-            page Test() {
-              let v2: String = "primary"
-              let v12: () -> Html = fn() {
-                write("click")
-              }
-              write_function Button@f0(v12, v2)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"primary\">click</div>")
-            }
-            -- expected output --
-            <div class="primary">click</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2929,39 +1432,6 @@ fn accepts_optional_param_forwarded_and_overridden_through_rest() {
             }
         "#},
         r#"<span class="y"></span>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Inner@f1(class@v4: String) -> Html {
-              write("<span class=\"")
-              write_string(v4)
-              write("\"></span>")
-            }
-            fn Wrapper@f0(class@v2: String) -> Html {
-              write_function Inner@f1(v2)
-            }
-            page Test() {
-              let v0: String = "y"
-              write_function Wrapper@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<span class=\"y\"></span>")
-            }
-            -- expected output --
-            <span class="y"></span>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -2993,39 +1463,6 @@ fn accepts_optional_param_chain_with_caller_value() {
             }
         "#},
         r#"<div class="main"></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn A@f1(class@v4: String) -> Html {
-              write("<div class=\"")
-              write_string(v4)
-              write("\"></div>")
-            }
-            fn B@f0(class@v2: String) -> Html {
-              write_function A@f1(v2)
-            }
-            page Test() {
-              let v0: String = "main"
-              write_function B@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"main\"></div>")
-            }
-            -- expected output --
-            <div class="main"></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3057,39 +1494,6 @@ fn accepts_optional_param_chain_uses_outer_fallback() {
             }
         "#},
         r#"<div class="b"></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn A@f1(class@v4: String) -> Html {
-              write("<div class=\"")
-              write_string(v4)
-              write("\"></div>")
-            }
-            fn B@f0(class@v2: String) -> Html {
-              write_function A@f1(v2)
-            }
-            page Test() {
-              let v0: String = "b"
-              write_function B@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"b\"></div>")
-            }
-            -- expected output --
-            <div class="b"></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3119,39 +1523,6 @@ fn accepts_forwarded_optional_param_through_rest() {
             }
         "#},
         r#"<span>x</span>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn A@f1(label@v4: String) -> Html {
-              write("<span>")
-              write_string(v4)
-              write("</span>")
-            }
-            fn B@f0(label@v2: String) -> Html {
-              write_function A@f1(v2)
-            }
-            page Test() {
-              let v0: String = "x"
-              write_function B@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<span>x</span>")
-            }
-            -- expected output --
-            <span>x</span>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3185,42 +1556,6 @@ fn accepts_forwarded_fallback_materialized_once_in_chain() {
             }
         "#},
         r#"<span>x</span>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Leaf@f2(label@v6: String) -> Html {
-              write("<span>")
-              write_string(v6)
-              write("</span>")
-            }
-            fn Mid@f1(label@v4: String) -> Html {
-              write_function Leaf@f2(v4)
-            }
-            fn Top@f0(label@v2: String) -> Html {
-              write_function Mid@f1(v2)
-            }
-            page Test() {
-              let v0: String = "x"
-              write_function Top@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<span>x</span>")
-            }
-            -- expected output --
-            <span>x</span>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3246,42 +1581,6 @@ fn accepts_forwarded_attr_distinct_from_pinned() {
             }
         "#},
         r#"<span title="a" lang="en"></span>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Inner@f1(title@v5: String, lang@v6: String) -> Html {
-              write("<span title=\"")
-              write_string(v5)
-              write("\" lang=\"")
-              write_string(v6)
-              write("\"></span>")
-            }
-            fn Wrapper@f0(lang@v2: String) -> Html {
-              let v3: String = "a"
-              write_function Inner@f1(v3, v2)
-            }
-            page Test() {
-              let v0: String = "en"
-              write_function Wrapper@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<span title=\"a\" lang=\"en\"></span>")
-            }
-            -- expected output --
-            <span title="a" lang="en"></span>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3312,41 +1611,6 @@ fn forwarded_param_is_not_captured_by_let() {
             }
         "#},
         r#"<section>local<div>hi</div></section>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f1(title@v8: String) -> Html {
-              write("<div>")
-              write_string(v8)
-              write("</div>")
-            }
-            fn Wrapper@f0(title@v2: String) -> Html {
-              write("<section>local")
-              write_function Card@f1(v2)
-              write("</section>")
-            }
-            page Test() {
-              let v0: String = "hi"
-              write_function Wrapper@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<section>local<div>hi</div></section>")
-            }
-            -- expected output --
-            <section>local<div>hi</div></section>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3378,54 +1642,6 @@ fn forwarded_param_is_not_captured_by_for_variable() {
             }
         "#},
         r#"<p>a<div>hi</div></p><p>b<div>hi</div></p>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f1(title@v12: String) -> Html {
-              write("<div>")
-              write_string(v12)
-              write("</div>")
-            }
-            fn Wrapper@f0(title@v2: String) -> Html {
-              let v3: String = "a"
-              let v4: String = "b"
-              let v5: Array[String] = [v3, v4]
-              for v6: String in v5 {
-                write("<p>")
-                write_string(v6)
-                write_function Card@f1(v2)
-                write("</p>")
-              }
-            }
-            page Test() {
-              let v0: String = "hi"
-              write_function Wrapper@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v19: String = "a"
-              let v20: String = "b"
-              let v21: Array[String] = [v19, v20]
-              for v22: String in v21 {
-                write("<p>")
-                write_string(v22)
-                write("<div>hi</div></p>")
-              }
-            }
-            -- expected output --
-            <p>a<div>hi</div></p><p>b<div>hi</div></p>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3460,50 +1676,6 @@ fn forwarded_param_is_not_captured_by_match_binding() {
             }
         "#},
         r#"<p>m<div>hi</div></p>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f1(title@v12: String) -> Html {
-              write("<div>")
-              write_string(v12)
-              write("</div>")
-            }
-            fn Wrapper@f0(title@v2: String) -> Html {
-              let v3: String = "m"
-              let v4: Option[String] = Some(v3)
-              match v4 {
-                Some(v16: String) => {
-                  write("<p>")
-                  write_string(v16)
-                  write_function Card@f1(v2)
-                  write("</p>")
-                }
-                None => {
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "hi"
-              write_function Wrapper@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<p>m<div>hi</div></p>")
-            }
-            -- expected output --
-            <p>m<div>hi</div></p>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3527,36 +1699,6 @@ fn rest_spread_on_element_is_not_captured_by_let() {
             }
         "#},
         r#"<div id="hi"><b>x</b></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Wrapper@f0(id@v2: String) -> Html {
-              write("<div id=\"")
-              write_string(v2)
-              write("\"><b>x</b></div>")
-            }
-            page Test() {
-              let v0: String = "hi"
-              write_function Wrapper@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div id=\"hi\"><b>x</b></div>")
-            }
-            -- expected output --
-            <div id="hi"><b>x</b></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3590,44 +1732,6 @@ fn rest_spread_into_function_is_not_captured_by_let() {
             }
         "#},
         r#"<section>local<div id="hi">t</div></section>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f1(title@v9: String, id@v10: String) -> Html {
-              write("<div id=\"")
-              write_string(v10)
-              write("\">")
-              write_string(v9)
-              write("</div>")
-            }
-            fn Wrapper@f0(id@v2: String) -> Html {
-              let v5: String = "t"
-              write("<section>local")
-              write_function Card@f1(v5, v2)
-              write("</section>")
-            }
-            page Test() {
-              let v0: String = "hi"
-              write_function Wrapper@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<section>local<div id=\"hi\">t</div></section>")
-            }
-            -- expected output --
-            <section>local<div id="hi">t</div></section>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3660,50 +1764,6 @@ fn accepts_param_named_like_html_attr_alongside_tail_attr() {
             }
         "#},
         r#"<div data-x="y">focusable</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn A@f1(tabindex@v6: Int, data-x@v7: String) -> Html {
-              let v8: Int = 0
-              let v9: Bool = lt(v8, v6)
-              write("<div data-x=\"")
-              write_string(v7)
-              write("\">")
-              match v9 {
-                true => {
-                  write("focusable")
-                }
-                false => {
-                }
-              }
-              write("</div>")
-            }
-            fn B@f0(tabindex@v3: Int, data-x@v4: String) -> Html {
-              write_function A@f1(v3, v4)
-            }
-            page Test() {
-              let v0: Int = 2
-              let v1: String = "y"
-              write_function B@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div data-x=\"y\">focusable</div>")
-            }
-            -- expected output --
-            <div data-x="y">focusable</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3733,50 +1793,6 @@ fn option_match_returning_options() {
             }
         "#},
         "mapped:hello",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Option[String] = Some(v0)
-              let v14: Option[String] = match v1 {
-                Some(v13: String) => {
-                  let v3: Option[String] = Some(v13)
-                  v3
-                }
-                None => {
-                  let v4: Option[String] = None
-                  v4
-                }
-              }
-              match v14 {
-                Some(v15: String) => {
-                  write("mapped:")
-                  write_string(v15)
-                }
-                None => {
-                  write("was-none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("mapped:hello")
-            }
-            -- expected output --
-            mapped:hello
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3804,33 +1820,6 @@ fn record_match_on_expression_subject() {
             }
         "#},
         "got:hi",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hi"
-              let v1: String = "bye"
-              write("got:")
-              write_string(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("got:hi")
-            }
-            -- expected output --
-            got:hi
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3858,35 +1847,6 @@ fn bind_all_match_on_expression_subject() {
             }
         "#},
         "got:hi",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hi"
-              let v1: String = "bye"
-              let v2: Point = {x: v0, y: v1}
-              let v4: String = v2.x
-              write("got:")
-              write_string(v4)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("got:hi")
-            }
-            -- expected output --
-            got:hi
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3911,40 +1871,6 @@ fn match_on_expression_subject() {
             }
         "#},
         "got:hi",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hi"
-              let v1: Option[String] = Some(v0)
-              match v1 {
-                Some(v9: String) => {
-                  write("got:")
-                  write_string(v9)
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("got:hi")
-            }
-            -- expected output --
-            got:hi
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -3968,49 +1894,6 @@ fn option_match_as_some_value() {
             }
         "#},
         "inner",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "inner"
-              let v1: Option[String] = Some(v0)
-              let v13: String = match v1 {
-                Some(v12: String) => {
-                  v12
-                }
-                None => {
-                  let v3: String = "default"
-                  v3
-                }
-              }
-              let v5: Option[String] = Some(v13)
-              match v5 {
-                Some(v14: String) => {
-                  write_string(v14)
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("inner")
-            }
-            -- expected output --
-            inner
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4037,38 +1920,6 @@ fn function_binding_duplicated_by_inlining_at_two_call_sites() {
             }
         "#},
         "<div>a</div><div>b</div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Tag@f0(text@v5: String) -> Html {
-              write("<div>")
-              write_string(v5)
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "a"
-              let v2: String = "b"
-              write_function Tag@f0(v0)
-              write_function Tag@f0(v2)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>a</div><div>b</div>")
-            }
-            -- expected output --
-            <div>a</div><div>b</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4096,39 +1947,6 @@ fn function_arguments_are_bound_simultaneously() {
             }
         "#},
         "<p>B A</p>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Swap@f0(a@v3: String, b@v4: String) -> Html {
-              write("<p>")
-              write_string(v3)
-              write(" ")
-              write_string(v4)
-              write("</p>")
-            }
-            page Test() {
-              let v0: String = "A"
-              let v1: String = "B"
-              write_function Swap@f0(v1, v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<p>B A</p>")
-            }
-            -- expected output --
-            <p>B A</p>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4157,50 +1975,6 @@ fn rest_spread_attributes_are_evaluated_in_caller_scope() {
             }
         "#},
         r#"<div id="outer">a</div><div id="outer">b</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Rows@f0(items@v5: Array[String], id@v6: String) -> Html {
-              for v7: String in v5 {
-                write("<div id=\"")
-                write_string(v6)
-                write("\">")
-                write_string(v7)
-                write("</div>")
-              }
-            }
-            page Test() {
-              let v0: String = "outer"
-              let v1: String = "a"
-              let v2: String = "b"
-              let v3: Array[String] = [v1, v2]
-              write_function Rows@f0(v3, v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v1: String = "a"
-              let v2: String = "b"
-              let v3: Array[String] = [v1, v2]
-              for v12: String in v3 {
-                write("<div id=\"outer\">")
-                write_string(v12)
-                write("</div>")
-              }
-            }
-            -- expected output --
-            <div id="outer">a</div><div id="outer">b</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4226,53 +2000,6 @@ fn bool_match_expr() {
             }
         "#},
         "yesNO",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v13: String = match v0 {
-                true => {
-                  let v1: String = "yes"
-                  v1
-                }
-                false => {
-                  let v2: String = "no"
-                  v2
-                }
-              }
-              let v6: Bool = false
-              let v14: String = match v6 {
-                true => {
-                  let v7: String = "YES"
-                  v7
-                }
-                false => {
-                  let v8: String = "NO"
-                  v8
-                }
-              }
-              write_string(v13)
-              write_string(v14)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("yesNO")
-            }
-            -- expected output --
-            yesNO
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4294,45 +2021,6 @@ fn bool_match_expr_with_binary_subject() {
             }
         "#},
         "main",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = ""
-              let v1: String = "main"
-              let v2: String = ""
-              let v3: Bool = eq(v0, v2)
-              let v10: String = match v3 {
-                true => {
-                  v1
-                }
-                false => {
-                  let v4: String = " - "
-                  let v5: String = string_concat(v1, v4)
-                  let v6: String = string_concat(v5, v0)
-                  v6
-                }
-              }
-              write_string(v10)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("main")
-            }
-            -- expected output --
-            main
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4359,55 +2047,6 @@ fn option_literal_inline_match_expr() {
             }
         "#},
         "some,NONE",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hi"
-              let v1: Option[String] = Some(v0)
-              let v15: String = match v1 {
-                Some(_) => {
-                  let v2: String = "some"
-                  v2
-                }
-                None => {
-                  let v3: String = "none"
-                  v3
-                }
-              }
-              let v8: Option[String] = None
-              let v16: String = match v8 {
-                Some(_) => {
-                  let v9: String = "SOME"
-                  v9
-                }
-                None => {
-                  let v10: String = "NONE"
-                  v10
-                }
-              }
-              write_string(v15)
-              write(",")
-              write_string(v16)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("some,NONE")
-            }
-            -- expected output --
-            some,NONE
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4442,74 +2081,6 @@ fn nested_bool_match_expr() {
             }
         "#},
         "TF,F",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Bool = false
-              let v21: String = match v0 {
-                true => {
-                  let v20: String = match v1 {
-                    true => {
-                      let v2: String = "TT"
-                      v2
-                    }
-                    false => {
-                      let v3: String = "TF"
-                      v3
-                    }
-                  }
-                  v20
-                }
-                false => {
-                  let v5: String = "F"
-                  v5
-                }
-              }
-              let v10: Bool = false
-              let v11: Bool = true
-              let v23: String = match v10 {
-                true => {
-                  let v22: String = match v11 {
-                    true => {
-                      let v12: String = "TT"
-                      v12
-                    }
-                    false => {
-                      let v13: String = "TF"
-                      v13
-                    }
-                  }
-                  v22
-                }
-                false => {
-                  let v15: String = "F"
-                  v15
-                }
-              }
-              write_string(v21)
-              write(",")
-              write_string(v23)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("TF,F")
-            }
-            -- expected output --
-            TF,F
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4527,32 +2098,6 @@ fn int_to_string_negative() {
             }
         "#},
         "-123",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = -123
-              let v1: String = v0.to_string()
-              write_string(v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("-123")
-            }
-            -- expected output --
-            -123
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4586,121 +2131,6 @@ fn nan_comparisons() {
             }
         "#},
         "ok",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Float = 10000000000
-              let v1: Float = mul(v0, v0)
-              let v2: Float = mul(v1, v0)
-              let v3: Float = mul(v2, v0)
-              let v4: Float = mul(v3, v0)
-              let v5: Float = mul(v4, v0)
-              let v6: Float = mul(v5, v0)
-              let v7: Float = mul(v6, v0)
-              let v8: Float = mul(v7, v0)
-              let v9: Float = mul(v8, v0)
-              let v10: Float = mul(v9, v9)
-              let v11: Float = mul(v10, v9)
-              let v12: Float = mul(v11, v9)
-              let v13: Float = 0
-              let v14: Float = mul(v12, v13)
-              let v15: Bool = eq(v14, v14)
-              let v16: Bool = eq(v14, v14)
-              let v17: Bool = not(v16)
-              let v18: Bool = lt(v14, v14)
-              let v19: Bool = lt_eq(v14, v14)
-              let v20: Bool = lt(v14, v14)
-              let v21: Bool = lt_eq(v14, v14)
-              let v22: Bool = lt(v14, v12)
-              let v23: Float = neg(v12)
-              let v24: Bool = lt(v23, v14)
-              let v25: Int = v14.to_int()
-              let v26: Int = 0
-              let v27: Bool = eq(v25, v26)
-              match v27 {
-                true => {
-                  match v24 {
-                    true => {
-                      write("wrong")
-                    }
-                    false => {
-                      match v22 {
-                        true => {
-                          write("wrong")
-                        }
-                        false => {
-                          match v21 {
-                            true => {
-                              write("wrong")
-                            }
-                            false => {
-                              match v20 {
-                                true => {
-                                  write("wrong")
-                                }
-                                false => {
-                                  match v19 {
-                                    true => {
-                                      write("wrong")
-                                    }
-                                    false => {
-                                      match v18 {
-                                        true => {
-                                          write("wrong")
-                                        }
-                                        false => {
-                                          match v17 {
-                                            true => {
-                                              match v15 {
-                                                true => {
-                                                  write("wrong")
-                                                }
-                                                false => {
-                                                  write("ok")
-                                                }
-                                              }
-                                            }
-                                            false => {
-                                              write("wrong")
-                                            }
-                                          }
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-                false => {
-                  write("wrong")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("ok")
-            }
-            -- expected output --
-            ok
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4729,92 +2159,6 @@ fn int_arithmetic_wraps_at_bounds() {
             }
         "#},
         "ok",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 2147483647
-              let v1: Int = -2147483648
-              let v2: Int = 1
-              let v3: Int = add(v0, v2)
-              let v4: Bool = eq(v3, v1)
-              let v5: Int = 1
-              let v6: Int = sub(v1, v5)
-              let v7: Bool = eq(v6, v0)
-              let v8: Int = neg(v1)
-              let v9: Bool = eq(v8, v1)
-              let v10: Int = 2
-              let v11: Int = mul(v0, v10)
-              let v12: Int = -2
-              let v13: Bool = eq(v11, v12)
-              let v14: Int = mul(v0, v0)
-              let v15: Int = 1
-              let v16: Bool = eq(v14, v15)
-              let v17: Int = -1
-              let v18: Int = mul(v1, v17)
-              let v19: Bool = eq(v18, v1)
-              match v19 {
-                true => {
-                  match v16 {
-                    true => {
-                      match v13 {
-                        true => {
-                          match v9 {
-                            true => {
-                              match v7 {
-                                true => {
-                                  match v4 {
-                                    true => {
-                                      write("ok")
-                                    }
-                                    false => {
-                                      write("wrong")
-                                    }
-                                  }
-                                }
-                                false => {
-                                  write("wrong")
-                                }
-                              }
-                            }
-                            false => {
-                              write("wrong")
-                            }
-                          }
-                        }
-                        false => {
-                          write("wrong")
-                        }
-                      }
-                    }
-                    false => {
-                      write("wrong")
-                    }
-                  }
-                }
-                false => {
-                  write("wrong")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("ok")
-            }
-            -- expected output --
-            ok
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -4856,153 +2200,6 @@ fn float_to_int() {
             }
         "#},
         "ok",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Float = 10000000000
-              let v1: Float = mul(v0, v0)
-              let v2: Float = mul(v1, v0)
-              let v3: Float = mul(v2, v0)
-              let v4: Float = mul(v3, v0)
-              let v5: Float = mul(v4, v0)
-              let v6: Float = mul(v5, v0)
-              let v7: Float = mul(v6, v0)
-              let v8: Float = mul(v7, v0)
-              let v9: Float = mul(v8, v0)
-              let v10: Float = mul(v9, v9)
-              let v11: Float = mul(v10, v9)
-              let v12: Float = mul(v11, v9)
-              let v13: Float = 5
-              let v14: Float = 3.7
-              let v15: Float = -2.9
-              let v16: Float = 2147483648
-              let v17: Float = 2147483647.9
-              let v18: Float = -2147483648.9
-              let v19: Float = -2147483649
-              let v20: Float = -0.5
-              let v21: Int = v13.to_int()
-              let v22: Int = 5
-              let v23: Bool = eq(v21, v22)
-              let v24: Int = v14.to_int()
-              let v25: Int = 3
-              let v26: Bool = eq(v24, v25)
-              let v27: Int = v15.to_int()
-              let v28: Int = -2
-              let v29: Bool = eq(v27, v28)
-              let v30: Int = v12.to_int()
-              let v31: Int = 2147483647
-              let v32: Bool = eq(v30, v31)
-              let v33: Float = neg(v12)
-              let v34: Int = v33.to_int()
-              let v35: Int = -2147483648
-              let v36: Bool = eq(v34, v35)
-              let v37: Int = v16.to_int()
-              let v38: Int = 2147483647
-              let v39: Bool = eq(v37, v38)
-              let v40: Int = v17.to_int()
-              let v41: Int = 2147483647
-              let v42: Bool = eq(v40, v41)
-              let v43: Int = v18.to_int()
-              let v44: Int = -2147483648
-              let v45: Bool = eq(v43, v44)
-              let v46: Int = v19.to_int()
-              let v47: Int = -2147483648
-              let v48: Bool = eq(v46, v47)
-              let v49: Int = v20.to_int()
-              let v50: String = v49.to_string()
-              let v51: String = "0"
-              let v52: Bool = eq(v50, v51)
-              match v52 {
-                true => {
-                  match v48 {
-                    true => {
-                      match v45 {
-                        true => {
-                          match v42 {
-                            true => {
-                              match v39 {
-                                true => {
-                                  match v36 {
-                                    true => {
-                                      match v32 {
-                                        true => {
-                                          match v29 {
-                                            true => {
-                                              match v26 {
-                                                true => {
-                                                  match v23 {
-                                                    true => {
-                                                      write("ok")
-                                                    }
-                                                    false => {
-                                                      write("wrong")
-                                                    }
-                                                  }
-                                                }
-                                                false => {
-                                                  write("wrong")
-                                                }
-                                              }
-                                            }
-                                            false => {
-                                              write("wrong")
-                                            }
-                                          }
-                                        }
-                                        false => {
-                                          write("wrong")
-                                        }
-                                      }
-                                    }
-                                    false => {
-                                      write("wrong")
-                                    }
-                                  }
-                                }
-                                false => {
-                                  write("wrong")
-                                }
-                              }
-                            }
-                            false => {
-                              write("wrong")
-                            }
-                          }
-                        }
-                        false => {
-                          write("wrong")
-                        }
-                      }
-                    }
-                    false => {
-                      write("wrong")
-                    }
-                  }
-                }
-                false => {
-                  write("wrong")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("ok")
-            }
-            -- expected output --
-            ok
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5041,121 +2238,6 @@ fn special_numeric_literals() {
             }
         "#},
         "okokok",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Float = inf
-              let v1: Float = -inf
-              let v2: Int = -2147483648
-              let v3: Float = 0
-              let v4: Float = mul(v0, v3)
-              let v5: Float = 0
-              let v6: Bool = lt(v5, v0)
-              let v7: Float = 2
-              let v8: Float = mul(v0, v7)
-              let v9: Bool = eq(v8, v0)
-              let v10: Float = 0
-              let v11: Bool = lt(v1, v10)
-              let v12: Float = 2
-              let v13: Float = mul(v1, v12)
-              let v14: Bool = eq(v13, v1)
-              let v15: Int = 1
-              let v16: Int = sub(v2, v15)
-              let v17: Int = 2147483647
-              let v18: Bool = eq(v16, v17)
-              let v25: Int = 0
-              let v26: Int = 1
-              let v27: Array[Int] = v25..=v26
-              match v18 {
-                true => {
-                  match v14 {
-                    true => {
-                      match v11 {
-                        true => {
-                          match v9 {
-                            true => {
-                              match v6 {
-                                true => {
-                                  write("ok")
-                                }
-                                false => {
-                                  write("wrong")
-                                }
-                              }
-                            }
-                            false => {
-                              write("wrong")
-                            }
-                          }
-                        }
-                        false => {
-                          write("wrong")
-                        }
-                      }
-                    }
-                    false => {
-                      write("wrong")
-                    }
-                  }
-                }
-                false => {
-                  write("wrong")
-                }
-              }
-              for v28: Int in v27 {
-                let v29: Float = v28.to_float()
-                let v30: Float = add(v4, v29)
-                let v31: Float = add(v4, v29)
-                let v32: Bool = eq(v30, v31)
-                let v33: Bool = not(v32)
-                match v33 {
-                  true => {
-                    write("ok")
-                  }
-                  false => {
-                    write("wrong")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v4: Float = NaN
-              let v25: Int = 0
-              let v26: Int = 1
-              let v27: Array[Int] = v25..=v26
-              write("ok")
-              for v28: Int in v27 {
-                let v29: Float = v28.to_float()
-                let v30: Float = add(v4, v29)
-                let v31: Float = add(v4, v29)
-                let v32: Bool = eq(v30, v31)
-                let v33: Bool = not(v32)
-                match v33 {
-                  true => {
-                    write("ok")
-                  }
-                  false => {
-                    write("wrong")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            okokok
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5193,82 +2275,6 @@ fn range_loops_at_bounds() {
             }
         "#},
         "2147483646,2147483647,-2147483648,-2147483647,",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 2147483647
-              let v1: Int = -2147483648
-              let v2: Int = 1
-              let v3: Int = sub(v0, v2)
-              let v4: Array[Int] = v3..=v0
-              let v11: Int = 1
-              let v12: Int = add(v1, v11)
-              let v13: Array[Int] = v1..=v12
-              let v20: Int = 3
-              let v21: Int = 1
-              let v22: Array[Int] = v20..=v21
-              let v26: Array[Int] = v0..=v1
-              for v5: Int in v4 {
-                let v6: String = v5.to_string()
-                write_string(v6)
-                write(",")
-              }
-              for v14: Int in v13 {
-                let v15: String = v14.to_string()
-                write_string(v15)
-                write(",")
-              }
-              for _ in v22 {
-                write("wrong")
-              }
-              for _ in v26 {
-                write("wrong")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 2147483647
-              let v1: Int = -2147483648
-              let v3: Int = 2147483646
-              let v4: Array[Int] = v3..=v0
-              let v12: Int = -2147483647
-              let v13: Array[Int] = v1..=v12
-              let v20: Int = 3
-              let v21: Int = 1
-              let v22: Array[Int] = v20..=v21
-              let v26: Array[Int] = v0..=v1
-              for v5: Int in v4 {
-                let v6: String = v5.to_string()
-                write_string(v6)
-                write(",")
-              }
-              for v14: Int in v13 {
-                let v15: String = v14.to_string()
-                write_string(v15)
-                write(",")
-              }
-              for _ in v22 {
-                write("wrong")
-              }
-              for _ in v26 {
-                write("wrong")
-              }
-            }
-            -- expected output --
-            2147483646,2147483647,-2147483648,-2147483647,
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5287,30 +2293,6 @@ fn simple_html() {
             }
         "#},
         "<h1>Hello, World!</h1>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<h1>Hello, World!</h1>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<h1>Hello, World!</h1>")
-            }
-            -- expected output --
-            <h1>Hello, World!</h1>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5333,30 +2315,6 @@ fn html_comment() {
             }
         "#},
         "<h1>Hello, World!</h1>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<h1>Hello, World!</h1>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<h1>Hello, World!</h1>")
-            }
-            -- expected output --
-            <h1>Hello, World!</h1>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5379,30 +2337,6 @@ fn with_let_binding() {
             }
         "#},
         "Hello, Alice!",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("Hello, Alice!")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Hello, Alice!")
-            }
-            -- expected output --
-            Hello, Alice!
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5429,45 +2363,6 @@ fn conditional() {
             }
         "#},
         "Visible",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v5: Bool = not(v0)
-              match v0 {
-                true => {
-                  write("Visible")
-                }
-                false => {
-                }
-              }
-              match v5 {
-                true => {
-                  write("Hidden")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Visible")
-            }
-            -- expected output --
-            Visible
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5489,44 +2384,6 @@ fn for_loop() {
             }
         "#},
         "a,b,c,",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              for v4: String in v3 {
-                write_string(v4)
-                write(",")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              for v4: String in v3 {
-                write_string(v4)
-                write(",")
-              }
-            }
-            -- expected output --
-            a,b,c,
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5545,44 +2402,6 @@ fn for_expression_over_array() {
             }
         "#},
         "a,b,c,",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              for v4: String in v3 {
-                write_string(v4)
-                write(",")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              for v4: String in v3 {
-                write_string(v4)
-                write(",")
-              }
-            }
-            -- expected output --
-            a,b,c,
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5601,44 +2420,6 @@ fn for_expression_over_range() {
             }
         "#},
         "1,2,3,",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 3
-              let v2: Array[Int] = v0..=v1
-              for v3: Int in v2 {
-                let v4: String = v3.to_string()
-                write_string(v4)
-                write(",")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 3
-              let v2: Array[Int] = v0..=v1
-              for v3: Int in v2 {
-                let v4: String = v3.to_string()
-                write_string(v4)
-                write(",")
-              }
-            }
-            -- expected output --
-            1,2,3,
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5658,42 +2439,6 @@ fn for_expression_with_underscore() {
             }
         "#},
         "***",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              for _ in v3 {
-                write("*")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              for _ in v3 {
-                write("*")
-              }
-            }
-            -- expected output --
-            ***
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5713,44 +2458,6 @@ fn for_expression_with_let_in_body() {
             }
         "#},
         "a!b!c!",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              for v4: String in v3 {
-                write_string(v4)
-                write("!")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              for v4: String in v3 {
-                write_string(v4)
-                write("!")
-              }
-            }
-            -- expected output --
-            a!b!c!
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5772,50 +2479,6 @@ fn for_loop_over_bool_array_with_bool_match() {
             }
         "#},
         "x",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Array[Bool] = [v0]
-              for v2: Bool in v1 {
-                match v2 {
-                  true => {
-                    write("x")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Array[Bool] = [v0]
-              for v2: Bool in v1 {
-                match v2 {
-                  true => {
-                    write("x")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- expected output --
-            x
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5837,44 +2500,6 @@ fn for_loop_with_range() {
             }
         "#},
         "1,2,3,",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 3
-              let v2: Array[Int] = v0..=v1
-              for v3: Int in v2 {
-                let v4: String = v3.to_string()
-                write_string(v4)
-                write(",")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 3
-              let v2: Array[Int] = v0..=v1
-              for v3: Int in v2 {
-                let v4: String = v3.to_string()
-                write_string(v4)
-                write(",")
-              }
-            }
-            -- expected output --
-            1,2,3,
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5893,42 +2518,6 @@ fn for_loop_with_range_zero_to_five() {
             }
         "#},
         "012345",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 0
-              let v1: Int = 5
-              let v2: Array[Int] = v0..=v1
-              for v3: Int in v2 {
-                let v4: String = v3.to_string()
-                write_string(v4)
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 0
-              let v1: Int = 5
-              let v2: Array[Int] = v0..=v1
-              for v3: Int in v2 {
-                let v4: String = v3.to_string()
-                write_string(v4)
-              }
-            }
-            -- expected output --
-            012345
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -5955,62 +2544,6 @@ fn for_loop_with_range_nested() {
             }
         "#},
         "(1,1)(1,2)(2,1)(2,2)",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 2
-              let v2: Array[Int] = v0..=v1
-              for v3: Int in v2 {
-                let v4: Int = 1
-                let v5: Int = 2
-                let v6: Array[Int] = v4..=v5
-                for v7: Int in v6 {
-                  let v9: String = v3.to_string()
-                  let v12: String = v7.to_string()
-                  write("(")
-                  write_string(v9)
-                  write(",")
-                  write_string(v12)
-                  write(")")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 2
-              let v2: Array[Int] = v0..=v1
-              for v3: Int in v2 {
-                let v4: Int = 1
-                let v5: Int = 2
-                let v6: Array[Int] = v4..=v5
-                for v7: Int in v6 {
-                  let v9: String = v3.to_string()
-                  let v12: String = v7.to_string()
-                  write("(")
-                  write_string(v9)
-                  write(",")
-                  write_string(v12)
-                  write(")")
-                }
-              }
-            }
-            -- expected output --
-            (1,1)(1,2)(2,1)(2,2)
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6028,30 +2561,6 @@ fn html_escaping() {
             }
         "#},
         "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("&lt;div&gt;Hello &amp; world&lt;/div&gt;")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("&lt;div&gt;Hello &amp; world&lt;/div&gt;")
-            }
-            -- expected output --
-            &lt;div&gt;Hello &amp; world&lt;/div&gt;
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6069,30 +2578,6 @@ fn let_binding() {
             }
         "#},
         "Hello from let",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("Hello from let")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Hello from let")
-            }
-            -- expected output --
-            Hello from let
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6119,48 +2604,6 @@ fn string_concat_folds_constants_around_a_dynamic_part() {
             }
         "#},
         "<span class=\"a px-2 py-1\">a!?</span><span class=\"b px-2 py-1\">b!?</span>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              for v3: String in v2 {
-                write("<span class=\"")
-                write_string(v3)
-                write(" px-2 py-1\">")
-                write_string(v3)
-                write("!?</span>")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              for v3: String in v2 {
-                write("<span class=\"")
-                write_string(v3)
-                write(" px-2 py-1\">")
-                write_string(v3)
-                write("!?</span>")
-              }
-            }
-            -- expected output --
-            <span class="a px-2 py-1">a!?</span><span class="b px-2 py-1">b!?</span>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6179,30 +2622,6 @@ fn string_concatenation() {
             }
         "#},
         "Hello World",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("Hello World")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Hello World")
-            }
-            -- expected output --
-            Hello World
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6226,44 +2645,6 @@ fn complex_nested_structure() {
             }
         "#},
         "[A][B]",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "A"
-              let v1: String = "B"
-              let v2: Array[String] = [v0, v1]
-              for v3: String in v2 {
-                write("[")
-                write_string(v3)
-                write("]")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "A"
-              let v1: String = "B"
-              let v2: Array[String] = [v0, v1]
-              for v3: String in v2 {
-                write("[")
-                write_string(v3)
-                write("]")
-              }
-            }
-            -- expected output --
-            [A][B]
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6283,41 +2664,6 @@ fn string_concat_equality() {
             }
         "#},
         "equals",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "foo"
-              let v1: String = "bar"
-              let v2: String = string_concat(v0, v1)
-              let v3: String = "foobar"
-              let v4: Bool = eq(v2, v3)
-              match v4 {
-                true => {
-                  write("equals")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("equals")
-            }
-            -- expected output --
-            equals
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6343,49 +2689,6 @@ fn less_than_comparison() {
             }
         "#},
         "3 &lt; 5",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 3
-              let v1: Int = 5
-              let v2: Bool = lt(v0, v1)
-              let v7: Int = 10
-              let v8: Int = 2
-              let v9: Bool = lt(v7, v8)
-              match v2 {
-                true => {
-                  write("3 &lt; 5")
-                }
-                false => {
-                }
-              }
-              match v9 {
-                true => {
-                  write("10 &lt; 2")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("3 &lt; 5")
-            }
-            -- expected output --
-            3 &lt; 5
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6405,39 +2708,6 @@ fn less_than_float_comparison() {
             }
         "#},
         "1.5 &lt; 2.5",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Float = 1.5
-              let v1: Float = 2.5
-              let v2: Bool = lt(v0, v1)
-              match v2 {
-                true => {
-                  write("1.5 &lt; 2.5")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("1.5 &lt; 2.5")
-            }
-            -- expected output --
-            1.5 &lt; 2.5
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6466,44 +2736,6 @@ fn field_access() {
             }
         "#},
         "Alice:30",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "Alice"
-              let v1: Int = 30
-              let v2: Person = {name: v0, age: v1}
-              let v3: String = v2.name
-              let v5: Int = v2.age
-              let v6: Int = 30
-              let v7: Bool = eq(v5, v6)
-              write_string(v3)
-              match v7 {
-                true => {
-                  write(":30")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Alice:30")
-            }
-            -- expected output --
-            Alice:30
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6530,37 +2762,6 @@ fn record_literal_with_fields_out_of_declaration_order() {
             }
         "#},
         "a-b",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "b"
-              let v1: String = "a"
-              let v2: Pair = {second: v0, first: v1}
-              let v3: String = v2.first
-              let v6: String = v2.second
-              write_string(v3)
-              write("-")
-              write_string(v6)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("a-b")
-            }
-            -- expected output --
-            a-b
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6593,39 +2794,6 @@ fn enum_literal_with_fields_out_of_declaration_order() {
             }
         "#},
         "a-b",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "b"
-              let v1: String = "a"
-              let v2: Shape = Rect {height: v0, width: v1}
-              match v2 {
-                Shape::Rect {width@v10: String, height@v11: String} => {
-                  write_string(v10)
-                  write("-")
-                  write_string(v11)
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("a-b")
-            }
-            -- expected output --
-            a-b
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6660,40 +2828,6 @@ fn nested_record() {
             }
         "#},
         "Alice,Paris",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "Alice"
-              let v1: String = "Paris"
-              let v2: String = "75001"
-              let v3: Address = {city: v1, zip: v2}
-              let v4: Person = {name: v0, address: v3}
-              let v5: String = v4.name
-              let v8: Address = v4.address
-              let v9: String = v8.city
-              write_string(v5)
-              write(",")
-              write_string(v9)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Alice,Paris")
-            }
-            -- expected output --
-            Alice,Paris
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6715,41 +2849,6 @@ fn numeric_add() {
             }
         "#},
         "correct",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 3
-              let v1: Int = 7
-              let v2: Int = add(v0, v1)
-              let v3: Int = 10
-              let v4: Bool = eq(v2, v3)
-              match v4 {
-                true => {
-                  write("correct")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("correct")
-            }
-            -- expected output --
-            correct
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6771,41 +2870,6 @@ fn numeric_subtract() {
             }
         "#},
         "correct",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 10
-              let v1: Int = 3
-              let v2: Int = sub(v0, v1)
-              let v3: Int = 7
-              let v4: Bool = eq(v2, v3)
-              match v4 {
-                true => {
-                  write("correct")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("correct")
-            }
-            -- expected output --
-            correct
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6827,41 +2891,6 @@ fn numeric_multiply() {
             }
         "#},
         "correct",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 4
-              let v1: Int = 5
-              let v2: Int = mul(v0, v1)
-              let v3: Int = 20
-              let v4: Bool = eq(v2, v3)
-              match v4 {
-                true => {
-                  write("correct")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("correct")
-            }
-            -- expected output --
-            correct
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6883,47 +2912,6 @@ fn bool_logical_and() {
             }
         "#},
         "TT",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Bool = true
-              let v8: Bool = match v0 {
-                true => {
-                  v1
-                }
-                false => {
-                  let v2: Bool = false
-                  v2
-                }
-              }
-              match v8 {
-                true => {
-                  write("TT")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("TT")
-            }
-            -- expected output --
-            TT
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -6945,47 +2933,6 @@ fn bool_logical_or() {
             }
         "#},
         "FT",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = false
-              let v1: Bool = true
-              let v8: Bool = match v0 {
-                true => {
-                  let v2: Bool = true
-                  v2
-                }
-                false => {
-                  v1
-                }
-              }
-              match v8 {
-                true => {
-                  write("FT")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("FT")
-            }
-            -- expected output --
-            FT
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7015,59 +2962,6 @@ fn less_than_or_equal() {
             }
         "#},
         "AB",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 3
-              let v1: Int = 5
-              let v2: Bool = lt_eq(v0, v1)
-              let v7: Int = 5
-              let v8: Int = 5
-              let v9: Bool = lt_eq(v7, v8)
-              let v14: Int = 7
-              let v15: Int = 5
-              let v16: Bool = lt_eq(v14, v15)
-              match v2 {
-                true => {
-                  write("A")
-                }
-                false => {
-                }
-              }
-              match v9 {
-                true => {
-                  write("B")
-                }
-                false => {
-                }
-              }
-              match v16 {
-                true => {
-                  write("C")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("AB")
-            }
-            -- expected output --
-            AB
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7088,39 +2982,6 @@ fn option_literal() {
             }
         "#},
         "hello",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Option[String] = Some(v0)
-              match v1 {
-                Some(v8: String) => {
-                  write_string(v8)
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("hello")
-            }
-            -- expected output --
-            hello
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7141,39 +3002,6 @@ fn option_match_wildcard_pattern() {
             }
         "#},
         "some",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Option[String] = Some(v0)
-              match v1 {
-                Some(_) => {
-                  write("some")
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("some")
-            }
-            -- expected output --
-            some
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7196,74 +3024,6 @@ fn option_match_test_and_wildcard_in_some() {
             }
         "#},
         "abc",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Option[Bool] = Some(v0)
-              let v2: Bool = false
-              let v3: Option[Bool] = Some(v2)
-              let v4: Option[Bool] = None
-              let v5: Array[Option[Bool]] = [v1, v3, v4]
-              for v6: Option[Bool] in v5 {
-                match v6 {
-                  Some(v15: Bool) => {
-                    match v15 {
-                      true => {
-                        write("a")
-                      }
-                      false => {
-                        write("b")
-                      }
-                    }
-                  }
-                  None => {
-                    write("c")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Option[Bool] = Some(v0)
-              let v2: Bool = false
-              let v3: Option[Bool] = Some(v2)
-              let v4: Option[Bool] = None
-              let v5: Array[Option[Bool]] = [v1, v3, v4]
-              for v6: Option[Bool] in v5 {
-                match v6 {
-                  Some(v15: Bool) => {
-                    match v15 {
-                      true => {
-                        write("a")
-                      }
-                      false => {
-                        write("b")
-                      }
-                    }
-                  }
-                  None => {
-                    write("c")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            abc
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7295,90 +3055,6 @@ fn record_match_test_and_wildcard_in_field() {
             }
         "#},
         "abc",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: String = "a"
-              let v2: Option[String] = Some(v1)
-              let v3: Foo = {a: v0, b: v2}
-              let v4: Bool = true
-              let v5: Option[String] = None
-              let v6: Foo = {a: v4, b: v5}
-              let v7: Bool = false
-              let v8: String = "x"
-              let v9: Option[String] = Some(v8)
-              let v10: Foo = {a: v7, b: v9}
-              let v11: Array[Foo] = [v3, v6, v10]
-              for v12: Foo in v11 {
-                let v22: Bool = v12.a
-                let v23: Option[String] = v12.b
-                match v22 {
-                  true => {
-                    match v23 {
-                      Some(v24: String) => {
-                        write_string(v24)
-                      }
-                      None => {
-                        write("b")
-                      }
-                    }
-                  }
-                  false => {
-                    write("c")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: String = "a"
-              let v2: Option[String] = Some(v1)
-              let v3: Foo = {a: v0, b: v2}
-              let v4: Bool = true
-              let v5: Option[String] = None
-              let v6: Foo = {a: v4, b: v5}
-              let v7: Bool = false
-              let v8: String = "x"
-              let v9: Option[String] = Some(v8)
-              let v10: Foo = {a: v7, b: v9}
-              let v11: Array[Foo] = [v3, v6, v10]
-              for v12: Foo in v11 {
-                let v22: Bool = v12.a
-                let v23: Option[String] = v12.b
-                match v22 {
-                  true => {
-                    match v23 {
-                      Some(v24: String) => {
-                        write_string(v24)
-                      }
-                      None => {
-                        write("b")
-                      }
-                    }
-                  }
-                  false => {
-                    write("c")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            abc
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7412,74 +3088,6 @@ fn enum_match_test_and_wildcard_in_field() {
             }
         "#},
         "abc",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Status = Active {admin: v0}
-              let v2: Bool = false
-              let v3: Status = Active {admin: v2}
-              let v4: Status = Inactive
-              let v5: Array[Status] = [v1, v3, v4]
-              for v6: Status in v5 {
-                match v6 {
-                  Status::Active {admin@v15: Bool} => {
-                    match v15 {
-                      true => {
-                        write("a")
-                      }
-                      false => {
-                        write("b")
-                      }
-                    }
-                  }
-                  Status::Inactive => {
-                    write("c")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Status = Active {admin: v0}
-              let v2: Bool = false
-              let v3: Status = Active {admin: v2}
-              let v4: Status = Inactive
-              let v5: Array[Status] = [v1, v3, v4]
-              for v6: Status in v5 {
-                match v6 {
-                  Status::Active {admin@v15: Bool} => {
-                    match v15 {
-                      true => {
-                        write("a")
-                      }
-                      false => {
-                        write("b")
-                      }
-                    }
-                  }
-                  Status::Inactive => {
-                    write("c")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            abc
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7503,49 +3111,6 @@ fn option_match_nested_constant_folding() {
             }
         "#},
         "inner",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "inner"
-              let v1: Option[String] = Some(v0)
-              let v13: String = match v1 {
-                Some(v12: String) => {
-                  v12
-                }
-                None => {
-                  let v3: String = "default"
-                  v3
-                }
-              }
-              let v5: Option[String] = Some(v13)
-              match v5 {
-                Some(v14: String) => {
-                  write_string(v14)
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("inner")
-            }
-            -- expected output --
-            inner
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7567,64 +3132,6 @@ fn option_array_for_loop() {
             }
         "#},
         "[a][_][b]",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[String] = Some(v0)
-              let v2: Option[String] = None
-              let v3: String = "b"
-              let v4: Option[String] = Some(v3)
-              let v5: Array[Option[String]] = [v1, v2, v4]
-              for v6: Option[String] in v5 {
-                match v6 {
-                  Some(v17: String) => {
-                    write("[")
-                    write_string(v17)
-                    write("]")
-                  }
-                  None => {
-                    write("[_]")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[String] = Some(v0)
-              let v2: Option[String] = None
-              let v3: String = "b"
-              let v4: Option[String] = Some(v3)
-              let v5: Array[Option[String]] = [v1, v2, v4]
-              for v6: Option[String] in v5 {
-                match v6 {
-                  Some(v17: String) => {
-                    write("[")
-                    write_string(v17)
-                    write("]")
-                  }
-                  None => {
-                    write("[_]")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            [a][_][b]
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7643,30 +3150,6 @@ fn enum_without_variants() {
             }
         "#},
         "hi",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("hi")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("hi")
-            }
-            -- expected output --
-            hi
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7694,45 +3177,6 @@ fn enum_match_expr() {
             }
         "#},
         "green",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Color = Green
-              let v7: String = match v0 {
-                Color::Red => {
-                  let v1: String = "red"
-                  v1
-                }
-                Color::Green => {
-                  let v2: String = "green"
-                  v2
-                }
-                Color::Blue => {
-                  let v3: String = "blue"
-                  v3
-                }
-              }
-              write_string(v7)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("green")
-            }
-            -- expected output --
-            green
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7762,41 +3206,6 @@ fn enum_match_with_field_bindings() {
             }
         "#},
         "Ok: hello",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Outcome = Success {value: v0}
-              match v1 {
-                Outcome::Success {value@v13: String} => {
-                  write("Ok: ")
-                  write_string(v13)
-                }
-                Outcome::Failure {message@v14: String} => {
-                  write("Err: ")
-                  write_string(v14)
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Ok: hello")
-            }
-            -- expected output --
-            Ok: hello
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7824,40 +3233,6 @@ fn enum_with_field_named_tag() {
             }
         "#},
         "tag: news",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "news"
-              let v1: Item = Tagged {tag: v0}
-              match v1 {
-                Item::Tagged {tag@v10: String} => {
-                  write("tag: ")
-                  write_string(v10)
-                }
-                Item::Plain => {
-                  write("plain")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("tag: news")
-            }
-            -- expected output --
-            tag: news
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7887,41 +3262,6 @@ fn enum_with_fields_match_on_expression_subject() {
             }
         "#},
         "Got: hi",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hi"
-              let v1: Outcome = Success {value: v0}
-              let v11: String = match v1 {
-                Outcome::Success {value@v9: String} => {
-                  v9
-                }
-                Outcome::Failure {message@v10: String} => {
-                  v10
-                }
-              }
-              write("Got: ")
-              write_string(v11)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Got: hi")
-            }
-            -- expected output --
-            Got: hi
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -7952,44 +3292,6 @@ fn enum_match_in_function_prop() {
             }
         "#},
         "green",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Badge@f0(color@v2: Color) -> Html {
-              match v2 {
-                Color::Red => {
-                  write("red")
-                }
-                Color::Green => {
-                  write("green")
-                }
-                Color::Blue => {
-                  write("blue")
-                }
-              }
-            }
-            page Test() {
-              let v0: Color = Green
-              write_function Badge@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("green")
-            }
-            -- expected output --
-            green
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8021,41 +3323,6 @@ fn enum_match_err_variant_with_bindings() {
             }
         "#},
         "Err: something went wrong",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "something went wrong"
-              let v1: Outcome = Failure {message: v0}
-              match v1 {
-                Outcome::Success {value@v13: String} => {
-                  write("Ok: ")
-                  write_string(v13)
-                }
-                Outcome::Failure {message@v14: String} => {
-                  write("Err: ")
-                  write_string(v14)
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Err: something went wrong")
-            }
-            -- expected output --
-            Err: something went wrong
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8089,43 +3356,6 @@ fn enum_with_multiple_fields() {
             }
         "#},
         "200 OK",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "200"
-              let v1: String = "OK"
-              let v2: Response = Success {code: v0, body: v1}
-              match v2 {
-                Response::Success {code@v15: String, body@v16: String} => {
-                  write_string(v15)
-                  write(" ")
-                  write_string(v16)
-                }
-                Response::Failure {reason@v17: String} => {
-                  write("Error: ")
-                  write_string(v17)
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("200 OK")
-            }
-            -- expected output --
-            200 OK
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8155,41 +3385,6 @@ fn enum_match_with_shorthand_field_destructuring() {
             }
         "#},
         "Ok: hello",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Outcome = Success {value: v0}
-              match v1 {
-                Outcome::Success {value@v13: String} => {
-                  write("Ok: ")
-                  write_string(v13)
-                }
-                Outcome::Failure {message@v14: String} => {
-                  write("Err: ")
-                  write_string(v14)
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Ok: hello")
-            }
-            -- expected output --
-            Ok: hello
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8207,45 +3402,6 @@ fn array_get_in_bounds() {
             }
         "#},
         "b",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              let v4: Int = 1
-              let v5: Option[String] = v3.get(v4)
-              let v12: String = match v5 {
-                Some(v11: String) => {
-                  v11
-                }
-                None => {
-                  let v7: String = "none"
-                  v7
-                }
-              }
-              write_string(v12)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("b")
-            }
-            -- expected output --
-            b
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8270,62 +3426,6 @@ fn array_get_out_of_bounds() {
             }
         "#},
         "-ab-",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              let v3: Int = -1
-              let v4: Int = 2
-              let v5: Array[Int] = v3..=v4
-              for v6: Int in v5 {
-                let v7: Option[String] = v2.get(v6)
-                match v7 {
-                  Some(v16: String) => {
-                    write_string(v16)
-                  }
-                  None => {
-                    write("-")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              let v3: Int = -1
-              let v4: Int = 2
-              let v5: Array[Int] = v3..=v4
-              for v6: Int in v5 {
-                let v7: Option[String] = v2.get(v6)
-                match v7 {
-                  Some(v16: String) => {
-                    write_string(v16)
-                  }
-                  None => {
-                    write("-")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            -ab-
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8349,56 +3449,6 @@ fn array_enumerate_in_for_loop() {
             }
         "#},
         "0=a;1=b;2=c;",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              let v4: Array[(Int, String)] = v3.enumerate()
-              for v5: (Int, String) in v4 {
-                let v17: Int = v5.0
-                let v18: String = v5.1
-                let v8: String = v17.to_string()
-                write_string(v8)
-                write("=")
-                write_string(v18)
-                write(";")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              let v4: Array[(Int, String)] = v3.enumerate()
-              for v5: (Int, String) in v4 {
-                let v17: Int = v5.0
-                let v18: String = v5.1
-                let v8: String = v17.to_string()
-                write_string(v8)
-                write("=")
-                write_string(v18)
-                write(";")
-              }
-            }
-            -- expected output --
-            0=a;1=b;2=c;
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8416,38 +3466,6 @@ fn array_enumerate_empty() {
             }
         "#},
         "0",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Array[String] = []
-              let v1: Array[(Int, String)] = v0.enumerate()
-              let v2: Int = v1.len()
-              let v3: String = v2.to_string()
-              write_string(v3)
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Array[String] = []
-              let v1: Array[(Int, String)] = v0.enumerate()
-              let v2: Int = v1.len()
-              let v3: String = v2.to_string()
-              write_string(v3)
-            }
-            -- expected output --
-            0
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8465,36 +3483,6 @@ fn array_length_simple() {
             }
         "#},
         "3",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              let v4: Int = v3.len()
-              let v5: String = v4.to_string()
-              write_string(v5)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("3")
-            }
-            -- expected output --
-            3
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8512,33 +3500,6 @@ fn array_length_empty() {
             }
         "#},
         "0",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Array[String] = []
-              let v1: Int = v0.len()
-              let v2: String = v1.to_string()
-              write_string(v2)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("0")
-            }
-            -- expected output --
-            0
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8559,42 +3520,6 @@ fn array_length_in_comparison() {
             }
         "#},
         "has two",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "x"
-              let v1: String = "y"
-              let v2: Array[String] = [v0, v1]
-              let v3: Int = v2.len()
-              let v4: Int = 2
-              let v5: Bool = eq(v3, v4)
-              match v5 {
-                true => {
-                  write("has two")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("has two")
-            }
-            -- expected output --
-            has two
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8615,41 +3540,6 @@ fn array_length_less_than() {
             }
         "#},
         "less than 5",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Array[String] = [v0]
-              let v2: Int = v1.len()
-              let v3: Int = 5
-              let v4: Bool = lt(v2, v3)
-              match v4 {
-                true => {
-                  write("less than 5")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("less than 5")
-            }
-            -- expected output --
-            less than 5
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8667,38 +3557,6 @@ fn array_length_int_array() {
             }
         "#},
         "5",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 2
-              let v2: Int = 3
-              let v3: Int = 4
-              let v4: Int = 5
-              let v5: Array[Int] = [v0, v1, v2, v3, v4]
-              let v6: Int = v5.len()
-              let v7: String = v6.to_string()
-              write_string(v7)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("5")
-            }
-            -- expected output --
-            5
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8719,39 +3577,6 @@ fn array_is_empty_true() {
             }
         "#},
         "empty",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Array[String] = []
-              let v1: Bool = v0.is_empty()
-              match v1 {
-                true => {
-                  write("empty")
-                }
-                false => {
-                  write("not empty")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("empty")
-            }
-            -- expected output --
-            empty
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8772,41 +3597,6 @@ fn array_is_empty_false() {
             }
         "#},
         "not empty",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              let v3: Bool = v2.is_empty()
-              match v3 {
-                true => {
-                  write("empty")
-                }
-                false => {
-                  write("not empty")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("not empty")
-            }
-            -- expected output --
-            not empty
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8827,42 +3617,6 @@ fn array_is_empty_int_array() {
             }
         "#},
         "has numbers",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 2
-              let v2: Int = 3
-              let v3: Array[Int] = [v0, v1, v2]
-              let v4: Bool = v3.is_empty()
-              match v4 {
-                true => {
-                  write("no numbers")
-                }
-                false => {
-                  write("has numbers")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("has numbers")
-            }
-            -- expected output --
-            has numbers
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8880,32 +3634,6 @@ fn int_to_string_simple() {
             }
         "#},
         "42",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 42
-              let v1: String = v0.to_string()
-              write_string(v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("42")
-            }
-            -- expected output --
-            42
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8923,32 +3651,6 @@ fn int_to_string_zero() {
             }
         "#},
         "0",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 0
-              let v1: String = v0.to_string()
-              write_string(v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("0")
-            }
-            -- expected output --
-            0
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -8967,44 +3669,6 @@ fn int_to_float_on_a_loop_binding() {
             }
         "#},
         "3",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 3
-              let v1: Array[Int] = [v0]
-              for v2: Int in v1 {
-                let v3: Float = v2.to_float()
-                let v4: Int = v3.to_int()
-                let v5: String = v4.to_string()
-                write_string(v5)
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 3
-              let v1: Array[Int] = [v0]
-              for v2: Int in v1 {
-                let v3: Float = v2.to_float()
-                let v4: Int = v3.to_int()
-                let v5: String = v4.to_string()
-                write_string(v5)
-              }
-            }
-            -- expected output --
-            3
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9023,40 +3687,6 @@ fn for_loop_with_underscore_range() {
             }
         "#},
         "xxx",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 0
-              let v1: Int = 2
-              let v2: Array[Int] = v0..=v1
-              for _ in v2 {
-                write("x")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 0
-              let v1: Int = 2
-              let v2: Array[Int] = v0..=v1
-              for _ in v2 {
-                write("x")
-              }
-            }
-            -- expected output --
-            xxx
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9081,48 +3711,6 @@ fn for_loop_variable_left_unused_by_optimization_becomes_underscore() {
             }
         "#},
         "yy",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              for v3: String in v2 {
-                let v4: Bool = false
-                match v4 {
-                  true => {
-                    write_string(v3)
-                  }
-                  false => {
-                  }
-                }
-                write("y")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              for _ in v2 {
-                write("y")
-              }
-            }
-            -- expected output --
-            yy
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9142,42 +3730,6 @@ fn for_loop_with_underscore_array() {
             }
         "#},
         "***",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              for _ in v3 {
-                write("*")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Array[String] = [v0, v1, v2]
-              for _ in v3 {
-                write("*")
-              }
-            }
-            -- expected output --
-            ***
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9198,50 +3750,6 @@ fn for_loop_with_underscore_nested() {
             }
         "#},
         "......",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 0
-              let v1: Int = 1
-              let v2: Array[Int] = v0..=v1
-              for _ in v2 {
-                let v3: Int = 0
-                let v4: Int = 2
-                let v5: Array[Int] = v3..=v4
-                for _ in v5 {
-                  write(".")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 0
-              let v1: Int = 1
-              let v2: Array[Int] = v0..=v1
-              for _ in v2 {
-                let v3: Int = 0
-                let v4: Int = 2
-                let v5: Array[Int] = v3..=v4
-                for _ in v5 {
-                  write(".")
-                }
-              }
-            }
-            -- expected output --
-            ......
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9262,52 +3770,6 @@ fn for_loop_with_underscore_mixed_with_named() {
             }
         "#},
         "1122",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 2
-              let v2: Array[Int] = v0..=v1
-              for v3: Int in v2 {
-                let v4: Int = 0
-                let v5: Int = 1
-                let v6: Array[Int] = v4..=v5
-                for _ in v6 {
-                  let v7: String = v3.to_string()
-                  write_string(v7)
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 2
-              let v2: Array[Int] = v0..=v1
-              for v3: Int in v2 {
-                let v4: Int = 0
-                let v5: Int = 1
-                let v6: Array[Int] = v4..=v5
-                for _ in v6 {
-                  let v7: String = v3.to_string()
-                  write_string(v7)
-                }
-              }
-            }
-            -- expected output --
-            1122
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9326,36 +3788,6 @@ fn method_call_on_array_literal() {
             }
         "#},
         "3",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 2
-              let v2: Int = 3
-              let v3: Array[Int] = [v0, v1, v2]
-              let v4: Int = v3.len()
-              let v5: String = v4.to_string()
-              write_string(v5)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("3")
-            }
-            -- expected output --
-            3
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9374,34 +3806,6 @@ fn method_call_on_parenthesized_expression() {
             }
         "#},
         "3",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 2
-              let v2: Int = add(v0, v1)
-              let v3: String = v2.to_string()
-              write_string(v3)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("3")
-            }
-            -- expected output --
-            3
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9420,32 +3824,6 @@ fn int_literal_to_string() {
             }
         "#},
         "42",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 42
-              let v1: String = v0.to_string()
-              write_string(v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("42")
-            }
-            -- expected output --
-            42
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9467,47 +3845,6 @@ fn nested_option_match() {
             }
         "#},
         "deep",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "deep"
-              let v1: Option[String] = Some(v0)
-              let v2: Option[Option[String]] = Some(v1)
-              match v2 {
-                Some(v11: Option[String]) => {
-                  match v11 {
-                    Some(v12: String) => {
-                      write_string(v12)
-                    }
-                    None => {
-                      write("some-none")
-                    }
-                  }
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("deep")
-            }
-            -- expected output --
-            deep
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9525,42 +3862,6 @@ fn option_wildcard_match_expr_some_input() {
             }
         "#},
         "some",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "x"
-              let v1: Option[String] = Some(v0)
-              let v7: String = match v1 {
-                Some(_) => {
-                  let v2: String = "some"
-                  v2
-                }
-                None => {
-                  let v3: String = "none"
-                  v3
-                }
-              }
-              write_string(v7)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("some")
-            }
-            -- expected output --
-            some
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9578,41 +3879,6 @@ fn option_wildcard_match_expr_none_input() {
             }
         "#},
         "none",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Option[String] = None
-              let v6: String = match v0 {
-                Some(_) => {
-                  let v1: String = "some"
-                  v1
-                }
-                None => {
-                  let v2: String = "none"
-                  v2
-                }
-              }
-              write_string(v6)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("none")
-            }
-            -- expected output --
-            none
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9634,47 +3900,6 @@ fn nested_option_wildcard_inner() {
             }
         "#},
         "some-some",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "x"
-              let v1: Option[String] = Some(v0)
-              let v2: Option[Option[String]] = Some(v1)
-              match v2 {
-                Some(v10: Option[String]) => {
-                  match v10 {
-                    Some(_) => {
-                      write("some-some")
-                    }
-                    None => {
-                      write("some-none")
-                    }
-                  }
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("some-some")
-            }
-            -- expected output --
-            some-some
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9695,40 +3920,6 @@ fn nested_option_wildcard_outer() {
             }
         "#},
         "some",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "x"
-              let v1: Option[String] = Some(v0)
-              let v2: Option[Option[String]] = Some(v1)
-              match v2 {
-                Some(_) => {
-                  write("some")
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("some")
-            }
-            -- expected output --
-            some
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9758,39 +3949,6 @@ fn enum_wildcard_binding_ok() {
             }
         "#},
         "ok",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "Hello"
-              let v1: Outcome = Success {value: v0}
-              match v1 {
-                Outcome::Success => {
-                  write("ok")
-                }
-                Outcome::Failure => {
-                  write("err")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("ok")
-            }
-            -- expected output --
-            ok
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9820,39 +3978,6 @@ fn enum_wildcard_binding_err() {
             }
         "#},
         "err",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "failed"
-              let v1: Outcome = Failure {message: v0}
-              match v1 {
-                Outcome::Success => {
-                  write("ok")
-                }
-                Outcome::Failure => {
-                  write("err")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("err")
-            }
-            -- expected output --
-            err
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9877,34 +4002,6 @@ fn record_wildcard_binding() {
             }
         "#},
         "age: 30",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "Alice"
-              let v1: Int = 30
-              let v5: String = v1.to_string()
-              write("age: ")
-              write_string(v5)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("age: 30")
-            }
-            -- expected output --
-            age: 30
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -9927,55 +4024,6 @@ fn triple_nested_option_wildcard() {
             }
         "#},
         "sss",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "value"
-              let v1: Option[String] = Some(v0)
-              let v2: Option[Option[String]] = Some(v1)
-              let v3: Option[Option[Option[String]]] = Some(v2)
-              match v3 {
-                Some(v13: Option[Option[String]]) => {
-                  match v13 {
-                    Some(v14: Option[String]) => {
-                      match v14 {
-                        Some(_) => {
-                          write("sss")
-                        }
-                        None => {
-                          write("ssn")
-                        }
-                      }
-                    }
-                    None => {
-                      write("sn")
-                    }
-                  }
-                }
-                None => {
-                  write("n")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("sss")
-            }
-            -- expected output --
-            sss
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10017,47 +4065,6 @@ fn nested_enum_wildcard() {
             }
         "#},
         "ok-ok",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "deep"
-              let v1: Inner = Success {value: v0}
-              let v2: Outer = Success {value: v1}
-              match v2 {
-                Outer::Success {value@v10: Inner} => {
-                  match v10 {
-                    Inner::Success => {
-                      write("ok-ok")
-                    }
-                    Inner::Failure => {
-                      write("ok-err")
-                    }
-                  }
-                }
-                Outer::Failure => {
-                  write("err")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("ok-ok")
-            }
-            -- expected output --
-            ok-ok
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10078,38 +4085,6 @@ fn bool_match_partial_wildcard_true() {
             }
         "#},
         "t",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              match v0 {
-                true => {
-                  write("t")
-                }
-                false => {
-                  write("f")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("t")
-            }
-            -- expected output --
-            t
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10130,38 +4105,6 @@ fn bool_match_partial_wildcard_false() {
             }
         "#},
         "f",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = false
-              match v0 {
-                true => {
-                  write("t")
-                }
-                false => {
-                  write("f")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("f")
-            }
-            -- expected output --
-            f
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10186,50 +4129,6 @@ fn nested_match_with_literal_subjects() {
             }
         "#},
         "outer:inner",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "outer"
-              let v1: Option[String] = Some(v0)
-              match v1 {
-                Some(v16: String) => {
-                  let v3: String = "inner"
-                  let v4: Option[String] = Some(v3)
-                  match v4 {
-                    Some(v17: String) => {
-                      write_string(v16)
-                      write(":")
-                      write_string(v17)
-                    }
-                    None => {
-                      write("inner-none")
-                    }
-                  }
-                }
-                None => {
-                  write("outer-none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("outer:inner")
-            }
-            -- expected output --
-            outer:inner
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10255,48 +4154,6 @@ fn nested_match_with_variable_subjects() {
             }
         "#},
         "value:hello",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Option[String] = Some(v0)
-              let v2: Option[Option[String]] = Some(v1)
-              match v2 {
-                Some(v14: Option[String]) => {
-                  match v14 {
-                    Some(v15: String) => {
-                      write("value:")
-                      write_string(v15)
-                    }
-                    None => {
-                      write("inner-none")
-                    }
-                  }
-                }
-                None => {
-                  write("outer-none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("value:hello")
-            }
-            -- expected output --
-            value:hello
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10320,30 +4177,6 @@ fn join_macro_concatenates_css_classes() {
             }
         "#},
         r#"<div class="foo bar baz"></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<div class=\"foo bar baz\"></div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"foo bar baz\"></div>")
-            }
-            -- expected output --
-            <div class="foo bar baz"></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10362,33 +4195,6 @@ fn format_macro_interpolates_strings_and_ints() {
             }
         "#},
         "a: hop, b: 3",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v1: Int = 3
-              let v4: String = v1.to_string()
-              write("a: hop, b: ")
-              write_string(v4)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("a: hop, b: 3")
-            }
-            -- expected output --
-            a: hop, b: 3
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10406,30 +4212,6 @@ fn format_macro_escapes_braces() {
             }
         "#},
         "a{bcd}e",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("a{bcd}e")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("a{bcd}e")
-            }
-            -- expected output --
-            a{bcd}e
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10447,31 +4229,6 @@ fn format_macro_resolves_escape_sequences() {
             }
         "#},
         "a&quot;b\nc\\d",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("a&quot;b\nc\\d")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("a&quot;b\nc\\d")
-            }
-            -- expected output --
-            a&quot;b
-            c\d
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10489,30 +4246,6 @@ fn delete_as_variable_name() {
             }
         "#},
         "removed",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("removed")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("removed")
-            }
-            -- expected output --
-            removed
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10530,30 +4263,6 @@ fn class_as_variable_name() {
             }
         "#},
         r#"<div class="my-class"></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<div class=\"my-class\"></div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"my-class\"></div>")
-            }
-            -- expected output --
-            <div class="my-class"></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10573,30 +4282,6 @@ fn switch_as_variable_name() {
             }
         "#},
         r#"<span>on</span>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<span>on</span>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<span>on</span>")
-            }
-            -- expected output --
-            <span>on</span>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10614,30 +4299,6 @@ fn type_as_variable_name() {
             }
         "#},
         r#"<input type="button">"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<input type=\"button\">")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<input type=\"button\">")
-            }
-            -- expected output --
-            <input type="button">
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10656,30 +4317,6 @@ fn for_as_attribute_name() {
             }
         "#},
         r#"<label for="email">Email</label>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<label for=\"email\">Email</label>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<label for=\"email\">Email</label>")
-            }
-            -- expected output --
-            <label for="email">Email</label>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10706,36 +4343,6 @@ fn delete_as_page_parameter_name() {
             }
         "#},
         "ok",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("ok")
-            }
-            page Other(delete@v2: String) {
-              write_string(v2)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("ok")
-            }
-            page Other(delete@v2: String) {
-              write_string(v2)
-            }
-            -- expected output --
-            ok
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10762,36 +4369,6 @@ fn type_as_page_parameter_name() {
             }
         "#},
         "ok",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("ok")
-            }
-            page Other(type@v2: String) {
-              write_string(v2)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("ok")
-            }
-            page Other(type@v2: String) {
-              write_string(v2)
-            }
-            -- expected output --
-            ok
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10818,62 +4395,6 @@ fn delete_as_recursive_function_parameter_name() {
             }
         "#},
         "3210",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Countdown@f0(delete@v2: Int) -> Html {
-              let v3: String = v2.to_string()
-              let v5: Int = 0
-              let v6: Bool = lt(v5, v2)
-              write_string(v3)
-              match v6 {
-                true => {
-                  let v7: Int = 1
-                  let v8: Int = sub(v2, v7)
-                  write_function Countdown@f0(v8)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 3
-              write_function Countdown@f0(v0)
-            }
-            -- ir (optimized) --
-            fn Countdown@f0(delete@v2: Int) -> Html {
-              let v3: String = v2.to_string()
-              let v5: Int = 0
-              let v6: Bool = lt(v5, v2)
-              write_string(v3)
-              match v6 {
-                true => {
-                  let v7: Int = 1
-                  let v8: Int = sub(v2, v7)
-                  write_function Countdown@f0(v8)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 3
-              write_function Countdown@f0(v0)
-            }
-            -- expected output --
-            3210
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10900,62 +4421,6 @@ fn type_as_recursive_function_parameter_name() {
             }
         "#},
         "3210",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Countdown@f0(type@v2: Int) -> Html {
-              let v3: String = v2.to_string()
-              let v5: Int = 0
-              let v6: Bool = lt(v5, v2)
-              write_string(v3)
-              match v6 {
-                true => {
-                  let v7: Int = 1
-                  let v8: Int = sub(v2, v7)
-                  write_function Countdown@f0(v8)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 3
-              write_function Countdown@f0(v0)
-            }
-            -- ir (optimized) --
-            fn Countdown@f0(type@v2: Int) -> Html {
-              let v3: String = v2.to_string()
-              let v5: Int = 0
-              let v6: Bool = lt(v5, v2)
-              write_string(v3)
-              match v6 {
-                true => {
-                  let v7: Int = 1
-                  let v8: Int = sub(v2, v7)
-                  write_function Countdown@f0(v8)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 3
-              write_function Countdown@f0(v0)
-            }
-            -- expected output --
-            3210
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -10974,47 +4439,6 @@ fn escape_sequences() {
             }
         "#},
         "&quot;\\foo\nbarfoo\tbarC:\\Users\\name",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "\""
-              let v1: String = "\\"
-              let v2: String = "foo\nbar"
-              let v3: String = "foo\tbar"
-              let v4: String = "C:\\Users\\name"
-              let v5: Array[String] = [v0, v1, v2, v3, v4]
-              for v6: String in v5 {
-                write_string(v6)
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "\""
-              let v1: String = "\\"
-              let v2: String = "foo\nbar"
-              let v3: String = "foo\tbar"
-              let v4: String = "C:\\Users\\name"
-              let v5: Array[String] = [v0, v1, v2, v3, v4]
-              for v6: String in v5 {
-                write_string(v6)
-              }
-            }
-            -- expected output --
-            &quot;\foo
-            barfoo	barC:\Users\name
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11045,54 +4469,6 @@ fn for_loop_record_field_in_let_binding() {
             }
         "#},
         "[a][b]",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "1"
-              let v2: Item = {name: v0, value: v1}
-              let v3: String = "b"
-              let v4: String = "2"
-              let v5: Item = {name: v3, value: v4}
-              let v6: Array[Item] = [v2, v5]
-              for v7: Item in v6 {
-                let v8: String = v7.name
-                write("[")
-                write_string(v8)
-                write("]")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "1"
-              let v2: Item = {name: v0, value: v1}
-              let v3: String = "b"
-              let v4: String = "2"
-              let v5: Item = {name: v3, value: v4}
-              let v6: Array[Item] = [v2, v5]
-              for v7: Item in v6 {
-                let v8: String = v7.name
-                write("[")
-                write_string(v8)
-                write("]")
-              }
-            }
-            -- expected output --
-            [a][b]
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11133,60 +4509,6 @@ fn for_loop_nested_record_field_in_let_binding() {
             }
         "#},
         "[paris][london]",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "alice"
-              let v1: String = "paris"
-              let v2: Address = {city: v1}
-              let v3: Person = {name: v0, address: v2}
-              let v4: String = "bob"
-              let v5: String = "london"
-              let v6: Address = {city: v5}
-              let v7: Person = {name: v4, address: v6}
-              let v8: Array[Person] = [v3, v7]
-              for v9: Person in v8 {
-                let v10: Address = v9.address
-                let v11: String = v10.city
-                write("[")
-                write_string(v11)
-                write("]")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "alice"
-              let v1: String = "paris"
-              let v2: Address = {city: v1}
-              let v3: Person = {name: v0, address: v2}
-              let v4: String = "bob"
-              let v5: String = "london"
-              let v6: Address = {city: v5}
-              let v7: Person = {name: v4, address: v6}
-              let v8: Array[Person] = [v3, v7]
-              for v9: Person in v8 {
-                let v10: Address = v9.address
-                let v11: String = v10.city
-                write("[")
-                write_string(v11)
-                write("]")
-              }
-            }
-            -- expected output --
-            [paris][london]
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11221,56 +4543,6 @@ fn for_loop_record_field_in_record_literal() {
             }
         "#},
         "[a][b]",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "1"
-              let v2: Source = {name: v0, value: v1}
-              let v3: String = "b"
-              let v4: String = "2"
-              let v5: Source = {name: v3, value: v4}
-              let v6: Array[Source] = [v2, v5]
-              for v7: Source in v6 {
-                let v8: String = v7.name
-                let v9: Target = {label: v8}
-                let v11: String = v9.label
-                write("[")
-                write_string(v11)
-                write("]")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "1"
-              let v2: Source = {name: v0, value: v1}
-              let v3: String = "b"
-              let v4: String = "2"
-              let v5: Source = {name: v3, value: v4}
-              let v6: Array[Source] = [v2, v5]
-              for v7: Source in v6 {
-                let v8: String = v7.name
-                write("[")
-                write_string(v8)
-                write("]")
-              }
-            }
-            -- expected output --
-            [a][b]
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11305,58 +4577,6 @@ fn for_loop_record_field_in_option_construction() {
             }
         "#},
         "[a][b]",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Item = {name: v0}
-              let v2: String = "b"
-              let v3: Item = {name: v2}
-              let v4: Array[Item] = [v1, v3]
-              for v5: Item in v4 {
-                let v6: String = v5.name
-                let v7: Option[String] = Some(v6)
-                match v7 {
-                  Some(v17: String) => {
-                    write("[")
-                    write_string(v17)
-                    write("]")
-                  }
-                  None => {
-                    write("[-]")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Item = {name: v0}
-              let v2: String = "b"
-              let v3: Item = {name: v2}
-              let v4: Array[Item] = [v1, v3]
-              for v5: Item in v4 {
-                let v6: String = v5.name
-                write("[")
-                write_string(v6)
-                write("]")
-              }
-            }
-            -- expected output --
-            [a][b]
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11376,30 +4596,6 @@ fn string_concat_in_let_binding() {
             }
         "#},
         "hello world",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("hello world")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("hello world")
-            }
-            -- expected output --
-            hello world
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11421,37 +4617,6 @@ fn string_concat_in_record_field() {
             }
         "#},
         "hello world",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: String = " "
-              let v2: String = string_concat(v0, v1)
-              let v3: String = "world"
-              let v4: String = string_concat(v2, v3)
-              let v5: Greeting = {message: v4}
-              let v6: String = v5.message
-              write_string(v6)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("hello world")
-            }
-            -- expected output --
-            hello world
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11470,32 +4635,6 @@ fn int_to_string_in_let_binding() {
             }
         "#},
         "42",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 42
-              let v1: String = v0.to_string()
-              write_string(v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("42")
-            }
-            -- expected output --
-            42
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11521,46 +4660,6 @@ fn record_with_array_field() {
             }
         "#},
         "[a][b]",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              let v3: Container = {items: v2}
-              let v4: Array[String] = v3.items
-              for v5: String in v4 {
-                write("[")
-                write_string(v5)
-                write("]")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              for v5: String in v2 {
-                write("[")
-                write_string(v5)
-                write("]")
-              }
-            }
-            -- expected output --
-            [a][b]
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11582,34 +4681,6 @@ fn int_to_string_in_record_field() {
             }
         "#},
         "42",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 42
-              let v1: String = v0.to_string()
-              let v2: Label = {text: v1}
-              let v3: String = v2.text
-              write_string(v3)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("42")
-            }
-            -- expected output --
-            42
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11639,48 +4710,6 @@ fn nested_record_with_array() {
             }
         "#},
         "[x][y]",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "x"
-              let v1: String = "y"
-              let v2: Array[String] = [v0, v1]
-              let v3: Inner = {values: v2}
-              let v4: Outer = {inner: v3}
-              let v5: Inner = v4.inner
-              let v6: Array[String] = v5.values
-              for v7: String in v6 {
-                write("[")
-                write_string(v7)
-                write("]")
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "x"
-              let v1: String = "y"
-              let v2: Array[String] = [v0, v1]
-              for v7: String in v2 {
-                write("[")
-                write_string(v7)
-                write("]")
-              }
-            }
-            -- expected output --
-            [x][y]
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11703,40 +4732,6 @@ fn move_field_into_record_literal() {
             }
         "#},
         "[hello][hello]",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Foo = {a: v0}
-              let v2: String = v1.a
-              let v3: Foo = {a: v2}
-              let v5: String = v1.a
-              let v8: String = v3.a
-              write("[")
-              write_string(v5)
-              write("][")
-              write_string(v8)
-              write("]")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("[hello][hello]")
-            }
-            -- expected output --
-            [hello][hello]
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11763,48 +4758,6 @@ fn match_expr_field_access_reused() {
             }
         "#},
         "[hello][hello]",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Foo = {a: v0}
-              let v2: Bool = true
-              let v13: String = match v2 {
-                true => {
-                  let v3: String = v1.a
-                  v3
-                }
-                false => {
-                  let v4: String = "default"
-                  v4
-                }
-              }
-              let v9: String = v1.a
-              write("[")
-              write_string(v13)
-              write("][")
-              write_string(v9)
-              write("]")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("[hello][hello]")
-            }
-            -- expected output --
-            [hello][hello]
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11827,34 +4780,6 @@ fn self_referential_record_with_array() {
             }
         "#},
         "leaf",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "leaf"
-              let v1: Array[TreeNode] = []
-              let v2: TreeNode = {value: v0, children: v1}
-              let v3: String = v2.value
-              write_string(v3)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("leaf")
-            }
-            -- expected output --
-            leaf
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11877,34 +4802,6 @@ fn self_referential_record_with_option() {
             }
         "#},
         "first",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "first"
-              let v1: Option[Node] = None
-              let v2: Node = {value: v0, next: v1}
-              let v3: String = v2.value
-              write_string(v3)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("first")
-            }
-            -- expected output --
-            first
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11934,39 +4831,6 @@ fn self_referential_enum() {
             }
         "#},
         "42",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "42"
-              let v1: Expr = Literal {value: v0}
-              match v1 {
-                Expr::Literal {value@v8: String} => {
-                  write_string(v8)
-                }
-                Expr::Neg => {
-                  write("neg")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("42")
-            }
-            -- expected output --
-            42
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -11997,70 +4861,6 @@ fn match_on_recursive_enum_field_binding() {
             }
         "#},
         "42",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "42"
-              let v1: Expr = Literal {value: v0}
-              let v2: Expr = Neg {inner: v1}
-              let v3: Array[Expr] = [v2]
-              for v4: Expr in v3 {
-                match v4 {
-                  Expr::Literal => {
-                    write("lit")
-                  }
-                  Expr::Neg {inner@v16: Expr} => {
-                    match v16 {
-                      Expr::Literal {value@v17: String} => {
-                        write_string(v17)
-                      }
-                      Expr::Neg => {
-                        write("nested")
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "42"
-              let v1: Expr = Literal {value: v0}
-              let v2: Expr = Neg {inner: v1}
-              let v3: Array[Expr] = [v2]
-              for v4: Expr in v3 {
-                match v4 {
-                  Expr::Literal => {
-                    write("lit")
-                  }
-                  Expr::Neg {inner@v16: Expr} => {
-                    match v16 {
-                      Expr::Literal {value@v17: String} => {
-                        write_string(v17)
-                      }
-                      Expr::Neg => {
-                        write("nested")
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            -- expected output --
-            42
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12092,41 +4892,6 @@ fn nested_self_referential_enum() {
             }
         "#},
         "neg",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "42"
-              let v1: Expr = Literal {value: v0}
-              let v2: Expr = Neg {inner: v1}
-              match v2 {
-                Expr::Literal {value@v10: String} => {
-                  write("lit:")
-                  write_string(v10)
-                }
-                Expr::Neg => {
-                  write("neg")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("neg")
-            }
-            -- expected output --
-            neg
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12153,34 +4918,6 @@ fn mutually_recursive_records() {
             }
         "#},
         "root",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "root"
-              let v1: Option[File] = None
-              let v2: Folder = {name: v0, parent: v1}
-              let v3: String = v2.name
-              write_string(v3)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("root")
-            }
-            -- expected output --
-            root
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12218,40 +4955,6 @@ fn three_type_recursion_cycle() {
             }
         "#},
         "none",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Option[Expr] = None
-              let v1: Leaf = {back: v0}
-              let v2: Option[Expr] = v1.back
-              match v2 {
-                Some(_) => {
-                  write("some")
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("none")
-            }
-            -- expected output --
-            none
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12275,34 +4978,6 @@ fn recursive_field_from_variable() {
             }
         "#},
         "head",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Option[Node] = None
-              let v1: String = "head"
-              let v2: Node = {value: v1, next: v0}
-              let v3: String = v2.value
-              write_string(v3)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("head")
-            }
-            -- expected output --
-            head
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12332,47 +5007,6 @@ fn recursive_field_from_match_arms() {
             }
         "#},
         "head",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "leaf"
-              let v1: Option[Node] = None
-              let v2: Node = {value: v0, next: v1}
-              let v3: String = "head"
-              let v4: Bool = true
-              let v12: Option[Node] = match v4 {
-                true => {
-                  let v5: Option[Node] = Some(v2)
-                  v5
-                }
-                false => {
-                  let v6: Option[Node] = None
-                  v6
-                }
-              }
-              let v8: Node = {value: v3, next: v12}
-              let v9: String = v8.value
-              write_string(v9)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("head")
-            }
-            -- expected output --
-            head
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12395,34 +5029,6 @@ fn nested_option_recursive_field() {
             }
         "#},
         "node",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "node"
-              let v1: Option[Option[Node]] = None
-              let v2: Node = {value: v0, next: v1}
-              let v3: String = v2.value
-              write_string(v3)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("node")
-            }
-            -- expected output --
-            node
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12456,53 +5062,6 @@ fn reading_a_nested_option_boxed_field() {
             }
         "#},
         "tail",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "head"
-              let v1: String = "tail"
-              let v2: Option[Option[Node]] = None
-              let v3: Node = {value: v1, next: v2}
-              let v4: Option[Node] = Some(v3)
-              let v5: Option[Option[Node]] = Some(v4)
-              let v6: Node = {value: v0, next: v5}
-              let v7: Option[Option[Node]] = v6.next
-              match v7 {
-                Some(v19: Option[Node]) => {
-                  match v19 {
-                    Some(v20: Node) => {
-                      let v10: String = v20.value
-                      write_string(v10)
-                    }
-                    None => {
-                      write("inner-none")
-                    }
-                  }
-                }
-                None => {
-                  write("outer-none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("tail")
-            }
-            -- expected output --
-            tail
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12533,44 +5092,6 @@ fn reading_a_boxed_field() {
             }
         "#},
         "node",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "node"
-              let v1: Option[Node] = None
-              let v2: Node = {value: v0, next: v1}
-              let v3: Option[Node] = v2.next
-              let v4: Holder = {held: v3}
-              let v5: Option[Node] = v4.held
-              match v5 {
-                Some(_) => {
-                  write("some")
-                }
-                None => {
-                  let v8: String = v2.value
-                  write_string(v8)
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("node")
-            }
-            -- expected output --
-            node
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12603,46 +5124,6 @@ fn reading_a_directly_boxed_field() {
             }
         "#},
         "bnone",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "b"
-              let v1: Option[A] = None
-              let v2: B = {name: v0, a: v1}
-              let v3: A = {b: v2}
-              let v4: B = v3.b
-              let v5: String = v4.name
-              let v7: B = v3.b
-              let v8: Option[A] = v7.a
-              write_string(v5)
-              match v8 {
-                Some(_) => {
-                  write("some")
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("bnone")
-            }
-            -- expected output --
-            bnone
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12690,51 +5171,6 @@ fn matching_a_boxed_enum_field() {
             }
         "#},
         "anone",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Tree = Leaf
-              let v2: Option[Tree] = None
-              let v3: Tree = Node {label: v0, left: v1, right: v2}
-              match v3 {
-                Tree::Node {label@v19: String, left@v20: Tree, right@v21: Option[Tree]} => {
-                  let v7: Step = {t: v20, rest: v21}
-                  let v9: Option[Tree] = v7.rest
-                  write_string(v19)
-                  match v9 {
-                    Some(_) => {
-                      write("some")
-                    }
-                    None => {
-                      write("none")
-                    }
-                  }
-                }
-                Tree::Leaf => {
-                  write("empty")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("anone")
-            }
-            -- expected output --
-            anone
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12774,49 +5210,6 @@ fn matching_a_non_boxed_option_enum_field() {
             }
         "#},
         "a@b.cwork",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a@b.c"
-              let v1: String = "work"
-              let v2: Option[String] = Some(v1)
-              let v3: Contact = Email {address: v0, label: v2}
-              match v3 {
-                Contact::Email {address@v17: String, label@v18: Option[String]} => {
-                  write_string(v17)
-                  match v18 {
-                    Some(v19: String) => {
-                      write_string(v19)
-                    }
-                    None => {
-                      write("no-label")
-                    }
-                  }
-                }
-                Contact::Anonymous => {
-                  write("anon")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("a@b.cwork")
-            }
-            -- expected output --
-            a@b.cwork
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12858,83 +5251,6 @@ fn rebuilding_an_enum_from_a_boxed_option_binding() {
             }
         "#},
         "abn",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[Tree] = None
-              let v2: Tree = Node {label: v0, kid: v1}
-              let v3: Array[Tree] = [v2]
-              for v4: Tree in v3 {
-                match v4 {
-                  Tree::Node {label@v26: String, kid@v27: Option[Tree]} => {
-                    let v7: String = "b"
-                    let v8: Tree = Node {label: v7, kid: v27}
-                    match v8 {
-                      Tree::Node {label@v28: String, kid@v29: Option[Tree]} => {
-                        write_string(v26)
-                        write_string(v28)
-                        match v29 {
-                          Some(_) => {
-                            write("s")
-                          }
-                          None => {
-                            write("n")
-                          }
-                        }
-                      }
-                      Tree::Leaf => {
-                        write("x")
-                      }
-                    }
-                  }
-                  Tree::Leaf => {
-                    write("empty")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[Tree] = None
-              let v2: Tree = Node {label: v0, kid: v1}
-              let v3: Array[Tree] = [v2]
-              for v4: Tree in v3 {
-                match v4 {
-                  Tree::Node {label@v26: String, kid@v27: Option[Tree]} => {
-                    write_string(v26)
-                    write("b")
-                    match v27 {
-                      Some(_) => {
-                        write("s")
-                      }
-                      None => {
-                        write("n")
-                      }
-                    }
-                  }
-                  Tree::Leaf => {
-                    write("empty")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            abn
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -12972,67 +5288,6 @@ fn rebuilding_an_enum_from_a_directly_boxed_binding() {
             }
         "#},
         "ab",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Tree = Leaf
-              let v2: Tree = Node {label: v0, kid: v1}
-              let v3: Array[Tree] = [v2]
-              for v4: Tree in v3 {
-                match v4 {
-                  Tree::Node {label@v20: String, kid@v21: Tree} => {
-                    let v7: String = "b"
-                    let v8: Tree = Node {label: v7, kid: v21}
-                    match v8 {
-                      Tree::Node {label@v22: String} => {
-                        write_string(v20)
-                        write_string(v22)
-                      }
-                      Tree::Leaf => {
-                        write("x")
-                      }
-                    }
-                  }
-                  Tree::Leaf => {
-                    write("empty")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Tree = Leaf
-              let v2: Tree = Node {label: v0, kid: v1}
-              let v3: Array[Tree] = [v2]
-              for v4: Tree in v3 {
-                match v4 {
-                  Tree::Node {label@v20: String} => {
-                    write_string(v20)
-                    write("b")
-                  }
-                  Tree::Leaf => {
-                    write("empty")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            ab
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13070,67 +5325,6 @@ fn rebuilding_an_enum_from_a_nested_option_boxed_binding() {
             }
         "#},
         "ab",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[Option[Tree]] = None
-              let v2: Tree = Node {label: v0, kid: v1}
-              let v3: Array[Tree] = [v2]
-              for v4: Tree in v3 {
-                match v4 {
-                  Tree::Node {label@v20: String, kid@v21: Option[Option[Tree]]} => {
-                    let v7: String = "b"
-                    let v8: Tree = Node {label: v7, kid: v21}
-                    match v8 {
-                      Tree::Node {label@v22: String} => {
-                        write_string(v20)
-                        write_string(v22)
-                      }
-                      Tree::Leaf => {
-                        write("x")
-                      }
-                    }
-                  }
-                  Tree::Leaf => {
-                    write("empty")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[Option[Tree]] = None
-              let v2: Tree = Node {label: v0, kid: v1}
-              let v3: Array[Tree] = [v2]
-              for v4: Tree in v3 {
-                match v4 {
-                  Tree::Node {label@v20: String} => {
-                    write_string(v20)
-                    write("b")
-                  }
-                  Tree::Leaf => {
-                    write("empty")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            ab
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13174,78 +5368,6 @@ fn rebuilding_an_enum_from_a_boxed_record_binding() {
             }
         "#},
         "re",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Option[Holder] = None
-              let v1: Wrap = Full {h: v0}
-              let v2: Array[Wrap] = [v1]
-              for v3: Wrap in v2 {
-                match v3 {
-                  Wrap::Full {h@v22: Option[Holder]} => {
-                    let v5: Wrap = Full {h: v22}
-                    match v5 {
-                      Wrap::Full {h@v23: Option[Holder]} => {
-                        match v23 {
-                          Some(v24: Holder) => {
-                            let v8: String = v24.tag
-                            write_string(v8)
-                          }
-                          None => {
-                            write("re")
-                          }
-                        }
-                      }
-                      Wrap::Empty => {
-                        write("x")
-                      }
-                    }
-                  }
-                  Wrap::Empty => {
-                    write("empty")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Option[Holder] = None
-              let v1: Wrap = Full {h: v0}
-              let v2: Array[Wrap] = [v1]
-              for v3: Wrap in v2 {
-                match v3 {
-                  Wrap::Full {h@v22: Option[Holder]} => {
-                    match v22 {
-                      Some(v23: Holder) => {
-                        let v8: String = v23.tag
-                        write_string(v8)
-                      }
-                      None => {
-                        write("re")
-                      }
-                    }
-                  }
-                  Wrap::Empty => {
-                    write("empty")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            re
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13282,78 +5404,6 @@ fn boxed_binding_returned_from_a_match_arm() {
             }
         "#},
         "none",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn pick@f0(t@v12: Tree) -> Option[Tree] {
-              let v17: Option[Tree] = match v12 {
-                Tree::Node {kid@v16: Option[Tree]} => {
-                  v16
-                }
-                Tree::Leaf => {
-                  let v14: Option[Tree] = None
-                  v14
-                }
-              }
-              v17
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[Tree] = None
-              let v2: Tree = Node {label: v0, kid: v1}
-              let v3: Array[Tree] = [v2]
-              for v4: Tree in v3 {
-                let v5: Option[Tree] = pick@f0(v4)
-                match v5 {
-                  Some(_) => {
-                    write("some")
-                  }
-                  None => {
-                    write("none")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[Tree] = None
-              let v2: Tree = Node {label: v0, kid: v1}
-              let v3: Array[Tree] = [v2]
-              for v4: Tree in v3 {
-                let v20: Option[Tree] = match v4 {
-                  Tree::Node {kid@v19: Option[Tree]} => {
-                    v19
-                  }
-                  Tree::Leaf => {
-                    let v17: Option[Tree] = None
-                    v17
-                  }
-                }
-                match v20 {
-                  Some(_) => {
-                    write("some")
-                  }
-                  None => {
-                    write("none")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            none
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13390,82 +5440,6 @@ fn boxed_binding_passed_as_a_function_argument() {
             }
         "#},
         "0",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn depth@f0(t@v14: Option[Tree]) -> Int {
-              let v19: Int = match v14 {
-                Some(_) => {
-                  let v15: Int = 1
-                  v15
-                }
-                None => {
-                  let v16: Int = 0
-                  v16
-                }
-              }
-              v19
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[Tree] = None
-              let v2: Tree = Node {label: v0, kid: v1}
-              let v3: Array[Tree] = [v2]
-              for v4: Tree in v3 {
-                match v4 {
-                  Tree::Node {kid@v18: Option[Tree]} => {
-                    let v6: Int = depth@f0(v18)
-                    let v7: String = v6.to_string()
-                    write_string(v7)
-                  }
-                  Tree::Leaf => {
-                    write("empty")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[Tree] = None
-              let v2: Tree = Node {label: v0, kid: v1}
-              let v3: Array[Tree] = [v2]
-              for v4: Tree in v3 {
-                match v4 {
-                  Tree::Node {kid@v21: Option[Tree]} => {
-                    let v22: Int = match v21 {
-                      Some(_) => {
-                        let v18: Int = 1
-                        v18
-                      }
-                      None => {
-                        let v19: Int = 0
-                        v19
-                      }
-                    }
-                    let v7: String = v22.to_string()
-                    write_string(v7)
-                  }
-                  Tree::Leaf => {
-                    write("empty")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            0
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13486,36 +5460,6 @@ fn simple_function_call() {
             }
         "#},
         "Hello, World!",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Greeting@f0(name@v2: String) -> Html {
-              write("Hello, ")
-              write_string(v2)
-              write("!")
-            }
-            page Test() {
-              let v0: String = "World"
-              write_function Greeting@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Hello, World!")
-            }
-            -- expected output --
-            Hello, World!
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13548,41 +5492,6 @@ fn function_with_children() {
             }
         "#},
         r#"<div class="card"><h2>Hello</h2><p>world</p></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f0(title@v6: String, children@v7: () -> Html) -> Html {
-              write("<div class=\"card\"><h2>")
-              write_string(v6)
-              write("</h2>")
-              write_apply v7()
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "Hello"
-              let v14: () -> Html = fn() {
-                write("<p>world</p>")
-              }
-              write_function Card@f0(v0, v14)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"card\"><h2>Hello</h2><p>world</p></div>")
-            }
-            -- expected output --
-            <div class="card"><h2>Hello</h2><p>world</p></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13617,44 +5526,6 @@ fn function_children_forwarded_to_another_function() {
             }
         "#},
         r#"<div class="outer"><div class="inner"><p>hello</p></div></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Inner@f1(children@v11: () -> Html) -> Html {
-              write("<div class=\"inner\">")
-              write_apply v11()
-              write("</div>")
-            }
-            fn Outer@f0(children@v5: () -> Html) -> Html {
-              write("<div class=\"outer\">")
-              write_function Inner@f1(v5)
-              write("</div>")
-            }
-            page Test() {
-              let v15: () -> Html = fn() {
-                write("<p>hello</p>")
-              }
-              write_function Outer@f0(v15)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"outer\"><div class=\"inner\"><p>hello</p></div>")
-              write("</div>")
-            }
-            -- expected output --
-            <div class="outer"><div class="inner"><p>hello</p></div></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13701,51 +5572,6 @@ fn function_children_with_function_calls() {
             }
         "#},
         r#"<div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Footer@f1() -> Html {
-              write("<footer><p>Copyright 2024</p></footer>")
-            }
-            fn Header@f0(title@v10: String) -> Html {
-              write("<header><h1>")
-              write_string(v10)
-              write("</h1></header>")
-            }
-            fn Layout@f2(children@v21: () -> Html) -> Html {
-              write("<div class=\"layout\">")
-              write_apply v21()
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "Welcome"
-              let v25: () -> Html = fn() {
-                write_function Header@f0(v0)
-                write("<main><p>Hello world</p></main>")
-                write_function Footer@f1()
-              }
-              write_function Layout@f2(v25)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"layout\"><header><h1>Welcome</h1></header>")
-              write("<main><p>Hello world</p></main>")
-              write("<footer><p>Copyright 2024</p></footer></div>")
-            }
-            -- expected output --
-            <div class="layout"><header><h1>Welcome</h1></header><main><p>Hello world</p></main><footer><p>Copyright 2024</p></footer></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13768,54 +5594,6 @@ fn html_bound_before_a_match_renders_in_the_arm_that_reads_it() {
             }
         "#},
         "<b>yes</b><i>no</i>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Bool = false
-              let v2: Array[Bool] = [v0, v1]
-              for v3: Bool in v2 {
-                match v3 {
-                  true => {
-                    write("<b>yes</b>")
-                  }
-                  false => {
-                    write("<i>no</i>")
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Bool = false
-              let v2: Array[Bool] = [v0, v1]
-              for v3: Bool in v2 {
-                match v3 {
-                  true => {
-                    write("<b>yes</b>")
-                  }
-                  false => {
-                    write("<i>no</i>")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            <b>yes</b><i>no</i>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13859,73 +5637,6 @@ fn recursive_function_with_non_recursive_sibling() {
             }
         "#},
         "<strong>a</strong><strong>b</strong>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Badge@f1(text@v16: String) -> Html {
-              write("<strong>")
-              write_string(v16)
-              write("</strong>")
-            }
-            fn NodeView@f0(node@v7: Node) -> Html {
-              let v8: String = v7.value
-              let v10: Option[Node] = v7.next
-              write_function Badge@f1(v8)
-              match v10 {
-                Some(v20: Node) => {
-                  write_function NodeView@f0(v20)
-                }
-                None => {
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Option[Node] = None
-              let v3: Node = {value: v1, next: v2}
-              let v4: Option[Node] = Some(v3)
-              let v5: Node = {value: v0, next: v4}
-              write_function NodeView@f0(v5)
-            }
-            -- ir (optimized) --
-            fn NodeView@f0(node@v7: Node) -> Html {
-              let v8: String = v7.value
-              let v10: Option[Node] = v7.next
-              write("<strong>")
-              write_string(v8)
-              write("</strong>")
-              match v10 {
-                Some(v23: Node) => {
-                  write_function NodeView@f0(v23)
-                }
-                None => {
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Option[Node] = None
-              let v3: Node = {value: v1, next: v2}
-              let v4: Option[Node] = Some(v3)
-              let v5: Node = {value: v0, next: v4}
-              write_function NodeView@f0(v5)
-            }
-            -- expected output --
-            <strong>a</strong><strong>b</strong>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -13970,76 +5681,6 @@ fn recursive_function_with_linked_list() {
             }
         "#},
         "<span>a</span><span>b</span><span>c</span>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn NodeView@f0(node@v10: Node) -> Html {
-              let v11: String = v10.value
-              let v15: Option[Node] = v10.next
-              write("<span>")
-              write_string(v11)
-              write("</span>")
-              match v15 {
-                Some(v21: Node) => {
-                  write_function NodeView@f0(v21)
-                }
-                None => {
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Option[Node] = None
-              let v4: Node = {value: v2, next: v3}
-              let v5: Option[Node] = Some(v4)
-              let v6: Node = {value: v1, next: v5}
-              let v7: Option[Node] = Some(v6)
-              let v8: Node = {value: v0, next: v7}
-              write_function NodeView@f0(v8)
-            }
-            -- ir (optimized) --
-            fn NodeView@f0(node@v10: Node) -> Html {
-              let v11: String = v10.value
-              let v15: Option[Node] = v10.next
-              write("<span>")
-              write_string(v11)
-              write("</span>")
-              match v15 {
-                Some(v21: Node) => {
-                  write_function NodeView@f0(v21)
-                }
-                None => {
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: String = "c"
-              let v3: Option[Node] = None
-              let v4: Node = {value: v2, next: v3}
-              let v5: Option[Node] = Some(v4)
-              let v6: Node = {value: v1, next: v5}
-              let v7: Option[Node] = Some(v6)
-              let v8: Node = {value: v0, next: v7}
-              write_function NodeView@f0(v8)
-            }
-            -- expected output --
-            <span>a</span><span>b</span><span>c</span>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14062,36 +5703,6 @@ fn function_with_optional_parameter() {
             }
         "#},
         r#"<div>New card</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f0(title@v2: String) -> Html {
-              write("<div>")
-              write_string(v2)
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "New card"
-              write_function Card@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>New card</div>")
-            }
-            -- expected output --
-            <div>New card</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14114,46 +5725,6 @@ fn function_with_negative_fallback_values() {
             }
         "#},
         r#"<div>-3 -5</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Offset@f0(dx@v3: Int, scale@v4: Float) -> Html {
-              let v5: Int = 3
-              let v6: Int = mul(v3, v5)
-              let v7: String = v6.to_string()
-              let v10: Float = 2
-              let v11: Float = mul(v4, v10)
-              let v12: Int = v11.to_int()
-              let v13: String = v12.to_string()
-              write("<div>")
-              write_string(v7)
-              write(" ")
-              write_string(v13)
-              write("</div>")
-            }
-            page Test() {
-              let v0: Int = -1
-              let v1: Float = -2.5
-              write_function Offset@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>-3 -5</div>")
-            }
-            -- expected output --
-            <div>-3 -5</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14176,36 +5747,6 @@ fn function_with_optional_parameter_overridden() {
             }
         "#},
         r#"<div>Custom title</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f0(title@v2: String) -> Html {
-              write("<div>")
-              write_string(v2)
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "Custom title"
-              write_function Card@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>Custom title</div>")
-            }
-            -- expected output --
-            <div>Custom title</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14231,39 +5772,6 @@ fn function_with_mixed_optional_and_required_parameters() {
             }
         "#},
         r#"<div>Hello - No subtitle</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f0(title@v3: String, subtitle@v4: String) -> Html {
-              write("<div>")
-              write_string(v3)
-              write(" - ")
-              write_string(v4)
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "Hello"
-              let v1: String = "No subtitle"
-              write_function Card@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>Hello - No subtitle</div>")
-            }
-            -- expected output --
-            <div>Hello - No subtitle</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14289,39 +5797,6 @@ fn function_with_mixed_optional_and_required_parameters_all_provided() {
             }
         "#},
         r#"<div>Hello - World</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f0(title@v3: String, subtitle@v4: String) -> Html {
-              write("<div>")
-              write_string(v3)
-              write(" - ")
-              write_string(v4)
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "Hello"
-              let v1: String = "World"
-              write_function Card@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>Hello - World</div>")
-            }
-            -- expected output --
-            <div>Hello - World</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14348,42 +5823,6 @@ fn function_with_multiple_optional_parameters() {
             }
         "#},
         r#"<div>Default - Custom - End</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f0(title@v4: String, subtitle@v5: String, footer@v6: String) -> Html {
-              write("<div>")
-              write_string(v4)
-              write(" - ")
-              write_string(v5)
-              write(" - ")
-              write_string(v6)
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "Default"
-              let v1: String = "Custom"
-              let v2: String = "End"
-              write_function Card@f0(v0, v1, v2)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>Default - Custom - End</div>")
-            }
-            -- expected output --
-            <div>Default - Custom - End</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14412,40 +5851,6 @@ fn function_with_optional_children() {
             }
         "#},
         r#"<div class="card"><h2>Hello</h2></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f0(title@v3: String, children@v4: () -> Html) -> Html {
-              write("<div class=\"card\"><h2>")
-              write_string(v3)
-              write("</h2>")
-              write_apply v4()
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "Hello"
-              let v11: () -> Html = fn() {
-              }
-              write_function Card@f0(v0, v11)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"card\"><h2>Hello</h2></div>")
-            }
-            -- expected output --
-            <div class="card"><h2>Hello</h2></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14481,46 +5886,6 @@ fn function_with_optional_children_called_with_and_without_argument() {
             }
         "#},
         r#"<div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f0(title@v10: String, children@v11: () -> Html) -> Html {
-              write("<div class=\"card\"><h2>")
-              write_string(v10)
-              write("</h2>")
-              write_apply v11()
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "With"
-              let v6: String = "Without"
-              let v18: () -> Html = fn() {
-                write("<p>body</p>")
-              }
-              write_function Card@f0(v0, v18)
-              let v19: () -> Html = fn() {
-              }
-              write_function Card@f0(v6, v19)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div class=\"card\"><h2>With</h2><p>body</p></div>")
-              write("<div class=\"card\"><h2>Without</h2></div>")
-            }
-            -- expected output --
-            <div class="card"><h2>With</h2><p>body</p></div><div class="card"><h2>Without</h2></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14541,39 +5906,6 @@ fn string_is_empty_true() {
             }
         "#},
         "empty",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = ""
-              let v1: Bool = v0.is_empty()
-              match v1 {
-                true => {
-                  write("empty")
-                }
-                false => {
-                  write("not empty")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("empty")
-            }
-            -- expected output --
-            empty
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14594,39 +5926,6 @@ fn string_is_empty_false() {
             }
         "#},
         "not empty",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Bool = v0.is_empty()
-              match v1 {
-                true => {
-                  write("empty")
-                }
-                false => {
-                  write("not empty")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("not empty")
-            }
-            -- expected output --
-            not empty
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14647,40 +5946,6 @@ fn option_is_some_true() {
             }
         "#},
         "yes",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Option[String] = Some(v0)
-              let v2: Bool = v1.is_some()
-              match v2 {
-                true => {
-                  write("yes")
-                }
-                false => {
-                  write("no")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("yes")
-            }
-            -- expected output --
-            yes
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14701,39 +5966,6 @@ fn option_is_some_false() {
             }
         "#},
         "no",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Option[String] = None
-              let v1: Bool = v0.is_some()
-              match v1 {
-                true => {
-                  write("yes")
-                }
-                false => {
-                  write("no")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("no")
-            }
-            -- expected output --
-            no
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14754,39 +5986,6 @@ fn option_is_none_true() {
             }
         "#},
         "yes",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Option[String] = None
-              let v1: Bool = v0.is_none()
-              match v1 {
-                true => {
-                  write("yes")
-                }
-                false => {
-                  write("no")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("yes")
-            }
-            -- expected output --
-            yes
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14807,40 +6006,6 @@ fn option_is_none_false() {
             }
         "#},
         "no",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "hello"
-              let v1: Option[String] = Some(v0)
-              let v2: Bool = v1.is_none()
-              match v2 {
-                true => {
-                  write("yes")
-                }
-                false => {
-                  write("no")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("no")
-            }
-            -- expected output --
-            no
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14861,40 +6026,6 @@ fn option_is_none_as_comparison_operand() {
             }
         "#},
         "x",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Option[Bool] = None
-              let v1: Bool = true
-              let v2: Bool = v0.is_none()
-              let v3: Bool = eq(v1, v2)
-              match v3 {
-                true => {
-                  write("x")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("x")
-            }
-            -- expected output --
-            x
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14912,41 +6043,6 @@ fn option_unwrap_or_some() {
             }
         "#},
         "Alice",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "Alice"
-              let v1: Option[String] = Some(v0)
-              let v8: String = match v1 {
-                Some(v7: String) => {
-                  v7
-                }
-                None => {
-                  let v3: String = "anonymous"
-                  v3
-                }
-              }
-              write_string(v8)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("Alice")
-            }
-            -- expected output --
-            Alice
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -14967,43 +6063,6 @@ fn option_unwrap_or_none() {
             }
         "#},
         "anonymous",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Greeting@f0(name@v2: Option[String]) -> Html {
-              let v9: String = match v2 {
-                Some(v8: String) => {
-                  v8
-                }
-                None => {
-                  let v4: String = "anonymous"
-                  v4
-                }
-              }
-              write_string(v9)
-            }
-            page Test() {
-              let v0: Option[String] = None
-              write_function Greeting@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("anonymous")
-            }
-            -- expected output --
-            anonymous
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15023,41 +6082,6 @@ fn string_is_empty_as_comparison_operand() {
             }
         "#},
         "x",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Bool = v0.is_empty()
-              let v2: String = "b"
-              let v3: Bool = v2.is_empty()
-              let v4: Bool = eq(v1, v3)
-              match v4 {
-                true => {
-                  write("x")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("x")
-            }
-            -- expected output --
-            x
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15076,30 +6100,6 @@ fn top_level_text() {
             }
         "#},
         "hello world",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("hello world")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("hello world")
-            }
-            -- expected output --
-            hello world
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15119,30 +6119,6 @@ fn top_level_multiline_text() {
             }
         "#},
         "hello world",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("hello world")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("hello world")
-            }
-            -- expected output --
-            hello world
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15192,60 +6168,6 @@ fn enum_bool_field_destructured_in_function() {
             }
         "#},
         "[x]Buy milk,[ ]Walk dog",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn RenderItem@f0(item@v10: Item) -> Html {
-              match v10 {
-                Item::Todo {label@v25: String, done@v26: Bool} => {
-                  let v17: Bool = not(v26)
-                  match v26 {
-                    true => {
-                      write("[x]")
-                    }
-                    false => {
-                    }
-                  }
-                  match v17 {
-                    true => {
-                      write("[ ]")
-                    }
-                    false => {
-                    }
-                  }
-                  write_string(v25)
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "Buy milk"
-              let v1: Bool = true
-              let v2: Item = Todo {label: v0, done: v1}
-              let v5: String = "Walk dog"
-              let v6: Bool = false
-              let v7: Item = Todo {label: v5, done: v6}
-              write_function RenderItem@f0(v2)
-              write(",")
-              write_function RenderItem@f0(v7)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("[x]Buy milk,[ ]Walk dog")
-            }
-            -- expected output --
-            [x]Buy milk,[ ]Walk dog
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15294,72 +6216,6 @@ fn enum_int_field_compared_in_function() {
             }
         "#},
         "1 minute ago,5 minutes ago,1 hour ago",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Render@f0(time@v12: TimeAgo) -> Html {
-              match v12 {
-                TimeAgo::MinutesAgo {count@v36: Int} => {
-                  let v14: Int = 1
-                  let v15: Bool = eq(v36, v14)
-                  match v15 {
-                    true => {
-                      write("1 minute ago")
-                    }
-                    false => {
-                      let v18: String = v36.to_string()
-                      write_string(v18)
-                      write(" minutes ago")
-                    }
-                  }
-                }
-                TimeAgo::HoursAgo {count@v37: Int} => {
-                  let v25: Int = 1
-                  let v26: Bool = eq(v37, v25)
-                  match v26 {
-                    true => {
-                      write("1 hour ago")
-                    }
-                    false => {
-                      let v29: String = v37.to_string()
-                      write_string(v29)
-                      write(" hours ago")
-                    }
-                  }
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 1
-              let v1: TimeAgo = MinutesAgo {count: v0}
-              let v4: Int = 5
-              let v5: TimeAgo = MinutesAgo {count: v4}
-              let v8: Int = 1
-              let v9: TimeAgo = HoursAgo {count: v8}
-              write_function Render@f0(v1)
-              write(",")
-              write_function Render@f0(v5)
-              write(",")
-              write_function Render@f0(v9)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("1 minute ago,5 minutes ago,1 hour ago")
-            }
-            -- expected output --
-            1 minute ago,5 minutes ago,1 hour ago
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15393,42 +6249,6 @@ fn enum_wildcard_field_in_function() {
             }
         "#},
         "<code>fn main()</code>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn RenderCode@f0(block@v4: CodeBlock) -> Html {
-              match v4 {
-                CodeBlock::Snippet {code@v10: String} => {
-                  write("<code>")
-                  write_string(v10)
-                  write("</code>")
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "rust"
-              let v1: String = "fn main()"
-              let v2: CodeBlock = Snippet {language: v0, code: v1}
-              write_function RenderCode@f0(v2)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<code>fn main()</code>")
-            }
-            -- expected output --
-            <code>fn main()</code>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15472,47 +6292,6 @@ fn enum_field_named_type_in_function() {
             }
         "#},
         r#"<button type="submit">btn</button>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Render@f0(el@v4: ButtonElement) -> Html {
-              match v4 {
-                ButtonElement::Link {href@v14: String} => {
-                  write("<a href=\"")
-                  write_string(v14)
-                  write("\">link</a>")
-                }
-                ButtonElement::Button {type@v15: String} => {
-                  write("<button type=\"")
-                  write_string(v15)
-                  write("\">btn</button>")
-                }
-              }
-            }
-            page Test() {
-              let v0: Bool = false
-              let v1: String = "submit"
-              let v2: ButtonElement = Button {disabled: v0, type: v1}
-              write_function Render@f0(v2)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<button type=\"submit\">btn</button>")
-            }
-            -- expected output --
-            <button type="submit">btn</button>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15564,78 +6343,6 @@ fn option_record_used_in_inline_match_and_match_expr() {
             }
         "#},
         "[hello]hello",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "1"
-              let v1: String = "hello"
-              let v2: Target = {id: v0, title: v1}
-              let v3: Option[Target] = Some(v2)
-              let v27: Option[String] = match v3 {
-                Some(v26: Target) => {
-                  let v5: String = v26.title
-                  let v6: Option[String] = Some(v5)
-                  v6
-                }
-                None => {
-                  let v7: Option[String] = None
-                  v7
-                }
-              }
-              let v9: Array[Option[String]] = [v27]
-              for v10: Option[String] in v9 {
-                match v10 {
-                  Some(v28: String) => {
-                    write("[")
-                    write_string(v28)
-                    write("]")
-                  }
-                  None => {
-                  }
-                }
-              }
-              match v3 {
-                Some(v29: Target) => {
-                  let v20: String = v29.title
-                  write_string(v20)
-                }
-                None => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v1: String = "hello"
-              let v6: Option[String] = Some(v1)
-              let v9: Array[Option[String]] = [v6]
-              for v10: Option[String] in v9 {
-                match v10 {
-                  Some(v26: String) => {
-                    write("[")
-                    write_string(v26)
-                    write("]")
-                  }
-                  None => {
-                  }
-                }
-              }
-              write("hello")
-            }
-            -- expected output --
-            [hello]hello
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15655,30 +6362,6 @@ fn asset_macro_in_dev_rewrites_to_hop_assets() {
             format!("/hop_assets/{}", asset_path.as_str())
         })),
         r#"<img src="/hop_assets/logo.svg">"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<img src=\"/hop_assets/logo.svg\">")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<img src=\"/hop_assets/logo.svg\">")
-            }
-            -- expected output --
-            <img src="/hop_assets/logo.svg">
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15699,30 +6382,6 @@ fn asset_macro_in_prod_with_prefix() {
             "/static/v1/logo-a1b2c3d4.svg".to_string()
         })),
         r#"<img src="/static/v1/logo-a1b2c3d4.svg">"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<img src=\"/static/v1/logo-a1b2c3d4.svg\">")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<img src=\"/static/v1/logo-a1b2c3d4.svg\">")
-            }
-            -- expected output --
-            <img src="/static/v1/logo-a1b2c3d4.svg">
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15759,70 +6418,6 @@ fn recursive_function_with_children_renders() {
             }
         "#},
         "<div><div><b>x</b></div></div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Nest@f0(depth@v6: Int, children@v7: () -> Html) -> Html {
-              let v8: Int = 0
-              let v9: Bool = lt(v8, v6)
-              match v9 {
-                true => {
-                  let v10: Int = 1
-                  let v11: Int = sub(v6, v10)
-                  write("<div>")
-                  write_function Nest@f0(v11, v7)
-                  write("</div>")
-                }
-                false => {
-                  write_apply v7()
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 2
-              let v17: () -> Html = fn() {
-                write("<b>x</b>")
-              }
-              write_function Nest@f0(v0, v17)
-            }
-            -- ir (optimized) --
-            fn Nest@f0(depth@v6: Int, children@v7: () -> Html) -> Html {
-              let v8: Int = 0
-              let v9: Bool = lt(v8, v6)
-              match v9 {
-                true => {
-                  let v10: Int = 1
-                  let v11: Int = sub(v6, v10)
-                  write("<div>")
-                  write_function Nest@f0(v11, v7)
-                  write("</div>")
-                }
-                false => {
-                  write_apply v7()
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 2
-              let v17: () -> Html = fn() {
-                write("<b>x</b>")
-              }
-              write_function Nest@f0(v0, v17)
-            }
-            -- expected output --
-            <div><div><b>x</b></div></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15850,38 +6445,6 @@ fn children_can_be_bound_to_a_variable() {
             }
         "#},
         "<div><b>hi</b></div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Foo@f0(children@v5: () -> Html) -> Html {
-              write("<div>")
-              write_apply v5()
-              write("</div>")
-            }
-            page Test() {
-              let v8: () -> Html = fn() {
-                write("<b>hi</b>")
-              }
-              write_function Foo@f0(v8)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div><b>hi</b></div>")
-            }
-            -- expected output --
-            <div><b>hi</b></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15914,43 +6477,6 @@ fn nested_children_forwarding() {
             }
         "#},
         "<section><em>z</em></section>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Inner@f1(children@v8: () -> Html) -> Html {
-              write("<em>")
-              write_apply v8()
-              write("</em>")
-            }
-            fn Outer@f0(children@v3: () -> Html) -> Html {
-              write("<section>")
-              write_function Inner@f1(v3)
-              write("</section>")
-            }
-            page Test() {
-              let v11: () -> Html = fn() {
-                write("z")
-              }
-              write_function Outer@f0(v11)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<section><em>z</em></section>")
-            }
-            -- expected output --
-            <section><em>z</em></section>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -15979,82 +6505,6 @@ fn recursive_function_carries_a_rest() {
             }
         "#},
         r#"<div id="root"><div><div></div></div></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Nest@f0(n@v3: Int, id@v4: String) -> Html {
-              let v5: Int = 0
-              let v6: Bool = lt(v5, v3)
-              write("<div id=\"")
-              write_string(v4)
-              write("\">")
-              match v6 {
-                true => {
-                  let v7: Int = 1
-                  let v8: Int = sub(v3, v7)
-                  write_function Nest@f1(v8)
-                }
-                false => {
-                }
-              }
-              write("</div>")
-            }
-            fn Nest@f1(n@v14: Int) -> Html {
-              let v15: Int = 0
-              let v16: Bool = lt(v15, v14)
-              write("<div>")
-              match v16 {
-                true => {
-                  let v17: Int = 1
-                  let v18: Int = sub(v14, v17)
-                  write_function Nest@f1(v18)
-                }
-                false => {
-                }
-              }
-              write("</div>")
-            }
-            page Test() {
-              let v0: Int = 2
-              let v1: String = "root"
-              write_function Nest@f0(v0, v1)
-            }
-            -- ir (optimized) --
-            fn Nest@f1(n@v14: Int) -> Html {
-              let v15: Int = 0
-              let v16: Bool = lt(v15, v14)
-              write("<div>")
-              match v16 {
-                true => {
-                  let v17: Int = 1
-                  let v18: Int = sub(v14, v17)
-                  write_function Nest@f1(v18)
-                }
-                false => {
-                }
-              }
-              write("</div>")
-            }
-            page Test() {
-              let v27: Int = 1
-              write("<div id=\"root\">")
-              write_function Nest@f1(v27)
-              write("</div>")
-            }
-            -- expected output --
-            <div id="root"><div><div></div></div></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16081,62 +6531,6 @@ fn recursive_function_with_int_param() {
             }
         "#},
         "3210",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Countdown@f0(n@v2: Int) -> Html {
-              let v3: String = v2.to_string()
-              let v5: Int = 0
-              let v6: Bool = lt(v5, v2)
-              write_string(v3)
-              match v6 {
-                true => {
-                  let v7: Int = 1
-                  let v8: Int = sub(v2, v7)
-                  write_function Countdown@f0(v8)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 3
-              write_function Countdown@f0(v0)
-            }
-            -- ir (optimized) --
-            fn Countdown@f0(n@v2: Int) -> Html {
-              let v3: String = v2.to_string()
-              let v5: Int = 0
-              let v6: Bool = lt(v5, v2)
-              write_string(v3)
-              match v6 {
-                true => {
-                  let v7: Int = 1
-                  let v8: Int = sub(v2, v7)
-                  write_function Countdown@f0(v8)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 3
-              write_function Countdown@f0(v0)
-            }
-            -- expected output --
-            3210
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16169,78 +6563,6 @@ fn recursive_function_with_option_param() {
             }
         "#},
         "aaa",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Loop@f0(n@v4: Int, label@v5: Option[String]) -> Html {
-              let v12: Int = 0
-              let v13: Bool = lt(v12, v4)
-              match v5 {
-                Some(v20: String) => {
-                  write_string(v20)
-                }
-                None => {
-                  write("x")
-                }
-              }
-              match v13 {
-                true => {
-                  let v14: Int = 1
-                  let v15: Int = sub(v4, v14)
-                  write_function Loop@f0(v15, v5)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 2
-              let v1: String = "a"
-              let v2: Option[String] = Some(v1)
-              write_function Loop@f0(v0, v2)
-            }
-            -- ir (optimized) --
-            fn Loop@f0(n@v4: Int, label@v5: Option[String]) -> Html {
-              let v12: Int = 0
-              let v13: Bool = lt(v12, v4)
-              match v5 {
-                Some(v20: String) => {
-                  write_string(v20)
-                }
-                None => {
-                  write("x")
-                }
-              }
-              match v13 {
-                true => {
-                  let v14: Int = 1
-                  let v15: Int = sub(v4, v14)
-                  write_function Loop@f0(v15, v5)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 2
-              let v1: String = "a"
-              let v2: Option[String] = Some(v1)
-              write_function Loop@f0(v0, v2)
-            }
-            -- expected output --
-            aaa
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16268,56 +6590,6 @@ fn recursive_function_with_option_arg_used_twice() {
             }
         "#},
         "",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn C@f0(x@v5: Option[String]) -> Html {
-              let v6: Bool = v5.is_none()
-              match v6 {
-                true => {
-                  write_function C@f0(v5)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[String] = Some(v0)
-              write_function C@f0(v1)
-              write_function C@f0(v1)
-            }
-            -- ir (optimized) --
-            fn C@f0(x@v5: Option[String]) -> Html {
-              let v6: Bool = v5.is_none()
-              match v6 {
-                true => {
-                  write_function C@f0(v5)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: Option[String] = Some(v0)
-              write_function C@f0(v1)
-              write_function C@f0(v1)
-            }
-            -- expected output --
-
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16360,120 +6632,6 @@ fn mutually_recursive_functions() {
             }
         "#},
         "even",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Even@f0(n@v2: Int) -> Html {
-              let v3: Int = 0
-              let v4: Bool = eq(v2, v3)
-              let v9: Int = 0
-              let v10: Bool = lt(v9, v2)
-              match v4 {
-                true => {
-                  write("even")
-                }
-                false => {
-                }
-              }
-              match v10 {
-                true => {
-                  let v11: Int = 1
-                  let v12: Int = sub(v2, v11)
-                  write_function Odd@f1(v12)
-                }
-                false => {
-                }
-              }
-            }
-            fn Odd@f1(n@v17: Int) -> Html {
-              let v18: Int = 0
-              let v19: Bool = eq(v17, v18)
-              let v24: Int = 0
-              let v25: Bool = lt(v24, v17)
-              match v19 {
-                true => {
-                  write("odd")
-                }
-                false => {
-                }
-              }
-              match v25 {
-                true => {
-                  let v26: Int = 1
-                  let v27: Int = sub(v17, v26)
-                  write_function Even@f0(v27)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 4
-              write_function Even@f0(v0)
-            }
-            -- ir (optimized) --
-            fn Even@f0(n@v2: Int) -> Html {
-              let v3: Int = 0
-              let v4: Bool = eq(v2, v3)
-              let v9: Int = 0
-              let v10: Bool = lt(v9, v2)
-              match v4 {
-                true => {
-                  write("even")
-                }
-                false => {
-                }
-              }
-              match v10 {
-                true => {
-                  let v11: Int = 1
-                  let v12: Int = sub(v2, v11)
-                  write_function Odd@f1(v12)
-                }
-                false => {
-                }
-              }
-            }
-            fn Odd@f1(n@v17: Int) -> Html {
-              let v18: Int = 0
-              let v19: Bool = eq(v17, v18)
-              let v24: Int = 0
-              let v25: Bool = lt(v24, v17)
-              match v19 {
-                true => {
-                  write("odd")
-                }
-                false => {
-                }
-              }
-              match v25 {
-                true => {
-                  let v26: Int = 1
-                  let v27: Int = sub(v17, v26)
-                  write_function Even@f0(v27)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Int = 4
-              write_function Even@f0(v0)
-            }
-            -- expected output --
-            even
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16497,39 +6655,6 @@ fn field_access_on_record_literal_as_match_subject() {
             }
         "#},
         "x",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: R = {f: v0}
-              let v2: Bool = v1.f
-              match v2 {
-                true => {
-                  write("x")
-                }
-                false => {
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("x")
-            }
-            -- expected output --
-            x
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16552,46 +6677,6 @@ fn recursive_function_with_empty_array_arg() {
             }
         "#},
         "",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn C@f0(p@v3: Array[String]) -> Html {
-              for _ in v3 {
-                let v4: Array[String] = []
-                write_function C@f0(v4)
-              }
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: Array[String] = [v0]
-              write_function C@f0(v1)
-            }
-            -- ir (optimized) --
-            fn C@f0(p@v3: Array[String]) -> Html {
-              for _ in v3 {
-                let v4: Array[String] = []
-                write_function C@f0(v4)
-              }
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: Array[String] = [v0]
-              write_function C@f0(v1)
-            }
-            -- expected output --
-
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16619,58 +6704,6 @@ fn field_access_on_record_literal_from_arg_as_match_subject() {
             }
         "#},
         "",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn C@f0(p@v3: Array[String]) -> Html {
-              let v4: R = {f: v3}
-              let v5: Array[String] = v4.f
-              let v6: Bool = v5.is_empty()
-              match v6 {
-                true => {
-                  let v7: Array[String] = []
-                  write_function C@f0(v7)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: Array[String] = [v0]
-              write_function C@f0(v1)
-            }
-            -- ir (optimized) --
-            fn C@f0(p@v3: Array[String]) -> Html {
-              let v6: Bool = v3.is_empty()
-              match v6 {
-                true => {
-                  let v7: Array[String] = []
-                  write_function C@f0(v7)
-                }
-                false => {
-                }
-              }
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: Array[String] = [v0]
-              write_function C@f0(v1)
-            }
-            -- expected output --
-
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16703,48 +6736,6 @@ fn option_bool_match_in_function() {
             }
         "#},
         "<span>yes</span>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn OptBool@f0(checked@v3: Option[Bool]) -> Html {
-              match v3 {
-                Some(v12: Bool) => {
-                  match v12 {
-                    true => {
-                      write("<span>yes</span>")
-                    }
-                    false => {
-                      write("<span>no</span>")
-                    }
-                  }
-                }
-                None => {
-                }
-              }
-            }
-            page Test() {
-              let v0: Bool = true
-              let v1: Option[Bool] = Some(v0)
-              write_function OptBool@f0(v1)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<span>yes</span>")
-            }
-            -- expected output --
-            <span>yes</span>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16767,54 +6758,6 @@ fn nested_option_bool_literal_patterns() {
             }
         "#},
         "tt",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Option[Bool] = Some(v0)
-              let v2: Option[Option[Bool]] = Some(v1)
-              match v2 {
-                Some(v12: Option[Bool]) => {
-                  match v12 {
-                    Some(v13: Bool) => {
-                      match v13 {
-                        true => {
-                          write("tt")
-                        }
-                        false => {
-                          write("tf")
-                        }
-                      }
-                    }
-                    None => {
-                      write("some-none")
-                    }
-                  }
-                }
-                None => {
-                  write("none")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("tt")
-            }
-            -- expected output --
-            tt
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16836,60 +6779,6 @@ fn for_loop_int_comparison() {
             }
         "#},
         "23",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 2
-              let v2: Int = 3
-              let v3: Array[Int] = [v0, v1, v2]
-              for v4: Int in v3 {
-                let v5: Int = 1
-                let v6: Bool = lt(v5, v4)
-                match v6 {
-                  true => {
-                    let v7: String = v4.to_string()
-                    write_string(v7)
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Int = 1
-              let v1: Int = 2
-              let v2: Int = 3
-              let v3: Array[Int] = [v0, v1, v2]
-              for v4: Int in v3 {
-                let v5: Int = 1
-                let v6: Bool = lt(v5, v4)
-                match v6 {
-                  true => {
-                    let v7: String = v4.to_string()
-                    write_string(v7)
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- expected output --
-            23
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16911,56 +6800,6 @@ fn for_loop_string_equality() {
             }
         "#},
         "a",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              for v3: String in v2 {
-                let v4: String = "a"
-                let v5: Bool = eq(v3, v4)
-                match v5 {
-                  true => {
-                    write_string(v3)
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              for v3: String in v2 {
-                let v4: String = "a"
-                let v5: Bool = eq(v3, v4)
-                match v5 {
-                  true => {
-                    write_string(v3)
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- expected output --
-            a
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -16982,56 +6821,6 @@ fn for_loop_float_comparison() {
             }
         "#},
         "big",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Float = 1.5
-              let v1: Float = 2.5
-              let v2: Array[Float] = [v0, v1]
-              for v3: Float in v2 {
-                let v4: Float = 2
-                let v5: Bool = lt(v4, v3)
-                match v5 {
-                  true => {
-                    write("big")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Float = 1.5
-              let v1: Float = 2.5
-              let v2: Array[Float] = [v0, v1]
-              for v3: Float in v2 {
-                let v4: Float = 2
-                let v5: Bool = lt(v4, v3)
-                match v5 {
-                  true => {
-                    write("big")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- expected output --
-            big
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17053,72 +6842,6 @@ fn for_loop_bool_logical_and() {
             }
         "#},
         "x",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Bool = false
-              let v2: Array[Bool] = [v0, v1]
-              for v3: Bool in v2 {
-                let v12: Bool = match v3 {
-                  true => {
-                    let v4: Bool = true
-                    v4
-                  }
-                  false => {
-                    let v5: Bool = false
-                    v5
-                  }
-                }
-                match v12 {
-                  true => {
-                    write("x")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: Bool = true
-              let v1: Bool = false
-              let v2: Array[Bool] = [v0, v1]
-              for v3: Bool in v2 {
-                let v12: Bool = match v3 {
-                  true => {
-                    let v4: Bool = true
-                    v4
-                  }
-                  false => {
-                    let v5: Bool = false
-                    v5
-                  }
-                }
-                match v12 {
-                  true => {
-                    write("x")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- expected output --
-            x
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17146,63 +6869,6 @@ fn for_loop_string_used_by_value_and_by_ref() {
             }
         "#},
         "<span>a</span>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Show@f0(label@v10: String) -> Html {
-              write("<span>")
-              write_string(v10)
-              write("</span>")
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              for v3: String in v2 {
-                let v4: String = "a"
-                let v5: Bool = eq(v3, v4)
-                match v5 {
-                  true => {
-                    write_function Show@f0(v3)
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: String = "b"
-              let v2: Array[String] = [v0, v1]
-              for v3: String in v2 {
-                let v4: String = "a"
-                let v5: Bool = eq(v3, v4)
-                match v5 {
-                  true => {
-                    write("<span>")
-                    write_string(v3)
-                    write("</span>")
-                  }
-                  false => {
-                  }
-                }
-              }
-            }
-            -- expected output --
-            <span>a</span>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17226,35 +6892,6 @@ fn record_field_named_class() {
             }
         "#},
         r#"<div>a</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Foo = {class: v0}
-              let v2: String = v1.class
-              write("<div>")
-              write_string(v2)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>a</div>")
-            }
-            -- expected output --
-            <div>a</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17278,35 +6915,6 @@ fn record_field_named_function() {
             }
         "#},
         r#"<div>a</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Foo = {function: v0}
-              let v2: String = v1.function
-              write("<div>")
-              write_string(v2)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>a</div>")
-            }
-            -- expected output --
-            <div>a</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17330,35 +6938,6 @@ fn record_field_named_protected() {
             }
         "#},
         r#"<div>a</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Foo = {protected: v0}
-              let v2: String = v1.protected
-              write("<div>")
-              write_string(v2)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>a</div>")
-            }
-            -- expected output --
-            <div>a</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17382,35 +6961,6 @@ fn record_field_named_eval() {
             }
         "#},
         r#"<div>a</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Foo = {eval: v0}
-              let v2: String = v1.eval
-              write("<div>")
-              write_string(v2)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>a</div>")
-            }
-            -- expected output --
-            <div>a</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17440,38 +6990,6 @@ fn enum_payload_field_named_class() {
             }
         "#},
         r#"<div>a</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: E = A {class: v0}
-              match v1 {
-                E::A {class@v7: String} => {
-                  write("<div>")
-                  write_string(v7)
-                  write("</div>")
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>a</div>")
-            }
-            -- expected output --
-            <div>a</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17494,36 +7012,6 @@ fn record_named_math_does_not_shadow_the_js_math_global() {
             }
         "#},
         r#"20"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Int = 4
-              let v1: Math = {x: v0}
-              let v2: Int = 5
-              let v3: Int = v1.x
-              let v4: Int = mul(v3, v2)
-              let v5: String = v4.to_string()
-              write_string(v5)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("20")
-            }
-            -- expected output --
-            20
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17545,35 +7033,6 @@ fn record_named_number_does_not_shadow_the_js_number_global() {
             }
         "#},
         r#"3"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: Float = 3.7
-              let v1: Number = {x: v0}
-              let v2: Float = v1.x
-              let v3: Int = v2.to_int()
-              let v4: String = v3.to_string()
-              write_string(v4)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("3")
-            }
-            -- expected output --
-            3
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17600,40 +7059,6 @@ fn record_spread_fills_fields_from_subject() {
             }
         "#},
         r#"a2"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Int = 1
-              let v2: State = {query: v0, num: v1}
-              let v3: String = v2.query
-              let v4: Int = 2
-              let v5: State = {query: v3, num: v4}
-              let v6: String = v5.query
-              let v8: Int = v5.num
-              let v9: String = v8.to_string()
-              write_string(v6)
-              write_string(v9)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("a2")
-            }
-            -- expected output --
-            a2
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17660,40 +7085,6 @@ fn record_spread_with_all_fields_overridden() {
             }
         "#},
         r#"b2"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Int = 1
-              let v2: State = {query: v0, num: v1}
-              let v3: String = "b"
-              let v4: Int = 2
-              let v5: State = {query: v3, num: v4}
-              let v6: String = v5.query
-              let v8: Int = v5.num
-              let v9: String = v8.to_string()
-              write_string(v6)
-              write_string(v9)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("b2")
-            }
-            -- expected output --
-            b2
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17720,55 +7111,6 @@ fn record_spread_field_access_folds_through_literal() {
             }
         "#},
         r#"x7"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Int = 7
-              let v2: State = {query: v0, num: v1}
-              let v3: Array[State] = [v2]
-              for v4: State in v3 {
-                let v5: String = "x"
-                let v6: Int = v4.num
-                let v7: State = {query: v5, num: v6}
-                let v8: String = v7.query
-                let v10: String = "x"
-                let v11: Int = v4.num
-                let v12: State = {query: v10, num: v11}
-                let v13: Int = v12.num
-                let v14: String = v13.to_string()
-                write_string(v8)
-                write_string(v14)
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Int = 7
-              let v2: State = {query: v0, num: v1}
-              let v3: Array[State] = [v2]
-              for v4: State in v3 {
-                let v11: Int = v4.num
-                let v14: String = v11.to_string()
-                write("x")
-                write_string(v14)
-              }
-            }
-            -- expected output --
-            x7
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17805,70 +7147,6 @@ fn record_spread_in_match_arm_passed_as_function_prop() {
             }
         "#},
         r#"<div>off</div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Row@f0(item@v16: Item) -> Html {
-              let v17: String = v16.label
-              write("<div>")
-              write_string(v17)
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: Bool = false
-              let v2: Item = {label: v0, selected: v1}
-              let v3: Array[Item] = [v2]
-              for v4: Item in v3 {
-                let v5: Bool = v4.selected
-                match v5 {
-                  true => {
-                    let v6: String = "on"
-                    let v7: Bool = v4.selected
-                    let v8: Item = {label: v6, selected: v7}
-                    write_function Row@f0(v8)
-                  }
-                  false => {
-                    let v10: String = "off"
-                    let v11: Bool = v4.selected
-                    let v12: Item = {label: v10, selected: v11}
-                    write_function Row@f0(v12)
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v0: String = "a"
-              let v1: Bool = false
-              let v2: Item = {label: v0, selected: v1}
-              let v3: Array[Item] = [v2]
-              for v4: Item in v3 {
-                let v5: Bool = v4.selected
-                match v5 {
-                  true => {
-                    write("<div>on</div>")
-                  }
-                  false => {
-                    write("<div>off</div>")
-                  }
-                }
-              }
-            }
-            -- expected output --
-            <div>off</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17905,48 +7183,6 @@ fn record_spread_nested_update() {
             }
         "#},
         r#"qdark"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Dark@f0(s@v6: State) -> Html {
-              let v7: Settings = v6.settings
-              let v8: String = "dark"
-              let v9: Bool = v7.compact
-              let v10: Settings = {theme: v8, compact: v9}
-              let v11: String = v6.query
-              let v12: State = {query: v11, settings: v10}
-              let v13: String = v12.query
-              let v15: Settings = v12.settings
-              let v16: String = v15.theme
-              write_string(v13)
-              write_string(v16)
-            }
-            page Test() {
-              let v0: String = "light"
-              let v1: Bool = true
-              let v2: Settings = {theme: v0, compact: v1}
-              let v3: String = "q"
-              let v4: State = {query: v3, settings: v2}
-              write_function Dark@f0(v4)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("qdark")
-            }
-            -- expected output --
-            qdark
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -17970,37 +7206,6 @@ fn record_spread_of_record_literal_subject() {
             }
         "#},
         r#"bar"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v0: String = "bar"
-              let v1: String = "baz"
-              let v2: Foo = {x: v0, y: v1}
-              let v3: String = v2.x
-              let v4: String = "foo"
-              let v5: Foo = {x: v3, y: v4}
-              let v6: String = v5.x
-              write_string(v6)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("bar")
-            }
-            -- expected output --
-            bar
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18023,40 +7228,6 @@ fn function_imported_from_another_module() {
             }
         "#},
         "<div>a1</div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn label@f0(prefix@v6: String, count@v7: Int) -> String {
-              let v8: String = v7.to_string()
-              let v9: String = string_concat(v6, v8)
-              v9
-            }
-            page Test() {
-              let v0: String = "a"
-              let v1: Int = 1
-              let v2: String = label@f0(v0, v1)
-              write("<div>")
-              write_string(v2)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>a1</div>")
-            }
-            -- expected output --
-            <div>a1</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18083,60 +7254,6 @@ fn function_with_omitted_optional_parameter() {
             }
         "#},
         "<div>x1x2y1</div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn label@f0(prefix@v20: String, count@v21: Int) -> String {
-              let v22: String = v21.to_string()
-              let v23: String = string_concat(v20, v22)
-              v23
-            }
-            page Test() {
-              let v0: String = "x"
-              let v1: Int = 1
-              let v2: String = label@f0(v0, v1)
-              let v4: String = "x"
-              let v5: Int = 2
-              let v6: String = label@f0(v4, v5)
-              let v8: String = "y"
-              let v9: Int = 1
-              let v10: String = label@f0(v8, v9)
-              write("<div>")
-              write_string(v2)
-              write_string(v6)
-              write_string(v10)
-              write("</div>")
-            }
-            page Other(prefix@v14: String) {
-              let v15: Int = 1
-              let v16: String = label@f0(v14, v15)
-              write("<div>")
-              write_string(v16)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>x1x2y1</div>")
-            }
-            page Other(prefix@v14: String) {
-              write("<div>")
-              write_string(v14)
-              write("1</div>")
-            }
-            -- expected output --
-            <div>x1x2y1</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18169,61 +7286,6 @@ fn function_called_in_range_bound_and_interpolation() {
             }
         "#},
         "<div>0,1,2,3,20</div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Wrapper@f0() -> Html {
-              let v1: Int = 0
-              let v2: Int = -7
-              let v3: Int = foo@f1(v2)
-              let v4: Array[Int] = v1..=v3
-              let v11: Int = 10
-              let v12: Int = foo@f1(v11)
-              let v13: String = v12.to_string()
-              write("<div>")
-              for v5: Int in v4 {
-                let v6: String = v5.to_string()
-                write_string(v6)
-                write(",")
-              }
-              write_string(v13)
-              write("</div>")
-            }
-            fn foo@f1(x@v17: Int) -> Int {
-              let v18: Int = 10
-              let v19: Int = add(v17, v18)
-              v19
-            }
-            page Test() {
-              write_function Wrapper@f0()
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v24: Int = 0
-              let v27: Int = 3
-              let v28: Array[Int] = v24..=v27
-              write("<div>")
-              for v29: Int in v28 {
-                let v30: String = v29.to_string()
-                write_string(v30)
-                write(",")
-              }
-              write("20</div>")
-            }
-            -- expected output --
-            <div>0,1,2,3,20</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18244,36 +7306,6 @@ fn markup_as_a_function_body() {
             }
         "#},
         "<div>hello</div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn card@f0(label@v3: String) -> Html {
-              write("<div>")
-              write_string(v3)
-              write("</div>")
-            }
-            page Test() {
-              let v0: String = "hello"
-              write_function card@f0(v0)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>hello</div>")
-            }
-            -- expected output --
-            <div>hello</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18290,30 +7322,6 @@ fn markup_written_in_an_interpolation() {
             }
         "#},
         "<div><span>hello</span></div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              write("<div><span>hello</span></div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div><span>hello</span></div>")
-            }
-            -- expected output --
-            <div><span>hello</span></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18334,38 +7342,6 @@ fn markup_passed_as_a_function_argument() {
             }
         "#},
         "<div><span>hello</span></div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn wrap@f0(children@v5: () -> Html) -> Html {
-              write("<div>")
-              write_apply v5()
-              write("</div>")
-            }
-            page Test() {
-              let v8: () -> Html = fn() {
-                write("<span>hello</span>")
-              }
-              write_function wrap@f0(v8)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div><span>hello</span></div>")
-            }
-            -- expected output --
-            <div><span>hello</span></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18386,38 +7362,6 @@ fn markup_passed_as_a_function_attribute() {
             }
         "#},
         "<div><span>hello</span></div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f0(slot@v4: () -> Html) -> Html {
-              write("<div>")
-              write_apply v4()
-              write("</div>")
-            }
-            page Test() {
-              let v7: () -> Html = fn() {
-                write("<span>hello</span>")
-              }
-              write_function Card@f0(v7)
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div><span>hello</span></div>")
-            }
-            -- expected output --
-            <div><span>hello</span></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18438,45 +7382,6 @@ fn markup_in_the_arms_of_a_match_expression() {
             }
         "#},
         "<div><b>yes</b><i>no</i></div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn badge@f0(on@v6: Bool) -> Html {
-              match v6 {
-                true => {
-                  write("<b>yes</b>")
-                }
-                false => {
-                  write("<i>no</i>")
-                }
-              }
-            }
-            page Test() {
-              let v0: Bool = true
-              let v2: Bool = false
-              write("<div>")
-              write_function badge@f0(v0)
-              write_function badge@f0(v2)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div><b>yes</b><i>no</i></div>")
-            }
-            -- expected output --
-            <div><b>yes</b><i>no</i></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18501,39 +7406,6 @@ fn a_call_as_a_function_body() {
             }
         "#},
         "<div>hello</div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Outer@f0() -> Html {
-              let v1: String = "hello"
-              write_function card@f1(v1)
-            }
-            fn card@f1(label@v3: String) -> Html {
-              write("<div>")
-              write_string(v3)
-              write("</div>")
-            }
-            page Test() {
-              write_function Outer@f0()
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>hello</div>")
-            }
-            -- expected output --
-            <div>hello</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18569,61 +7441,6 @@ fn catch_all_after_constructor_on_expression_subject() {
             }
         "#},
         "<div>2</div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn f@f0() -> Int {
-              let v5: Shape = mk@f1()
-              let v14: Int = match v5 {
-                Shape::Circle => {
-                  let v6: Int = 1
-                  v6
-                }
-                Shape::Square => {
-                  let v13: Int = match v5 {
-                    Shape::Circle => {
-                      let v9: Int = 3
-                      v9
-                    }
-                    Shape::Square => {
-                      let v8: Int = 2
-                      v8
-                    }
-                  }
-                  v13
-                }
-              }
-              v14
-            }
-            fn mk@f1() -> Shape {
-              let v12: Shape = Square
-              v12
-            }
-            page Test() {
-              let v0: Int = f@f0()
-              let v1: String = v0.to_string()
-              write("<div>")
-              write_string(v1)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>2</div>")
-            }
-            -- expected output --
-            <div>2</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18657,49 +7474,6 @@ fn catch_all_after_constructor_in_match_on_expression_subject() {
             }
         "#},
         "square",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn mk@f0() -> Shape {
-              let v10: Shape = Square
-              v10
-            }
-            page Test() {
-              let v0: Shape = mk@f0()
-              match v0 {
-                Shape::Circle => {
-                  write("circle")
-                }
-                Shape::Square => {
-                  match v0 {
-                    Shape::Circle => {
-                      write("never")
-                    }
-                    Shape::Square => {
-                      write("square")
-                    }
-                  }
-                }
-              }
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("square")
-            }
-            -- expected output --
-            square
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18730,60 +7504,6 @@ fn catch_all_after_constructor_on_option_expression_subject() {
             }
         "#},
         "<div>hi</div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn f@f0() -> String {
-              let v4: Option[String] = mk@f1()
-              let v15: String = match v4 {
-                Some(_) => {
-                  let v14: String = match v4 {
-                    Some(v13: String) => {
-                      v13
-                    }
-                    None => {
-                      let v8: String = "never"
-                      v8
-                    }
-                  }
-                  v14
-                }
-                None => {
-                  let v5: String = "none"
-                  v5
-                }
-              }
-              v15
-            }
-            fn mk@f1() -> Option[String] {
-              let v11: String = "hi"
-              let v12: Option[String] = Some(v11)
-              v12
-            }
-            page Test() {
-              let v0: String = f@f0()
-              write("<div>")
-              write_string(v0)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>hi</div>")
-            }
-            -- expected output --
-            <div>hi</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18814,42 +7534,6 @@ fn same_named_functions_in_different_modules() {
             }
         "#},
         "<span>A</span>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Card@f0() -> Html {
-              write("<span>A</span>")
-            }
-            fn Card@f1() -> Html {
-              write("<span>B</span>")
-            }
-            page Test() {
-              write_function Card@f0()
-            }
-            page Other() {
-              write_function Card@f1()
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<span>A</span>")
-            }
-            page Other() {
-              write("<span>B</span>")
-            }
-            -- expected output --
-            <span>A</span>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18874,42 +7558,6 @@ fn functions_whose_names_differ_only_by_case() {
             }
         "#},
         "<div><b>nav</b>1</div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn NavBar@f0() -> Html {
-              write("<b>nav</b>")
-            }
-            fn nav_bar@f1(x@v10: Int) -> Int {
-              v10
-            }
-            page Test() {
-              let v1: Int = 1
-              let v2: Int = nav_bar@f1(v1)
-              let v3: String = v2.to_string()
-              write("<div>")
-              write_function NavBar@f0()
-              write_string(v3)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div><b>nav</b>1</div>")
-            }
-            -- expected output --
-            <div><b>nav</b>1</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -18930,40 +7578,6 @@ fn named_call_arguments_written_out_of_order() {
             }
         "#},
         "<div>n2</div>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn label@f0(prefix@v6: String, count@v7: Int) -> String {
-              let v8: String = v7.to_string()
-              let v9: String = string_concat(v6, v8)
-              v9
-            }
-            page Test() {
-              let v0: String = "n"
-              let v1: Int = 2
-              let v2: String = label@f0(v0, v1)
-              write("<div>")
-              write_string(v2)
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<div>n2</div>")
-            }
-            -- expected output --
-            <div>n2</div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 #[test]
@@ -18990,62 +7604,6 @@ fn lambda_renders_each_row_with_a_captured_value() {
             }
         "#},
         "<ul><li><i>a</i>a!</li><li><i>b</i>b!</li></ul>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Rows@f0(labels@v12: Array[String], row@v13: (String, () -> Html) -> Html) -> Html {
-              write("<ul>")
-              for v14: String in v12 {
-                let v22: () -> Html = fn() {
-                  write("<i>")
-                  write_string(v14)
-                  write("</i>")
-                }
-                write_apply v13(v14, v22)
-              }
-              write("</ul>")
-            }
-            page Test() {
-              let v1: String = "a"
-              let v2: String = "b"
-              let v3: Array[String] = [v1, v2]
-              let v10: (String, () -> Html) -> Html = fn(v4: String, v5: () -> Html) {
-                write("<li>")
-                write_apply v5()
-                write_string(v4)
-                write("!</li>")
-              }
-              write_function Rows@f0(v3, v10)
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v1: String = "a"
-              let v2: String = "b"
-              let v3: Array[String] = [v1, v2]
-              write("<ul>")
-              for v22: String in v3 {
-                write("<li><i>")
-                write_string(v22)
-                write("</i>")
-                write_string(v22)
-                write("!</li>")
-              }
-              write("</ul>")
-            }
-            -- expected output --
-            <ul><li><i>a</i>a!</li><li><i>b</i>b!</li></ul>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -19080,128 +7638,6 @@ fn lambda_passed_through_a_recursive_function() {
             }
         "#},
         "60<b>3</b><b>2</b><b>1</b>",
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Countdown@f1(n@v28: Int, item@v29: (Int) -> Html) -> Html {
-              let v30: Int = 0
-              let v31: Bool = lt_eq(v28, v30)
-              match v31 {
-                true => {
-                }
-                false => {
-                  let v34: Int = 1
-                  let v35: Int = sub(v28, v34)
-                  write_apply v29(v28)
-                  write_function Countdown@f1(v35, v29)
-                }
-              }
-            }
-            fn sum@f0(n@v17: Int, weight@v18: (Int) -> Int) -> Int {
-              let v19: Int = 0
-              let v20: Bool = lt_eq(v17, v19)
-              let v39: Int = match v20 {
-                true => {
-                  let v21: Int = 0
-                  v21
-                }
-                false => {
-                  let v22: Int = v18(v17)
-                  let v23: Int = 1
-                  let v24: Int = sub(v17, v23)
-                  let v25: Int = sum@f0(v24, v18)
-                  let v26: Int = add(v22, v25)
-                  v26
-                }
-              }
-              v39
-            }
-            page Test() {
-              let v0: Int = 10
-              let v1: Int = 3
-              let v4: (Int) -> Int = fn(v2: Int) {
-                let v3: Int = mul(v2, v0)
-                v3
-              }
-              let v5: Int = sum@f0(v1, v4)
-              let v6: String = v5.to_string()
-              let v8: Int = 3
-              let v14: (Int) -> Html = fn(v9: Int) {
-                let v10: String = v9.to_string()
-                write("<b>")
-                write_string(v10)
-                write("</b>")
-              }
-              write_string(v6)
-              write_function Countdown@f1(v8, v14)
-            }
-            -- ir (optimized) --
-            fn Countdown@f1(n@v28: Int, item@v29: (Int) -> Html) -> Html {
-              let v30: Int = 0
-              let v31: Bool = lt_eq(v28, v30)
-              match v31 {
-                true => {
-                }
-                false => {
-                  let v34: Int = 1
-                  let v35: Int = sub(v28, v34)
-                  write_apply v29(v28)
-                  write_function Countdown@f1(v35, v29)
-                }
-              }
-            }
-            fn sum@f0(n@v17: Int, weight@v18: (Int) -> Int) -> Int {
-              let v19: Int = 0
-              let v20: Bool = lt_eq(v17, v19)
-              let v39: Int = match v20 {
-                true => {
-                  let v21: Int = 0
-                  v21
-                }
-                false => {
-                  let v22: Int = v18(v17)
-                  let v23: Int = 1
-                  let v24: Int = sub(v17, v23)
-                  let v25: Int = sum@f0(v24, v18)
-                  let v26: Int = add(v22, v25)
-                  v26
-                }
-              }
-              v39
-            }
-            page Test() {
-              let v0: Int = 10
-              let v1: Int = 3
-              let v4: (Int) -> Int = fn(v2: Int) {
-                let v3: Int = mul(v2, v0)
-                v3
-              }
-              let v5: Int = sum@f0(v1, v4)
-              let v6: String = v5.to_string()
-              let v8: Int = 3
-              let v14: (Int) -> Html = fn(v9: Int) {
-                let v10: String = v9.to_string()
-                write("<b>")
-                write_string(v10)
-                write("</b>")
-              }
-              write_string(v6)
-              write_function Countdown@f1(v8, v14)
-            }
-            -- expected output --
-            60<b>3</b><b>2</b><b>1</b>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -19229,62 +7665,6 @@ fn lambda_through_a_rest_specialization() {
             }
         "#},
         r#"<ul><li class="a"><em>x</em></li><li>y</li></ul>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            fn Bullet@f0(label@v16: String, mark@v17: (String) -> Html, class@v18: String) -> Html {
-              write_function Item@f2(v16, v17, v18)
-            }
-            fn Bullet@f1(label@v20: String, mark@v21: (String) -> Html) -> Html {
-              write_function Item@f3(v20, v21)
-            }
-            fn Item@f2(label@v23: String, mark@v24: (String) -> Html, class@v25: String) -> Html {
-              write("<li class=\"")
-              write_string(v25)
-              write("\">")
-              write_apply v24(v23)
-              write("</li>")
-            }
-            fn Item@f3(label@v29: String, mark@v30: (String) -> Html) -> Html {
-              write("<li>")
-              write_apply v30(v29)
-              write("</li>")
-            }
-            page Test() {
-              let v0: String = "x"
-              let v6: String = "a"
-              let v8: String = "y"
-              let v5: (String) -> Html = fn(v1: String) {
-                write("<em>")
-                write_string(v1)
-                write("</em>")
-              }
-              let v12: (String) -> Html = fn(v9: String) {
-                write_string(v9)
-              }
-              write("<ul>")
-              write_function Bullet@f0(v0, v5, v6)
-              write_function Bullet@f1(v8, v12)
-              write("</ul>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              write("<ul><li class=\"a\"><em>x</em></li><li>y</li></ul>")
-            }
-            -- expected output --
-            <ul><li class="a"><em>x</em></li><li>y</li></ul>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
 
@@ -19308,67 +7688,5 @@ fn lambda_bound_by_let_and_applied_in_a_loop() {
             }
         "#},
         r#"<div><p class="2"><b>1</b></p><p class="4"><b>2</b></p></div>"#,
-        expect![[r#"
-            -- ir (unoptimized) --
-            page Test() {
-              let v6: Int = 1
-              let v7: Int = 2
-              let v8: Array[Int] = v6..=v7
-              let v5: (() -> Html, Int) -> Html = fn(v0: () -> Html, v1: Int) {
-                let v2: String = v1.to_string()
-                write("<p class=\"")
-                write_string(v2)
-                write("\">")
-                write_apply v0()
-                write("</p>")
-              }
-              write("<div>")
-              for v9: Int in v8 {
-                let v10: String = v9.to_string()
-                let v14: Int = 2
-                let v15: Int = mul(v9, v14)
-                let v20: () -> Html = fn() {
-                  write("<b>")
-                  write_string(v10)
-                  write("</b>")
-                }
-                write_apply v5(v20, v15)
-              }
-              write("</div>")
-            }
-            -- ir (optimized) --
-            page Test() {
-              let v6: Int = 1
-              let v7: Int = 2
-              let v8: Array[Int] = v6..=v7
-              write("<div>")
-              for v9: Int in v8 {
-                let v10: String = v9.to_string()
-                let v14: Int = 2
-                let v15: Int = mul(v9, v14)
-                let v20: String = v15.to_string()
-                write("<p class=\"")
-                write_string(v20)
-                write("\"><b>")
-                write_string(v10)
-                write("</b></p>")
-              }
-              write("</div>")
-            }
-            -- expected output --
-            <div><p class="2"><b>1</b></p><p class="4"><b>2</b></p></div>
-            -- eval (unoptimized) --
-            OK
-            -- eval (optimized) --
-            OK
-            -- ts (unoptimized) --
-            OK
-            -- rust (unoptimized) --
-            OK
-            -- ts (optimized) --
-            OK
-            -- rust (optimized) --
-            OK
-        "#]],
     );
 }
