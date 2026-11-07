@@ -6,3 +6,6 @@ publish = false
 
 [dependencies]
 anyhow = "1.0"
+
+[lib]
+doctest = false

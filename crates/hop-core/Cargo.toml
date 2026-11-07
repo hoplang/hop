@@ -37,3 +37,6 @@ explicit_iter_loop = "warn"
 manual_let_else = "warn"
 implicit_clone = "warn"
 rest_pat_in_fully_bound_structs = "warn"
+
+[lib]
+doctest = false
