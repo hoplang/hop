@@ -366,6 +366,12 @@ pub trait Transpiler {
         index: ValueId,
         element_type: &'a IrDataType,
     ) -> Doc<'a>;
+    fn transpile_array_enumerate<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: ValueId,
+        element_type: &'a IrDataType,
+    ) -> Doc<'a>;
     fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a>;
     fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a>;
     fn transpile_option_is_none<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a>;
@@ -509,6 +515,17 @@ pub trait Transpiler {
                     self.transpile_array_get(arena, *array, *index, element_type)
                 }
                 _ => unreachable!("ArrayGet must produce an Option"),
+            },
+            WriterOp::Data(IrDataOp::ArrayEnumerate(array)) => match typ {
+                IrType::Data(IrFunctionDataType::Data(IrDataType::Array(pair))) => {
+                    match pair.as_ref() {
+                        IrDataType::Tuple(types) if types.len() == 2 => {
+                            self.transpile_array_enumerate(arena, *array, &types[1])
+                        }
+                        _ => unreachable!("ArrayEnumerate must produce an Array of pairs"),
+                    }
+                }
+                _ => unreachable!("ArrayEnumerate must produce an Array"),
             },
             WriterOp::Data(IrDataOp::StringIsEmpty(operand)) => {
                 self.transpile_string_is_empty(arena, *operand)

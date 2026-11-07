@@ -1548,6 +1548,18 @@ pub fn typecheck_expr(
                         typed,
                     )
                 }
+                (Type::Data(DataType::Array(element)), "enumerate") => (
+                    HoverAnnotation::ArrayEnumerate {
+                        range: method_range.clone(),
+                    },
+                    Some(TypedExpr::ArrayEnumerate {
+                        array: Box::new(typed_receiver),
+                        typ: Type::Data(DataType::Array(Box::new(DataType::Tuple(vec![
+                            DataType::Int,
+                            element.as_ref().clone(),
+                        ])))),
+                    }),
+                ),
                 (Type::Data(DataType::Int), "to_string") => (
                     HoverAnnotation::IntToString {
                         range: method_range.clone(),
@@ -5284,6 +5296,44 @@ mod tests {
                 error: Method 'foo' is not available on type Array[String]
                 items.foo()
                 ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_enumerate_on_array() {
+        accept(
+            TypeRegistryBuilder::new(),
+            &[("items", Ty::array(Ty::String))],
+            "items.enumerate()",
+            expect!["Array[(Int, String)]"],
+        );
+    }
+
+    #[test]
+    fn rejects_enumerate_with_arguments() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("items", Ty::array(Ty::String))],
+            "items.enumerate(0)",
+            expect![[r#"
+                error: Method 'enumerate' expects 0 argument(s), got 1
+                items.enumerate(0)
+                                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_enumerate_on_string() {
+        reject(
+            TypeRegistryBuilder::new(),
+            &[("name", Ty::String)],
+            "name.enumerate()",
+            expect![[r#"
+                error: Method 'enumerate' is not available on type String
+                name.enumerate()
+                ^^^^^^^^^^^^^^^^
             "#]],
         );
     }

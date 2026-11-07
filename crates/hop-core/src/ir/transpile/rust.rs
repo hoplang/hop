@@ -145,6 +145,7 @@ impl RustTranspiler {
                 | IrDataOp::ArrayLength(_)
                 | IrDataOp::ArrayIsEmpty(_)
                 | IrDataOp::ArrayGet(..)
+                | IrDataOp::ArrayEnumerate(_)
                 | IrDataOp::StringIsEmpty(_)
                 | IrDataOp::OptionIsSome(_)
                 | IrDataOp::OptionIsNone(_)
@@ -1958,6 +1959,21 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(").ok().and_then(|index| "))
             .append(arena.text(name_ident(array)))
             .append(arena.text(".get(index)).cloned()"))
+    }
+
+    fn transpile_array_enumerate<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: ValueId,
+        element_type: &'a IrDataType,
+    ) -> Doc<'a> {
+        arena
+            .text(name_ident(array))
+            .append(arena.text(
+                ".iter().cloned().enumerate().map(|(index, element)| (index as i32, element)).collect::<Vec<(i32, ",
+            ))
+            .append(self.transpile_data_type(arena, element_type))
+            .append(arena.text(")>>()"))
     }
 
     fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a> {

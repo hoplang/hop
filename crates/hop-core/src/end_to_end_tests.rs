@@ -8331,6 +8331,128 @@ fn array_get_out_of_bounds() {
 
 #[test]
 #[ignore]
+fn array_enumerate_in_for_loop() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            page Test() {
+              fn body() -> Html {
+                let items: Array[String] = ["a", "b", "c"];
+                <>
+                  {for pair in items.enumerate() {
+                    match pair {
+                      (i, item) => <>{i.to_string()}={item};</>,
+                    }
+                  }}
+                </>
+              }
+            }
+        "#},
+        "0=a;1=b;2=c;",
+        expect![[r#"
+            -- ir (unoptimized) --
+            page Test() {
+              let v0: String = "a"
+              let v1: String = "b"
+              let v2: String = "c"
+              let v3: Array[String] = [v0, v1, v2]
+              let v4: Array[(Int, String)] = v3.enumerate()
+              for v5: (Int, String) in v4 {
+                let v17: Int = v5.0
+                let v18: String = v5.1
+                let v8: String = v17.to_string()
+                write_string(v8)
+                write("=")
+                write_string(v18)
+                write(";")
+              }
+            }
+            -- ir (optimized) --
+            page Test() {
+              let v0: String = "a"
+              let v1: String = "b"
+              let v2: String = "c"
+              let v3: Array[String] = [v0, v1, v2]
+              let v4: Array[(Int, String)] = v3.enumerate()
+              for v5: (Int, String) in v4 {
+                let v17: Int = v5.0
+                let v18: String = v5.1
+                let v8: String = v17.to_string()
+                write_string(v8)
+                write("=")
+                write_string(v18)
+                write(";")
+              }
+            }
+            -- expected output --
+            0=a;1=b;2=c;
+            -- eval (unoptimized) --
+            OK
+            -- eval (optimized) --
+            OK
+            -- ts (unoptimized) --
+            OK
+            -- rust (unoptimized) --
+            OK
+            -- ts (optimized) --
+            OK
+            -- rust (optimized) --
+            OK
+        "#]],
+    );
+}
+
+#[test]
+#[ignore]
+fn array_enumerate_empty() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            page Test() {
+              fn body() -> Html {
+                let items: Array[String] = [];
+                <>{items.enumerate().len().to_string()}</>
+              }
+            }
+        "#},
+        "0",
+        expect![[r#"
+            -- ir (unoptimized) --
+            page Test() {
+              let v0: Array[String] = []
+              let v1: Array[(Int, String)] = v0.enumerate()
+              let v2: Int = v1.len()
+              let v3: String = v2.to_string()
+              write_string(v3)
+            }
+            -- ir (optimized) --
+            page Test() {
+              let v0: Array[String] = []
+              let v1: Array[(Int, String)] = v0.enumerate()
+              let v2: Int = v1.len()
+              let v3: String = v2.to_string()
+              write_string(v3)
+            }
+            -- expected output --
+            0
+            -- eval (unoptimized) --
+            OK
+            -- eval (optimized) --
+            OK
+            -- ts (unoptimized) --
+            OK
+            -- rust (unoptimized) --
+            OK
+            -- ts (optimized) --
+            OK
+            -- rust (optimized) --
+            OK
+        "#]],
+    );
+}
+
+#[test]
+#[ignore]
 fn array_length_simple() {
     check(
         indoc! {r#"

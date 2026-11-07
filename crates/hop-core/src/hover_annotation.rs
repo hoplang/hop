@@ -25,6 +25,9 @@ pub enum HoverAnnotation {
     ArrayGet {
         range: DocumentRange,
     },
+    ArrayEnumerate {
+        range: DocumentRange,
+    },
     StringIsEmpty {
         range: DocumentRange,
     },
@@ -68,6 +71,7 @@ impl HoverAnnotation {
             HoverAnnotation::ArrayLength { range } => range,
             HoverAnnotation::ArrayIsEmpty { range } => range,
             HoverAnnotation::ArrayGet { range } => range,
+            HoverAnnotation::ArrayEnumerate { range } => range,
             HoverAnnotation::StringIsEmpty { range } => range,
             HoverAnnotation::IntToString { range } => range,
             HoverAnnotation::IntToFloat { range } => range,
@@ -114,6 +118,11 @@ impl Display for HoverAnnotation {
                 f,
                 "Array::get(index: Int) -> Option[T]",
                 "Returns the element at `index`, or `None` if `index` is negative or out of bounds.",
+            ),
+            HoverAnnotation::ArrayEnumerate { .. } => format_builtin(
+                f,
+                "Array::enumerate() -> Array[(Int, T)]",
+                "Returns the elements paired with their indices, starting at 0.",
             ),
             HoverAnnotation::StringIsEmpty { .. } => format_builtin(
                 f,

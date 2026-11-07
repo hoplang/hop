@@ -620,6 +620,16 @@ fn evaluate_data_op<'a>(
                 .and_then(|index| env[array].as_array().get(index))
                 .map(|element| Rc::new(element.clone())),
         ),
+        IrDataOp::ArrayEnumerate(operand) => {
+            Value::Array(Rc::new(
+                BoundedVec::new(env[operand].as_array().iter().enumerate().map(
+                    |(index, element)| {
+                        Value::Tuple(Rc::new([Value::Int(index as i32), element.clone()]))
+                    },
+                ))
+                .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
+            ))
+        }
         IrDataOp::StringIsEmpty(operand) => Value::Bool(env[operand].as_str().is_empty()),
         IrDataOp::OptionIsSome(operand) => Value::Bool(env[operand].as_option().is_some()),
         IrDataOp::OptionIsNone(operand) => Value::Bool(env[operand].as_option().is_none()),

@@ -48,6 +48,8 @@ pub enum IrDataOp {
     /// which holds the element at that index, or is None when the index is
     /// negative or not less than the length.
     ArrayGet(ValueId, ValueId),
+    /// Takes an Array. Produces an Array of (index, element) tuples.
+    ArrayEnumerate(ValueId),
     /// Takes a String. Produces a Bool.
     StringIsEmpty(ValueId),
     /// Takes an Option. Produces a Bool.
@@ -82,6 +84,7 @@ impl IrDataOp {
             | IrDataOp::BoolNegation(name)
             | IrDataOp::ArrayLength(name)
             | IrDataOp::ArrayIsEmpty(name)
+            | IrDataOp::ArrayEnumerate(name)
             | IrDataOp::StringIsEmpty(name)
             | IrDataOp::OptionIsSome(name)
             | IrDataOp::OptionIsNone(name)
@@ -132,6 +135,7 @@ impl IrDataOp {
             | IrDataOp::BoolNegation(name)
             | IrDataOp::ArrayLength(name)
             | IrDataOp::ArrayIsEmpty(name)
+            | IrDataOp::ArrayEnumerate(name)
             | IrDataOp::StringIsEmpty(name)
             | IrDataOp::OptionIsSome(name)
             | IrDataOp::OptionIsNone(name)
@@ -207,6 +211,7 @@ impl fmt::Display for IrDataOp {
             IrDataOp::ArrayLength(operand) => write!(f, "{operand}.len()"),
             IrDataOp::ArrayIsEmpty(operand) => write!(f, "{operand}.is_empty()"),
             IrDataOp::ArrayGet(array, index) => write!(f, "{array}.get({index})"),
+            IrDataOp::ArrayEnumerate(operand) => write!(f, "{operand}.enumerate()"),
             IrDataOp::StringIsEmpty(operand) => write!(f, "{operand}.is_empty()"),
             IrDataOp::OptionIsSome(operand) => write!(f, "{operand}.is_some()"),
             IrDataOp::OptionIsNone(operand) => write!(f, "{operand}.is_none()"),

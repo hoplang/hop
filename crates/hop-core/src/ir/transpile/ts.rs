@@ -1430,6 +1430,19 @@ impl Transpiler for TsTranspiler {
             .append(arena.text(">()"))
     }
 
+    fn transpile_array_enumerate<'a>(
+        &mut self,
+        arena: &'a Arena<'a>,
+        array: ValueId,
+        element_type: &'a IrDataType,
+    ) -> Doc<'a> {
+        arena
+            .text(name_ident(array))
+            .append(arena.text(".map((element, index): [number, "))
+            .append(self.transpile_data_type(arena, element_type))
+            .append(arena.text("] => [index, element])"))
+    }
+
     fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a> {
         arena
             .text(name_ident(string))

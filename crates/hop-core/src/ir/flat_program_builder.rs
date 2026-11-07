@@ -736,6 +736,19 @@ impl<'a> FlatBlockBuilder<'a> {
         )
     }
 
+    pub fn array_enumerate(&self, array: ValueId) -> ValueId {
+        let IrType::Data(IrFunctionDataType::Data(IrDataType::Array(element))) = self.typ(array)
+        else {
+            panic!();
+        };
+        self.push(
+            IrType::Data(IrFunctionDataType::Data(IrDataType::Array(Box::new(
+                IrDataType::Tuple(vec![IrDataType::Int, *element]),
+            )))),
+            FlatPureOp::Data(IrDataOp::ArrayEnumerate(array)),
+        )
+    }
+
     pub fn string_is_empty(&self, operand: ValueId) -> ValueId {
         self.push(
             IrType::BOOL,

@@ -187,6 +187,9 @@ pub enum TypedExpr {
         typ: Type,
     },
 
+    /// Array enumeration, e.g. items.enumerate().
+    ArrayEnumerate { array: Box<Self>, typ: Type },
+
     /// String is empty expression, e.g. name.is_empty()
     StringIsEmpty { string: Box<Self> },
 
@@ -315,6 +318,7 @@ impl TypedExpr {
             | TypedExpr::For { typ, .. }
             | TypedExpr::OptionUnwrapOr { typ, .. }
             | TypedExpr::ArrayGet { typ, .. }
+            | TypedExpr::ArrayEnumerate { typ, .. }
             | TypedExpr::Lambda { typ, .. }
             | TypedExpr::Apply { typ, .. }
             | TypedExpr::Call { typ, .. } => typ.clone(),
@@ -489,6 +493,7 @@ impl Display for TypedExpr {
             TypedExpr::ArrayLength { array } => write!(f, "{array}.len()"),
             TypedExpr::ArrayIsEmpty { array } => write!(f, "{array}.is_empty()"),
             TypedExpr::ArrayGet { array, index, .. } => write!(f, "{array}.get({index})"),
+            TypedExpr::ArrayEnumerate { array, .. } => write!(f, "{array}.enumerate()"),
             TypedExpr::StringIsEmpty { string } => write!(f, "{string}.is_empty()"),
             TypedExpr::OptionIsSome { option } => write!(f, "{option}.is_some()"),
             TypedExpr::OptionIsNone { option } => write!(f, "{option}.is_none()"),

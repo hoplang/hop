@@ -943,6 +943,9 @@ impl<'a> Compiler<'a> {
                 let array = self.compile_expr(array);
                 FlatPureOp::Data(IrDataOp::ArrayGet(array, self.compile_expr(index)))
             }
+            TypedExpr::ArrayEnumerate { array, .. } => {
+                FlatPureOp::Data(IrDataOp::ArrayEnumerate(self.compile_expr(array)))
+            }
             TypedExpr::StringIsEmpty { string } => {
                 FlatPureOp::Data(IrDataOp::StringIsEmpty(self.compile_expr(string)))
             }

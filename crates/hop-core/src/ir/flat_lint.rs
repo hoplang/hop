@@ -719,6 +719,13 @@ impl<'a> Checker<'a> {
                         _ => false,
                     }
             }
+            IrDataOp::ArrayEnumerate(operand) => match (self.data(*operand)?, declared_data) {
+                (Some(IrDataType::Array(element)), Some(IrDataType::Array(pair))) => {
+                    matches!(pair.as_ref(), IrDataType::Tuple(types)
+                            if matches!(types.as_slice(), [IrDataType::Int, t] if t == element.as_ref()))
+                }
+                _ => false,
+            },
             IrDataOp::StringIsEmpty(operand) => {
                 all(&[*operand], IrType::STRING)? && *declared == IrDataType::Bool
             }

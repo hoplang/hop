@@ -592,17 +592,18 @@ The built-in methods are listed below. Any other method name, or a different
 number of arguments, is a compile error.
 
 ```
-Receiver    Method         Result     Semantics
-Array[T]    len()          Int        number of elements
-Array[T]    is_empty()     Bool       true if the array has no elements
-Array[T]    get(i)         Option[T]  Some(x) for the element x at index i, None if i < 0 or i >= len()
-String      is_empty()     Bool       true if the string is ""
-Int         to_string()    String     decimal representation, such as -42
-Int         to_float()     Float      the same value as a float (exact, since Int is 32-bit)
-Float       to_int()       Int        truncates toward zero, saturates at the Int bounds, NaN becomes 0
-Option[T]   is_some()      Bool       true if the option is Some(_)
-Option[T]   is_none()      Bool       true if the option is None
-Option[T]   unwrap_or(d)   T          x if the option is Some(x), otherwise d
+Receiver    Method         Result           Semantics
+Array[T]    len()          Int              number of elements
+Array[T]    is_empty()     Bool             true if the array has no elements
+Array[T]    get(i)         Option[T]        Some(x) for the element x at index i, None if i < 0 or i >= len()
+Array[T]    enumerate()    Array[(Int, T)]  each element x at index i as the pair (i, x), in order
+String      is_empty()     Bool             true if the string is ""
+Int         to_string()    String           decimal representation, such as -42
+Int         to_float()     Float            the same value as a float (exact, since Int is 32-bit)
+Float       to_int()       Int              truncates toward zero, saturates at the Int bounds, NaN becomes 0
+Option[T]   is_some()      Bool             true if the option is Some(_)
+Option[T]   is_none()      Bool             true if the option is None
+Option[T]   unwrap_or(d)   T                x if the option is Some(x), otherwise d
 ```
 
 <a id="operator-expressions"></a>
