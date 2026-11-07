@@ -44,7 +44,10 @@ use crate::symbols::field_name::FieldName;
 ///   constant false goes.
 /// - An application of a lambda bound earlier in the body runs a copy of
 ///   the lambda's body in place of the application, with fresh names, and
-///   what reads a parameter reads the argument.
+///   what reads a parameter reads the argument. Only a lambda whose
+///   evaluated body fits `APPLY_BUDGET` is copied, and only while the body
+///   being evaluated has `APPLY_FUEL` left, which bounds how much copying
+///   can grow a body.
 ///
 /// A binding that turns out to be another name is dropped, and what read
 /// it reads that name. The bindings nothing reads any more are left for
@@ -69,6 +72,7 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
                 renames: HashMap::new(),
                 data_lambdas: HashMap::new(),
                 html_lambdas: HashMap::new(),
+                fuel: APPLY_FUEL,
             };
             match function {
                 FlatFunction::Data(function) => FlatFunction::Data(IrFunctionDeclaration {
@@ -92,6 +96,7 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
                 renames: HashMap::new(),
                 data_lambdas: HashMap::new(),
                 html_lambdas: HashMap::new(),
+                fuel: APPLY_FUEL,
             };
             FlatEntrypoint {
                 body: evaluator.html_block(entrypoint.body),
@@ -104,6 +109,52 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
         functions,
         entrypoints,
         value_ids,
+    }
+}
+
+/// The most bindings, counting the blocks nested in them, that the evaluated
+/// body of a lambda may have for an application to run a copy of it.
+const APPLY_BUDGET: usize = 100;
+
+/// The most bindings that the copies of lambda bodies may add to one body of a
+/// function or entrypoint.
+const APPLY_FUEL: usize = 10_000;
+
+fn html_fits(block: &FlatHtmlBlock, budget: &mut usize) -> bool {
+    block.bindings.iter().all(|binding| {
+        let Some(rest) = budget.checked_sub(1) else {
+            return false;
+        };
+        *budget = rest;
+        match binding {
+            FlatBinding::Data(binding) => data_op_fits(&binding.op, budget),
+            FlatBinding::Html(binding) => match &binding.op {
+                FlatHtmlOp::Match(match_) => {
+                    (match_.arms.iter()).all(|arm| html_fits(&arm.body, budget))
+                }
+                FlatHtmlOp::For(for_) => html_fits(&for_.body, budget),
+                FlatHtmlOp::Lambda(lambda) => html_fits(&lambda.body, budget),
+                _ => true,
+            },
+        }
+    })
+}
+
+fn data_fits(block: &FlatDataBlock, budget: &mut usize) -> bool {
+    block.bindings.iter().all(|binding| {
+        let Some(rest) = budget.checked_sub(1) else {
+            return false;
+        };
+        *budget = rest;
+        data_op_fits(&binding.op, budget)
+    })
+}
+
+fn data_op_fits(op: &FlatDataOp, budget: &mut usize) -> bool {
+    match op {
+        FlatDataOp::Match(match_) => (match_.arms.iter()).all(|arm| data_fits(&arm.body, budget)),
+        FlatDataOp::Lambda(lambda) => data_fits(&lambda.body, budget),
+        _ => true,
     }
 }
 
@@ -134,10 +185,14 @@ struct Evaluator<'a> {
     /// folded to one, and the names the patterns of selected arms bind, each
     /// with the constructor operand it stands for.
     renames: HashMap<ValueId, ValueId>,
-    /// The lambdas kept so far, evaluated, for the applications that read
-    /// them to copy.
-    data_lambdas: HashMap<ValueId, IrLambda<IrFunctionDataType, FlatDataBlock>>,
-    html_lambdas: HashMap<ValueId, IrLambda<IrType, FlatHtmlBlock>>,
+    /// The lambdas kept so far whose evaluated body fits `APPLY_BUDGET`,
+    /// with the bindings the body has, for the applications that read them
+    /// to copy.
+    data_lambdas: HashMap<ValueId, (usize, IrLambda<IrFunctionDataType, FlatDataBlock>)>,
+    html_lambdas: HashMap<ValueId, (usize, IrLambda<IrType, FlatHtmlBlock>)>,
+    /// The bindings the copies of lambda bodies may still add to the body
+    /// being evaluated. Once it runs out, applications are kept.
+    fuel: usize,
 }
 
 struct HtmlConcat {
@@ -355,7 +410,11 @@ impl Evaluator<'_> {
                     parameters,
                     body: self.data_block(body),
                 };
-                self.data_lambdas.insert(name, lambda.clone());
+                let mut budget = APPLY_BUDGET;
+                if data_fits(&lambda.body, &mut budget) {
+                    self.data_lambdas
+                        .insert(name, (APPLY_BUDGET - budget, lambda.clone()));
+                }
                 out.push(IrBinding {
                     binder,
                     op: FlatDataOp::Lambda(lambda),
@@ -365,7 +424,10 @@ impl Evaluator<'_> {
                 // The copy runs in place of the application, its bindings
                 // joining the block the application sits in, as the
                 // selected arm of a match does.
-                if let Some(lambda) = self.data_lambdas.get(&closure) {
+                if let Some((size, lambda)) = self.data_lambdas.get(&closure)
+                    && let Some(fuel) = self.fuel.checked_sub(*size)
+                {
+                    self.fuel = fuel;
                     let body = Freshener::new(&mut *self.value_ids, arguments(lambda, &args))
                         .freshen_data_block(&lambda.body);
                     for binding in body.bindings {
@@ -426,11 +488,18 @@ impl Evaluator<'_> {
                     parameters,
                     body: self.html_block(body),
                 };
-                self.html_lambdas.insert(name, lambda.clone());
+                let mut budget = APPLY_BUDGET;
+                if html_fits(&lambda.body, &mut budget) {
+                    self.html_lambdas
+                        .insert(name, (APPLY_BUDGET - budget, lambda.clone()));
+                }
                 FlatHtmlOp::Lambda(lambda)
             }
             FlatHtmlOp::Apply(closure, args) => {
-                if let Some(lambda) = self.html_lambdas.get(&closure) {
+                if let Some((size, lambda)) = self.html_lambdas.get(&closure)
+                    && let Some(fuel) = self.fuel.checked_sub(*size)
+                {
+                    self.fuel = fuel;
                     let body = Freshener::new(&mut *self.value_ids, arguments(lambda, &args))
                         .freshen_html_block(&lambda.body);
                     self.html_bindings(body.bindings, out);
