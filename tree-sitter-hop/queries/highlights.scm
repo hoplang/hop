@@ -4,7 +4,7 @@
 (type_identifier) @type
 
 ((type_identifier) @type.builtin
-  (#any-of? @type.builtin "Int" "String" "Bool" "Float" "Html" "Array" "Option"))
+  (#any-of? @type.builtin "Int" "String" "Bool" "Float" "Html" "Effect" "Array" "Option"))
 
 (_expression/type_identifier) @constructor
 (_pattern/type_identifier) @constructor
@@ -65,6 +65,7 @@
   "!"
   "="
   "..="
+  ":="
   "..."
 ] @operator
 
@@ -104,10 +105,12 @@
 ] @keyword
 
 (visibility_modifier) @keyword.storage.modifier
+(mutable_specifier) @keyword.storage.modifier
 
 "match" @keyword.control.conditional
 "for" @keyword.control.repeat
 "in" @keyword.control.repeat
+"key" @keyword.control.repeat
 
 (comment) @comment
 (markup_comment) @comment

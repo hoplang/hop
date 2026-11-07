@@ -68,6 +68,10 @@
         "named": true
       },
       {
+        "type": "cell_write",
+        "named": true
+      },
+      {
         "type": "field_expression",
         "named": true
       },
@@ -434,6 +438,32 @@
     }
   },
   {
+    "type": "cell_write",
+    "named": true,
+    "fields": {
+      "cell": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "_expression",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "declaration_list",
     "named": true,
     "fields": {},
@@ -729,6 +759,16 @@
         "types": [
           {
             "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "key": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "_expression",
             "named": true
           }
         ]
@@ -1054,6 +1094,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "mutable_specifier",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1790,6 +1840,10 @@
     "named": false
   },
   {
+    "type": ":=",
+    "named": false
+  },
+  {
     "type": ";",
     "named": false
   },
@@ -1895,6 +1949,10 @@
     "named": true
   },
   {
+    "type": "key",
+    "named": false
+  },
+  {
     "type": "let",
     "named": false
   },
@@ -1905,6 +1963,10 @@
   {
     "type": "match",
     "named": false
+  },
+  {
+    "type": "mutable_specifier",
+    "named": true
   },
   {
     "type": "page",

@@ -379,3 +379,226 @@ fn f() -> Html {
                       (identifier))
                     (end_tag
                       (tag_name))))))))))))
+
+================================================================================
+mutable let bindings
+================================================================================
+
+fn f() -> Html {
+  let mut count: Int = 0;
+  let mut open = false;
+  <p>{count}</p>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (let_statement
+        (mutable_specifier)
+        (identifier)
+        (type_identifier)
+        (integer_literal))
+      (let_statement
+        (mutable_specifier)
+        (identifier)
+        (boolean_literal))
+      (element
+        (start_tag
+          (tag_name))
+        (interpolation
+          (identifier))
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+cell write binds looser than every binary operator
+================================================================================
+
+fn f() -> Effect {
+  a := b || c && d < e + 1
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (cell_write
+        (identifier)
+        (binary_expression
+          (identifier)
+          (binary_expression
+            (identifier)
+            (binary_expression
+              (identifier)
+              (binary_expression
+                (identifier)
+                (integer_literal)))))))))
+
+================================================================================
+cell writes in click handlers, arguments and effects
+================================================================================
+
+fn f() -> Html {
+  <button on:click={effects!(a := 1, b := g((c := 2) == x))}>{a}</button>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name)
+          (attribute
+            (attribute_name)
+            (interpolation
+              (macro_invocation
+                (identifier)
+                (arguments
+                  (cell_write
+                    (identifier)
+                    (integer_literal))
+                  (cell_write
+                    (identifier)
+                    (call_expression
+                      (identifier)
+                      (arguments
+                        (binary_expression
+                          (parenthesized_expression
+                            (cell_write
+                              (identifier)
+                              (integer_literal)))
+                          (identifier))))))))))
+        (interpolation
+          (identifier))
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+permissive: the cell may be any expression and writes may chain
+================================================================================
+
+fn f() -> Effect {
+  a + b := c := d
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (cell_write
+        (binary_expression
+          (identifier)
+          (identifier))
+        (cell_write
+          (identifier)
+          (identifier))))))
+
+================================================================================
+keyed for over an array and over a range
+================================================================================
+
+fn f() -> Html {
+  <ul>
+    {for item in items key item.id { <li>{item.name}</li> }}
+    {for i in 0..=n key i { i }}
+  </ul>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (element
+        (start_tag
+          (tag_name))
+        (text)
+        (interpolation
+          (for_expression
+            (identifier)
+            (identifier)
+            (field_expression
+              (identifier)
+              (field_identifier))
+            (block
+              (element
+                (start_tag
+                  (tag_name))
+                (interpolation
+                  (field_expression
+                    (identifier)
+                    (field_identifier)))
+                (end_tag
+                  (tag_name))))))
+        (text)
+        (interpolation
+          (for_expression
+            (identifier)
+            (range_expression
+              (integer_literal)
+              (identifier))
+            (identifier)
+            (block
+              (identifier))))
+        (text)
+        (end_tag
+          (tag_name))))))
+
+================================================================================
+mut and key remain ordinary identifiers
+================================================================================
+
+fn f(key: Int, mut: Int) -> Int {
+  let mut mut = key;
+  let key = mut;
+  for key in key key key { key }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (type_identifier)
+    (block
+      (let_statement
+        (mutable_specifier)
+        (identifier)
+        (identifier))
+      (let_statement
+        (identifier)
+        (identifier))
+      (for_expression
+        (identifier)
+        (identifier)
+        (identifier)
+        (block
+          (identifier))))))
