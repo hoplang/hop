@@ -756,7 +756,7 @@ fn attributes(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Resul
     if depth > 0 {
         kinds.push(P::Expression);
     }
-    for i in 0..u.int_in_range(0..=3)? {
+    for _ in 0..u.int_in_range(0..=3)? {
         out.push(' ');
         match u.choose(&kinds)? {
             P::Spread => {
@@ -766,18 +766,15 @@ fn attributes(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Resul
             }
             P::KeyOnly => {
                 out.push_str(u.choose(ATTRIBUTE_NAMES)?);
-                out.push_str(&i.to_string());
             }
             P::String => {
                 out.push_str(u.choose(ATTRIBUTE_NAMES)?);
-                out.push_str(&i.to_string());
                 out.push_str("=\"");
                 out.push_str(u.choose(ATTRIBUTE_VALUES)?);
                 out.push('"');
             }
             P::Expression => {
                 out.push_str(u.choose(ATTRIBUTE_NAMES)?);
-                out.push_str(&i.to_string());
                 out.push_str("={");
                 ws(u, out)?;
                 block_body(u, depth - 1, out)?;
