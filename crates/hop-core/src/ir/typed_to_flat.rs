@@ -1132,7 +1132,7 @@ mod tests {
 
     use super::*;
     use crate::document::Document;
-    use crate::ir::flat_lint;
+    use crate::ir::flat_typecheck;
     use crate::session::Session;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -1148,7 +1148,7 @@ mod tests {
         let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let (flat, pages) = session.compile_flat(None, None);
-        flat_lint::lint(&flat).unwrap();
+        flat_typecheck::typecheck(&flat).unwrap();
         let pages: String = pages.iter().map(|page| format!("{page}\n")).collect();
         expected.assert_eq(&format!("{flat}{pages}"));
     }

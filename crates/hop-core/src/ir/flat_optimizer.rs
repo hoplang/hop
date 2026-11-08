@@ -15,9 +15,9 @@ mod tests {
     use super::*;
     use crate::hop::typing::Ty;
     use crate::ir::entrypoint_id::EntrypointId;
-    use crate::ir::flat_lint;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::flat_typecheck;
     use crate::ir::ir_type::IrType;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::clicks::clicks;
@@ -50,7 +50,7 @@ mod tests {
             }
 
             let optimized = optimize_flat(program.clone());
-            flat_lint::lint(&optimized).unwrap();
+            flat_typecheck::typecheck(&optimized).unwrap();
 
             for ((entrypoint, args), clicked) in entrypoint_args.iter().zip(&clicked) {
                 let before = observe(&program, *entrypoint, args, clicked);

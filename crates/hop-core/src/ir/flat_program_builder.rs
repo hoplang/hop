@@ -2,11 +2,11 @@ use crate::document::CheapString;
 use crate::hop::typing::{Constructor, Pattern, PatternField, Ty};
 use crate::html::HtmlElementKind;
 use crate::ir::entrypoint_id::EntrypointId;
-use crate::ir::flat_lint::{self, FlatLintError};
 use crate::ir::flat_program::{
     FlatEntrypoint, FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
     FlatPureBlock, FlatPureOp,
 };
+use crate::ir::flat_typecheck::{self, FlatTypeError};
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::index_vec::IndexVec;
 use crate::ir::ir_binder::IrBinder;
@@ -169,7 +169,7 @@ impl FlatProgramBuilder {
         name
     }
 
-    pub fn build(self) -> Result<FlatProgram, FlatLintError> {
+    pub fn build(self) -> Result<FlatProgram, FlatTypeError> {
         let functions = self
             .functions
             .into_iter()
@@ -215,7 +215,7 @@ impl FlatProgramBuilder {
             functions,
             value_ids: self.value_ids.into_inner(),
         };
-        flat_lint::lint(&program)?;
+        flat_typecheck::typecheck(&program)?;
         Ok(program)
     }
 }

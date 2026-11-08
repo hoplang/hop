@@ -841,10 +841,10 @@ mod tests {
     use super::*;
     use crate::document::Document;
     use crate::hop::typing::Ty;
-    use crate::ir::flat_lint;
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::flat_typecheck;
     use crate::ir::ir_type::IrType;
     use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::EvalError;
@@ -872,7 +872,7 @@ mod tests {
                 .collect();
 
             let program = perform_partial_evaluation(program);
-            flat_lint::lint(&program).unwrap();
+            flat_typecheck::typecheck(&program).unwrap();
 
             // The pass drops no computation but a selected arm's siblings,
             // which never ran, so the output stays the same.
