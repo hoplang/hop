@@ -36,26 +36,28 @@ impl PartialEq for State<'_> {
 impl Eq for State<'_> {}
 
 impl<'a> State<'a> {
+    fn retain<T: Clone>(
+        kept: &mut BTreeMap<Place, T>,
+        old: &BTreeMap<Place, T>,
+        place: &Place,
+        fresh: impl FnOnce() -> T,
+    ) -> T {
+        let value = old.get(place).cloned().unwrap_or_else(fresh);
+        let previous = kept.insert(place.clone(), value.clone());
+        assert!(previous.is_none(), "two bindings at the same place");
+        value
+    }
+
     pub fn bind_cell(&mut self, old: &State<'a>, place: &Place, initial: &Value<'a>) {
-        let value = old.cells.get(place).unwrap_or(initial).clone();
-        let previous = self.cells.insert(place.clone(), value);
-        assert!(previous.is_none(), "two cells are bound at the same place");
+        Self::retain(&mut self.cells, &old.cells, place, || initial.clone());
     }
 
     pub fn bind_element(&mut self, old: &State<'a>, place: &Place) -> NodeId {
-        let node = match old.elements.get(place) {
-            Some(node) => *node,
-            None => {
-                self.node_counter += 1;
-                self.node_counter
-            }
-        };
-        let previous = self.elements.insert(place.clone(), node);
-        assert!(
-            previous.is_none(),
-            "two elements are bound at the same place"
-        );
-        node
+        let node_counter = &mut self.node_counter;
+        Self::retain(&mut self.elements, &old.elements, place, || {
+            *node_counter += 1;
+            *node_counter
+        })
     }
 
     /// Runs the effect, and writes the cells only if it succeeds.

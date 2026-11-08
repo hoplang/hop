@@ -294,7 +294,7 @@ fn the_cells_of_a_loop_without_a_key_follow_the_index() {
 }
 
 #[test]
-fn a_cell_of_a_call_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
+fn a_cell_and_an_element_of_a_call_in_an_arm_start_over_when_the_match_takes_the_arm_again() {
     check(
         indoc! {r#"
             fn Counter() -> Html {
@@ -499,6 +499,42 @@ fn an_element_a_match_hides_keeps_its_node_while_it_is_evaluated() {
             <div@e5>
               <input@e3>
             </div>
+        "#]],
+    );
+}
+
+#[test]
+fn a_cell_a_match_hides_keeps_its_value_while_it_is_evaluated() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut shown = true;
+                let mut count = 0;
+                <>
+                  <b on:click={fn() { shown.set(!shown) }}>toggle</b>
+                  {match shown {
+                    true => <button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</button>,
+                    false => <p>hidden</p>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>toggle</b>
+            <button@e2>0</button>
+            -- click button@e2 --
+            <b@e1>toggle</b>
+            <button@e2>1</button>
+            -- click b@e1 --
+            <b@e1>toggle</b>
+            <p@e3>hidden</p>
+            -- click b@e1 --
+            <b@e1>toggle</b>
+            <button@e4>1</button>
         "#]],
     );
 }

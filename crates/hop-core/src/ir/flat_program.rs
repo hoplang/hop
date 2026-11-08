@@ -45,11 +45,15 @@ pub enum FlatFunction {
 pub type FlatPureBlock = IrBlock<IrBinding<IrFunctionDataType, FlatPureOp>>;
 pub type FlatHtmlBlock = IrBlock<FlatHtmlBinding>;
 
+/// A binding of a block that renders Html. The cells and elements a render
+/// binds are retained across renders by place: the path of binding names
+/// and loop iterations that reaches them.
 #[derive(Debug, Clone)]
 pub enum FlatHtmlBinding {
     Pure(IrBinding<IrFunctionDataType, FlatPureOp>),
     Html(IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
-    /// Bind a cell with an initial value. `T -> Cell[T]`.
+    /// Bind a cell with an initial value, which the cell takes only when its
+    /// place is new. `T -> Cell[T]`.
     Cell(IrBinder<IrDataType>, ValueId),
     /// Bind the value a cell has at this render. `Cell[T] -> T`.
     Track(IrBinder<IrDataType>, ValueId),
@@ -92,11 +96,12 @@ pub enum FlatHtmlOp {
     Escape(ValueId),
     /// Concatenate Html. `(Html, ..., Html) -> Html`.
     Concat(Vec<ValueId>),
-    /// Bind a Html element. `Html -> Html`.
+    /// Bind a Html element, whose node its place keeps across renders.
+    /// `Html -> Html`.
     Element(IrHtmlElement<ValueId>),
     /// Run a fold-map over an array, where each iteration produces a Html value.
     /// The key, when there is one, gives each element the identity its
-    /// cells keep across renders. `Array[T] -> Html`.
+    /// cells and elements keep across renders. `Array[T] -> Html`.
     For(FlatFor),
     /// Bind a closure.
     Lambda(FlatHtmlLambda),
