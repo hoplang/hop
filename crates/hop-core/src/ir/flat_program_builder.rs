@@ -240,7 +240,7 @@ impl BuiltBlock {
                 .map(|binding| match binding {
                     FlatHtmlBinding::Pure(binding) => binding,
                     FlatHtmlBinding::Cell(..) => panic!("a Pure block binds a cell"),
-                    FlatHtmlBinding::Sample(..) => panic!("a Pure block samples a cell"),
+                    FlatHtmlBinding::Track(..) => panic!("a Pure block tracks a cell"),
                     FlatHtmlBinding::Html(_) => panic!("a Pure block binds Html"),
                 })
                 .collect(),
@@ -825,14 +825,14 @@ impl<'a> FlatBlockBuilder<'a> {
         name
     }
 
-    pub fn sample(&self, cell: ValueId) -> ValueId {
+    pub fn track(&self, cell: ValueId) -> ValueId {
         let typ = self.cell_of(cell);
         let name = self
             .program
             .binder(IrType::Data(IrFunctionDataType::Data(typ.clone())));
         self.bindings
             .borrow_mut()
-            .push(FlatHtmlBinding::Sample(IrBinder { var: name, typ }, cell));
+            .push(FlatHtmlBinding::Track(IrBinder { var: name, typ }, cell));
         name
     }
 

@@ -369,7 +369,7 @@ impl<'a> Checker<'a> {
                     }
                     self.bind(binder.var, BoundType::Cell(&binder.typ))?;
                 }
-                FlatHtmlBinding::Sample(binder, cell) => {
+                FlatHtmlBinding::Track(binder, cell) => {
                     if self.typ(*cell)? != BoundType::Cell(&binder.typ) {
                         return Err(FlatLintError::IllTypedBinding);
                     }
@@ -1196,7 +1196,7 @@ mod tests {
     fn should_reject_a_click_whose_handler_gives_a_value() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let count = t.sample(t.cell(t.int(0)));
+                let count = t.track(t.cell(t.int(0)));
                 let next = t.lambda([], |t, _| t.add(count, t.int(1)));
                 t.element_on_click("button", vec![], next, t.text("x"))
             })
@@ -1209,7 +1209,7 @@ mod tests {
     fn should_accept_a_cell_a_function_takes_and_writes() {
         FlatProgramBuilder::new()
             .function("Bump", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
-                let shown = t.sample(t.param("count"));
+                let shown = t.track(t.param("count"));
                 let bump =
                     t.event_handler(|t| t.cell_write(t.param("count"), t.add(shown, t.int(1))));
                 t.element_on_click("button", vec![], bump, t.escape(t.int_to_string(shown)))
@@ -1226,7 +1226,7 @@ mod tests {
     fn should_reject_a_call_that_passes_a_value_for_a_cell() {
         let error = FlatProgramBuilder::new()
             .function("Show", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
-                t.escape(t.int_to_string(t.sample(t.param("count"))))
+                t.escape(t.int_to_string(t.track(t.param("count"))))
             })
             .entrypoint("Test", [], |t| t.call("Show", [t.int(0)]))
             .build()

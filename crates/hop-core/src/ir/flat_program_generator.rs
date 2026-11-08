@@ -802,7 +802,7 @@ impl FlatGenerator<'_, '_> {
         }
         let initial = self.data_op(b, scope, target, depth, nesting.saturating_sub(1));
         let cell = scope.push(b.cell(initial));
-        scope.push(b.sample(cell));
+        scope.push(b.track(cell));
         cell
     }
 
@@ -1330,7 +1330,7 @@ impl FlatGenerator<'_, '_> {
         let subject_ty = self.branching_type(b.types());
         let initial = self.literal(b, scope, &subject_ty, MAX_LITERAL_DEPTH);
         let cell = scope.push(b.cell(initial));
-        let value = scope.push(b.sample(cell));
+        let value = scope.push(b.track(cell));
         let mut inner = scope.inner(&b.value_types(), false);
         let handler = b.lambda(Vec::new(), |b, _| {
             let value = self.literal(b, &mut inner, &subject_ty, MAX_LITERAL_DEPTH);
@@ -1672,7 +1672,7 @@ impl FlatGenerator<'_, '_> {
             return value;
         }
         let cell = scope.push(b.cell(value));
-        scope.push(b.sample(cell))
+        scope.push(b.track(cell))
     }
 
     fn effect_block(
@@ -1897,7 +1897,7 @@ mod tests {
     enum Binding<'a> {
         Pure(&'a IrBinding<IrFunctionDataType, FlatPureOp>),
         Cell(&'a IrBinder<IrDataType>, ValueId),
-        Sample(&'a IrBinder<IrDataType>, ValueId),
+        Track(&'a IrBinder<IrDataType>, ValueId),
         Html(&'a IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
     }
 
@@ -1923,7 +1923,7 @@ mod tests {
                     .map(|binding| match binding {
                         FlatHtmlBinding::Pure(binding) => Binding::Pure(binding),
                         FlatHtmlBinding::Cell(binder, initial) => Binding::Cell(binder, *initial),
-                        FlatHtmlBinding::Sample(binder, cell) => Binding::Sample(binder, *cell),
+                        FlatHtmlBinding::Track(binder, cell) => Binding::Track(binder, *cell),
                         FlatHtmlBinding::Html(binding) => Binding::Html(binding),
                     })
                     .collect(),
@@ -1935,7 +1935,7 @@ mod tests {
         fn var(self) -> ValueId {
             match self {
                 Binding::Pure(binding) => binding.binder.var,
-                Binding::Cell(binder, _) | Binding::Sample(binder, _) => binder.var,
+                Binding::Cell(binder, _) | Binding::Track(binder, _) => binder.var,
                 Binding::Html(binding) => binding.binder.var,
             }
         }
@@ -1944,7 +1944,7 @@ mod tests {
             match self {
                 Binding::Pure(binding) => binding.op.for_each_operand(f),
                 Binding::Cell(_, initial) => f(initial),
-                Binding::Sample(_, cell) => f(cell),
+                Binding::Track(_, cell) => f(cell),
                 Binding::Html(binding) => binding.op.for_each_operand(f),
             }
         }
@@ -1953,7 +1953,7 @@ mod tests {
             let debug = match self {
                 Binding::Pure(binding) => format!("{:?}", binding.op),
                 Binding::Cell(..) => return "Cell".to_string(),
-                Binding::Sample(..) => return "Sample".to_string(),
+                Binding::Track(..) => return "Track".to_string(),
                 Binding::Html(binding) => format!("{:?}", binding.op),
             };
             let kind = debug
@@ -2706,10 +2706,10 @@ mod tests {
             OptionNone                 112.8    91.0    90.1     0.0
             OptionSome                  61.8    92.0    90.6    22.7
             Record                      87.7    73.0    89.7    21.9
-            Sample                      78.3    91.0    93.7    43.4
             StringConcat                20.5    83.0    95.6    49.4
             StringIsEmpty                1.3    44.0    92.4    46.2
             StringLiteral               54.7    95.0    92.5     0.0
+            Track                       78.3    91.0    93.7    43.4
             Tuple                      716.1    96.0    91.2    37.4
             TupleIndex                 395.9    92.0    89.9    67.0
         "#]]
@@ -2726,7 +2726,7 @@ mod tests {
                 entrypoint V0@e0() -> Html {
                   let v0: Int = -2147483648
                   let v1: Cell[Int] = cell(v0)
-                  let v2: Int = sample(v1)
+                  let v2: Int = track(v1)
                   let v3: Html = concat()
                   v3
                 }
@@ -2764,20 +2764,20 @@ mod tests {
                 fn C0@f0(p0@v0: ((Float, R0), Cell[String]) -> (Float, E1, Bool), p1@v1: Option[Array[R1]], p2@v2: E0, p3@v3: (() -> R0, () -> Array[Bool]) -> Html, p4@v4: Option[String], p5@v5: Option[Float]) -> Html {
                   let v8: Int = -2147483648
                   let v9: Cell[Int] = cell(v8)
-                  let v10: Int = sample(v9)
+                  let v10: Int = track(v9)
                   let v11: Html = concat()
                   v11
                 }
                 fn C1@f1(p0@v6: Html, p1@v7: Effect[()]) -> Html {
                   let v12: Int = -2147483648
                   let v13: Cell[Int] = cell(v12)
-                  let v14: Int = sample(v13)
+                  let v14: Int = track(v13)
                   v6
                 }
                 entrypoint V0@e0() -> Html {
                   let v15: Int = -2147483648
                   let v16: Cell[Int] = cell(v15)
-                  let v17: Int = sample(v16)
+                  let v17: Int = track(v16)
                   let v18: Html = concat()
                   v18
                 }

@@ -176,7 +176,7 @@ struct Compiler<'a> {
     specializations: Vec<Specialization>,
     /// The name each variable in scope stands for.
     scopes: Vec<Vec<(VarName, ValueId)>>,
-    /// The cell of each name a sample binds.
+    /// The cell of each name a track binds.
     cells: HashMap<ValueId, ValueId>,
     /// The parameters of the function being compiled, those it declares and
     /// those its rest adds from a function it is spread into. A forwarded
@@ -352,7 +352,7 @@ impl<'a> Compiler<'a> {
             .into_iter()
             .map(|binding| match binding {
                 FlatHtmlBinding::Pure(binding) => binding,
-                FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Sample(..) => {
+                FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Track(..) => {
                     unreachable!("the typechecker rejects a cell in a block that computes a value")
                 }
                 FlatHtmlBinding::Html(_) => panic!("a block that computes a value binds Html"),
@@ -440,8 +440,8 @@ impl<'a> Compiler<'a> {
 
     /// The cell of the variable, which a let mut bound.
     fn cell(&mut self, name: &VarName) -> ValueId {
-        let sample = self.resolve(name);
-        self.cells[&sample]
+        let tracked = self.resolve(name);
+        self.cells[&tracked]
     }
 
     fn resolve(&mut self, name: &VarName) -> ValueId {
@@ -813,7 +813,7 @@ impl<'a> Compiler<'a> {
             // A let binds nothing. Its variable is the name of its value,
             // in a scope of its own that holds the body. A let mut binds a
             // cell, whose initial value is the value, and its variable is the
-            // name of the cell's sample, from which a write or a read of the
+            // name that tracks the cell, from which a write or a read of the
             // variable finds the cell.
             TypedExpr::Let {
                 var,
@@ -838,7 +838,7 @@ impl<'a> Compiler<'a> {
                     ));
                     let name = self.value_id_counter.next();
                     self.bindings
-                        .push(FlatHtmlBinding::Sample(IrBinder { var: name, typ }, cell));
+                        .push(FlatHtmlBinding::Track(IrBinder { var: name, typ }, cell));
                     self.cells.insert(name, cell);
                     name
                 } else {
@@ -2163,10 +2163,10 @@ mod tests {
                 fn Counter@f0(label@v16: String) -> Html {
                   let v17: Int = 0
                   let v18: Cell[Int] = cell(v17)
-                  let v19: Int = sample(v18)
+                  let v19: Int = track(v18)
                   let v20: Bool = false
                   let v21: Cell[Bool] = cell(v20)
-                  let v22: Bool = sample(v21)
+                  let v22: Bool = track(v21)
                   let v31: () -> Effect[()] = fn() {
                     let v23: Int = 1
                     let v24: Int = add(v19, v23)
@@ -2239,7 +2239,7 @@ mod tests {
                 entrypoint body@e0() -> Html {
                   let v0: Bool = false
                   let v1: Cell[Bool] = cell(v0)
-                  let v2: Bool = sample(v1)
+                  let v2: Bool = track(v1)
                   let v5: () -> Effect[()] = fn() {
                     let v3: Bool = not(v2)
                     let v4: Effect[()] = v1 := v3
@@ -2293,7 +2293,7 @@ mod tests {
                 entrypoint body@e0() -> Html {
                   let v0: Int = 0
                   let v1: Cell[Int] = cell(v0)
-                  let v2: Int = sample(v1)
+                  let v2: Int = track(v1)
                   let v12: () -> Effect[()] = fn() {
                     let v3: Effect[Int] = read(v1)
                     let v10: (Int) -> Effect[()] = fn(v4: Int) {

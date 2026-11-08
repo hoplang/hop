@@ -51,8 +51,8 @@ pub enum FlatHtmlBinding {
     Html(IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
     /// Bind a cell with an initial value. `T -> Cell[T]`.
     Cell(IrBinder<IrDataType>, ValueId),
-    /// Bind the value of a cell. `Cell[T] -> T`.
-    Sample(IrBinder<IrDataType>, ValueId),
+    /// Bind the value a cell has at this render. `Cell[T] -> T`.
+    Track(IrBinder<IrDataType>, ValueId),
 }
 
 pub type FlatPureLambda = IrLambda<IrFunctionDataType, FlatPureBlock>;
@@ -271,7 +271,7 @@ impl fmt::Display for FlatHtmlBinding {
                     binder.var, binder.typ
                 )
             }
-            FlatHtmlBinding::Sample(binder, cell) => write!(f, "let {binder} = sample({cell})"),
+            FlatHtmlBinding::Track(binder, cell) => write!(f, "let {binder} = track({cell})"),
             FlatHtmlBinding::Html(binding) => binding.fmt(f),
         }
     }

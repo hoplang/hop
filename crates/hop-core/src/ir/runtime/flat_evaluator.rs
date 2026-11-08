@@ -236,7 +236,7 @@ fn evaluate_html_block<'a>(
                 new_state.bind_cell(old_state, &place, &env[initial]);
                 env.insert_mut(binder.var, Value::Cell(place));
             }
-            FlatHtmlBinding::Sample(binder, cell) => {
+            FlatHtmlBinding::Track(binder, cell) => {
                 let value = new_state.cells[env[cell].as_place()].clone();
                 env.insert_mut(binder.var, value);
             }

@@ -81,12 +81,12 @@ fn eliminate_html(block: FlatHtmlBlock, live: &mut HashSet<ValueId>) -> FlatHtml
                 live.insert(initial);
                 Some(FlatHtmlBinding::Cell(binder, initial))
             }
-            FlatHtmlBinding::Sample(binder, cell) => {
+            FlatHtmlBinding::Track(binder, cell) => {
                 if !live.contains(&binder.var) {
                     continue;
                 }
                 live.insert(cell);
-                Some(FlatHtmlBinding::Sample(binder, cell))
+                Some(FlatHtmlBinding::Track(binder, cell))
             }
             FlatHtmlBinding::Html(binding) => {
                 eliminate_html_binding(binding, live).map(FlatHtmlBinding::Html)
@@ -310,7 +310,7 @@ mod tests {
                     let n = t.cell(t.int(0));
                     let unseen = t.cell(t.int(0));
                     let _idle = t.cell_write(unseen, t.int(1));
-                    let bump = t.cell_write(n, t.add(t.sample(n), t.int(1)));
+                    let bump = t.cell_write(n, t.add(t.track(n), t.int(1)));
                     let bump = t.event_handler(|_| bump);
                     t.element_on_click("button", [], bump, t.text("x"))
                 })
@@ -325,7 +325,7 @@ mod tests {
                   let v3: Cell[Int] = cell(v2)
                   let v4: Int = 1
                   let v5: Effect[()] = v3 := v4
-                  let v6: Int = sample(v1)
+                  let v6: Int = track(v1)
                   let v7: Int = 1
                   let v8: Int = add(v6, v7)
                   let v9: Effect[()] = v1 := v8
@@ -341,7 +341,7 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v0: Int = 0
                   let v1: Cell[Int] = cell(v0)
-                  let v6: Int = sample(v1)
+                  let v6: Int = track(v1)
                   let v7: Int = 1
                   let v8: Int = add(v6, v7)
                   let v9: Effect[()] = v1 := v8

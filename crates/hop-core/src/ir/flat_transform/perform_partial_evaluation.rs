@@ -117,7 +117,7 @@ fn html_fits(block: &FlatHtmlBlock, budget: &mut usize) -> bool {
         *budget = rest;
         match binding {
             FlatHtmlBinding::Pure(binding) => pure_op_fits(&binding.op, budget),
-            FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Sample(..) => true,
+            FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Track(..) => true,
             FlatHtmlBinding::Html(binding) => match &binding.op {
                 FlatHtmlOp::Match(match_) => {
                     (match_.arms.iter()).all(|arm| html_fits(&arm.body, budget))
@@ -469,8 +469,8 @@ impl<'a> Evaluator<'a> {
                 FlatHtmlBinding::Cell(binder, initial) => {
                     out.push(FlatHtmlBinding::Cell(binder, self.resolve(initial)));
                 }
-                FlatHtmlBinding::Sample(binder, cell) => {
-                    out.push(FlatHtmlBinding::Sample(binder, self.resolve(cell)));
+                FlatHtmlBinding::Track(binder, cell) => {
+                    out.push(FlatHtmlBinding::Track(binder, self.resolve(cell)));
                 }
                 FlatHtmlBinding::Html(binding) => self.html_binding(binding, out),
             }

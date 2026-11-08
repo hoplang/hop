@@ -193,8 +193,8 @@ impl<'a> Inliner<'a> {
                 FlatHtmlBinding::Cell(binder, initial) => {
                     bindings.push(FlatHtmlBinding::Cell(binder, self.rename(initial)));
                 }
-                FlatHtmlBinding::Sample(binder, cell) => {
-                    bindings.push(FlatHtmlBinding::Sample(binder, self.rename(cell)));
+                FlatHtmlBinding::Track(binder, cell) => {
+                    bindings.push(FlatHtmlBinding::Track(binder, self.rename(cell)));
                 }
                 FlatHtmlBinding::Html(binding) => self.html_binding(binding, &mut bindings),
             }
@@ -580,7 +580,7 @@ mod tests {
             FlatProgramBuilder::new()
                 .function("counter", [], Ty::Html, |t| {
                     let n = t.cell(t.int(0));
-                    let count = t.sample(n);
+                    let count = t.track(n);
                     let bump = t.event_handler(|t| t.cell_write(n, t.add(count, t.int(1))));
                     t.element_on_click("button", [], bump, t.escape(t.int_to_string(count)))
                 })
@@ -594,7 +594,7 @@ mod tests {
                 fn counter@f0() -> Html {
                   let v0: Int = 0
                   let v1: Cell[Int] = cell(v0)
-                  let v2: Int = sample(v1)
+                  let v2: Int = track(v1)
                   let v6: () -> Effect[()] = fn() {
                     let v3: Int = 1
                     let v4: Int = add(v2, v3)
@@ -617,7 +617,7 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v13: Int = 0
                   let v14: Cell[Int] = cell(v13)
-                  let v15: Int = sample(v14)
+                  let v15: Int = track(v14)
                   let v19: () -> Effect[()] = fn() {
                     let v16: Int = 1
                     let v17: Int = add(v15, v16)
@@ -629,7 +629,7 @@ mod tests {
                   let v22: Html = element("button", {}, v21) on_click v19
                   let v23: Int = 0
                   let v24: Cell[Int] = cell(v23)
-                  let v25: Int = sample(v24)
+                  let v25: Int = track(v24)
                   let v29: () -> Effect[()] = fn() {
                     let v26: Int = 1
                     let v27: Int = add(v25, v26)
@@ -666,8 +666,8 @@ mod tests {
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(t.int(0));
                     let on = t.cell(t.bool(false));
-                    let n = t.sample(count);
-                    let is_on = t.sample(on);
+                    let n = t.track(count);
+                    let is_on = t.track(on);
                     let both = t.event_handler(|t| {
                         let bump = t.cell_write(count, t.add(n, t.int(1)));
                         let flip = t.cell_write(on, t.not(is_on));
@@ -691,8 +691,8 @@ mod tests {
                   let v6: Cell[Int] = cell(v5)
                   let v7: Bool = false
                   let v8: Cell[Bool] = cell(v7)
-                  let v9: Int = sample(v6)
-                  let v10: Bool = sample(v8)
+                  let v9: Int = track(v6)
+                  let v10: Bool = track(v8)
                   let v17: () -> Effect[()] = fn() {
                     let v11: Int = 1
                     let v12: Int = add(v9, v11)
@@ -714,8 +714,8 @@ mod tests {
                   let v6: Cell[Int] = cell(v5)
                   let v7: Bool = false
                   let v8: Cell[Bool] = cell(v7)
-                  let v9: Int = sample(v6)
-                  let v10: Bool = sample(v8)
+                  let v9: Int = track(v6)
+                  let v10: Bool = track(v8)
                   let v17: () -> Effect[()] = fn() {
                     let v11: Int = 1
                     let v12: Int = add(v9, v11)
@@ -887,7 +887,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("Bump", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
-                    let shown = t.sample(t.param("count"));
+                    let shown = t.track(t.param("count"));
                     let bump =
                         t.event_handler(|t| t.cell_write(t.param("count"), t.add(shown, t.int(1))));
                     t.element_on_click("button", [], bump, t.escape(t.int_to_string(shown)))
@@ -901,7 +901,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn Bump@f0(count@v0: Cell[Int]) -> Html {
-                  let v1: Int = sample(v0)
+                  let v1: Int = track(v0)
                   let v5: () -> Effect[()] = fn() {
                     let v2: Int = 1
                     let v3: Int = add(v1, v2)
@@ -924,7 +924,7 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v9: Int = 0
                   let v10: Cell[Int] = cell(v9)
-                  let v12: Int = sample(v10)
+                  let v12: Int = track(v10)
                   let v16: () -> Effect[()] = fn() {
                     let v13: Int = 1
                     let v14: Int = add(v12, v13)

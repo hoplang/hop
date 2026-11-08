@@ -208,7 +208,7 @@ fn html_bindings(
     block: &FlatHtmlBlock,
 ) -> impl Iterator<Item = &IrBinding<IrFunctionHtmlType, FlatHtmlOp>> {
     block.bindings.iter().filter_map(|binding| match binding {
-        FlatHtmlBinding::Pure(_) | FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Sample(..) => None,
+        FlatHtmlBinding::Pure(_) | FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Track(..) => None,
         FlatHtmlBinding::Html(binding) => Some(binding),
     })
 }
@@ -227,7 +227,7 @@ struct Lowerer<'a> {
     /// these are the only names of Html that no binding binds.
     html_parameters: HashSet<ValueId>,
     /// The type of each parameter, loop variable, binding of a pattern of
-    /// data, cell and sample, none of which is in `bindings`.
+    /// data, cell and track, none of which is in `bindings`.
     binder_types: HashMap<ValueId, IrDataType>,
     /// What reads each name, once for each read.
     readers: HashMap<ValueId, Vec<Reader>>,
@@ -369,7 +369,7 @@ impl<'a> Lowerer<'a> {
                     self.binder_types.insert(binder.var, binder.typ.clone());
                     self.read(*initial, Reader::Value);
                 }
-                FlatHtmlBinding::Sample(binder, cell) => {
+                FlatHtmlBinding::Track(binder, cell) => {
                     self.binder_types.insert(binder.var, binder.typ.clone());
                     self.read(*cell, Reader::Value);
                 }
@@ -1014,7 +1014,7 @@ impl<'a> Lowerer<'a> {
                     let initial = self.name(*initial);
                     self.aliases.insert(binder.var, initial);
                 }
-                FlatHtmlBinding::Sample(binder, cell) => {
+                FlatHtmlBinding::Track(binder, cell) => {
                     let cell = self.name(*cell);
                     self.aliases.insert(binder.var, cell);
                 }
@@ -1361,7 +1361,7 @@ mod tests {
                 )
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(t.int(0));
-                    let n = t.sample(count);
+                    let n = t.track(count);
                     let bump = t.event_handler(|t| t.cell_write(count, t.add(n, t.int(1))));
                     let buttons = t.call("Buttons", [t.int(2), bump]);
                     let shown = t.escape(t.int_to_string(n));
@@ -1395,7 +1395,7 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v13: Int = 0
                   let v14: Cell[Int] = cell(v13)
-                  let v15: Int = sample(v14)
+                  let v15: Int = track(v14)
                   let v19: () -> Effect[()] = fn() {
                     let v16: Int = 1
                     let v17: Int = add(v15, v16)
@@ -2704,7 +2704,7 @@ mod tests {
         check_program(
             FlatProgramBuilder::new()
                 .function("Show", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
-                    let shown = t.sample(t.param("count"));
+                    let shown = t.track(t.param("count"));
                     let bump =
                         t.event_handler(|t| t.cell_write(t.param("count"), t.add(shown, t.int(1))));
                     t.element_on_click("button", [], bump, t.escape(t.int_to_string(shown)))
@@ -2720,7 +2720,7 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v9: Int = 7
                   let v10: Cell[Int] = cell(v9)
-                  let v12: Int = sample(v10)
+                  let v12: Int = track(v10)
                   let v16: () -> Effect[()] = fn() {
                     let v13: Int = 1
                     let v14: Int = add(v12, v13)
