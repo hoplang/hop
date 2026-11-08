@@ -53,11 +53,54 @@ pub enum FlatTypeError {
     /// A click names a value that is not a closure from no parameters to
     /// an Effect.
     ClickNotHandler,
+    /// A void element has children other than a concat of nothing.
+    VoidElementWithChildren,
 }
 
 pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
     check_well_typed(program)?;
-    check_html_affine(program)
+    check_html_affine(program)?;
+    check_void_elements(program)
+}
+
+fn check_void_elements(program: &FlatProgram) -> Result<(), FlatTypeError> {
+    let mut empty = vec![false; program.value_ids.count()];
+    for function in &program.functions {
+        if let FlatFunction::Html(function) = function {
+            check_void_elements_in(&function.body, &mut empty)?;
+        }
+    }
+    for entrypoint in program.entrypoints.iter() {
+        check_void_elements_in(&entrypoint.body, &mut empty)?;
+    }
+    Ok(())
+}
+
+fn check_void_elements_in(block: &FlatHtmlBlock, empty: &mut [bool]) -> Result<(), FlatTypeError> {
+    for binding in &block.bindings {
+        let FlatHtmlBinding::Html(binding) = binding else {
+            continue;
+        };
+        match &binding.op {
+            FlatHtmlOp::Concat(parts) if parts.is_empty() => {
+                empty[binding.binder.var.index()] = true;
+            }
+            FlatHtmlOp::Element(element) => {
+                if element.element.is_void() && !empty[element.children.index()] {
+                    return Err(FlatTypeError::VoidElementWithChildren);
+                }
+            }
+            FlatHtmlOp::Match(match_) => {
+                for arm in &match_.arms {
+                    check_void_elements_in(&arm.body, empty)?;
+                }
+            }
+            FlatHtmlOp::For(for_) => check_void_elements_in(&for_.body, empty)?,
+            FlatHtmlOp::Lambda(lambda) => check_void_elements_in(&lambda.body, empty)?,
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn check_html_affine(program: &FlatProgram) -> Result<(), FlatTypeError> {
@@ -1223,6 +1266,15 @@ mod tests {
             })
             .build()
             .unwrap();
+    }
+
+    #[test]
+    fn should_reject_a_void_element_with_children() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| t.element("br", vec![], t.text("x")))
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::VoidElementWithChildren);
     }
 
     #[test]

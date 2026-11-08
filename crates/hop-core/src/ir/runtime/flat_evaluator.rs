@@ -473,11 +473,7 @@ fn evaluate_html_op<'a>(
                     }),
                 }
             }
-            let children = if element.is_void() {
-                Html::empty()
-            } else {
-                env[children].clone().unwrap_html()
-            };
+            let children = env[children].clone().unwrap_html();
             let on_click = on_click.map(|handler| match &env[&handler] {
                 Value::Closure(closure) => closure.clone(),
                 value => panic!("Expected a Closure value, found {value:?}"),

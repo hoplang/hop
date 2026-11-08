@@ -96,8 +96,8 @@ pub enum FlatHtmlOp {
     Escape(ValueId),
     /// Concatenate Html. `(Html, ..., Html) -> Html`.
     Concat(Vec<ValueId>),
-    /// Bind a Html element, whose node its place keeps across renders.
-    /// `Html -> Html`.
+    /// Bind a Html element, whose node its place keeps across renders. The
+    /// children of a void element are a concat of nothing. `Html -> Html`.
     Element(IrHtmlElement<ValueId>),
     /// Run a fold-map over an array, where each iteration produces a Html value.
     /// The key, when there is one, gives each element the identity its
