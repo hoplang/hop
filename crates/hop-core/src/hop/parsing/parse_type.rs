@@ -28,8 +28,20 @@ pub fn parse_type(
     if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeHtml) {
         return Ok(ParsedType::Html { range: type_range });
     }
-    if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeEffect) {
-        return Ok(ParsedType::Effect { range: type_range });
+    if let Some(type_effect) = next_if_eq(iter, comments, errors, LangToken::TypeEffect) {
+        let left_bracket = expect_token(iter, comments, errors, &LangToken::LeftBracket)?;
+        let (element, brackets) = parse_delimited(
+            iter,
+            comments,
+            errors,
+            LangTokenPair::Brackets,
+            &left_bracket,
+            parse_type,
+        )?;
+        return Ok(ParsedType::Effect {
+            element: Box::new(element),
+            range: type_effect.to(brackets),
+        });
     }
     if let Some(type_array) = next_if_eq(iter, comments, errors, LangToken::TypeArray) {
         let left_bracket = expect_token(iter, comments, errors, &LangToken::LeftBracket)?;

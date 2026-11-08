@@ -873,9 +873,6 @@ fn contains_exterior_record_literal(expr: &ParsedExpr) -> bool {
             receiver.precedence() >= Precedence::Postfix
                 && contains_exterior_record_literal(receiver)
         }
-        ParsedExpr::CellWrite { value, .. } => {
-            value.precedence() > Precedence::CellWrite && contains_exterior_record_literal(value)
-        }
         _ => false,
     }
 }
@@ -887,7 +884,10 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
         ParsedType::Int { .. } => arena.text("Int"),
         ParsedType::Float { .. } => arena.text("Float"),
         ParsedType::Html { .. } => arena.text("Html"),
-        ParsedType::Effect { .. } => arena.text("Effect"),
+        ParsedType::Effect { element, .. } => arena
+            .text("Effect[")
+            .append(format_type(arena, element))
+            .append(arena.text("]")),
         ParsedType::Option { element, .. } => arena
             .text("Option[")
             .append(format_type(arena, element))
@@ -1020,7 +1020,7 @@ fn format_expr<'a>(
             .text("fn(")
             .append(arena.intersperse(
                 params.iter().map(|param| {
-                    let name = arena.text(param.var_name.as_str());
+                    let name = arena.text(param.name());
                     match &param.var_type {
                         Some(var_type) => name
                             .append(arena.text(": "))
@@ -1073,6 +1073,11 @@ fn format_expr<'a>(
             .append(arena.text(method.as_str()));
             if args.is_empty() {
                 callee.append(arena.text("()"))
+            } else if let [lambda @ ParsedExpr::Lambda { .. }] = args.as_slice() {
+                callee
+                    .append(arena.text("("))
+                    .append(format_expr(arena, lambda, comments))
+                    .append(arena.text(")"))
             } else {
                 let mut args_doc = arena.nil();
                 for (i, arg) in args.iter().enumerate() {
@@ -1200,15 +1205,6 @@ fn format_expr<'a>(
                 .append(arena.text(" "))
                 .append(format_expr_in_slot(arena, right, right_bound, comments))
         }
-        ParsedExpr::CellWrite { cell, value, .. } => arena
-            .text(cell.as_str())
-            .append(arena.text(" := "))
-            .append(format_expr_in_slot(
-                arena,
-                value,
-                Bound::Excluded(Precedence::CellWrite),
-                comments,
-            )),
         ParsedExpr::Enum {
             type_name,
             variant_name,
@@ -1395,6 +1391,14 @@ fn format_expr<'a>(
             };
             if is_empty {
                 arena.text(name.as_str()).append(arena.text("()"))
+            } else if let ParsedArguments::Positional(values) = args
+                && let [lambda @ ParsedExpr::Lambda { .. }] = values.as_slice()
+            {
+                arena
+                    .text(name.as_str())
+                    .append(arena.text("("))
+                    .append(format_expr(arena, lambda, comments))
+                    .append(arena.text(")"))
             } else {
                 let mut args_doc = arena.nil();
                 match args {
@@ -6044,12 +6048,12 @@ mod tests {
                 fn Counter(ids: Array[Int]) -> Html {
                   let   mut count:Int = 0;
                   let mut on = false;
-                  <ul on:click={fn()->Effect{effects!(count:=count+1,on:=!on)}}>
+                  <ul on:click={fn()->Effect[()]{count.set(count+1).and_then(fn(_:()){on.set(!on)})}}>
                     {for id in ids key id*2 {
                       <li>{id.to_string()}</li>
                     }}
                     {for i in 1..=3 key (Item {id: i}).id {
-                      <li>{(count := i == 1).to_string()}</li>
+                      <li>{count.set(i == 1).to_string()}</li>
                     }}
                   </ul>
                 }
@@ -6058,8 +6062,10 @@ mod tests {
                 fn Counter(ids: Array[Int]) -> Html {
                   let mut count: Int = 0;
                   let mut on = false;
-                  <ul on:click={fn() -> Effect {
-                    effects!(count := count + 1, on := !on)
+                  <ul on:click={fn() -> Effect[()] {
+                    count.set(count + 1).and_then(fn(_: ()) {
+                      on.set(!on)
+                    })
                   }}>
                     {for id in ids key id * 2 {
                       <li>
@@ -6068,10 +6074,94 @@ mod tests {
                     }}
                     {for i in 1..=3 key (Item {id: i}.id) {
                       <li>
-                        {(count := i == 1).to_string()}
+                        {count.set(i == 1).to_string()}
                       </li>
                     }}
                   </ul>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_format_effect_types_and_wildcard_parameters() {
+        check(
+            indoc! {r#"
+                fn load(n:Int)->Effect[Option[Int]]{
+                  pure!(Some(n)).and_then(fn(_:Option[Int]){pure!(None)})
+                }
+            "#},
+            expect![[r#"
+                fn load(n: Int) -> Effect[Option[Int]] {
+                  pure!(Some(n)).and_then(fn(_: Option[Int]) {
+                    pure!(None)
+                  })
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_format_a_chain_of_effects() {
+        check(
+            indoc! {r#"
+                fn Counter() -> Html {
+                  let mut count = 0;
+                  let mut label = "none";
+                  <button on:click={fn() {
+                    count.set(count + 1).and_then(fn(_) { count.get() }).and_then(fn(n) { label.set(n.to_string()) }).and_then(fn(_) { count.get() }).and_then(fn(n) { count.set(n * 2) })
+                  }}>{label}</button>
+                }
+            "#},
+            expect![[r#"
+                fn Counter() -> Html {
+                  let mut count = 0;
+                  let mut label = "none";
+                  <button on:click={fn() {
+                    count.set(count + 1).and_then(fn(_) {
+                      count.get()
+                    }).and_then(fn(n) {
+                      label.set(n.to_string())
+                    }).and_then(fn(_) {
+                      count.get()
+                    }).and_then(fn(n) {
+                      count.set(n * 2)
+                    })
+                  }}>
+                    {label}
+                  </button>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_format_nested_effects() {
+        check(
+            indoc! {r#"
+                fn Counter() -> Html {
+                  let mut count = 0;
+                  let mut label = "none";
+                  <button on:click={fn() {
+                    count.set(count + 1).and_then(fn(_) { count.get().and_then(fn(n) { label.set(n.to_string()).and_then(fn(_) { count.set(n * 2) }) }) })
+                  }}>{label}</button>
+                }
+            "#},
+            expect![[r#"
+                fn Counter() -> Html {
+                  let mut count = 0;
+                  let mut label = "none";
+                  <button on:click={fn() {
+                    count.set(count + 1).and_then(fn(_) {
+                      count.get().and_then(fn(n) {
+                        label.set(n.to_string()).and_then(fn(_) {
+                          count.set(n * 2)
+                        })
+                      })
+                    })
+                  }}>
+                    {label}
+                  </button>
                 }
             "#]],
         );

@@ -5,10 +5,8 @@ use super::r#type::{DataType, Type};
 use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_call::{Argument, CallArguments, Callee, NamedArgument, typecheck_call};
-use super::typecheck_lambda::typecheck_lambda;
-use super::typecheck_macro::{
-    typecheck_asset, typecheck_effects, typecheck_format, typecheck_join,
-};
+use super::typecheck_lambda::{Expected, typecheck_lambda};
+use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join, typecheck_pure};
 use super::typecheck_markup::typecheck_markup;
 use super::typecheck_match::typecheck_match;
 use super::variable_scope::{HtmlMisuse, RepeatedBody, ScopeEntry, VariableScope};
@@ -53,7 +51,7 @@ pub fn typecheck_expr(
             return_type.as_ref(),
             body,
             range,
-            expected_type,
+            Expected::Type(expected_type),
             forwarded_params,
             var_env,
             type_env,
@@ -526,7 +524,7 @@ pub fn typecheck_expr(
                 }
                 let elem_type = match first_type? {
                     Type::Data(elem_type) => elem_type,
-                    typ @ (Type::Html(_) | Type::Effect | Type::Function(_)) => {
+                    typ @ (Type::Html(_) | Type::Effect(_) | Type::Function(_)) => {
                         errors.push(TypeError::new(
                             TypeErrorKind::NotData { typ },
                             elements[0].range().clone(),
@@ -574,7 +572,7 @@ pub fn typecheck_expr(
             for (typed_element, element) in typed_elements.iter().zip(elements) {
                 match typed_element.typ() {
                     Type::Data(element_type) => element_types.push(element_type),
-                    typ @ (Type::Html(_) | Type::Effect | Type::Function(_)) => errors.push(
+                    typ @ (Type::Html(_) | Type::Effect(_) | Type::Function(_)) => errors.push(
                         TypeError::new(TypeErrorKind::NotData { typ }, element.range().clone()),
                     ),
                 }
@@ -967,7 +965,7 @@ pub fn typecheck_expr(
                 )?;
                 let inner_type = match typed_inner.typ() {
                     Type::Data(inner_type) => inner_type,
-                    typ @ (Type::Html(_) | Type::Effect | Type::Function(_)) => {
+                    typ @ (Type::Html(_) | Type::Effect(_) | Type::Function(_)) => {
                         errors.push(TypeError::new(
                             TypeErrorKind::NotData { typ },
                             inner_expr.range().clone(),
@@ -997,78 +995,6 @@ pub fn typecheck_expr(
                 })
             }
         },
-        ParsedExpr::CellWrite {
-            cell,
-            cell_range,
-            value,
-            ..
-        } => {
-            let not_a_cell = || {
-                TypeError::new(
-                    TypeErrorKind::NotACell { name: cell.clone() },
-                    cell_range.clone(),
-                )
-            };
-            let cell_type = match var_env.lookup(cell.as_str()) {
-                Some(ScopeEntry::Variable(entry)) => {
-                    annotations.push(HoverAnnotation::VarName {
-                        range: cell_range.clone(),
-                        typ: entry.typ.clone(),
-                        var_name: cell.clone(),
-                    });
-                    definition_links.push(DefinitionLink {
-                        use_range: cell_range.clone(),
-                        definition_range: entry.range.clone(),
-                    });
-                    if entry.cell {
-                        Some(entry.typ.clone())
-                    } else {
-                        errors.push(not_a_cell());
-                        None
-                    }
-                }
-                Some(ScopeEntry::Function(_)) => {
-                    errors.push(not_a_cell());
-                    None
-                }
-                None => {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::UndefinedVariable { name: cell.clone() },
-                        cell_range.clone(),
-                    ));
-                    None
-                }
-            };
-            let typed_value = typecheck_expr(
-                value,
-                cell_type.as_ref(),
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let (cell_type, typed_value) = (cell_type?, typed_value?);
-            let value_type = typed_value.typ();
-            if value_type != cell_type {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeMismatch {
-                        context: TypeMismatchContext::CellWrite,
-                        expected: cell_type,
-                        found: value_type,
-                    },
-                    value.range().clone(),
-                ));
-                return None;
-            }
-            Some(TypedExpr::CellWrite {
-                cell: cell.clone(),
-                value: Box::new(typed_value),
-            })
-        }
         ParsedExpr::Let { binding, body, .. } => {
             let declared_type = match &binding.var_type {
                 Some(parsed_type) => Some(resolve_type(
@@ -1432,12 +1358,14 @@ pub fn typecheck_expr(
                     },
                     typecheck_asset(args, range, asset_references, errors),
                 ),
-                "effects" => (
-                    HoverAnnotation::Effects {
+                "pure" => (
+                    HoverAnnotation::Pure {
                         range: subject_range.clone(),
                     },
-                    typecheck_effects(
+                    typecheck_pure(
                         args,
+                        range,
+                        expected_type,
                         forwarded_params,
                         var_env,
                         type_env,
@@ -1479,18 +1407,45 @@ pub fn typecheck_expr(
                 errors,
             )?;
             let receiver_type = typed_receiver.typ();
-            let (arity, arg_type) = match (&receiver_type, method.as_str()) {
-                (Type::Data(DataType::Option(inner)), "unwrap_or") => {
-                    (1, Some(Type::Data(inner.as_ref().clone())))
-                }
-                (Type::Data(DataType::Array(_)), "get") => (1, Some(Type::INT)),
-                _ => (0, None),
+            let cell = match (&**receiver, method.as_str(), args.as_slice()) {
+                (
+                    ParsedExpr::VariableReference {
+                        value: var_name, ..
+                    },
+                    "get",
+                    [],
+                )
+                | (
+                    ParsedExpr::VariableReference {
+                        value: var_name, ..
+                    },
+                    "set",
+                    [_],
+                ) => match var_env.lookup(var_name.as_str()) {
+                    Some(ScopeEntry::Variable(entry)) if entry.cell => {
+                        Some((var_name.clone(), entry.typ.clone()))
+                    }
+                    _ => None,
+                },
+                _ => None,
             };
-            let mut typed_args = Vec::with_capacity(args.len());
-            for arg in args {
-                typed_args.push(typecheck_expr(
-                    arg,
-                    arg_type.as_ref(),
+            if let Some((cell, Type::Data(data))) = cell {
+                if method.as_str() == "get" {
+                    annotations.push(HoverAnnotation::CellGet {
+                        range: method_range.clone(),
+                    });
+                    return Some(TypedExpr::CellRead {
+                        cell,
+                        typ: Type::Effect(data),
+                    });
+                }
+                annotations.push(HoverAnnotation::CellSet {
+                    range: method_range.clone(),
+                });
+                let cell_type = Type::Data(data);
+                let typed_value = typecheck_expr(
+                    &args[0],
+                    Some(&cell_type),
                     forwarded_params,
                     var_env,
                     type_env,
@@ -1499,7 +1454,72 @@ pub fn typecheck_expr(
                     definition_links,
                     asset_references,
                     errors,
-                ));
+                )?;
+                if typed_value.typ() != cell_type {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::TypeMismatch {
+                            context: TypeMismatchContext::CellWrite,
+                            expected: cell_type,
+                            found: typed_value.typ(),
+                        },
+                        args[0].range().clone(),
+                    ));
+                    return None;
+                }
+                return Some(TypedExpr::CellWrite {
+                    cell,
+                    value: Box::new(typed_value),
+                });
+            }
+            let (arity, arg_type) = match (&receiver_type, method.as_str()) {
+                (Type::Data(DataType::Option(inner)), "unwrap_or") => {
+                    (1, Some(Type::Data(inner.as_ref().clone())))
+                }
+                (Type::Data(DataType::Array(_)), "get") => (1, Some(Type::INT)),
+                (Type::Effect(_), "and_then") => (1, None),
+                _ => (0, None),
+            };
+            let mut typed_args = Vec::with_capacity(args.len());
+            for arg in args {
+                let typed = match (&receiver_type, method.as_str(), arg) {
+                    (
+                        Type::Effect(payload),
+                        "and_then",
+                        ParsedExpr::Lambda {
+                            params,
+                            return_type,
+                            body,
+                            range,
+                        },
+                    ) => typecheck_lambda(
+                        params,
+                        return_type.as_ref(),
+                        body,
+                        range,
+                        Expected::Parameters(&[Type::Data(payload.clone())]),
+                        forwarded_params,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        errors,
+                    ),
+                    _ => typecheck_expr(
+                        arg,
+                        arg_type.as_ref(),
+                        forwarded_params,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        errors,
+                    ),
+                };
+                typed_args.push(typed);
             }
             let (annotation, typed) = match (&receiver_type, method.as_str()) {
                 (Type::Data(DataType::Array(_)), "len") => (
@@ -1633,6 +1653,43 @@ pub fn typecheck_expr(
                     };
                     (
                         HoverAnnotation::OptionUnwrapOr {
+                            range: method_range.clone(),
+                        },
+                        typed,
+                    )
+                }
+                (Type::Effect(payload), "and_then") => {
+                    let typed = match (args.as_slice(), typed_args.pop().flatten()) {
+                        ([continuation], Some(typed_continuation)) => {
+                            match typed_continuation.typ() {
+                                Type::Function(function)
+                                    if function.parameters.len() == 1
+                                        && function.parameters[0]
+                                            == Type::Data(payload.clone())
+                                        && matches!(*function.result, Type::Effect(_)) =>
+                                {
+                                    Some(TypedExpr::EffectBind {
+                                        effect: Box::new(typed_receiver),
+                                        continuation: Box::new(typed_continuation),
+                                        typ: *function.result,
+                                    })
+                                }
+                                found => {
+                                    errors.push(TypeError::new(
+                                        TypeErrorKind::NotAContinuation {
+                                            payload: Type::Data(payload.clone()),
+                                            found,
+                                        },
+                                        continuation.range().clone(),
+                                    ));
+                                    None
+                                }
+                            }
+                        }
+                        _ => None,
+                    };
+                    (
+                        HoverAnnotation::EffectAndThen {
                             range: method_range.clone(),
                         },
                         typed,

@@ -182,7 +182,7 @@ impl FlatProgramBuilder {
                         body: declared.body.unwrap().into_html(),
                     })
                 }
-                IrType::Data(IrFunctionDataType::Data(_) | IrFunctionDataType::Effect) => {
+                IrType::Data(IrFunctionDataType::Data(_) | IrFunctionDataType::Effect(_)) => {
                     let return_type = declared.return_type.as_result().unwrap();
                     let parameters = declared
                         .parameters
@@ -825,11 +825,29 @@ impl<'a> FlatBlockBuilder<'a> {
         self.push(IrType::EFFECT, FlatPureOp::CellWrite(cell, value))
     }
 
-    pub fn effect_concat(&self, parts: impl IntoIterator<Item = ValueId>) -> ValueId {
+    pub fn cell_read(&self, cell: ValueId) -> ValueId {
+        self.push(self.effect_of(cell), FlatPureOp::CellRead(cell))
+    }
+
+    pub fn effect_pure(&self, value: ValueId) -> ValueId {
+        self.push(self.effect_of(value), FlatPureOp::EffectPure(value))
+    }
+
+    pub fn effect_bind(&self, effect: ValueId, continuation: ValueId) -> ValueId {
+        let IrType::Data(IrFunctionDataType::Function(signature)) = self.typ(continuation) else {
+            panic!("a bind continues with a closure");
+        };
         self.push(
-            IrType::EFFECT,
-            FlatPureOp::EffectConcat(parts.into_iter().collect()),
+            IrType::result(&signature.result),
+            FlatPureOp::EffectBind(effect, continuation),
         )
+    }
+
+    fn effect_of(&self, value: ValueId) -> IrType {
+        let IrType::Data(IrFunctionDataType::Data(typ)) = self.typ(value) else {
+            panic!("an effect gives data");
+        };
+        IrType::Data(IrFunctionDataType::Effect(typ))
     }
 
     pub fn attr_value(&self, name: &str, value: ValueId) -> (AttributeName, IrAttribute) {

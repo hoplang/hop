@@ -71,9 +71,11 @@ pub enum FlatPureOp {
     /// the cell write is, to the value of the second, of the cell's type. It
     /// is a value, which writes nothing until it runs.
     CellWrite(ValueId, ValueId),
-    /// N-ary mappend over Effect names. Part order is write order, and no
-    /// parts is the empty effect.
-    EffectConcat(Vec<ValueId>),
+    CellRead(ValueId),
+    EffectPure(ValueId),
+    /// Runs the first name's effect, then the effect the second name's
+    /// closure gives for its result.
+    EffectBind(ValueId, ValueId),
     Lambda(FlatPureLambda),
     /// Invokes a closure.
     /// The arguments follow the closure's parameters, one for each.
@@ -148,10 +150,11 @@ impl FlatPureOp {
                 f(*cell);
                 f(*value);
             }
-            FlatPureOp::EffectConcat(parts) => {
-                for part in parts {
-                    f(*part);
-                }
+            FlatPureOp::CellRead(cell) => f(*cell),
+            FlatPureOp::EffectPure(value) => f(*value),
+            FlatPureOp::EffectBind(effect, continuation) => {
+                f(*effect);
+                f(*continuation);
             }
             FlatPureOp::Lambda(_) => {}
             FlatPureOp::Apply(closure, args) => {
@@ -176,10 +179,11 @@ impl FlatPureOp {
                 f(cell);
                 f(value);
             }
-            FlatPureOp::EffectConcat(parts) => {
-                for part in parts {
-                    f(part);
-                }
+            FlatPureOp::CellRead(cell) => f(cell),
+            FlatPureOp::EffectPure(value) => f(value),
+            FlatPureOp::EffectBind(effect, continuation) => {
+                f(effect);
+                f(continuation);
             }
             FlatPureOp::Lambda(_) => {}
             FlatPureOp::Apply(closure, args) => {
@@ -281,8 +285,10 @@ impl fmt::Display for FlatPureOp {
             FlatPureOp::Call(function, args) => write!(f, "{function}({})", join(args, ", ")),
             FlatPureOp::Match(match_) => match_.write(f, write_block),
             FlatPureOp::CellWrite(cell, value) => write!(f, "{cell} := {value}"),
-            FlatPureOp::EffectConcat(parts) => {
-                write!(f, "effect_concat({})", join(parts, ", "))
+            FlatPureOp::CellRead(cell) => write!(f, "read({cell})"),
+            FlatPureOp::EffectPure(value) => write!(f, "pure({value})"),
+            FlatPureOp::EffectBind(effect, continuation) => {
+                write!(f, "bind({effect}, {continuation})")
             }
             FlatPureOp::Lambda(lambda) => lambda.write(f, write_block),
             FlatPureOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),

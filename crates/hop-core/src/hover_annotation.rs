@@ -58,7 +58,16 @@ pub enum HoverAnnotation {
     Asset {
         range: DocumentRange,
     },
-    Effects {
+    Pure {
+        range: DocumentRange,
+    },
+    CellGet {
+        range: DocumentRange,
+    },
+    CellSet {
+        range: DocumentRange,
+    },
+    EffectAndThen {
         range: DocumentRange,
     },
 }
@@ -82,7 +91,10 @@ impl HoverAnnotation {
             HoverAnnotation::Join { range } => range,
             HoverAnnotation::Format { range } => range,
             HoverAnnotation::Asset { range } => range,
-            HoverAnnotation::Effects { range } => range,
+            HoverAnnotation::Pure { range } => range,
+            HoverAnnotation::CellGet { range } => range,
+            HoverAnnotation::CellSet { range } => range,
+            HoverAnnotation::EffectAndThen { range } => range,
         }
     }
 }
@@ -176,10 +188,25 @@ impl Display for HoverAnnotation {
                  Resolves to a content-hashed URL prefixed by \
                  `assets.production_prefix` in production builds.",
             ),
-            HoverAnnotation::Effects { .. } => format_builtin(
+            HoverAnnotation::Pure { .. } => format_builtin(
                 f,
-                "effects!(Effect, ...) -> Effect",
-                "Performs the effects in order.",
+                "pure!(value: T) -> Effect[T]",
+                "Performs nothing and gives the value.",
+            ),
+            HoverAnnotation::CellGet { .. } => format_builtin(
+                f,
+                "Cell::get() -> Effect[T]",
+                "Gives the value the cell holds when the effect runs.",
+            ),
+            HoverAnnotation::CellSet { .. } => format_builtin(
+                f,
+                "Cell::set(value: T) -> Effect[()]",
+                "Writes the value to the cell when the effect runs.",
+            ),
+            HoverAnnotation::EffectAndThen { .. } => format_builtin(
+                f,
+                "Effect[A]::and_then(continuation: fn(A) -> Effect[B]) -> Effect[B]",
+                "Performs the effect, then the effect the continuation gives for its result.",
             ),
         }
     }

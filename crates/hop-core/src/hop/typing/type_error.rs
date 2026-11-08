@@ -301,6 +301,12 @@ pub enum TypeErrorKind {
     #[error("Method '{method}' is not available on type {typ}")]
     MethodNotAvailable { method: FieldName, typ: Type },
 
+    #[error("Expected a function from {payload} to an effect, got {found}")]
+    NotAContinuation { payload: Type, found: Type },
+
+    #[error("pure! expects 1 argument, got {actual}")]
+    PureMacroArity { actual: usize },
+
     #[error("Method '{method}' expects {expected} argument(s), got {found}")]
     MethodArgumentCountMismatch {
         method: FieldName,
@@ -345,7 +351,7 @@ pub enum TypeErrorKind {
     NamedArgumentsToFunctionValue { name: VarName },
 
     #[error("The type of parameter {name} cannot be inferred")]
-    LambdaParameterNeedsType { name: VarName },
+    LambdaParameterNeedsType { name: String },
 
     #[error("A lambda with {found} parameter(s) cannot have type {expected}")]
     LambdaParameterCountMismatch { expected: Type, found: usize },
@@ -390,9 +396,6 @@ pub enum TypeErrorKind {
 
     #[error("A cell cannot hold {typ}")]
     CellNotData { typ: Type },
-
-    #[error("{name} is not a cell: only a variable bound with let mut can be written")]
-    NotACell { name: VarName },
 
     #[error("Expected Int or String got {found}")]
     KeyTypeMismatch { found: Type },

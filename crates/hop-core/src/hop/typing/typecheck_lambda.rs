@@ -17,16 +17,22 @@ use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 
+/// What the context of a lambda says about its type.
+pub enum Expected<'a> {
+    Type(Option<&'a Type>),
+    Parameters(&'a [Type]),
+}
+
 /// Check a lambda. A parameter without a type takes the type of its
-/// position in the expected function type, which must have as many
-/// parameters as the lambda. The body runs once for each application, so it
-/// is checked as a body that runs any number of times.
+/// position in the expected parameters, of which there must be as many as
+/// the lambda has. The body runs once for each application, so it is
+/// checked as a body that runs any number of times.
 pub fn typecheck_lambda(
     params: &[ParsedLambdaParameter],
     return_type: Option<&ParsedType>,
     body: &ParsedExpr,
     range: &DocumentRange,
-    expected_type: Option<&Type>,
+    expected: Expected<'_>,
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
     type_env: &TypeEnv,
@@ -38,7 +44,7 @@ pub fn typecheck_lambda(
 ) -> Option<TypedExpr> {
     // A parameter without a type has no position to take it from when the
     // expected function type has another number of parameters.
-    if let Some(Type::Function(function)) = expected_type
+    if let Expected::Type(Some(Type::Function(function))) = expected
         && function.parameters.len() != params.len()
         && params.iter().any(|param| param.var_type.is_none())
     {
@@ -51,36 +57,39 @@ pub fn typecheck_lambda(
         ));
         return None;
     }
-    let expected = match expected_type {
-        Some(Type::Function(function)) if function.parameters.len() == params.len() => {
-            Some(function)
-        }
-        _ => None,
+    let (expected_params, expected_result) = match expected {
+        Expected::Type(Some(Type::Function(function))) => (
+            Some(function.parameters.as_slice()),
+            Some(function.result.as_ref()),
+        ),
+        Expected::Type(_) => (None, None),
+        Expected::Parameters(parameters) => (Some(parameters), None),
     };
+    let expected_params = expected_params.filter(|parameters| parameters.len() == params.len());
 
     let mut failed = false;
     let mut seen: HashSet<&VarName> = HashSet::new();
     let mut typed_params: Vec<(&ParsedLambdaParameter, Type)> = Vec::with_capacity(params.len());
     for (index, param) in params.iter().enumerate() {
-        if !seen.insert(&param.var_name) {
+        if let Some(name) = &param.var_name
+            && !seen.insert(name)
+        {
             errors.push(TypeError::new(
-                TypeErrorKind::DuplicateParameter {
-                    name: param.var_name.clone(),
-                },
+                TypeErrorKind::DuplicateParameter { name: name.clone() },
                 param.var_name_range.clone(),
             ));
             failed = true;
             continue;
         }
-        let typ = match (&param.var_type, expected) {
+        let typ = match (&param.var_type, expected_params) {
             (Some(var_type), _) => {
                 resolve_type(var_type, &type_env.names, definition_links, errors)
             }
-            (None, Some(expected)) => Some(expected.parameters[index].clone()),
+            (None, Some(expected)) => Some(expected[index].clone()),
             (None, None) => {
                 errors.push(TypeError::new(
                     TypeErrorKind::LambdaParameterNeedsType {
-                        name: param.var_name.clone(),
+                        name: param.name().to_string(),
                     },
                     param.var_name_range.clone(),
                 ));
@@ -94,7 +103,7 @@ pub fn typecheck_lambda(
     }
     // The body reads the parameters, so it is not checked without their
     // types.
-    if typed_params.len() != seen.len() {
+    if failed {
         return None;
     }
     let declared_result = match return_type {
@@ -105,31 +114,26 @@ pub fn typecheck_lambda(
         }
         None => None,
     };
-    let expected_result = declared_result
-        .as_ref()
-        .or(expected.map(|expected| expected.result.as_ref()));
+    let expected_result = declared_result.as_ref().or(expected_result);
 
     var_env.enter(RepeatedBody::Lambda);
     let mut pushed = 0;
     for (param, typ) in &typed_params {
-        match var_env.push(
-            param.var_name.clone(),
-            typ.clone(),
-            param.var_name_range.clone(),
-        ) {
+        let Some(name) = &param.var_name else {
+            continue;
+        };
+        match var_env.push(name.clone(), typ.clone(), param.var_name_range.clone()) {
             Ok(()) => {
                 annotations.push(HoverAnnotation::VarName {
                     range: param.var_name_range.clone(),
                     typ: typ.clone(),
-                    var_name: param.var_name.clone(),
+                    var_name: name.clone(),
                 });
                 pushed += 1;
             }
             Err(()) => {
                 errors.push(TypeError::new(
-                    TypeErrorKind::VariableAlreadyDefined {
-                        name: param.var_name.clone(),
-                    },
+                    TypeErrorKind::VariableAlreadyDefined { name: name.clone() },
                     param.var_name_range.clone(),
                 ));
                 failed = true;

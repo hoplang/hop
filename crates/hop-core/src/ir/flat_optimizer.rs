@@ -137,13 +137,17 @@ mod tests {
             if targets.is_empty() {
                 break;
             }
-            let writes = match &targets[choice % targets.len()].1 {
-                Ok(writes) => writes,
+            let effect = match &targets[choice % targets.len()].1 {
+                Ok(effect) => effect,
                 Err(error) if is_limit(error) => break,
                 Err(error) => panic!("{error}"),
             };
             state = next_state;
-            state.apply_writes(writes);
+            match state.run(effect, &program.functions) {
+                Ok(()) => {}
+                Err(error) if is_limit(&error) => break,
+                Err(error) => panic!("{error}"),
+            }
         }
         out
     }

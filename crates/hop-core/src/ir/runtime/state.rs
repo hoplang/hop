@@ -3,6 +3,14 @@ use std::rc::Rc;
 
 use rpds::Vector;
 
+#[cfg(test)]
+use crate::ir::flat_program::FlatFunction;
+#[cfg(test)]
+use crate::ir::runtime::eval_error::EvalError;
+#[cfg(test)]
+use crate::ir::runtime::flat_evaluator::run_effect;
+#[cfg(test)]
+use crate::ir::runtime::value::Effect;
 use crate::ir::runtime::value::Value;
 use crate::ir::value_id::ValueId;
 
@@ -51,11 +59,17 @@ impl<'a> State<'a> {
         node
     }
 
+    /// Runs the effect, and writes the cells only if it succeeds.
     #[cfg(test)]
-    pub fn apply_writes(&mut self, writes: &[(Place, Value<'a>)]) {
-        for (place, value) in writes {
-            *self.cells.get_mut(place).unwrap() = value.clone();
-        }
+    pub fn run(
+        &mut self,
+        effect: &Effect<'a>,
+        functions: &'a [FlatFunction],
+    ) -> Result<(), EvalError> {
+        let mut cells = self.cells.clone();
+        run_effect(effect, &mut cells, functions, &mut 0)?;
+        self.cells = cells;
+        Ok(())
     }
 }
 

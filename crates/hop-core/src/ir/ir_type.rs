@@ -13,14 +13,14 @@ pub enum IrType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrFunctionDataType {
     Data(IrDataType),
-    Effect,
+    Effect(IrDataType),
     Function(IrSignature<IrFunctionDataType, IrResultType>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrResultType {
     Data(IrDataType),
-    Effect,
+    Effect(IrDataType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,7 +58,7 @@ impl IrType {
     pub const BOOL: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Bool));
     pub const INT: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Int));
     pub const FLOAT: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Float));
-    pub const EFFECT: IrType = IrType::Data(IrFunctionDataType::Effect);
+    pub const EFFECT: IrType = IrType::Data(IrFunctionDataType::Effect(IrDataType::UNIT));
 
     pub fn result(result: &IrResultType) -> IrType {
         IrType::Data(IrFunctionDataType::result(result))
@@ -114,7 +114,7 @@ impl IrType {
     pub fn as_data(&self) -> Option<&IrDataType> {
         match self {
             IrType::Data(IrFunctionDataType::Data(data)) => Some(data),
-            IrType::Data(IrFunctionDataType::Effect | IrFunctionDataType::Function(_))
+            IrType::Data(IrFunctionDataType::Effect(_) | IrFunctionDataType::Function(_))
             | IrType::Html(_) => None,
         }
     }
@@ -137,20 +137,22 @@ impl IrFunctionDataType {
     pub fn result(result: &IrResultType) -> IrFunctionDataType {
         match result {
             IrResultType::Data(data) => IrFunctionDataType::Data(data.clone()),
-            IrResultType::Effect => IrFunctionDataType::Effect,
+            IrResultType::Effect(data) => IrFunctionDataType::Effect(data.clone()),
         }
     }
 
     pub fn as_result(&self) -> Option<IrResultType> {
         match self {
             IrFunctionDataType::Data(data) => Some(IrResultType::Data(data.clone())),
-            IrFunctionDataType::Effect => Some(IrResultType::Effect),
+            IrFunctionDataType::Effect(data) => Some(IrResultType::Effect(data.clone())),
             IrFunctionDataType::Function(_) => None,
         }
     }
 }
 
 impl IrDataType {
+    pub const UNIT: IrDataType = IrDataType::Tuple(Vec::new());
+
     pub fn as_equatable_type(&self) -> Option<EquatableType> {
         match self {
             IrDataType::Bool => Some(EquatableType::Bool),
@@ -207,7 +209,7 @@ impl fmt::Display for IrFunctionDataType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             IrFunctionDataType::Data(data) => data.fmt(f),
-            IrFunctionDataType::Effect => f.write_str("Effect"),
+            IrFunctionDataType::Effect(data) => write!(f, "Effect[{data}]"),
             IrFunctionDataType::Function(signature) => signature.fmt(f),
         }
     }
@@ -226,7 +228,7 @@ impl fmt::Display for IrResultType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             IrResultType::Data(data) => data.fmt(f),
-            IrResultType::Effect => f.write_str("Effect"),
+            IrResultType::Effect(data) => write!(f, "Effect[{data}]"),
         }
     }
 }

@@ -304,7 +304,7 @@ mod tests {
     use crate::ir::flat_lint;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
-    use crate::ir::ir_type::IrType;
+    use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrType};
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
@@ -590,10 +590,10 @@ mod tests {
                 fn counter@f0() -> Html {
                   let v0: Int = 0
                   let v1: Int = cell(v0)
-                  let v5: () -> Effect = fn() {
+                  let v5: () -> Effect[()] = fn() {
                     let v2: Int = 1
                     let v3: Int = add(v1, v2)
-                    let v4: Effect = v1 := v3
+                    let v4: Effect[()] = v1 := v3
                     v4
                   }
                   let v6: String = v1.to_string()
@@ -612,10 +612,10 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v12: Int = 0
                   let v13: Int = cell(v12)
-                  let v17: () -> Effect = fn() {
+                  let v17: () -> Effect[()] = fn() {
                     let v14: Int = 1
                     let v15: Int = add(v13, v14)
-                    let v16: Effect = v13 := v15
+                    let v16: Effect[()] = v13 := v15
                     v16
                   }
                   let v18: String = v13.to_string()
@@ -623,10 +623,10 @@ mod tests {
                   let v20: Html = element("button", {}, v19) on_click v17
                   let v21: Int = 0
                   let v22: Int = cell(v21)
-                  let v26: () -> Effect = fn() {
+                  let v26: () -> Effect[()] = fn() {
                     let v23: Int = 1
                     let v24: Int = add(v22, v23)
-                    let v25: Effect = v22 := v24
+                    let v25: Effect[()] = v22 := v24
                     v25
                   }
                   let v27: String = v22.to_string()
@@ -645,9 +645,16 @@ mod tests {
             FlatProgramBuilder::new()
                 .function(
                     "both",
-                    [("first", Ty::Effect), ("second", Ty::Effect)],
-                    Ty::Effect,
-                    |t| t.effect_concat([t.param("first"), t.param("second")]),
+                    [
+                        ("first", Ty::effect(Ty::tuple([]))),
+                        ("second", Ty::effect(Ty::tuple([]))),
+                    ],
+                    Ty::effect(Ty::tuple([])),
+                    |t| {
+                        let unit = IrType::Data(IrFunctionDataType::Data(IrDataType::UNIT));
+                        let second = t.lambda([unit], |t, _| t.param("second"));
+                        t.effect_bind(t.param("first"), second)
+                    },
                 )
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(t.int(0));
@@ -663,49 +670,55 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn both@f0(first@v0: Effect, second@v1: Effect) -> Effect {
-                  let v2: Effect = effect_concat(v0, v1)
-                  v2
+                fn both@f0(first@v0: Effect[()], second@v1: Effect[()]) -> Effect[()] {
+                  let v3: (()) -> Effect[()] = fn(v2: ()) {
+                    v1
+                  }
+                  let v4: Effect[()] = bind(v0, v3)
+                  v4
                 }
                 entrypoint Test@e0() -> Html {
-                  let v3: Int = 0
-                  let v4: Int = cell(v3)
-                  let v5: Bool = false
-                  let v6: Bool = cell(v5)
-                  let v13: () -> Effect = fn() {
-                    let v7: Int = 1
-                    let v8: Int = add(v4, v7)
-                    let v9: Effect = v4 := v8
-                    let v10: Bool = not(v6)
-                    let v11: Effect = v6 := v10
-                    let v12: Effect = both@f0(v9, v11)
-                    v12
+                  let v5: Int = 0
+                  let v6: Int = cell(v5)
+                  let v7: Bool = false
+                  let v8: Bool = cell(v7)
+                  let v15: () -> Effect[()] = fn() {
+                    let v9: Int = 1
+                    let v10: Int = add(v6, v9)
+                    let v11: Effect[()] = v6 := v10
+                    let v12: Bool = not(v8)
+                    let v13: Effect[()] = v8 := v12
+                    let v14: Effect[()] = both@f0(v11, v13)
+                    v14
                   }
-                  let v14: String = v4.to_string()
-                  let v15: Html = escape(v14)
-                  let v16: Html = element("button", {}, v15) on_click v13
-                  v16
+                  let v16: String = v6.to_string()
+                  let v17: Html = escape(v16)
+                  let v18: Html = element("button", {}, v17) on_click v15
+                  v18
                 }
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v3: Int = 0
-                  let v4: Int = cell(v3)
-                  let v5: Bool = false
-                  let v6: Bool = cell(v5)
-                  let v13: () -> Effect = fn() {
-                    let v7: Int = 1
-                    let v8: Int = add(v4, v7)
-                    let v9: Effect = v4 := v8
-                    let v10: Bool = not(v6)
-                    let v11: Effect = v6 := v10
-                    let v17: Effect = effect_concat(v9, v11)
-                    v17
+                  let v5: Int = 0
+                  let v6: Int = cell(v5)
+                  let v7: Bool = false
+                  let v8: Bool = cell(v7)
+                  let v15: () -> Effect[()] = fn() {
+                    let v9: Int = 1
+                    let v10: Int = add(v6, v9)
+                    let v11: Effect[()] = v6 := v10
+                    let v12: Bool = not(v8)
+                    let v13: Effect[()] = v8 := v12
+                    let v20: (()) -> Effect[()] = fn(v19: ()) {
+                      v13
+                    }
+                    let v21: Effect[()] = bind(v11, v20)
+                    v21
                   }
-                  let v14: String = v4.to_string()
-                  let v15: Html = escape(v14)
-                  let v16: Html = element("button", {}, v15) on_click v13
-                  v16
+                  let v16: String = v6.to_string()
+                  let v17: Html = escape(v16)
+                  let v18: Html = element("button", {}, v17) on_click v15
+                  v18
                 }
             "#]],
         );

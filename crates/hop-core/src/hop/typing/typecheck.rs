@@ -14884,14 +14884,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn both(first: fn() -> Effect, second: fn() -> Effect) -> Effect {
-                  effects!(first(), second())
+                fn both(first: fn() -> Effect[()], second: fn() -> Effect[()]) -> Effect[()] {
+                  first().and_then(fn(_: ()) { second() })
                 }
                 fn Main(ids: Array[Int]) -> Html {
                   let mut count = 0;
                   let mut on = false;
-                  let bump = fn() { count := count + 1 };
-                  let flip = fn() -> Effect { on := !on };
+                  let bump = fn() { count.set(count + 1) };
+                  let flip = fn() -> Effect[()] { on.set(!on) };
                   <>
                     <button on:click={fn() { both(bump, flip) }}>
                       {count.to_string()}
@@ -14905,9 +14905,9 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(ids: Array[Int]) -> Html {
-                  let mut count = 0 in let mut on = false in let bump = fn() -> Effect {
+                  let mut count = 0 in let mut on = false in let bump = fn() -> Effect[()] {
                     write(count, add(count, 1))
-                  } in let flip = fn() -> Effect {
+                  } in let flip = fn() -> Effect[()] {
                     write(on, not(on))
                   } in concat(
                     element(
@@ -14916,7 +14916,7 @@ mod tests {
                       children: concat(
                         escape(count.to_string()),
                       ),
-                      on_click: fn() -> Effect {
+                      on_click: fn() -> Effect[()] {
                         both(first: bump, second: flip)
                       },
                     ),
@@ -14932,8 +14932,10 @@ mod tests {
                   )
                 }
 
-                fn both(first: fn() -> Effect, second: fn() -> Effect) -> Effect {
-                  effects!(first(), second())
+                fn both(first: fn() -> Effect[()], second: fn() -> Effect[()]) -> Effect[()] {
+                  first().and_then(fn(_: ()) -> Effect[()] {
+                    second()
+                  })
                 }
             "#]],
         );
@@ -14946,25 +14948,25 @@ mod tests {
                 -- main.hop --
                 fn Fixed() -> Html {
                   let count = 0;
-                  <button on:click={fn() { count := count + 1 }}>x</button>
+                  <button on:click={fn() { count.set(count + 1) }}>x</button>
                 }
                 fn Counter() -> Html {
                   let mut count = 0;
-                  <button on:click={fn() { count := "one" }}>{count.to_string()}</button>
+                  <button on:click={fn() { count.set("one") }}>{count.to_string()}</button>
                 }
             "#},
             expect![[r#"
-                error: count is not a cell: only a variable bound with let mut can be written
+                error: Method 'set' is not available on type Int
                   --> main.hop (line 3, col 28)
                 2 |   let count = 0;
-                3 |   <button on:click={fn() { count := count + 1 }}>x</button>
-                  |                            ^^^^^
+                3 |   <button on:click={fn() { count.set(count + 1) }}>x</button>
+                  |                            ^^^^^^^^^^^^^^^^^^^^
 
                 error: Expected Int got String
-                  --> main.hop (line 7, col 37)
+                  --> main.hop (line 7, col 38)
                 6 |   let mut count = 0;
-                7 |   <button on:click={fn() { count := "one" }}>{count.to_string()}</button>
-                  |                                     ^^^^^
+                7 |   <button on:click={fn() { count.set("one") }}>{count.to_string()}</button>
+                  |                                      ^^^^^
             "#]],
         );
     }
@@ -14982,7 +14984,7 @@ mod tests {
                   let mut count = 0;
                   <button on:click={fn() {
                     let mut last = count;
-                    count := last + 1
+                    count.set(last + 1)
                   }}>{count.to_string()}</button>
                 }
             "#},
@@ -15011,9 +15013,9 @@ mod tests {
                   let bump = match open {
                     true => {
                       let mut count = 0;
-                      count := count + 1
+                      count.set(count + 1)
                     },
-                    false => effects!(),
+                    false => pure!(()),
                   };
                   let seen = open && {
                     let mut first = true;
@@ -15070,7 +15072,7 @@ mod tests {
                   match open {
                     true => {
                       let mut count = 0;
-                      <button on:click={fn() { count := count + 1 }}>{count.to_string()}</button>
+                      <button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</button>
                     },
                     false => <i>closed</i>,
                   }
@@ -15086,7 +15088,7 @@ mod tests {
                       children: concat(
                         escape(count.to_string()),
                       ),
-                      on_click: fn() -> Effect {
+                      on_click: fn() -> Effect[()] {
                         write(count, add(count, 1))
                       },
                     ),
@@ -15111,7 +15113,7 @@ mod tests {
                 fn Main() -> Html {
                   let row = fn(label: String) {
                     let mut open = false;
-                    <li on:click={fn() { open := !open }}>{label}</li>
+                    <li on:click={fn() { open.set(!open) }}>{label}</li>
                   };
                   <ul>{row("a")}{row("b")}</ul>
                 }
@@ -15126,7 +15128,7 @@ mod tests {
                       children: concat(
                         escape(label),
                       ),
-                      on_click: fn() -> Effect {
+                      on_click: fn() -> Effect[()] {
                         write(open, not(open))
                       },
                     )
@@ -15206,22 +15208,22 @@ mod tests {
                 fn Main() -> Html {
                   let mut count = 0;
                   <>
-                    <button on:click={count := count + 1}>{count.to_string()}</button>
+                    <button on:click={count.set(count + 1)}>{count.to_string()}</button>
                     <button on:click="go()">x</button>
                     <button on:click>y</button>
                   </>
                 }
             "#},
             expect![[r#"
-                error: Expected fn() -> Effect got Effect
+                error: Expected fn() -> Effect[()] got Effect[()]
                   --> main.hop (line 4, col 23)
                 3 |   <>
-                4 |     <button on:click={count := count + 1}>{count.to_string()}</button>
-                  |                       ^^^^^^^^^^^^^^^^^^
+                4 |     <button on:click={count.set(count + 1)}>{count.to_string()}</button>
+                  |                       ^^^^^^^^^^^^^^^^^^^^
 
-                error: Expected fn() -> Effect got String
+                error: Expected fn() -> Effect[()] got String
                   --> main.hop (line 5, col 22)
-                4 |     <button on:click={count := count + 1}>{count.to_string()}</button>
+                4 |     <button on:click={count.set(count + 1)}>{count.to_string()}</button>
                 5 |     <button on:click="go()">x</button>
                   |                      ^^^^^^
 
@@ -15244,26 +15246,26 @@ mod tests {
                 }
                 fn Twice() -> Html {
                   let mut count = 0;
-                  <button on:click={fn() { count := 1 }} on:click={fn() { count := 2 }}>
+                  <button on:click={fn() { count.set(1) }} on:click={fn() { count.set(2) }}>
                     {count.to_string()}
                   </button>
                 }
                 fn Main() -> Html {
                   let mut count = 0;
-                  <Button on:click={fn() { count := count + 1 }}>{count.to_string()}</Button>
+                  <Button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</Button>
                 }
             "#},
             expect![[r#"
                 error: Duplicate attribute 'on:click'
-                  --> main.hop (line 6, col 42)
+                  --> main.hop (line 6, col 44)
                  5 |   let mut count = 0;
-                 6 |   <button on:click={fn() { count := 1 }} on:click={fn() { count := 2 }}>
-                   |                                          ^^^^^^^^
+                 6 |   <button on:click={fn() { count.set(1) }} on:click={fn() { count.set(2) }}>
+                   |                                            ^^^^^^^^
 
                 error: Function Button does not accept argument 'on:click'
                   --> main.hop (line 12, col 11)
                 11 |   let mut count = 0;
-                12 |   <Button on:click={fn() { count := count + 1 }}>{count.to_string()}</Button>
+                12 |   <Button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</Button>
                    |           ^^^^^^^^
             "#]],
         );
@@ -15276,26 +15278,133 @@ mod tests {
                 -- main.hop --
                 fn Main() -> Html {
                   let mut count = 0;
-                  <button on:click={fn() { effects!(count := 1, 2) }}>{count.to_string()}</button>
+                  <button on:click={fn() { count.set(1).and_then(2) }}>{count.to_string()}</button>
                 }
                 fn Listed() -> Html {
                   let mut count = 0;
-                  let writes = [count := 1];
+                  let writes = [count.set(1)];
                   <b>{count.to_string()}</b>
                 }
             "#},
             expect![[r#"
-                error: Expected Effect got Int
-                  --> main.hop (line 3, col 49)
+                error: Expected a function from () to an effect, got Int
+                  --> main.hop (line 3, col 50)
                 2 |   let mut count = 0;
-                3 |   <button on:click={fn() { effects!(count := 1, 2) }}>{count.to_string()}</button>
-                  |                                                 ^
+                3 |   <button on:click={fn() { count.set(1).and_then(2) }}>{count.to_string()}</button>
+                  |                                                  ^
 
-                error: Effect is not allowed inside another type
+                error: Effect[()] is not allowed inside another type
                   --> main.hop (line 7, col 17)
                 6 |   let mut count = 0;
-                7 |   let writes = [count := 1];
-                  |                 ^^^^^^^^^^
+                7 |   let writes = [count.set(1)];
+                  |                 ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_cell_reads_binds_and_pure_effects() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn bump(n: Int) -> Effect[Int] {
+                  pure!(n + 1)
+                }
+                fn Main() -> Html {
+                  let mut count = 0;
+                  <button on:click={fn() {
+                    count.get().and_then(fn(n) {
+                      bump(n).and_then(fn(_) { count.set(n) })
+                    })
+                  }}>{count.to_string()}</button>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let mut count = 0 in element(
+                    tag: "button",
+                    attrs: [],
+                    children: concat(
+                      escape(count.to_string()),
+                    ),
+                    on_click: fn() -> Effect[()] {
+                      count.get().and_then(fn(n: Int) -> Effect[()] {
+                        bump(n: n).and_then(fn(_: Int) -> Effect[()] {
+                          write(count, n)
+                        })
+                      })
+                    },
+                  )
+                }
+
+                fn bump(n: Int) -> Effect[Int] {
+                  pure!(add(n, 1))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_ill_typed_effect_methods_and_handlers() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let mut count = 0;
+                  let plain = 1;
+                  <>
+                    <button on:click={fn() { count.get() }}>a</button>
+                    <button on:click={fn() { count.get().and_then(fn(s: String) { pure!(s) }) }}>b</button>
+                    <button on:click={fn() { pure!(<b>x</b>) }}>c</button>
+                    <button on:click={fn() { count.get().and_then(fn(n, m) { count.set(n) }) }}>d</button>
+                    <button on:click={fn() { plain.get().and_then(fn(_: Int) { count.set(1) }) }}>e</button>
+                    <button on:click={fn() { count.set("x") }}>f</button>
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: Expected fn() -> Effect[()] got fn() -> Effect[Int]
+                  --> main.hop (line 5, col 23)
+                 4 |   <>
+                 5 |     <button on:click={fn() { count.get() }}>a</button>
+                   |                       ^^^^^^^^^^^^^^^^^^^^
+
+                error: Expected a function from Int to an effect, got fn(String) -> Effect[String]
+                  --> main.hop (line 6, col 51)
+                 5 |     <button on:click={fn() { count.get() }}>a</button>
+                 6 |     <button on:click={fn() { count.get().and_then(fn(s: String) { pure!(s) }) }}>b</button>
+                   |                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                error: Html is not allowed inside another type
+                  --> main.hop (line 7, col 36)
+                 6 |     <button on:click={fn() { count.get().and_then(fn(s: String) { pure!(s) }) }}>b</button>
+                 7 |     <button on:click={fn() { pure!(<b>x</b>) }}>c</button>
+                   |                                    ^^^^^^^^
+
+                error: The type of parameter n cannot be inferred
+                  --> main.hop (line 8, col 54)
+                 7 |     <button on:click={fn() { pure!(<b>x</b>) }}>c</button>
+                 8 |     <button on:click={fn() { count.get().and_then(fn(n, m) { count.set(n) }) }}>d</button>
+                   |                                                      ^
+
+                error: The type of parameter m cannot be inferred
+                  --> main.hop (line 8, col 57)
+                 7 |     <button on:click={fn() { pure!(<b>x</b>) }}>c</button>
+                 8 |     <button on:click={fn() { count.get().and_then(fn(n, m) { count.set(n) }) }}>d</button>
+                   |                                                         ^
+
+                error: Method 'get' is not available on type Int
+                  --> main.hop (line 9, col 30)
+                 8 |     <button on:click={fn() { count.get().and_then(fn(n, m) { count.set(n) }) }}>d</button>
+                 9 |     <button on:click={fn() { plain.get().and_then(fn(_: Int) { count.set(1) }) }}>e</button>
+                   |                              ^^^^^^^^^^^
+
+                error: Expected Int got String
+                  --> main.hop (line 10, col 40)
+                 9 |     <button on:click={fn() { plain.get().and_then(fn(_: Int) { count.set(1) }) }}>e</button>
+                10 |     <button on:click={fn() { count.set("x") }}>f</button>
+                   |                                        ^^^
             "#]],
         );
     }

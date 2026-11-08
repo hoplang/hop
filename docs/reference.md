@@ -1819,10 +1819,10 @@ from         func         if           impl         implements   include
 interface    internal     is           loop         mod          mut
 namespace    new          newtype      nil          not          null
 of           or           out          package      priv         private
-public       return       self         set          static       struct
-super        this         throw        trait        try          undefined
-use          val          var          view         void         when
-where        while        yield
+public       return       self         static       struct       super
+this         throw        trait        try          undefined    use
+val          var          view         void         when         where
+while        yield
 ```
 
 An `UppercaseIdentifier` that is one of these words is a compile error:

@@ -15,6 +15,8 @@ const VAR_NAMES: &[&str] = &["a", "b", "x", "foo", "foo_bar", "x1"];
 
 const FIELD_NAMES: &[&str] = &["a", "b", "name", "foo_bar", "x1"];
 
+const METHOD_NAMES: &[&str] = &["get", "set", "and_then", "to_string", "len", "foo_bar"];
+
 const TYPE_NAMES: &[&str] = &["Foo", "Bar", "Baz1", "Point", "Color"];
 
 const FUNCTION_NAMES: &[&str] = &["f", "foo", "foo_bar", "Card", "Button"];
@@ -270,15 +272,16 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
         Named,
         Array,
         Option,
+        Effect,
         Tuple,
         Function,
     }
     let mut kinds = vec![P::Scalar, P::Named];
     if depth > 0 {
-        kinds.extend([P::Array, P::Option, P::Tuple, P::Function]);
+        kinds.extend([P::Array, P::Option, P::Effect, P::Tuple, P::Function]);
     }
     match u.choose(&kinds)? {
-        P::Scalar => out.push_str(u.choose(&["Int", "String", "Bool", "Float", "Html", "Effect"])?),
+        P::Scalar => out.push_str(u.choose(&["Int", "String", "Bool", "Float", "Html"])?),
         P::Named => out.push_str(u.choose(TYPE_NAMES)?),
         P::Array => {
             out.push_str("Array[");
@@ -287,6 +290,11 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
         }
         P::Option => {
             out.push_str("Option[");
+            type_(u, depth - 1, out)?;
+            out.push(']');
+        }
+        P::Effect => {
+            out.push_str("Effect[");
             type_(u, depth - 1, out)?;
             out.push(']');
         }
@@ -337,12 +345,6 @@ fn expr(
     restrictions: Restrictions,
     out: &mut String,
 ) -> Result<()> {
-    if u.int_in_range(0..=11)? == 11 {
-        out.push_str(u.choose(VAR_NAMES)?);
-        ws(u, out)?;
-        out.push_str(":=");
-        ws(u, out)?;
-    }
     unary(u, depth, restrictions, out)?;
     if u.int_in_range(0..=7)? == 7 {
         let mut comparison_since_logical = false;
@@ -382,9 +384,18 @@ fn unary(
     if postfix_follows {
         for _ in 0..u.int_in_range(1..=2)? {
             out.push('.');
-            out.push_str(u.choose(FIELD_NAMES)?);
-            if u.arbitrary()? {
-                out.push_str("()");
+            match u.int_in_range(0..=2)? {
+                0 => out.push_str(u.choose(FIELD_NAMES)?),
+                1 => {
+                    out.push_str(u.choose(METHOD_NAMES)?);
+                    out.push_str("()");
+                }
+                _ => {
+                    out.push_str(u.choose(METHOD_NAMES)?);
+                    out.push('(');
+                    expr(u, depth.saturating_sub(1), ANYWHERE, out)?;
+                    out.push(')');
+                }
             }
         }
     }
@@ -504,7 +515,7 @@ fn primary(
         }
         P::Macro => {
             out.push_str(if u.arbitrary()? {
-                "effects"
+                "pure"
             } else {
                 u.choose(VAR_NAMES)?
             });
@@ -584,7 +595,11 @@ fn primary(
         P::Lambda => {
             out.push_str("fn(");
             list(u, 0..=3, out, |u, _, out| {
-                out.push_str(u.choose(VAR_NAMES)?);
+                out.push_str(if u.ratio(1, 5)? {
+                    "_"
+                } else {
+                    u.choose(VAR_NAMES)?
+                });
                 if u.arbitrary()? {
                     out.push_str(": ");
                     type_(u, 2, out)?;

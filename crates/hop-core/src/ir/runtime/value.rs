@@ -30,10 +30,18 @@ pub enum Value<'a> {
     Option(Option<Rc<Value<'a>>>),
     Enum(TypeName, Rc<[(FieldName, Value<'a>)]>),
     Closure(Rc<Closure<'a>>),
-    Effect(Effect<'a>),
+    Effect(Rc<Effect<'a>>),
 }
 
-pub type Effect<'a> = Rc<[(Place, Value<'a>)]>;
+#[derive(Debug)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub enum Effect<'a> {
+    Pure(Value<'a>),
+    Write(Place, Value<'a>),
+    Read(Place),
+    Bind(Rc<Effect<'a>>, Rc<Closure<'a>>),
+    Then(Rc<Effect<'a>>, Rc<Effect<'a>>),
+}
 
 #[derive(Debug)]
 pub struct Closure<'a> {
@@ -181,8 +189,12 @@ impl<'a> Value<'a> {
         }
     }
 
+    pub fn unit() -> Value<'a> {
+        Value::Tuple(Rc::new([]))
+    }
+
     /// Panics if the value is not an Effect.
-    pub fn as_effect(&self) -> &Effect<'a> {
+    pub fn as_effect(&self) -> &Rc<Effect<'a>> {
         match self {
             Value::Effect(effect) => effect,
             _ => panic!("Expected an Effect value, found {self:?}"),

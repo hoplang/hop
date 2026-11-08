@@ -118,13 +118,6 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    CellWrite {
-        cell: VarName,
-        cell_range: DocumentRange,
-        value: Box<Self>,
-        range: DocumentRange,
-    },
-
     Option {
         value: Option<Box<Self>>,
         range: DocumentRange,
@@ -243,9 +236,16 @@ pub struct ParsedLetBinding {
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedLambdaParameter {
-    pub var_name: VarName,
+    /// None for `_`, which binds nothing.
+    pub var_name: Option<VarName>,
     pub var_name_range: DocumentRange,
     pub var_type: Option<ParsedType>,
+}
+
+impl ParsedLambdaParameter {
+    pub fn name(&self) -> &str {
+        self.var_name.as_ref().map_or("_", |name| name.as_str())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -271,7 +271,6 @@ pub enum ParsedBinaryOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {
-    CellWrite,
     LogicalOr,
     LogicalAnd,
     Comparison,
@@ -524,7 +523,6 @@ impl ParsedExpr {
                 }
                 f(body);
             }
-            ParsedExpr::CellWrite { value, .. } => f(value),
             ParsedExpr::Option { value, .. } => {
                 if let Some(value) = value {
                     f(value);
@@ -588,7 +586,6 @@ impl ParsedExpr {
             | ParsedExpr::Binary { .. }
             | ParsedExpr::Match { .. }
             | ParsedExpr::For { .. }
-            | ParsedExpr::CellWrite { .. }
             | ParsedExpr::Macro { .. }
             | ParsedExpr::Call { .. }
             | ParsedExpr::Lambda { .. } => false,
@@ -612,7 +609,6 @@ impl ParsedExpr {
             | ParsedExpr::Binary { range, .. }
             | ParsedExpr::Match { range, .. }
             | ParsedExpr::For { range, .. }
-            | ParsedExpr::CellWrite { range, .. }
             | ParsedExpr::Option { range, .. }
             | ParsedExpr::Macro { range, .. }
             | ParsedExpr::Call { range, .. }
@@ -625,7 +621,6 @@ impl ParsedExpr {
     pub fn precedence(&self) -> Precedence {
         match self {
             ParsedExpr::Binary { operator, .. } => operator.precedence(),
-            ParsedExpr::CellWrite { .. } => Precedence::CellWrite,
             ParsedExpr::Unary { .. }
             | ParsedExpr::IntLiteral {
                 minus_range: Some(_),
@@ -833,7 +828,7 @@ impl Display for ParsedExpr {
                 f.write_str("fn(")?;
                 for (i, param) in params.iter().enumerate() {
                     let sep = if i > 0 { ", " } else { "" };
-                    write!(f, "{sep}{}", param.var_name.as_str())?;
+                    write!(f, "{sep}{}", param.name())?;
                     if let Some(var_type) = &param.var_type {
                         write!(f, ": {var_type}")?;
                     }
@@ -845,9 +840,6 @@ impl Display for ParsedExpr {
                 f.write_str(" {")?;
                 write!(Indent::new(f), "\n{body}")?;
                 f.write_str("\n}")
-            }
-            ParsedExpr::CellWrite { cell, value, .. } => {
-                write!(f, "write({}, {value})", cell.as_str())
             }
             ParsedExpr::Let { binding, body, .. } => {
                 let mutable = if binding.mutable { "mut " } else { "" };

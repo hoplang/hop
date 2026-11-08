@@ -268,7 +268,7 @@ impl<'a> Compiler<'a> {
                 return_type: IrResultType::Data(lower_data_type(self.registry, return_type)),
                 body: self.compile_pure_block(&decl.body),
             }),
-            Type::Effect => FlatFunction::Pure(IrFunctionDeclaration {
+            Type::Effect(payload) => FlatFunction::Pure(IrFunctionDeclaration {
                 function,
                 parameters: parameters
                     .into_iter()
@@ -278,7 +278,7 @@ impl<'a> Compiler<'a> {
                             .expect("a function that gives an effect takes values only")
                     })
                     .collect(),
-                return_type: IrResultType::Effect,
+                return_type: IrResultType::Effect(lower_data_type(self.registry, payload)),
                 body: self.compile_pure_block(&decl.body),
             }),
             Type::Function(_) => unreachable!("a function returns data, Html or an effect"),
@@ -838,8 +838,15 @@ impl<'a> Compiler<'a> {
                 let cell = self.resolve(cell);
                 FlatPureOp::CellWrite(cell, self.compile_expr(value))
             }
-            TypedExpr::EffectConcat { parts } => {
-                FlatPureOp::EffectConcat(parts.iter().map(|part| self.compile_expr(part)).collect())
+            TypedExpr::CellRead { cell, .. } => FlatPureOp::CellRead(self.resolve(cell)),
+            TypedExpr::EffectPure { value, .. } => FlatPureOp::EffectPure(self.compile_expr(value)),
+            TypedExpr::EffectBind {
+                effect,
+                continuation,
+                ..
+            } => {
+                let effect = self.compile_expr(effect);
+                FlatPureOp::EffectBind(effect, self.compile_expr(continuation))
             }
             TypedExpr::For {
                 var_name,
@@ -892,7 +899,10 @@ impl<'a> Compiler<'a> {
                 let parameters: Vec<IrBinder<IrType>> = params
                     .iter()
                     .map(|(name, typ)| IrBinder {
-                        var: self.bind(name),
+                        var: match name {
+                            Some(name) => self.bind(name),
+                            None => self.value_id_counter.next(),
+                        },
                         typ: lower_type(self.registry, typ),
                     })
                     .collect();
@@ -1040,7 +1050,9 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
     match typ {
         Type::Data(data) => IrType::Data(IrFunctionDataType::Data(lower_data_type(registry, data))),
         Type::Html(_) => IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
-        Type::Effect => IrType::Data(IrFunctionDataType::Effect),
+        Type::Effect(payload) => IrType::Data(IrFunctionDataType::Effect(lower_data_type(
+            registry, payload,
+        ))),
         Type::Function(function) => match function.result.as_ref() {
             Type::Html(_) => IrType::Html(IrFunctionHtmlType::Function(IrSignature {
                 parameters: function
@@ -1050,7 +1062,7 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
                     .collect(),
                 result: IrHtmlType,
             })),
-            result @ (Type::Data(_) | Type::Effect) => {
+            result @ (Type::Data(_) | Type::Effect(_)) => {
                 IrType::Data(IrFunctionDataType::Function(IrSignature {
                     parameters: function
                         .parameters
@@ -1064,7 +1076,10 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
                         .collect(),
                     result: match result {
                         Type::Data(result) => IrResultType::Data(lower_data_type(registry, result)),
-                        _ => IrResultType::Effect,
+                        Type::Effect(payload) => {
+                            IrResultType::Effect(lower_data_type(registry, payload))
+                        }
+                        Type::Html(_) | Type::Function(_) => unreachable!(),
                     },
                 }))
             }
@@ -2114,7 +2129,7 @@ mod tests {
                 fn Counter(label: String) -> Html {
                   let mut count = 0;
                   let mut clicked = false;
-                  <button on:click={fn() { effects!(count := count + 1, clicked := true) }}>
+                  <button on:click={fn() { count.set(count + 1).and_then(fn(_: ()) { clicked.set(true) }) }}>
                     {label} {count.to_string()}
                   </button>
                 }
@@ -2135,22 +2150,25 @@ mod tests {
                   let v18: Int = cell(v17)
                   let v19: Bool = false
                   let v20: Bool = cell(v19)
-                  let v27: () -> Effect = fn() {
+                  let v29: () -> Effect[()] = fn() {
                     let v21: Int = 1
                     let v22: Int = add(v18, v21)
-                    let v23: Effect = v18 := v22
-                    let v24: Bool = true
-                    let v25: Effect = v20 := v24
-                    let v26: Effect = effect_concat(v23, v25)
-                    v26
+                    let v23: Effect[()] = v18 := v22
+                    let v27: (()) -> Effect[()] = fn(v24: ()) {
+                      let v25: Bool = true
+                      let v26: Effect[()] = v20 := v25
+                      v26
+                    }
+                    let v28: Effect[()] = bind(v23, v27)
+                    v28
                   }
-                  let v28: Html = escape(v16)
-                  let v29: Html = text(" ")
-                  let v30: String = v18.to_string()
-                  let v31: Html = escape(v30)
-                  let v32: Html = concat(v28, v29, v31)
-                  let v33: Html = element("button", {}, v32) on_click v27
-                  v33
+                  let v30: Html = escape(v16)
+                  let v31: Html = text(" ")
+                  let v32: String = v18.to_string()
+                  let v33: Html = escape(v32)
+                  let v34: Html = concat(v30, v31, v33)
+                  let v35: Html = element("button", {}, v34) on_click v29
+                  v35
                 }
                 entrypoint body@e0() -> Html {
                   let v0: Int = 1
@@ -2183,20 +2201,20 @@ mod tests {
     fn should_pass_a_handler_to_an_element_through_a_parameter() {
         check(
             indoc! {r#"
-                fn Button(on_press: fn() -> Effect, children: Html) -> Html {
+                fn Button(on_press: fn() -> Effect[()], children: Html) -> Html {
                   <button on:click={on_press}>{children}</button>
                 }
                 page Test() {
                   fn body() -> Html {
                     let mut on = false;
-                    <Button on_press={fn() { on := !on }}>
+                    <Button on_press={fn() { on.set(!on) }}>
                       {match on {true => "on", false => "off"}}
                     </Button>
                   }
                 }
             "#},
             expect![[r#"
-                fn Button@f0(on_press@v11: () -> Effect, children@v12: Html) -> Html {
+                fn Button@f0(on_press@v11: () -> Effect[()], children@v12: Html) -> Html {
                   let v13: Html = concat(v12)
                   let v14: Html = element("button", {}, v13) on_click v11
                   v14
@@ -2204,9 +2222,9 @@ mod tests {
                 entrypoint body@e0() -> Html {
                   let v0: Bool = false
                   let v1: Bool = cell(v0)
-                  let v4: () -> Effect = fn() {
+                  let v4: () -> Effect[()] = fn() {
                     let v2: Bool = not(v1)
-                    let v3: Effect = v1 := v2
+                    let v3: Effect[()] = v1 := v2
                     v3
                   }
                   let v7: String = match v1 {
@@ -2223,6 +2241,59 @@ mod tests {
                   let v9: Html = concat(v8)
                   let v10: Html = Button@f0(v4, v9)
                   v10
+                }
+                page Test: e0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_cell_reads_binds_and_pure_effects() {
+        check(
+            indoc! {r#"
+                fn bump(n: Int) -> Effect[Int] {
+                  pure!(n + 1)
+                }
+                page Test() {
+                  fn body() -> Html {
+                    let mut count = 0;
+                    <button on:click={fn() {
+                      count.get().and_then(fn(n: Int) {
+                        bump(n).and_then(fn(_: Int) { count.set(n) })
+                      })
+                    }}>{count.to_string()}</button>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn bump@f0(n@v16: Int) -> Effect[Int] {
+                  let v17: Int = 1
+                  let v18: Int = add(v16, v17)
+                  let v19: Effect[Int] = pure(v18)
+                  v19
+                }
+                entrypoint body@e0() -> Html {
+                  let v0: Int = 0
+                  let v1: Int = cell(v0)
+                  let v11: () -> Effect[()] = fn() {
+                    let v2: Effect[Int] = read(v1)
+                    let v9: (Int) -> Effect[()] = fn(v3: Int) {
+                      let v4: Effect[Int] = bump@f0(v3)
+                      let v7: (Int) -> Effect[()] = fn(v5: Int) {
+                        let v6: Effect[()] = v1 := v3
+                        v6
+                      }
+                      let v8: Effect[()] = bind(v4, v7)
+                      v8
+                    }
+                    let v10: Effect[()] = bind(v2, v9)
+                    v10
+                  }
+                  let v12: String = v1.to_string()
+                  let v13: Html = escape(v12)
+                  let v14: Html = concat(v13)
+                  let v15: Html = element("button", {}, v14) on_click v11
+                  v15
                 }
                 page Test: e0
             "#]],

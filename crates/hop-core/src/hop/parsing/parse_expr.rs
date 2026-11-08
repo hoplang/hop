@@ -50,28 +50,7 @@ pub fn parse_expr_with(
     errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    let expr = parse_binary(iter, comments, errors, restrictions, Bound::Unbounded)?;
-    if next_if_eq(iter, comments, errors, LangToken::ColonAssign).is_none() {
-        return Ok(expr);
-    }
-    let ParsedExpr::VariableReference {
-        value: cell,
-        range: cell_range,
-    } = expr
-    else {
-        let target_range = expr.range().clone();
-        return Err(errors.emit(ParseErrorKind::CellWriteTargetNotVariable {}, target_range));
-    };
-    let value = parse_binary(iter, comments, errors, restrictions, Bound::Unbounded)?;
-    if let Some(range) = next_if_eq(iter, comments, errors, LangToken::ColonAssign) {
-        return Err(errors.emit(ParseErrorKind::ChainedCellWrite, range));
-    }
-    Ok(ParsedExpr::CellWrite {
-        range: cell_range.clone().to(value.range().clone()),
-        cell,
-        cell_range,
-        value: Box::new(value),
-    })
+    parse_binary(iter, comments, errors, restrictions, Bound::Unbounded)
 }
 
 fn parse_binary(
@@ -781,14 +760,21 @@ fn parse_lambda(
         &left_paren,
         &[LangToken::Arrow, LangToken::LeftBrace],
         |iter, comments, errors| {
-            let (name, var_name_range) = expect_identifier(iter, comments, errors)?;
+            let (var_name, var_name_range) =
+                match next_if_eq(iter, comments, errors, LangToken::Underscore) {
+                    Some(range) => (None, range),
+                    None => {
+                        let (name, range) = expect_identifier(iter, comments, errors)?;
+                        (Some(VarName::new(name).or_emit(errors, &range)?), range)
+                    }
+                };
             let var_type = if next_if_eq(iter, comments, errors, LangToken::Colon).is_some() {
                 Some(parse_type(iter, comments, errors)?)
             } else {
                 None
             };
             Ok(ParsedLambdaParameter {
-                var_name: VarName::new(name).or_emit(errors, &var_name_range)?,
+                var_name,
                 var_name_range,
                 var_type,
             })
@@ -2556,65 +2542,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_cell_write_whose_value_binds_tighter() {
-        accept(
-            "a := b || c && d < e + 1",
-            expect![[r#"
-                write(a, or(b, and(c, lt(d, add(e, 1)))))
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_cell_write_in_parentheses_and_arguments() {
-        accept(
-            "f((a := 1) == x, b := 2)",
-            expect![[r#"
-                f(eq(write(a, 1), x), write(b, 2))
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_cell_write_of_a_field() {
-        reject(
-            "a.b := c",
-            expect![[r#"
-                -- errors --
-                error: Only a variable can be written with :=
-                a.b := c
-                ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_cell_write_of_a_binary_expression() {
-        reject(
-            "a + b := c",
-            expect![[r#"
-                -- errors --
-                error: Only a variable can be written with :=
-                a + b := c
-                ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_chained_cell_writes() {
-        reject(
-            "a := b := c",
-            expect![[r#"
-                -- errors --
-                error: Cell writes cannot be chained: combine them with effects!
-                a := b := c
-                       ^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn accepts_expr_with_comparisons_combined_by_logical_and() {
         accept(
             "a < b && b < c",
@@ -3637,6 +3564,18 @@ mod tests {
             "unknown!(x)",
             expect![[r#"
                 unknown!(x)
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_wildcard_lambda_parameter() {
+        accept(
+            "fn(_: Int, x) { x }",
+            expect![[r#"
+                fn(_: Int, x) {
+                  x
+                }
             "#]],
         );
     }

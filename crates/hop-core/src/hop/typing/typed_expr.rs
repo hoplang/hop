@@ -18,12 +18,18 @@ use super::r#type::{NumericType, Type};
 #[derive(Debug, Clone)]
 pub enum TypedExpr {
     /// A variable expression, e.g. foo
-    Var { value: VarName, typ: Type },
+    Var {
+        value: VarName,
+        typ: Type,
+    },
 
     /// A parameter that the rest of the enclosing function adds, passed on
     /// to a callee at a `...rest` spread. Unlike a `Var`, it reads the
     /// parameter even where the body binds the same name.
-    ForwardedParam { value: VarName, typ: Type },
+    ForwardedParam {
+        value: VarName,
+        typ: Type,
+    },
 
     /// A field access expression, e.g. foo.bar
     FieldAccess {
@@ -33,22 +39,36 @@ pub enum TypedExpr {
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: CheapString },
+    StringLiteral {
+        value: CheapString,
+    },
 
     /// A boolean literal expression, e.g. true
-    BoolLiteral { value: bool },
+    BoolLiteral {
+        value: bool,
+    },
 
     /// A float literal expression, e.g. 2.5
-    FloatLiteral { value: f64 },
+    FloatLiteral {
+        value: f64,
+    },
 
     /// An integer literal expression, e.g. 42
-    IntLiteral { value: i32 },
+    IntLiteral {
+        value: i32,
+    },
 
     /// An array expression, e.g. [1, 2, 3]
-    Array { elements: Vec<Self>, typ: Type },
+    Array {
+        elements: Vec<Self>,
+        typ: Type,
+    },
 
     /// A tuple expression, e.g. (foo, bar)
-    Tuple { elements: Vec<Self>, typ: Type },
+    Tuple {
+        elements: Vec<Self>,
+        typ: Type,
+    },
 
     /// A record expression, e.g. User {name: "John", age: 30}
     Record {
@@ -94,7 +114,9 @@ pub enum TypedExpr {
 
     /// String concatenation expression for joining a sequence of string
     /// expressions.
-    StringConcat { parts: Vec<Self> },
+    StringConcat {
+        parts: Vec<Self>,
+    },
 
     /// Numeric addition expression for adding numeric values
     NumericAdd {
@@ -118,7 +140,9 @@ pub enum TypedExpr {
     },
 
     /// Bool negation expression
-    BoolNegation { operand: Box<Self> },
+    BoolNegation {
+        operand: Box<Self>,
+    },
 
     /// Numeric negation expression
     NumericNegation {
@@ -127,28 +151,52 @@ pub enum TypedExpr {
     },
 
     /// Bool logical AND expression
-    BoolLogicalAnd { left: Box<Self>, right: Box<Self> },
+    BoolLogicalAnd {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
 
     /// Bool logical OR expression
-    BoolLogicalOr { left: Box<Self>, right: Box<Self> },
+    BoolLogicalOr {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
 
     /// Equals expression
-    Equals { left: Box<Self>, right: Box<Self> },
+    Equals {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
 
     /// Not equals expression
-    NotEquals { left: Box<Self>, right: Box<Self> },
+    NotEquals {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
 
     /// Less than expression
-    LessThan { left: Box<Self>, right: Box<Self> },
+    LessThan {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
 
     /// Greater than expression
-    GreaterThan { left: Box<Self>, right: Box<Self> },
+    GreaterThan {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
 
     /// Less than or equal expression
-    LessThanOrEqual { left: Box<Self>, right: Box<Self> },
+    LessThanOrEqual {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
 
     /// Greater than or equal expression
-    GreaterThanOrEqual { left: Box<Self>, right: Box<Self> },
+    GreaterThanOrEqual {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
 
     /// A let binding expression.
     Let {
@@ -169,16 +217,36 @@ pub enum TypedExpr {
     },
 
     /// A write of a cell.
-    CellWrite { cell: VarName, value: Box<Self> },
+    CellWrite {
+        cell: VarName,
+        value: Box<Self>,
+    },
 
-    /// The effects in order.
-    EffectConcat { parts: Vec<Self> },
+    CellRead {
+        cell: VarName,
+        typ: Type,
+    },
+
+    EffectPure {
+        value: Box<Self>,
+        typ: Type,
+    },
+
+    EffectBind {
+        effect: Box<Self>,
+        continuation: Box<Self>,
+        typ: Type,
+    },
 
     /// Array length expression, e.g. items.len()
-    ArrayLength { array: Box<Self> },
+    ArrayLength {
+        array: Box<Self>,
+    },
 
     /// Array is empty expression, e.g. items.is_empty()
-    ArrayIsEmpty { array: Box<Self> },
+    ArrayIsEmpty {
+        array: Box<Self>,
+    },
 
     /// Array element lookup, e.g. items.get(0).
     ArrayGet {
@@ -188,16 +256,25 @@ pub enum TypedExpr {
     },
 
     /// Array enumeration, e.g. items.enumerate().
-    ArrayEnumerate { array: Box<Self>, typ: Type },
+    ArrayEnumerate {
+        array: Box<Self>,
+        typ: Type,
+    },
 
     /// String is empty expression, e.g. name.is_empty()
-    StringIsEmpty { string: Box<Self> },
+    StringIsEmpty {
+        string: Box<Self>,
+    },
 
     /// Option is_some expression, e.g. maybe_value.is_some()
-    OptionIsSome { option: Box<Self> },
+    OptionIsSome {
+        option: Box<Self>,
+    },
 
     /// Option is_none expression, e.g. maybe_value.is_none()
-    OptionIsNone { option: Box<Self> },
+    OptionIsNone {
+        option: Box<Self>,
+    },
 
     /// Option unwrap_or expression, e.g. maybe_value.unwrap_or("default")
     OptionUnwrapOr {
@@ -207,41 +284,55 @@ pub enum TypedExpr {
     },
 
     /// Int to string conversion, e.g. count.to_string()
-    IntToString { value: Box<Self> },
+    IntToString {
+        value: Box<Self>,
+    },
 
     /// Float to int conversion, e.g. price.to_int()
-    FloatToInt { value: Box<Self> },
+    FloatToInt {
+        value: Box<Self>,
+    },
 
     /// Int to float conversion, e.g. count.to_float()
-    IntToFloat { value: Box<Self> },
+    IntToFloat {
+        value: Box<Self>,
+    },
 
     /// Concatenation of Html
-    HtmlConcat { parts: Vec<Self> },
+    HtmlConcat {
+        parts: Vec<Self>,
+    },
 
     /// Literal markup text, e.g. `Hello`.
     /// Contains no `<`, `{` or `}` and is emitted without escaping.
-    HtmlText { value: CheapString },
+    HtmlText {
+        value: CheapString,
+    },
 
     /// An interpolation in markup, e.g. `{name}`.
     /// HTML-escapes a String-typed expression into Html.
-    HtmlEscape { expr: Box<Self> },
+    HtmlEscape {
+        expr: Box<Self>,
+    },
 
     /// An HTML element, e.g. `<div class="x">...</div>`
     Element {
         element: HtmlElementKind,
         attrs: TypedAttrs,
         children: Box<Self>,
-        /// The handler of a click on the element, of type `fn() -> Effect`.
+        /// The handler of a click on the element, of type `fn() -> Effect[()]`.
         on_click: Option<Box<Self>>,
     },
 
     /// An asset reference, e.g. asset!("/logo.svg"), resolved to a path
     /// relative to the project root.
-    Asset { path: RootRelativeFilePath },
+    Asset {
+        path: RootRelativeFilePath,
+    },
 
     /// A lambda, e.g. fn(x: Int) { x * 2 }. Its type is a function.
     Lambda {
-        params: Vec<(VarName, Type)>,
+        params: Vec<(Option<VarName>, Type)>,
         body: Box<Self>,
         typ: Type,
     },
@@ -321,6 +412,9 @@ impl TypedExpr {
             | TypedExpr::ArrayEnumerate { typ, .. }
             | TypedExpr::Lambda { typ, .. }
             | TypedExpr::Apply { typ, .. }
+            | TypedExpr::CellRead { typ, .. }
+            | TypedExpr::EffectPure { typ, .. }
+            | TypedExpr::EffectBind { typ, .. }
             | TypedExpr::Call { typ, .. } => typ.clone(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Type::FLOAT,
@@ -359,7 +453,7 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Type::INT,
 
-            TypedExpr::CellWrite { .. } | TypedExpr::EffectConcat { .. } => Type::Effect,
+            TypedExpr::CellWrite { .. } => Type::UNIT_EFFECT,
 
             TypedExpr::HtmlConcat { .. }
             | TypedExpr::HtmlText { .. }
@@ -489,7 +583,13 @@ impl Display for TypedExpr {
                 write!(f, "let {mutable}{} = {value} in {body}", var.as_str())
             }
             TypedExpr::CellWrite { cell, value } => write!(f, "write({}, {value})", cell.as_str()),
-            TypedExpr::EffectConcat { parts } => write!(f, "effects!({})", join(parts, ", ")),
+            TypedExpr::CellRead { cell, .. } => write!(f, "{}.get()", cell.as_str()),
+            TypedExpr::EffectPure { value, .. } => write!(f, "pure!({value})"),
+            TypedExpr::EffectBind {
+                effect,
+                continuation,
+                ..
+            } => write!(f, "{effect}.and_then({continuation})"),
             TypedExpr::ArrayLength { array } => write!(f, "{array}.len()"),
             TypedExpr::ArrayIsEmpty { array } => write!(f, "{array}.is_empty()"),
             TypedExpr::ArrayGet { array, index, .. } => write!(f, "{array}.get({index})"),
@@ -552,7 +652,8 @@ impl Display for TypedExpr {
                 f.write_str("fn(")?;
                 for (i, (name, typ)) in params.iter().enumerate() {
                     let sep = if i > 0 { ", " } else { "" };
-                    write!(f, "{sep}{}: {typ}", name.as_str())?;
+                    let name = name.as_ref().map_or("_", |name| name.as_str());
+                    write!(f, "{sep}{name}: {typ}")?;
                 }
                 f.write_str(")")?;
                 if let Type::Function(function) = typ {

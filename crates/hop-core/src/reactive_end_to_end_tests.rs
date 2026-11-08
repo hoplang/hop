@@ -54,13 +54,14 @@ fn run(program: &FlatProgram, page: &IrPage, events: &[Event]) -> String {
                 out.push_str(&format!("-- click {tag}@e{label} --\n"));
                 let node = view.labels.node(label);
                 let targets = clicks(&program.functions, &html);
-                match targets.iter().find(|(target, _)| *target == node) {
-                    Some((_, Ok(effect))) => state.apply_writes(effect),
-                    None => {}
-                    Some((_, Err(error))) => {
-                        out.push_str(&format!("error: {error}\n"));
-                        continue;
-                    }
+                let run = match targets.iter().find(|(target, _)| *target == node) {
+                    Some((_, Ok(effect))) => state.run(effect, &program.functions),
+                    Some((_, Err(error))) => Err(error.clone()),
+                    None => Ok(()),
+                };
+                if let Err(error) = run {
+                    out.push_str(&format!("error: {error}\n"));
+                    continue;
                 }
             }
         }
@@ -182,7 +183,7 @@ fn each_call_has_cells_of_its_own() {
         indoc! {r#"
             fn Counter() -> Html {
               let mut count = 0;
-              <button on:click={fn() { count := count + 1 }}>{count.to_string()}</button>
+              <button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</button>
             }
             page Test {
               fn body() -> Html {
@@ -214,7 +215,7 @@ fn the_cells_of_a_keyed_loop_follow_the_keys() {
         indoc! {r#"
             fn Counter(label: String) -> Html {
               let mut count = 0;
-              <button on:click={fn() { count := count + 1 }}>{label}:{count.to_string()}</button>
+              <button on:click={fn() { count.set(count + 1) }}>{label}:{count.to_string()}</button>
             }
             page Test {
               fn body() -> Html {
@@ -224,7 +225,7 @@ fn the_cells_of_a_keyed_loop_follow_the_keys() {
                   false => [1, 2],
                 };
                 <>
-                  <b on:click={fn() { reversed := !reversed }}>flip</b>
+                  <b on:click={fn() { reversed.set(!reversed) }}>flip</b>
                   {for id in ids key id {
                     <Counter label={id.to_string()}/>
                   }}
@@ -256,7 +257,7 @@ fn the_cells_of_a_loop_without_a_key_follow_the_index() {
         indoc! {r#"
             fn Counter(label: String) -> Html {
               let mut count = 0;
-              <button on:click={fn() { count := count + 1 }}>{label}:{count.to_string()}</button>
+              <button on:click={fn() { count.set(count + 1) }}>{label}:{count.to_string()}</button>
             }
             page Test {
               fn body() -> Html {
@@ -266,7 +267,7 @@ fn the_cells_of_a_loop_without_a_key_follow_the_index() {
                   false => [1, 2],
                 };
                 <>
-                  <b on:click={fn() { reversed := !reversed }}>flip</b>
+                  <b on:click={fn() { reversed.set(!reversed) }}>flip</b>
                   {for id in ids {
                     <Counter label={id.to_string()}/>
                   }}
@@ -298,13 +299,13 @@ fn a_cell_of_a_call_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
         indoc! {r#"
             fn Counter() -> Html {
               let mut count = 0;
-              <button on:click={fn() { count := count + 1 }}>{count.to_string()}</button>
+              <button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</button>
             }
             page Test {
               fn body() -> Html {
                 let mut open = true;
                 <>
-                  <b on:click={fn() { open := !open }}>toggle</b>
+                  <b on:click={fn() { open.set(!open) }}>toggle</b>
                   {match open {
                     true => <Counter/>,
                     false => <i>closed</i>,
@@ -348,7 +349,7 @@ fn an_element_bound_outside_a_match_keeps_its_node_in_each_arm() {
                 let mut on = true;
                 let field = <input/>;
                 <>
-                  <button on:click={fn() { on := !on }}>toggle</button>
+                  <button on:click={fn() { on.set(!on) }}>toggle</button>
                   {match on {
                     true => <div>{field}</div>,
                     false => <p>{field}</p>,
@@ -385,7 +386,7 @@ fn the_writes_of_a_click_read_the_cells_as_rendered_and_the_last_write_wins() {
             page Test {
               fn body() -> Html {
                 let mut count = 0;
-                <button on:click={fn() { effects!(count := count + 1, count := count + 10) }}>
+                <button on:click={fn() { count.set(count + 1).and_then(fn(_) { count.set(count + 10) }) }}>
                   {count.to_string()}
                 </button>
               }
@@ -411,8 +412,8 @@ fn a_click_runs_the_handlers_of_the_elements_around_it_innermost_first() {
               fn body() -> Html {
                 let mut clicked = "none";
                 let mut inner = 0;
-                <div on:click={fn() { clicked := "div" }}>
-                  <button on:click={fn() { effects!(clicked := "button", inner := inner + 1) }}>
+                <div on:click={fn() { clicked.set("div") }}>
+                  <button on:click={fn() { clicked.set("button").and_then(fn(_) { inner.set(inner + 1) }) }}>
                     {clicked} {inner.to_string()}
                   </button>
                 </div>
@@ -441,13 +442,13 @@ fn a_click_runs_the_handlers_of_the_elements_around_it_innermost_first() {
 fn a_handler_reaches_an_element_through_a_parameter() {
     check(
         indoc! {r#"
-            fn Button(on_press: fn() -> Effect, children: Html) -> Html {
+            fn Button(on_press: fn() -> Effect[()], children: Html) -> Html {
               <button on:click={on_press}>{children}</button>
             }
             page Test {
               fn body() -> Html {
                 let mut on = false;
-                <Button on_press={fn() { on := !on }}>
+                <Button on_press={fn() { on.set(!on) }}>
                   {match on {true => "on", false => "off"}}
                 </Button>
               }
@@ -474,7 +475,7 @@ fn an_element_a_match_hides_keeps_its_node_while_it_is_evaluated() {
                 let mut shown = true;
                 let field = <input/>;
                 <>
-                  <button on:click={fn() { shown := !shown }}>toggle</button>
+                  <button on:click={fn() { shown.set(!shown) }}>toggle</button>
                   {match shown {
                     true => <div>{field}</div>,
                     false => <p>hidden</p>,
@@ -513,8 +514,8 @@ fn a_click_whose_handler_fails_changes_nothing() {
               fn body() -> Html {
                 let mut count = 0;
                 <>
-                  <button on:click={fn() { count := forever(count) }}>forever</button>
-                  <button on:click={fn() { count := count + 1 }}>{count.to_string()}</button>
+                  <button on:click={fn() { count.set(forever(count)) }}>forever</button>
+                  <button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</button>
                 </>
               }
             }
@@ -544,8 +545,8 @@ fn a_click_fails_and_changes_nothing_when_a_handler_around_the_element_fails() {
               fn body() -> Html {
                 let mut count = 0;
                 <>
-                  <div on:click={fn() { count := forever(count) }}>
-                    <button on:click={fn() { count := count + 1 }}>{count.to_string()}</button>
+                  <div on:click={fn() { count.set(forever(count)) }}>
+                    <button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</button>
                   </div>
                   <p>no handler</p>
                 </>
@@ -579,8 +580,8 @@ fn a_handler_whose_effect_is_empty_writes_nothing() {
                 let mut count = 0;
                 <button on:click={fn() {
                   match count < 1 {
-                    true => count := count + 1,
-                    false => effects!(),
+                    true => count.set(count + 1),
+                    false => pure!(()),
                   }
                 }}>{count.to_string()}</button>
               }
@@ -606,7 +607,7 @@ fn a_click_on_an_element_without_a_handler_runs_the_handlers_around_it() {
               fn body() -> Html {
                 let mut count = 0;
                 <>
-                  <button on:click={fn() { count := count + 1 }}>
+                  <button on:click={fn() { count.set(count + 1) }}>
                     <b>{count.to_string()}</b>
                   </button>
                   <p>no handler</p>
@@ -644,8 +645,8 @@ fn a_cell_takes_its_initial_value_only_when_it_is_first_bound() {
                 let mut a = 1;
                 let mut b = a * 10;
                 <>
-                  <button on:click={fn() { a := a + 1 }}>{a.to_string()}</button>
-                  <button on:click={fn() { b := b + 1 }}>{b.to_string()}</button>
+                  <button on:click={fn() { a.set(a + 1) }}>{a.to_string()}</button>
+                  <button on:click={fn() { b.set(b + 1) }}>{b.to_string()}</button>
                 </>
               }
             }
@@ -674,7 +675,7 @@ fn a_cell_keeps_its_value_when_the_argument_its_initial_value_reads_changes() {
         indoc! {r#"
             fn Counter(start: Int) -> Html {
               let mut count = start;
-              <button on:click={fn() { count := count + 1 }}>
+              <button on:click={fn() { count.set(count + 1) }}>
                 {start.to_string()}/{count.to_string()}
               </button>
             }
@@ -682,7 +683,7 @@ fn a_cell_keeps_its_value_when_the_argument_its_initial_value_reads_changes() {
               fn body() -> Html {
                 let mut base = 0;
                 <>
-                  <b on:click={fn() { base := base + 100 }}>bump</b>
+                  <b on:click={fn() { base.set(base + 100) }}>bump</b>
                   <Counter start={base}/>
                 </>
               }
@@ -715,7 +716,7 @@ fn each_application_of_a_lambda_has_cells_of_its_own_and_shares_the_cells_it_cap
                 let mut outer = 0;
                 <Twice row={fn() {
                   let mut inner = 0;
-                  <button on:click={fn() { effects!(inner := inner + 1, outer := outer + 1) }}>
+                  <button on:click={fn() { inner.set(inner + 1).and_then(fn(_) { outer.set(outer + 1) }) }}>
                     {inner.to_string()}/{outer.to_string()}
                   </button>
                 }}/>
@@ -748,15 +749,15 @@ fn a_cell_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
               fn body() -> Html {
                 let mut left = true;
                 <>
-                  <b on:click={fn() { left := !left }}>switch</b>
+                  <b on:click={fn() { left.set(!left) }}>switch</b>
                   {match left {
                     true => {
                       let mut count = 0;
-                      <button on:click={fn() { count := count + 1 }}>left {count.to_string()}</button>
+                      <button on:click={fn() { count.set(count + 1) }}>left {count.to_string()}</button>
                     },
                     false => {
                       let mut count = 100;
-                      <button on:click={fn() { count := count + 1 }}>right {count.to_string()}</button>
+                      <button on:click={fn() { count.set(count + 1) }}>right {count.to_string()}</button>
                     },
                   }}
                 </>
@@ -805,11 +806,11 @@ fn a_cell_bound_in_a_loop_follows_its_key_and_starts_over_when_the_key_comes_bac
               fn body() -> Html {
                 let mut ids = [1, 2];
                 <>
-                  <b on:click={fn() { ids := [2, 1] }}>flip</b>
-                  <i on:click={fn() { ids := [2] }}>drop</i>
+                  <b on:click={fn() { ids.set([2, 1]) }}>flip</b>
+                  <i on:click={fn() { ids.set([2]) }}>drop</i>
                   {for id in ids key id {
                     let mut count = 0;
-                    <button on:click={fn() { count := count + 1 }}>{id.to_string()}:{count.to_string()}</button>
+                    <button on:click={fn() { count.set(count + 1) }}>{id.to_string()}:{count.to_string()}</button>
                   }}
                 </>
               }
@@ -858,10 +859,10 @@ fn the_iterations_of_a_repeated_key_follow_the_order_they_take_it_in() {
               fn body() -> Html {
                 let mut ids = [1, 1];
                 <>
-                  <b on:click={fn() { ids := [1] }}>drop</b>
+                  <b on:click={fn() { ids.set([1]) }}>drop</b>
                   {for id in ids key id {
                     let mut count = 0;
-                    <button on:click={fn() { count := count + 1 }}>{id.to_string()}:{count.to_string()}</button>
+                    <button on:click={fn() { count.set(count + 1) }}>{id.to_string()}:{count.to_string()}</button>
                   }}
                 </>
               }
@@ -892,11 +893,11 @@ fn the_cells_of_nested_loops_follow_the_keys_of_both_loops() {
               fn body() -> Html {
                 let mut rows = ["a", "b"];
                 <>
-                  <b on:click={fn() { rows := ["b", "a"] }}>flip</b>
+                  <b on:click={fn() { rows.set(["b", "a"]) }}>flip</b>
                   {for row in rows key row {
                     {for col in [1, 2] key col {
                       let mut count = 0;
-                      <button on:click={fn() { count := count + 1 }}>
+                      <button on:click={fn() { count.set(count + 1) }}>
                         {row}{col.to_string()}:{count.to_string()}
                       </button>
                     }}
@@ -938,7 +939,7 @@ fn an_element_keeps_its_node_when_the_value_of_an_attribute_changes() {
                 let mut on = false;
                 <button
                   class={match on {true => "on", false => "off"}}
-                  on:click={fn() { on := !on }}
+                  on:click={fn() { on.set(!on) }}
                 >toggle</button>
               }
             }
@@ -962,7 +963,7 @@ fn each_level_of_a_recursive_call_has_cells_of_its_own() {
             fn Level(depth: Int, levels: Int) -> Html {
               let mut count = 0;
               <div>
-                <button on:click={fn() { count := count + 1 }}>
+                <button on:click={fn() { count.set(count + 1) }}>
                   {depth.to_string()}:{count.to_string()}
                 </button>
                 {match depth + 1 < levels {
@@ -975,7 +976,7 @@ fn each_level_of_a_recursive_call_has_cells_of_its_own() {
               fn body() -> Html {
                 let mut levels = 2;
                 <>
-                  <b on:click={fn() { levels := levels + 1 }}>deeper</b>
+                  <b on:click={fn() { levels.set(levels + 1) }}>deeper</b>
                   <Level depth={0} levels={levels}/>
                 </>
               }
@@ -1026,14 +1027,14 @@ fn each_level_of_a_recursive_call_has_cells_of_its_own() {
 fn a_handler_performs_the_effect_a_function_gives() {
     check(
         indoc! {r#"
-            fn both(first: fn() -> Effect, second: fn() -> Effect) -> Effect {
-              effects!(first(), second())
+            fn both(first: fn() -> Effect[()], second: fn() -> Effect[()]) -> Effect[()] {
+              first().and_then(fn(_) { second() })
             }
             page Test {
               fn body() -> Html {
                 let mut a = 0;
                 let mut b = 0;
-                <button on:click={fn() { both(fn() { a := a + 1 }, fn() { b := b + 10 }) }}>
+                <button on:click={fn() { both(fn() { a.set(a + 1) }, fn() { b.set(b + 10) }) }}>
                   {a.to_string()}/{b.to_string()}
                 </button>
               }
@@ -1055,15 +1056,15 @@ fn a_handler_performs_the_effect_a_function_gives() {
 fn a_handler_performs_an_effect_passed_as_a_parameter() {
     check(
         indoc! {r#"
-            fn Button(press: Effect, children: Html) -> Html {
+            fn Button(press: Effect[()], children: Html) -> Html {
               <button on:click={fn() { press }}>{children}</button>
             }
             page Test {
               fn body() -> Html {
                 let mut count = 0;
                 <>
-                  <Button press={count := count + 1}>{count.to_string()}</Button>
-                  <Button press={count := 0}>reset</Button>
+                  <Button press={count.set(count + 1)}>{count.to_string()}</Button>
+                  <Button press={count.set(0)}>reset</Button>
                 </>
               }
             }
@@ -1096,8 +1097,8 @@ fn a_handler_updates_a_field_of_a_record_in_a_cell_and_keeps_the_others() {
               fn body() -> Html {
                 let mut setting = Setting {mode: Mode::Light, level: 1};
                 <>
-                  <button on:click={fn() { setting := Setting {...setting, mode: Mode::Dark} }}>dark</button>
-                  <button on:click={fn() { setting := Setting {...setting, level: setting.level + 1} }}>raise</button>
+                  <button on:click={fn() { setting.set(Setting {...setting, mode: Mode::Dark}) }}>dark</button>
+                  <button on:click={fn() { setting.set(Setting {...setting, level: setting.level + 1}) }}>raise</button>
                   <p>{match setting.mode {Mode::Light => "light", Mode::Dark => "dark"}} {setting.level.to_string()}</p>
                 </>
               }
@@ -1121,6 +1122,145 @@ fn a_handler_updates_a_field_of_a_record_in_a_cell_and_keeps_the_others() {
             <button@e1>dark</button>
             <button@e2>raise</button>
             <p@e3>dark 3</p>
+        "#]],
+    );
+}
+
+#[test]
+fn a_continuation_reads_the_cell_as_the_effect_before_it_wrote_it() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                <button on:click={fn() {
+                  count.set(count + 1).and_then(fn(_) {
+                    count.get().and_then(fn(n) { count.set(n + 1) })
+                  })
+                }}>{count.to_string()}</button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            -- click button@e1 --
+            <button@e1>2</button>
+            -- click button@e1 --
+            <button@e1>4</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_handler_gives_the_empty_effect_with_pure() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                <button on:click={fn() {
+                  match count < 2 {
+                    true => count.set(count + 1),
+                    false => pure!(()),
+                  }
+                }}>{count.to_string()}</button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            -- click button@e1 --
+            <button@e1>1</button>
+            -- click button@e1 --
+            <button@e1>2</button>
+            -- click button@e1 --
+            <button@e1>2</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_continuation_takes_the_value_a_function_gives_with_pure() {
+    check(
+        indoc! {r#"
+            fn bump(n: Int) -> Effect[Int] {
+              pure!(n + 1)
+            }
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                <button on:click={fn() {
+                  bump(count).and_then(fn(n) { count.set(n) })
+                }}>{count.to_string()}</button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            -- click button@e1 --
+            <button@e1>1</button>
+            -- click button@e1 --
+            <button@e1>2</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_click_whose_continuation_fails_changes_nothing() {
+    check(
+        indoc! {r#"
+            fn forever(n: Int) -> Int {
+              forever(n + 1)
+            }
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                <button on:click={fn() {
+                  count.set(count + 1).and_then(fn(_) { count.set(forever(count)) })
+                }}>{count.to_string()}</button>
+              }
+            }
+        "#},
+        &[Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            -- click button@e1 --
+            error: Program exceeded the call depth limit of 12
+        "#]],
+    );
+}
+
+#[test]
+fn a_continuation_takes_its_parameter_type_from_the_effect_before_it() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                let mut label = "none";
+                <button on:click={fn() {
+                  count.set(count + 1).and_then(fn(_) {
+                    count.get().and_then(fn(n) { label.set(n.to_string()) })
+                  })
+                }}>{label}</button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>none</button>
+            -- click button@e1 --
+            <button@e1>1</button>
+            -- click button@e1 --
+            <button@e1>2</button>
         "#]],
     );
 }

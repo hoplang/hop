@@ -52,6 +52,7 @@ pub enum FlatLintError {
     KeyNotIntOrString,
     /// A cell write writes a name that no cell binds.
     CellWriteToNonCell,
+    CellReadOfNonCell,
     /// A click names a value that is not a closure from no parameters to
     /// an Effect.
     ClickNotHandler,
@@ -250,7 +251,7 @@ struct Name<'a> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BoundType<'a> {
     Data(&'a IrDataType),
-    Effect,
+    Effect(&'a IrDataType),
     DataFunction(&'a IrSignature<IrFunctionDataType, IrResultType>),
     Html,
     HtmlFunction(&'a IrSignature<IrType, IrHtmlType>),
@@ -267,7 +268,7 @@ impl<'a> BoundType<'a> {
     fn of_function_data(typ: &'a IrFunctionDataType) -> Self {
         match typ {
             IrFunctionDataType::Data(data) => BoundType::Data(data),
-            IrFunctionDataType::Effect => BoundType::Effect,
+            IrFunctionDataType::Effect(data) => BoundType::Effect(data),
             IrFunctionDataType::Function(signature) => BoundType::DataFunction(signature),
         }
     }
@@ -275,12 +276,12 @@ impl<'a> BoundType<'a> {
     fn of_result(typ: &'a IrResultType) -> Self {
         match typ {
             IrResultType::Data(data) => BoundType::Data(data),
-            IrResultType::Effect => BoundType::Effect,
+            IrResultType::Effect(data) => BoundType::Effect(data),
         }
     }
 
     fn is_result(self) -> bool {
-        matches!(self, BoundType::Data(_) | BoundType::Effect)
+        matches!(self, BoundType::Data(_) | BoundType::Effect(_))
     }
 
     fn of_function_html(typ: &'a IrFunctionHtmlType) -> Self {
@@ -347,7 +348,7 @@ impl<'a> Checker<'a> {
     fn data(&self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatLintError> {
         Ok(match self.typ(name)? {
             BoundType::Data(data) => Some(data),
-            BoundType::Effect
+            BoundType::Effect(_)
             | BoundType::DataFunction(_)
             | BoundType::Html
             | BoundType::HtmlFunction(_) => None,
@@ -436,7 +437,8 @@ impl<'a> Checker<'a> {
                     let BoundType::DataFunction(signature) = self.typ(handler)? else {
                         return Err(FlatLintError::ClickNotHandler);
                     };
-                    if !signature.parameters.is_empty() || signature.result != IrResultType::Effect
+                    if !signature.parameters.is_empty()
+                        || signature.result != IrResultType::Effect(IrDataType::UNIT)
                     {
                         return Err(FlatLintError::ClickNotHandler);
                     }
@@ -548,11 +550,31 @@ impl<'a> Checker<'a> {
                 if !self.names[cell.index()].is_some_and(|name| name.cell) {
                     return Err(FlatLintError::CellWriteToNonCell);
                 }
-                declared == BoundType::Effect && typ == self.typ(*value)?
+                declared == BoundType::Effect(&IrDataType::UNIT) && typ == self.typ(*value)?
             }
-            FlatPureOp::EffectConcat(parts) => {
-                declared == BoundType::Effect
-                    && try_all(parts, |part| Ok(self.typ(*part)? == BoundType::Effect))?
+            FlatPureOp::CellRead(cell) => {
+                if !self.names[cell.index()].is_some_and(|name| name.cell) {
+                    return Err(FlatLintError::CellReadOfNonCell);
+                }
+                match self.typ(*cell)? {
+                    BoundType::Data(data) => declared == BoundType::Effect(data),
+                    _ => false,
+                }
+            }
+            FlatPureOp::EffectPure(value) => match self.typ(*value)? {
+                BoundType::Data(data) => declared == BoundType::Effect(data),
+                _ => false,
+            },
+            FlatPureOp::EffectBind(effect, continuation) => {
+                match (self.typ(*effect)?, self.typ(*continuation)?) {
+                    (BoundType::Effect(payload), BoundType::DataFunction(signature)) => {
+                        signature.parameters.len() == 1
+                            && signature.parameters[0] == IrFunctionDataType::Data(payload.clone())
+                            && matches!(signature.result, IrResultType::Effect(_))
+                            && declared == BoundType::of_result(&signature.result)
+                    }
+                    _ => false,
+                }
             }
             FlatPureOp::Lambda(lambda) => {
                 let BoundType::DataFunction(signature) = declared else {
@@ -796,7 +818,7 @@ impl<'a> Checker<'a> {
             (_, BoundType::Data(data)) => self.data_pattern(pattern, data),
             (
                 _,
-                BoundType::Effect
+                BoundType::Effect(_)
                 | BoundType::DataFunction(_)
                 | BoundType::Html
                 | BoundType::HtmlFunction(_),
@@ -1129,6 +1151,37 @@ mod tests {
     }
 
     #[test]
+    fn should_reject_a_bind_whose_continuation_takes_another_type() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.cell(t.int(0));
+                let read = t.cell_read(count);
+                let continuation = t.lambda([IrType::STRING], |t, _| t.effect_pure(t.int(1)));
+                let handler = t.event_handler(|t| t.effect_bind(read, continuation));
+                t.element_on_click("button", vec![], handler, t.text("x"))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::IllTypedBinding);
+    }
+
+    #[test]
+    fn should_reject_a_cell_read_of_a_name_no_cell_binds() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.int(0);
+                let handler = t.event_handler(|t| {
+                    let continuation = t.lambda([IrType::INT], |t, _| t.effect_pure(t.tuple([])));
+                    t.effect_bind(t.cell_read(count), continuation)
+                });
+                t.element_on_click("button", vec![], handler, t.text("x"))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatLintError::CellReadOfNonCell);
+    }
+
+    #[test]
     fn should_reject_a_click_whose_handler_is_a_value() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
@@ -1176,17 +1229,5 @@ mod tests {
             .build()
             .unwrap_err();
         assert_eq!(error, FlatLintError::ClickNotHandler);
-    }
-
-    #[test]
-    fn should_reject_an_effect_concat_of_a_value() {
-        let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], |t| {
-                let effect = t.event_handler(|t| t.effect_concat([t.int(1)]));
-                t.element_on_click("button", vec![], effect, t.text("x"))
-            })
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatLintError::IllTypedBinding);
     }
 }

@@ -447,7 +447,7 @@ impl RustTranspiler {
                 | IrDataType::Option(_),
             ))
             | IrType::Html(IrFunctionHtmlType::Html(IrHtmlType))
-            | IrType::Data(IrFunctionDataType::Effect | IrFunctionDataType::Function(_))
+            | IrType::Data(IrFunctionDataType::Effect(_) | IrFunctionDataType::Function(_))
             | IrType::Html(IrFunctionHtmlType::Function(_)) => false,
         }
     }
@@ -462,7 +462,7 @@ impl RustTranspiler {
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 unreachable!("Html is written, never held")
             }
-            IrType::Data(IrFunctionDataType::Effect) => {
+            IrType::Data(IrFunctionDataType::Effect(_)) => {
                 unreachable!("flat_to_writer makes an effect the unit tuple")
             }
             IrType::Data(IrFunctionDataType::Data(IrDataType::Array(elem))) => arena

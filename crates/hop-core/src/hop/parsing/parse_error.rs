@@ -86,12 +86,6 @@ pub enum ParseErrorKind {
     #[error("A block must end with an expression")]
     BlockMissingTailExpression,
 
-    #[error("Only a variable can be written with :=")]
-    CellWriteTargetNotVariable,
-
-    #[error("Cell writes cannot be chained: combine them with effects!")]
-    ChainedCellWrite,
-
     #[error("let is only allowed inside a block: wrap the expression in braces")]
     LetOutsideBlock,
 

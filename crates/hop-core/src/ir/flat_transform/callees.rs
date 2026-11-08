@@ -63,7 +63,9 @@ fn collect_pure_op_callees(op: &FlatPureOp, out: &mut BTreeSet<FunctionId>) {
         }
         FlatPureOp::Data(_)
         | FlatPureOp::CellWrite(..)
-        | FlatPureOp::EffectConcat(_)
+        | FlatPureOp::CellRead(_)
+        | FlatPureOp::EffectPure(_)
+        | FlatPureOp::EffectBind(..)
         | FlatPureOp::Apply(..) => {}
     }
 }

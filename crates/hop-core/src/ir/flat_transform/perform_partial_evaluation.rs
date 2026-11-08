@@ -174,9 +174,6 @@ struct Evaluator<'a> {
     /// The Html concats seen so far, which are bound only where a reader
     /// other than a concat reads them.
     html_concats: HashMap<ValueId, HtmlConcat>,
-    /// The parts of the effect concats kept so far, for the concats that
-    /// read them to take as their own.
-    effect_concats: HashMap<ValueId, Vec<ValueId>>,
     /// The names that turned out to be another name: the bindings that
     /// folded to one, and the names the patterns of selected arms bind, each
     /// with the constructor operand it stands for.
@@ -202,7 +199,6 @@ impl<'a> Evaluator<'a> {
             value_ids,
             values: HashMap::new(),
             html_concats: HashMap::new(),
-            effect_concats: HashMap::new(),
             renames: HashMap::new(),
             pure_lambdas: HashMap::new(),
             html_lambdas: HashMap::new(),
@@ -451,25 +447,11 @@ impl<'a> Evaluator<'a> {
                     op: FlatPureOp::Apply(closure, args),
                 });
             }
-            FlatPureOp::EffectConcat(parts) => {
-                let mut flattened = Vec::with_capacity(parts.len());
-                for part in parts {
-                    match self.effect_concats.get(&part) {
-                        Some(subparts) => flattened.extend(subparts.iter().copied()),
-                        None => flattened.push(part),
-                    }
-                }
-                if flattened.len() == 1 {
-                    self.renames.insert(name, flattened[0]);
-                    return;
-                }
-                self.effect_concats.insert(name, flattened.clone());
-                out.push(IrBinding {
-                    binder,
-                    op: FlatPureOp::EffectConcat(flattened),
-                });
-            }
-            op @ (FlatPureOp::Call(..) | FlatPureOp::CellWrite(..)) => {
+            op @ (FlatPureOp::Call(..)
+            | FlatPureOp::CellWrite(..)
+            | FlatPureOp::CellRead(_)
+            | FlatPureOp::EffectPure(_)
+            | FlatPureOp::EffectBind(..)) => {
                 out.push(IrBinding { binder, op });
             }
         }
@@ -927,65 +909,6 @@ mod tests {
         let before = program.to_string();
         let after = perform_partial_evaluation(program).to_string();
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}"));
-    }
-
-    #[test]
-    fn flattens_effect_concats_and_takes_a_concat_of_one_part_as_the_part() {
-        check(
-            FlatProgramBuilder::new()
-                .entrypoint("Test", [], |t| {
-                    let n = t.cell(t.int(0));
-                    let one = t.cell_write(n, t.int(1));
-                    let two = t.cell_write(n, t.int(2));
-                    let nothing = t.effect_concat([]);
-                    let alone = t.effect_concat([one]);
-                    let inner = t.effect_concat([alone, nothing]);
-                    let outer = t.effect_concat([inner, two, nothing]);
-                    let outer = t.event_handler(|_| outer);
-                    t.element_on_click("button", [], outer, t.text("x"))
-                })
-                .build()
-                .unwrap(),
-            expect![[r#"
-                -- before --
-                entrypoint Test@e0() -> Html {
-                  let v0: Int = 0
-                  let v1: Int = cell(v0)
-                  let v2: Int = 1
-                  let v3: Effect = v1 := v2
-                  let v4: Int = 2
-                  let v5: Effect = v1 := v4
-                  let v6: Effect = effect_concat()
-                  let v7: Effect = effect_concat(v3)
-                  let v8: Effect = effect_concat(v7, v6)
-                  let v9: Effect = effect_concat(v8, v5, v6)
-                  let v10: () -> Effect = fn() {
-                    v9
-                  }
-                  let v11: Html = text("x")
-                  let v12: Html = element("button", {}, v11) on_click v10
-                  v12
-                }
-
-                -- after --
-                entrypoint Test@e0() -> Html {
-                  let v0: Int = 0
-                  let v1: Int = cell(v0)
-                  let v2: Int = 1
-                  let v3: Effect = v1 := v2
-                  let v4: Int = 2
-                  let v5: Effect = v1 := v4
-                  let v6: Effect = effect_concat()
-                  let v9: Effect = effect_concat(v3, v5)
-                  let v10: () -> Effect = fn() {
-                    v9
-                  }
-                  let v11: Html = text("x")
-                  let v12: Html = element("button", {}, v11) on_click v10
-                  v12
-                }
-            "#]],
-        );
     }
 
     /// Like `check`, on the Flat IR the source compiles to.

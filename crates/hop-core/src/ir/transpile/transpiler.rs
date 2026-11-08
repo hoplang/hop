@@ -168,7 +168,7 @@ pub trait Transpiler {
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 unreachable!("Html is written, never held")
             }
-            IrType::Data(IrFunctionDataType::Effect) => {
+            IrType::Data(IrFunctionDataType::Effect(_)) => {
                 unreachable!("flat_to_writer makes an effect the unit tuple")
             }
             IrType::Data(IrFunctionDataType::Function(signature)) => {
@@ -182,7 +182,9 @@ pub trait Transpiler {
     fn transpile_result_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrResultType) -> Doc<'a> {
         match t {
             IrResultType::Data(data) => self.transpile_data_type(arena, data),
-            IrResultType::Effect => unreachable!("flat_to_writer makes an effect the unit tuple"),
+            IrResultType::Effect(_) => {
+                unreachable!("flat_to_writer makes an effect the unit tuple")
+            }
         }
     }
     fn transpile_data_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrDataType) -> Doc<'a> {

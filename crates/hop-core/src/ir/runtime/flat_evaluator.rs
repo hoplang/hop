@@ -20,7 +20,9 @@ use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::html_node::{Html, HtmlAttribute, HtmlNode};
 use crate::ir::runtime::state::{IterationKey, Place, State, Step};
-use crate::ir::runtime::value::{Closure, Lambda, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value};
+use crate::ir::runtime::value::{
+    Closure, Effect, Lambda, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value,
+};
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
@@ -278,14 +280,20 @@ fn evaluate_pure_binding<'a>(
             let (body, env) = enter_arm(match_, env);
             evaluate_pure_block(body, &env, cells, functions, depth, op_count)?
         }
-        FlatPureOp::CellWrite(cell, value) => {
-            Value::Effect(Rc::from(vec![(cells[cell].clone(), env[value].clone())]))
-        }
-        FlatPureOp::EffectConcat(parts) => {
-            let writes: Vec<_> = (parts.iter())
-                .flat_map(|part| env[part].as_effect().iter().cloned())
-                .collect();
-            Value::Effect(Rc::from(writes))
+        FlatPureOp::CellWrite(cell, value) => Value::Effect(Rc::new(Effect::Write(
+            cells[cell].clone(),
+            env[value].clone(),
+        ))),
+        FlatPureOp::CellRead(cell) => Value::Effect(Rc::new(Effect::Read(cells[cell].clone()))),
+        FlatPureOp::EffectPure(value) => Value::Effect(Rc::new(Effect::Pure(env[value].clone()))),
+        FlatPureOp::EffectBind(effect, continuation) => {
+            let Value::Closure(continuation) = &env[continuation] else {
+                panic!("Expected a Closure value, found {:?}", env[continuation]);
+            };
+            Value::Effect(Rc::new(Effect::Bind(
+                env[effect].as_effect().clone(),
+                continuation.clone(),
+            )))
         }
         FlatPureOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
             lambda: Lambda::Pure(lambda),
@@ -328,6 +336,34 @@ pub fn evaluate_pure_apply<'a>(
         depth + 1,
         op_count,
     )
+}
+
+/// Performs the effect on the cells, which a continuation that fails leaves
+/// partly written.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn run_effect<'a>(
+    effect: &Effect<'a>,
+    cells: &mut BTreeMap<Place, Value<'a>>,
+    functions: &'a [FlatFunction],
+    op_count: &mut usize,
+) -> Result<Value<'a>, EvalError> {
+    match effect {
+        Effect::Pure(value) => Ok(value.clone()),
+        Effect::Write(place, value) => {
+            *cells.get_mut(place).unwrap() = value.clone();
+            Ok(Value::unit())
+        }
+        Effect::Read(place) => Ok(cells[place].clone()),
+        Effect::Then(first, second) => {
+            run_effect(first, cells, functions, op_count)?;
+            run_effect(second, cells, functions, op_count)
+        }
+        Effect::Bind(effect, continuation) => {
+            let value = run_effect(effect, cells, functions, op_count)?;
+            let next = evaluate_pure_apply(continuation, vec![value], functions, 0, op_count)?;
+            run_effect(next.as_effect(), cells, functions, op_count)
+        }
+    }
 }
 
 fn evaluate_html_apply<'a>(
@@ -1497,14 +1533,23 @@ mod tests {
         );
     }
 
-    fn writes_are_equal(a: &[(Place, Value<'_>)], b: &[(Place, Value<'_>)]) -> bool {
-        a.len() == b.len()
-            && (a.iter().zip(b))
-                .all(|((a_place, a), (b_place, b))| a_place == b_place && a.total_eq(b))
+    fn effects_are_equal<'a>(
+        functions: &'a [FlatFunction],
+        state: &State<'a>,
+        a: &Effect<'a>,
+        b: &Effect<'a>,
+    ) -> bool {
+        let (mut a_state, mut b_state) = (state.clone(), state.clone());
+        match (a_state.run(a, functions), b_state.run(b, functions)) {
+            (Ok(()), Ok(())) => a_state == b_state,
+            (Err(a), Err(b)) => a == b,
+            _ => false,
+        }
     }
 
     fn observations_are_equal<'a>(
         functions: &'a [FlatFunction],
+        state: &State<'a>,
         a: &Html<'a>,
         b: &Html<'a>,
     ) -> bool {
@@ -1517,7 +1562,7 @@ mod tests {
             && (a_clicks.iter().zip(&b_clicks)).all(|((a_node, a), (b_node, b))| {
                 a_node == b_node
                     && match (a, b) {
-                        (Ok(a), Ok(b)) => writes_are_equal(a, b),
+                        (Ok(a), Ok(b)) => effects_are_equal(functions, state, a, b),
                         (Err(a), Err(b)) => a == b,
                         _ => false,
                     }
@@ -1580,6 +1625,7 @@ mod tests {
                                 .unwrap();
                         assert!(observations_are_equal(
                             &program.functions,
+                            &new_state,
                             &again.unwrap_html(),
                             &html
                         ));
@@ -1590,8 +1636,12 @@ mod tests {
                         }
                         // A click whose handler reaches a limit of the
                         // evaluator performs nothing to compare.
-                        match &u.choose(&targets)?.1 {
-                            Ok(effect) => state.apply_writes(effect),
+                        let clicked = match &u.choose(&targets)?.1 {
+                            Ok(effect) => state.run(effect, &program.functions),
+                            Err(error) => Err(error.clone()),
+                        };
+                        match clicked {
+                            Ok(()) => {}
                             Err(
                                 EvalError::CallDepthLimit { .. }
                                 | EvalError::ArrayLengthLimit { .. }

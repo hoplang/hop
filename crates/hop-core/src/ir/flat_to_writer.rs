@@ -159,7 +159,6 @@ fn write(out: &mut Vec<WriterStmt>, content: &str) {
 
 /// The unit tuple, which an effect is in the Writer program: rendered on
 /// the empty state, an effect performs nothing, so it holds nothing.
-const UNIT: IrDataType = IrDataType::Tuple(Vec::new());
 
 /// The Writer type of a parameter, where Html is a closure without
 /// parameters that writes it, in the signatures of closures as well, and
@@ -177,7 +176,7 @@ fn parameter_type(typ: &IrType) -> IrType {
 fn value_type(typ: &IrFunctionDataType) -> IrFunctionDataType {
     match typ {
         IrFunctionDataType::Data(_) => typ.clone(),
-        IrFunctionDataType::Effect => IrFunctionDataType::Data(UNIT),
+        IrFunctionDataType::Effect(_) => IrFunctionDataType::Data(IrDataType::UNIT),
         IrFunctionDataType::Function(signature) => IrFunctionDataType::Function(IrSignature {
             parameters: signature.parameters.iter().map(value_type).collect(),
             result: IrResultType::Data(result_type(&signature.result)),
@@ -188,7 +187,7 @@ fn value_type(typ: &IrFunctionDataType) -> IrFunctionDataType {
 fn result_type(typ: &IrResultType) -> IrDataType {
     match typ {
         IrResultType::Data(data) => data.clone(),
-        IrResultType::Effect => UNIT,
+        IrResultType::Effect(_) => IrDataType::UNIT,
     }
 }
 
@@ -263,8 +262,8 @@ impl<'a> Lowerer<'a> {
             IrType::Data(IrFunctionDataType::Data(typ)) => {
                 self.binder_types.insert(binder.var, typ.clone());
             }
-            IrType::Data(IrFunctionDataType::Effect) => {
-                self.binder_types.insert(binder.var, UNIT);
+            IrType::Data(IrFunctionDataType::Effect(_)) => {
+                self.binder_types.insert(binder.var, IrDataType::UNIT);
             }
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 self.html_parameters.insert(binder.var);
@@ -329,7 +328,10 @@ impl<'a> Lowerer<'a> {
             }
             // Rendered on the empty state, an effect performs nothing, so
             // it reads nothing.
-            FlatPureOp::CellWrite(..) | FlatPureOp::EffectConcat(_) => {}
+            FlatPureOp::CellWrite(..)
+            | FlatPureOp::CellRead(_)
+            | FlatPureOp::EffectPure(_)
+            | FlatPureOp::EffectBind(..) => {}
             FlatPureOp::Lambda(lambda) => {
                 for param in &lambda.parameters {
                     self.analyze_parameter(&IrBinder {
@@ -590,9 +592,10 @@ impl<'a> Lowerer<'a> {
                 self.aliases.insert(binding.binder.var, alias);
                 return;
             }
-            FlatPureOp::CellWrite(..) | FlatPureOp::EffectConcat(_) => {
-                WriterOp::Data(IrDataOp::Tuple(Vec::new()))
-            }
+            FlatPureOp::CellWrite(..)
+            | FlatPureOp::CellRead(_)
+            | FlatPureOp::EffectPure(_)
+            | FlatPureOp::EffectBind(..) => WriterOp::Data(IrDataOp::Tuple(Vec::new())),
             FlatPureOp::Call(function, args) => WriterOp::Call(
                 function.clone(),
                 args.iter().map(|arg| self.name(*arg)).collect(),
@@ -1328,7 +1331,10 @@ mod tests {
             FlatProgramBuilder::new()
                 .function(
                     "Buttons",
-                    [("n", Ty::Int), ("on_press", Ty::function([], Ty::Effect))],
+                    [
+                        ("n", Ty::Int),
+                        ("on_press", Ty::function([], Ty::effect(Ty::tuple([])))),
+                    ],
                     Ty::Html,
                     |t| {
                         t.match_(t.lte(t.param("n"), t.int(0)), |m| {
@@ -1355,7 +1361,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- flat --
-                fn Buttons@f0(n@v0: Int, on_press@v1: () -> Effect) -> Html {
+                fn Buttons@f0(n@v0: Int, on_press@v1: () -> Effect[()]) -> Html {
                   let v2: Int = 0
                   let v3: Bool = lt_eq(v0, v2)
                   let v12: Html = match v3 {
@@ -1379,10 +1385,10 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v13: Int = 0
                   let v14: Int = cell(v13)
-                  let v18: () -> Effect = fn() {
+                  let v18: () -> Effect[()] = fn() {
                     let v15: Int = 1
                     let v16: Int = add(v14, v15)
-                    let v17: Effect = v14 := v16
+                    let v17: Effect[()] = v14 := v16
                     v17
                   }
                   let v19: Int = 2
