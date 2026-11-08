@@ -157,9 +157,6 @@ fn write(out: &mut Vec<WriterStmt>, content: &str) {
     out.push(WriterStmt::Write(content.to_string()));
 }
 
-/// The unit tuple, which an effect is in the Writer program: rendered on
-/// the empty state, an effect performs nothing, so it holds nothing.
-
 /// The Writer type of a parameter, where Html is a closure without
 /// parameters that writes it, in the signatures of closures as well, and
 /// an effect is the unit tuple.
