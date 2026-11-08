@@ -19,49 +19,47 @@ pub enum IrDataOp {
     OptionSome(ValueId),
     OptionNone,
     StringConcat(Vec<ValueId>),
-    /// Takes two Ints or two Floats. Produces that type.
+    /// `(T, T) -> T, T in {Float, Int}`.
     NumericAdd(ValueId, ValueId),
-    /// Takes two Ints or two Floats. Produces that type.
+    /// `(T, T) -> T, T in {Float, Int}`.
     NumericSubtract(ValueId, ValueId),
-    /// Takes two Ints or two Floats. Produces that type.
+    /// `(T, T) -> T, T in {Float, Int}`.
     NumericMultiply(ValueId, ValueId),
-    /// Takes two Strings, two Bools, two Ints or two Floats. Produces a
-    /// Bool.
+    /// `(T, T) -> Bool, T in {Int, Bool, Float, String}`,
     Equals(ValueId, ValueId),
-    /// Takes two Ints or two Floats. Produces a Bool.
+    /// `(T, T) -> Bool, T in {Float, Int}`.
     LessThan(ValueId, ValueId),
-    /// Takes two Ints or two Floats. Produces a Bool.
+    /// `(T, T) -> Bool, T in {Float, Int}`.
     LessThanOrEqual(ValueId, ValueId),
-    /// Takes two Ints. Produces an Array of the Ints from the first to the
-    /// second inclusive, in increasing order, which is empty when the first
-    /// is greater than the second.
+    /// Produce an Array of the Ints from the first to the second inclusive, in
+    /// increasing order, which is empty when the first is greater than the
+    /// second.
+    /// `(Int, Int) -> Array[Int]`.
     ArrayFromRange(ValueId, ValueId),
-    /// Takes an Int or a Float. Produces that type.
+    /// `Int -> Int` or `Float -> Float`.
     NumericNegation(ValueId),
-    /// Takes a Bool. Produces a Bool.
+    /// `Bool -> Bool`.
     BoolNegation(ValueId),
-    /// Takes an Array. Produces an Int.
+    /// `Array[T] -> Int`.
     ArrayLength(ValueId),
-    /// Takes an Array. Produces a Bool.
+    /// `Array[T] -> Bool`.
     ArrayIsEmpty(ValueId),
-    /// Takes an Array and an Int. Produces an Option of the element type,
-    /// which holds the element at that index, or is None when the index is
-    /// negative or not less than the length.
+    /// `(Array[T], Int) -> Option[T]`.
     ArrayGet(ValueId, ValueId),
-    /// Takes an Array. Produces an Array of (index, element) tuples.
+    /// `Array[T] -> Array[(Int, T)]`.
     ArrayEnumerate(ValueId),
-    /// Takes a String. Produces a Bool.
+    /// `String -> Bool`.
     StringIsEmpty(ValueId),
-    /// Takes an Option. Produces a Bool.
+    /// `Option[T] -> Bool`.
     OptionIsSome(ValueId),
-    /// Takes an Option. Produces a Bool.
+    /// `Option[T] -> Bool`.
     OptionIsNone(ValueId),
-    /// Takes an Int. Produces a String.
+    /// `Int -> String`.
     IntToString(ValueId),
-    /// Takes a Float. Produces an Int. Saturates at the i32 bounds and maps
-    /// NaN to 0.
+    /// Saturates at the i32 bounds and maps NaN to 0.
+    /// `Float -> String`.
     FloatToInt(ValueId),
-    /// Takes an Int. Produces a Float.
+    /// `Int -> Float`.
     IntToFloat(ValueId),
     FieldAccess(ValueId, FieldName),
     TupleIndex(ValueId, usize),
