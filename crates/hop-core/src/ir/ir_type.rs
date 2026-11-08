@@ -14,6 +14,8 @@ pub enum IrType {
 pub enum IrFunctionDataType {
     Data(IrDataType),
     Effect(IrDataType),
+    #[cfg_attr(not(test), allow(dead_code))]
+    Cell(IrDataType),
     Function(IrSignature<IrFunctionDataType, IrResultType>),
 }
 
@@ -59,6 +61,10 @@ impl IrType {
     pub const INT: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Int));
     pub const FLOAT: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Float));
     pub const EFFECT: IrType = IrType::Data(IrFunctionDataType::Effect(IrDataType::UNIT));
+
+    pub fn cell(data: IrDataType) -> IrType {
+        IrType::Data(IrFunctionDataType::Cell(data))
+    }
 
     pub fn result(result: &IrResultType) -> IrType {
         IrType::Data(IrFunctionDataType::result(result))
@@ -114,7 +120,11 @@ impl IrType {
     pub fn as_data(&self) -> Option<&IrDataType> {
         match self {
             IrType::Data(IrFunctionDataType::Data(data)) => Some(data),
-            IrType::Data(IrFunctionDataType::Effect(_) | IrFunctionDataType::Function(_))
+            IrType::Data(
+                IrFunctionDataType::Effect(_)
+                | IrFunctionDataType::Cell(_)
+                | IrFunctionDataType::Function(_),
+            )
             | IrType::Html(_) => None,
         }
     }
@@ -145,7 +155,7 @@ impl IrFunctionDataType {
         match self {
             IrFunctionDataType::Data(data) => Some(IrResultType::Data(data.clone())),
             IrFunctionDataType::Effect(data) => Some(IrResultType::Effect(data.clone())),
-            IrFunctionDataType::Function(_) => None,
+            IrFunctionDataType::Cell(_) | IrFunctionDataType::Function(_) => None,
         }
     }
 }
@@ -210,6 +220,7 @@ impl fmt::Display for IrFunctionDataType {
         match self {
             IrFunctionDataType::Data(data) => data.fmt(f),
             IrFunctionDataType::Effect(data) => write!(f, "Effect[{data}]"),
+            IrFunctionDataType::Cell(data) => write!(f, "Cell[{data}]"),
             IrFunctionDataType::Function(signature) => signature.fmt(f),
         }
     }

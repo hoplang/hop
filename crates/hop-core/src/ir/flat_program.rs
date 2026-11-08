@@ -48,7 +48,12 @@ pub type FlatHtmlBlock = IrBlock<FlatHtmlBinding>;
 #[derive(Debug, Clone)]
 pub enum FlatHtmlBinding {
     Pure(IrBinding<IrFunctionDataType, FlatPureOp>),
+    /// Binds a cell of the binder's type, whose initial value the name
+    /// holds. The name has the type `Cell[T]`, and is what a cell write, a
+    /// cell read and a sample take.
     Cell(IrBinder<IrDataType>, ValueId),
+    /// Binds the value the cell the name holds has when the block renders.
+    Sample(IrBinder<IrDataType>, ValueId),
     Html(IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
 }
 
@@ -67,10 +72,12 @@ pub enum FlatPureOp {
     ///
     /// Matching is exhaustive, a value must match at least one arm.
     Match(IrMatch<FlatPureBlock>),
-    /// The effect that writes the cell the first name binds, in scope where
-    /// the cell write is, to the value of the second, of the cell's type. It
-    /// is a value, which writes nothing until it runs.
+    /// The effect that writes the cell the first name holds to the value of
+    /// the second, of the cell's type. It is a value, which writes nothing
+    /// until it runs.
     CellWrite(ValueId, ValueId),
+    /// The effect that gives the value of the cell the name holds when it
+    /// runs.
     CellRead(ValueId),
     EffectPure(ValueId),
     /// Runs the first name's effect, then the effect the second name's
@@ -268,7 +275,14 @@ impl fmt::Display for FlatHtmlBinding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FlatHtmlBinding::Pure(binding) => binding.fmt(f),
-            FlatHtmlBinding::Cell(binder, initial) => write!(f, "let {binder} = cell({initial})"),
+            FlatHtmlBinding::Cell(binder, initial) => {
+                write!(
+                    f,
+                    "let {}: Cell[{}] = cell({initial})",
+                    binder.var, binder.typ
+                )
+            }
+            FlatHtmlBinding::Sample(binder, cell) => write!(f, "let {binder} = sample({cell})"),
             FlatHtmlBinding::Html(binding) => binding.fmt(f),
         }
     }

@@ -31,6 +31,7 @@ pub enum Value<'a> {
     Enum(TypeName, Rc<[(FieldName, Value<'a>)]>),
     Closure(Rc<Closure<'a>>),
     Effect(Rc<Effect<'a>>),
+    Cell(Place),
 }
 
 #[derive(Debug)]
@@ -47,7 +48,6 @@ pub enum Effect<'a> {
 pub struct Closure<'a> {
     pub lambda: Lambda<'a>,
     pub env: HashTrieMap<ValueId, Value<'a>>,
-    pub cells: HashTrieMap<ValueId, Place>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -94,7 +94,7 @@ impl<'a> Value<'a> {
     /// is an equivalence relation, so values that share an allocation are
     /// equal without looking inside, as a value that nests a shared part in
     /// itself can be exponentially larger as a tree than in memory. Panics
-    /// on Html, a closure or an Effect.
+    /// on Html, a closure, an Effect or a cell.
     #[cfg(test)]
     pub fn total_eq(&self, other: &Value<'_>) -> bool {
         fn all(a: &[Value<'_>], b: &[Value<'_>]) -> bool {
@@ -106,8 +106,8 @@ impl<'a> Value<'a> {
                     .all(|((a_name, a), (b_name, b))| a_name == b_name && a.total_eq(b))
         }
         match (self, other) {
-            (Value::Html(_) | Value::Closure(_) | Value::Effect(_), _)
-            | (_, Value::Html(_) | Value::Closure(_) | Value::Effect(_)) => {
+            (Value::Html(_) | Value::Closure(_) | Value::Effect(_) | Value::Cell(_), _)
+            | (_, Value::Html(_) | Value::Closure(_) | Value::Effect(_) | Value::Cell(_)) => {
                 panic!("total_eq compares data, not {self:?} and {other:?}")
             }
             (Value::String(a), Value::String(b)) => a == b,
@@ -191,6 +191,14 @@ impl<'a> Value<'a> {
 
     pub fn unit() -> Value<'a> {
         Value::Tuple(Rc::new([]))
+    }
+
+    /// Panics if the value is not a cell.
+    pub fn as_place(&self) -> &Place {
+        match self {
+            Value::Cell(place) => place,
+            _ => panic!("Expected a Cell value, found {self:?}"),
+        }
     }
 
     /// Panics if the value is not an Effect.

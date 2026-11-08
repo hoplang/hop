@@ -193,6 +193,9 @@ impl<'a> Inliner<'a> {
                 FlatHtmlBinding::Cell(binder, initial) => {
                     bindings.push(FlatHtmlBinding::Cell(binder, self.rename(initial)));
                 }
+                FlatHtmlBinding::Sample(binder, cell) => {
+                    bindings.push(FlatHtmlBinding::Sample(binder, self.rename(cell)));
+                }
                 FlatHtmlBinding::Html(binding) => self.html_binding(binding, &mut bindings),
             }
         }
@@ -577,8 +580,9 @@ mod tests {
             FlatProgramBuilder::new()
                 .function("counter", [], Ty::Html, |t| {
                     let n = t.cell(t.int(0));
-                    let bump = t.event_handler(|t| t.cell_write(n, t.add(n, t.int(1))));
-                    t.element_on_click("button", [], bump, t.escape(t.int_to_string(n)))
+                    let count = t.sample(n);
+                    let bump = t.event_handler(|t| t.cell_write(n, t.add(count, t.int(1))));
+                    t.element_on_click("button", [], bump, t.escape(t.int_to_string(count)))
                 })
                 .entrypoint("Test", [], |t| {
                     t.html_concat([t.call("counter", []), t.call("counter", [])])
@@ -589,51 +593,54 @@ mod tests {
                 -- before --
                 fn counter@f0() -> Html {
                   let v0: Int = 0
-                  let v1: Int = cell(v0)
-                  let v5: () -> Effect[()] = fn() {
-                    let v2: Int = 1
-                    let v3: Int = add(v1, v2)
-                    let v4: Effect[()] = v1 := v3
-                    v4
+                  let v1: Cell[Int] = cell(v0)
+                  let v2: Int = sample(v1)
+                  let v6: () -> Effect[()] = fn() {
+                    let v3: Int = 1
+                    let v4: Int = add(v2, v3)
+                    let v5: Effect[()] = v1 := v4
+                    v5
                   }
-                  let v6: String = v1.to_string()
-                  let v7: Html = escape(v6)
-                  let v8: Html = element("button", {}, v7) on_click v5
-                  v8
+                  let v7: String = v2.to_string()
+                  let v8: Html = escape(v7)
+                  let v9: Html = element("button", {}, v8) on_click v6
+                  v9
                 }
                 entrypoint Test@e0() -> Html {
-                  let v9: Html = counter@f0()
                   let v10: Html = counter@f0()
-                  let v11: Html = concat(v9, v10)
-                  v11
+                  let v11: Html = counter@f0()
+                  let v12: Html = concat(v10, v11)
+                  v12
                 }
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v12: Int = 0
-                  let v13: Int = cell(v12)
-                  let v17: () -> Effect[()] = fn() {
-                    let v14: Int = 1
-                    let v15: Int = add(v13, v14)
-                    let v16: Effect[()] = v13 := v15
-                    v16
+                  let v13: Int = 0
+                  let v14: Cell[Int] = cell(v13)
+                  let v15: Int = sample(v14)
+                  let v19: () -> Effect[()] = fn() {
+                    let v16: Int = 1
+                    let v17: Int = add(v15, v16)
+                    let v18: Effect[()] = v14 := v17
+                    v18
                   }
-                  let v18: String = v13.to_string()
-                  let v19: Html = escape(v18)
-                  let v20: Html = element("button", {}, v19) on_click v17
-                  let v21: Int = 0
-                  let v22: Int = cell(v21)
-                  let v26: () -> Effect[()] = fn() {
-                    let v23: Int = 1
-                    let v24: Int = add(v22, v23)
-                    let v25: Effect[()] = v22 := v24
-                    v25
+                  let v20: String = v15.to_string()
+                  let v21: Html = escape(v20)
+                  let v22: Html = element("button", {}, v21) on_click v19
+                  let v23: Int = 0
+                  let v24: Cell[Int] = cell(v23)
+                  let v25: Int = sample(v24)
+                  let v29: () -> Effect[()] = fn() {
+                    let v26: Int = 1
+                    let v27: Int = add(v25, v26)
+                    let v28: Effect[()] = v24 := v27
+                    v28
                   }
-                  let v27: String = v22.to_string()
-                  let v28: Html = escape(v27)
-                  let v29: Html = element("button", {}, v28) on_click v26
-                  let v11: Html = concat(v20, v29)
-                  v11
+                  let v30: String = v25.to_string()
+                  let v31: Html = escape(v30)
+                  let v32: Html = element("button", {}, v31) on_click v29
+                  let v12: Html = concat(v22, v32)
+                  v12
                 }
             "#]],
         );
@@ -659,12 +666,14 @@ mod tests {
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(t.int(0));
                     let on = t.cell(t.bool(false));
+                    let n = t.sample(count);
+                    let is_on = t.sample(on);
                     let both = t.event_handler(|t| {
-                        let bump = t.cell_write(count, t.add(count, t.int(1)));
-                        let flip = t.cell_write(on, t.not(on));
+                        let bump = t.cell_write(count, t.add(n, t.int(1)));
+                        let flip = t.cell_write(on, t.not(is_on));
                         t.call("both", [bump, flip])
                     });
-                    t.element_on_click("button", [], both, t.escape(t.int_to_string(count)))
+                    t.element_on_click("button", [], both, t.escape(t.int_to_string(n)))
                 })
                 .build()
                 .unwrap(),
@@ -679,46 +688,50 @@ mod tests {
                 }
                 entrypoint Test@e0() -> Html {
                   let v5: Int = 0
-                  let v6: Int = cell(v5)
+                  let v6: Cell[Int] = cell(v5)
                   let v7: Bool = false
-                  let v8: Bool = cell(v7)
-                  let v15: () -> Effect[()] = fn() {
-                    let v9: Int = 1
-                    let v10: Int = add(v6, v9)
-                    let v11: Effect[()] = v6 := v10
-                    let v12: Bool = not(v8)
-                    let v13: Effect[()] = v8 := v12
-                    let v14: Effect[()] = both@f0(v11, v13)
-                    v14
+                  let v8: Cell[Bool] = cell(v7)
+                  let v9: Int = sample(v6)
+                  let v10: Bool = sample(v8)
+                  let v17: () -> Effect[()] = fn() {
+                    let v11: Int = 1
+                    let v12: Int = add(v9, v11)
+                    let v13: Effect[()] = v6 := v12
+                    let v14: Bool = not(v10)
+                    let v15: Effect[()] = v8 := v14
+                    let v16: Effect[()] = both@f0(v13, v15)
+                    v16
                   }
-                  let v16: String = v6.to_string()
-                  let v17: Html = escape(v16)
-                  let v18: Html = element("button", {}, v17) on_click v15
-                  v18
+                  let v18: String = v9.to_string()
+                  let v19: Html = escape(v18)
+                  let v20: Html = element("button", {}, v19) on_click v17
+                  v20
                 }
 
                 -- after --
                 entrypoint Test@e0() -> Html {
                   let v5: Int = 0
-                  let v6: Int = cell(v5)
+                  let v6: Cell[Int] = cell(v5)
                   let v7: Bool = false
-                  let v8: Bool = cell(v7)
-                  let v15: () -> Effect[()] = fn() {
-                    let v9: Int = 1
-                    let v10: Int = add(v6, v9)
-                    let v11: Effect[()] = v6 := v10
-                    let v12: Bool = not(v8)
-                    let v13: Effect[()] = v8 := v12
-                    let v20: (()) -> Effect[()] = fn(v19: ()) {
-                      v13
+                  let v8: Cell[Bool] = cell(v7)
+                  let v9: Int = sample(v6)
+                  let v10: Bool = sample(v8)
+                  let v17: () -> Effect[()] = fn() {
+                    let v11: Int = 1
+                    let v12: Int = add(v9, v11)
+                    let v13: Effect[()] = v6 := v12
+                    let v14: Bool = not(v10)
+                    let v15: Effect[()] = v8 := v14
+                    let v22: (()) -> Effect[()] = fn(v21: ()) {
+                      v15
                     }
-                    let v21: Effect[()] = bind(v11, v20)
-                    v21
+                    let v23: Effect[()] = bind(v13, v22)
+                    v23
                   }
-                  let v16: String = v6.to_string()
-                  let v17: Html = escape(v16)
-                  let v18: Html = element("button", {}, v17) on_click v15
-                  v18
+                  let v18: String = v9.to_string()
+                  let v19: Html = escape(v18)
+                  let v20: Html = element("button", {}, v19) on_click v17
+                  v20
                 }
             "#]],
         );
@@ -864,6 +877,64 @@ mod tests {
                   let v10: Int = 2
                   let v11: Html = ping@f0(v10)
                   v11
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_pass_a_cell_to_the_body_of_a_callee() {
+        check(
+            FlatProgramBuilder::new()
+                .function("Bump", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
+                    let shown = t.sample(t.param("count"));
+                    let bump =
+                        t.event_handler(|t| t.cell_write(t.param("count"), t.add(shown, t.int(1))));
+                    t.element_on_click("button", [], bump, t.escape(t.int_to_string(shown)))
+                })
+                .entrypoint("Test", [], |t| {
+                    let count = t.cell(t.int(0));
+                    t.call("Bump", [count])
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- before --
+                fn Bump@f0(count@v0: Cell[Int]) -> Html {
+                  let v1: Int = sample(v0)
+                  let v5: () -> Effect[()] = fn() {
+                    let v2: Int = 1
+                    let v3: Int = add(v1, v2)
+                    let v4: Effect[()] = v0 := v3
+                    v4
+                  }
+                  let v6: String = v1.to_string()
+                  let v7: Html = escape(v6)
+                  let v8: Html = element("button", {}, v7) on_click v5
+                  v8
+                }
+                entrypoint Test@e0() -> Html {
+                  let v9: Int = 0
+                  let v10: Cell[Int] = cell(v9)
+                  let v11: Html = Bump@f0(v10)
+                  v11
+                }
+
+                -- after --
+                entrypoint Test@e0() -> Html {
+                  let v9: Int = 0
+                  let v10: Cell[Int] = cell(v9)
+                  let v12: Int = sample(v10)
+                  let v16: () -> Effect[()] = fn() {
+                    let v13: Int = 1
+                    let v14: Int = add(v12, v13)
+                    let v15: Effect[()] = v10 := v14
+                    v15
+                  }
+                  let v17: String = v12.to_string()
+                  let v18: Html = escape(v17)
+                  let v19: Html = element("button", {}, v18) on_click v16
+                  v19
                 }
             "#]],
         );

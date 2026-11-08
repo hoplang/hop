@@ -18,7 +18,7 @@ pub fn collect_html_callees(block: &FlatHtmlBlock, out: &mut BTreeSet<FunctionId
                 collect_pure_op_callees(&binding.op, out);
                 continue;
             }
-            FlatHtmlBinding::Cell(..) => continue,
+            FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Sample(..) => continue,
             FlatHtmlBinding::Html(binding) => binding,
         };
         match &binding.op {

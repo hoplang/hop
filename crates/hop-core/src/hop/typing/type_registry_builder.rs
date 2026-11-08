@@ -28,6 +28,7 @@ pub enum Ty {
     Float,
     Html,
     Effect(Box<Ty>),
+    Cell(Box<Ty>),
     Named(String),
     Array(Box<Ty>),
     Option(Box<Ty>),
@@ -55,6 +56,10 @@ impl Ty {
         Ty::Effect(Box::new(payload))
     }
 
+    pub fn cell(payload: Ty) -> Ty {
+        Ty::Cell(Box::new(payload))
+    }
+
     pub fn tuple(elements: impl IntoIterator<Item = Ty>) -> Ty {
         Ty::Tuple(elements.into_iter().collect())
     }
@@ -72,6 +77,7 @@ impl From<Ty> for Type {
         match ty {
             Ty::Html => Type::HTML,
             Ty::Effect(payload) => Type::Effect((*payload).into()),
+            Ty::Cell(_) => panic!("the surface language has no cell type"),
             Ty::Function { parameters, result } => {
                 let function = FunctionType {
                     parameters: parameters.into_iter().map(Type::from).collect(),
@@ -96,6 +102,7 @@ impl From<Ty> for DataType {
             Ty::Float => DataType::Float,
             Ty::Html => panic!("Html is not a data type"),
             Ty::Effect(_) => panic!("Effect is not a data type"),
+            Ty::Cell(_) => panic!("a cell is not a data type"),
             Ty::Function { .. } => panic!("a function type is not a data type"),
             Ty::Named(name) => DataType::Named {
                 module: test_module(),

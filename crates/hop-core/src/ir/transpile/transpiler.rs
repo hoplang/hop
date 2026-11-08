@@ -171,6 +171,9 @@ pub trait Transpiler {
             IrType::Data(IrFunctionDataType::Effect(_)) => {
                 unreachable!("flat_to_writer makes an effect the unit tuple")
             }
+            IrType::Data(IrFunctionDataType::Cell(_)) => {
+                unreachable!("flat_to_writer makes a cell its value")
+            }
             IrType::Data(IrFunctionDataType::Function(signature)) => {
                 self.transpile_value_function_type(arena, signature)
             }

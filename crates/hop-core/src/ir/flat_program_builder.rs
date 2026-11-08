@@ -204,6 +204,9 @@ impl FlatProgramBuilder {
                 | IrType::Html(IrFunctionHtmlType::Function(_)) => {
                     panic!("{} returns a closure", declared.function)
                 }
+                IrType::Data(IrFunctionDataType::Cell(_)) => {
+                    panic!("{} returns a cell", declared.function)
+                }
             })
             .collect();
         let program = FlatProgram {
@@ -237,6 +240,7 @@ impl BuiltBlock {
                 .map(|binding| match binding {
                     FlatHtmlBinding::Pure(binding) => binding,
                     FlatHtmlBinding::Cell(..) => panic!("a Pure block binds a cell"),
+                    FlatHtmlBinding::Sample(..) => panic!("a Pure block samples a cell"),
                     FlatHtmlBinding::Html(_) => panic!("a Pure block binds Html"),
                 })
                 .collect(),
@@ -811,13 +815,24 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn cell(&self, initial: ValueId) -> ValueId {
         let typ = self.typ(initial);
-        let name = self.program.binder(typ.clone());
         let IrType::Data(IrFunctionDataType::Data(typ)) = typ else {
             panic!("a cell holds data, not {typ}");
         };
+        let name = self.program.binder(IrType::cell(typ.clone()));
         self.bindings
             .borrow_mut()
             .push(FlatHtmlBinding::Cell(IrBinder { var: name, typ }, initial));
+        name
+    }
+
+    pub fn sample(&self, cell: ValueId) -> ValueId {
+        let typ = self.cell_of(cell);
+        let name = self
+            .program
+            .binder(IrType::Data(IrFunctionDataType::Data(typ.clone())));
+        self.bindings
+            .borrow_mut()
+            .push(FlatHtmlBinding::Sample(IrBinder { var: name, typ }, cell));
         name
     }
 
@@ -826,7 +841,15 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn cell_read(&self, cell: ValueId) -> ValueId {
-        self.push(self.effect_of(cell), FlatPureOp::CellRead(cell))
+        let typ = IrType::Data(IrFunctionDataType::Effect(self.cell_of(cell)));
+        self.push(typ, FlatPureOp::CellRead(cell))
+    }
+
+    fn cell_of(&self, cell: ValueId) -> IrDataType {
+        let IrType::Data(IrFunctionDataType::Cell(typ)) = self.typ(cell) else {
+            panic!("{cell} is not a cell");
+        };
+        typ
     }
 
     pub fn effect_pure(&self, value: ValueId) -> ValueId {

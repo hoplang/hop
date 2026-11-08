@@ -158,8 +158,8 @@ fn write(out: &mut Vec<WriterStmt>, content: &str) {
 }
 
 /// The Writer type of a parameter, where Html is a closure without
-/// parameters that writes it, in the signatures of closures as well, and
-/// an effect is the unit tuple.
+/// parameters that writes it, in the signatures of closures as well, an
+/// effect is the unit tuple and a cell is its value.
 fn parameter_type(typ: &IrType) -> IrType {
     match typ {
         IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => IrType::html_function([]),
@@ -174,6 +174,7 @@ fn value_type(typ: &IrFunctionDataType) -> IrFunctionDataType {
     match typ {
         IrFunctionDataType::Data(_) => typ.clone(),
         IrFunctionDataType::Effect(_) => IrFunctionDataType::Data(IrDataType::UNIT),
+        IrFunctionDataType::Cell(data) => IrFunctionDataType::Data(data.clone()),
         IrFunctionDataType::Function(signature) => IrFunctionDataType::Function(IrSignature {
             parameters: signature.parameters.iter().map(value_type).collect(),
             result: IrResultType::Data(result_type(&signature.result)),
@@ -207,7 +208,7 @@ fn html_bindings(
     block: &FlatHtmlBlock,
 ) -> impl Iterator<Item = &IrBinding<IrFunctionHtmlType, FlatHtmlOp>> {
     block.bindings.iter().filter_map(|binding| match binding {
-        FlatHtmlBinding::Pure(_) | FlatHtmlBinding::Cell(..) => None,
+        FlatHtmlBinding::Pure(_) | FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Sample(..) => None,
         FlatHtmlBinding::Html(binding) => Some(binding),
     })
 }
@@ -226,7 +227,7 @@ struct Lowerer<'a> {
     /// these are the only names of Html that no binding binds.
     html_parameters: HashSet<ValueId>,
     /// The type of each parameter, loop variable, binding of a pattern of
-    /// data and cell, none of which is in `bindings`.
+    /// data, cell and sample, none of which is in `bindings`.
     binder_types: HashMap<ValueId, IrDataType>,
     /// What reads each name, once for each read.
     readers: HashMap<ValueId, Vec<Reader>>,
@@ -261,6 +262,9 @@ impl<'a> Lowerer<'a> {
             }
             IrType::Data(IrFunctionDataType::Effect(_)) => {
                 self.binder_types.insert(binder.var, IrDataType::UNIT);
+            }
+            IrType::Data(IrFunctionDataType::Cell(typ)) => {
+                self.binder_types.insert(binder.var, typ.clone());
             }
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 self.html_parameters.insert(binder.var);
@@ -364,6 +368,10 @@ impl<'a> Lowerer<'a> {
                 FlatHtmlBinding::Cell(binder, initial) => {
                     self.binder_types.insert(binder.var, binder.typ.clone());
                     self.read(*initial, Reader::Value);
+                }
+                FlatHtmlBinding::Sample(binder, cell) => {
+                    self.binder_types.insert(binder.var, binder.typ.clone());
+                    self.read(*cell, Reader::Value);
                 }
                 FlatHtmlBinding::Html(_) => {}
             }
@@ -1006,6 +1014,10 @@ impl<'a> Lowerer<'a> {
                     let initial = self.name(*initial);
                     self.aliases.insert(binder.var, initial);
                 }
+                FlatHtmlBinding::Sample(binder, cell) => {
+                    let cell = self.name(*cell);
+                    self.aliases.insert(binder.var, cell);
+                }
                 FlatHtmlBinding::Html(_) => {}
             }
         }
@@ -1349,9 +1361,10 @@ mod tests {
                 )
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(t.int(0));
-                    let bump = t.event_handler(|t| t.cell_write(count, t.add(count, t.int(1))));
+                    let n = t.sample(count);
+                    let bump = t.event_handler(|t| t.cell_write(count, t.add(n, t.int(1))));
                     let buttons = t.call("Buttons", [t.int(2), bump]);
-                    let shown = t.escape(t.int_to_string(count));
+                    let shown = t.escape(t.int_to_string(n));
                     t.html_concat([shown, buttons])
                 })
                 .build()
@@ -1381,19 +1394,20 @@ mod tests {
                 }
                 entrypoint Test@e0() -> Html {
                   let v13: Int = 0
-                  let v14: Int = cell(v13)
-                  let v18: () -> Effect[()] = fn() {
-                    let v15: Int = 1
-                    let v16: Int = add(v14, v15)
-                    let v17: Effect[()] = v14 := v16
-                    v17
+                  let v14: Cell[Int] = cell(v13)
+                  let v15: Int = sample(v14)
+                  let v19: () -> Effect[()] = fn() {
+                    let v16: Int = 1
+                    let v17: Int = add(v15, v16)
+                    let v18: Effect[()] = v14 := v17
+                    v18
                   }
-                  let v19: Int = 2
-                  let v20: Html = Buttons@f0(v19, v18)
-                  let v21: String = v14.to_string()
-                  let v22: Html = escape(v21)
-                  let v23: Html = concat(v22, v20)
-                  v23
+                  let v20: Int = 2
+                  let v21: Html = Buttons@f0(v20, v19)
+                  let v22: String = v15.to_string()
+                  let v23: Html = escape(v22)
+                  let v24: Html = concat(v23, v21)
+                  v24
                 }
 
                 -- writer --
@@ -1416,16 +1430,16 @@ mod tests {
                 }
                 page Test() {
                   let v13: Int = 0
-                  let v18: () -> () = fn() {
-                    let v15: Int = 1
-                    let v16: Int = add(v13, v15)
-                    let v17: () = ()
-                    v17
+                  let v19: () -> () = fn() {
+                    let v16: Int = 1
+                    let v17: Int = add(v13, v16)
+                    let v18: () = ()
+                    v18
                   }
-                  let v19: Int = 2
-                  let v21: String = v13.to_string()
-                  write_string(v21)
-                  write_function Buttons@f0(v19, v18)
+                  let v20: Int = 2
+                  let v22: String = v13.to_string()
+                  write_string(v22)
+                  write_function Buttons@f0(v20, v19)
                 }
             "#]],
         );
@@ -2680,6 +2694,58 @@ mod tests {
                   write("<div><span>")
                   write_string(v5)
                   write("</span><b></b></div>")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn renders_a_cell_a_function_takes_as_its_initial_value() {
+        check_program(
+            FlatProgramBuilder::new()
+                .function("Show", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
+                    let shown = t.sample(t.param("count"));
+                    let bump =
+                        t.event_handler(|t| t.cell_write(t.param("count"), t.add(shown, t.int(1))));
+                    t.element_on_click("button", [], bump, t.escape(t.int_to_string(shown)))
+                })
+                .entrypoint("Test", [], |t| {
+                    let count = t.cell(t.int(7));
+                    t.call("Show", [count])
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- flat --
+                entrypoint Test@e0() -> Html {
+                  let v9: Int = 7
+                  let v10: Cell[Int] = cell(v9)
+                  let v12: Int = sample(v10)
+                  let v16: () -> Effect[()] = fn() {
+                    let v13: Int = 1
+                    let v14: Int = add(v12, v13)
+                    let v15: Effect[()] = v10 := v14
+                    v15
+                  }
+                  let v17: String = v12.to_string()
+                  let v18: Html = escape(v17)
+                  let v19: Html = element("button", {}, v18) on_click v16
+                  v19
+                }
+
+                -- writer --
+                page Test() {
+                  let v9: Int = 7
+                  let v16: () -> () = fn() {
+                    let v13: Int = 1
+                    let v14: Int = add(v9, v13)
+                    let v15: () = ()
+                    v15
+                  }
+                  let v17: String = v9.to_string()
+                  write("<button>")
+                  write_string(v17)
+                  write("</button>")
                 }
             "#]],
         );

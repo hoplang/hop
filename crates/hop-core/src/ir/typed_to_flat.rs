@@ -176,6 +176,8 @@ struct Compiler<'a> {
     specializations: Vec<Specialization>,
     /// The name each variable in scope stands for.
     scopes: Vec<Vec<(VarName, ValueId)>>,
+    /// The cell of each name a sample binds.
+    cells: HashMap<ValueId, ValueId>,
     /// The parameters of the function being compiled, those it declares and
     /// those its rest adds from a function it is spread into. A forwarded
     /// parameter reads these, so a binding in the body that reuses the name
@@ -203,6 +205,7 @@ impl<'a> Compiler<'a> {
             registry,
             specializations: Vec::new(),
             scopes: vec![Vec::new()],
+            cells: HashMap::new(),
             params: HashMap::new(),
             rest: Vec::new(),
             bindings: Vec::new(),
@@ -349,7 +352,7 @@ impl<'a> Compiler<'a> {
             .into_iter()
             .map(|binding| match binding {
                 FlatHtmlBinding::Pure(binding) => binding,
-                FlatHtmlBinding::Cell(..) => {
+                FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Sample(..) => {
                     unreachable!("the typechecker rejects a cell in a block that computes a value")
                 }
                 FlatHtmlBinding::Html(_) => panic!("a block that computes a value binds Html"),
@@ -433,6 +436,12 @@ impl<'a> Compiler<'a> {
             .expect("scope stack should not be empty")
             .push((name.clone(), id));
         id
+    }
+
+    /// The cell of the variable, which a let mut bound.
+    fn cell(&mut self, name: &VarName) -> ValueId {
+        let sample = self.resolve(name);
+        self.cells[&sample]
     }
 
     fn resolve(&mut self, name: &VarName) -> ValueId {
@@ -804,7 +813,8 @@ impl<'a> Compiler<'a> {
             // A let binds nothing. Its variable is the name of its value,
             // in a scope of its own that holds the body. A let mut binds a
             // cell, whose initial value is the value, and its variable is the
-            // name of the cell.
+            // name of the cell's sample, from which a write or a read of the
+            // variable finds the cell.
             TypedExpr::Let {
                 var,
                 cell,
@@ -817,14 +827,19 @@ impl<'a> Compiler<'a> {
                     let Type::Data(typ) = value.typ() else {
                         unreachable!("a cell holds data");
                     };
-                    let name = self.value_id_counter.next();
+                    let typ = lower_data_type(self.registry, &typ);
+                    let cell = self.value_id_counter.next();
                     self.bindings.push(FlatHtmlBinding::Cell(
                         IrBinder {
-                            var: name,
-                            typ: lower_data_type(self.registry, &typ),
+                            var: cell,
+                            typ: typ.clone(),
                         },
                         initial,
                     ));
+                    let name = self.value_id_counter.next();
+                    self.bindings
+                        .push(FlatHtmlBinding::Sample(IrBinder { var: name, typ }, cell));
+                    self.cells.insert(name, cell);
                     name
                 } else {
                     initial
@@ -835,10 +850,10 @@ impl<'a> Compiler<'a> {
                 return body;
             }
             TypedExpr::CellWrite { cell, value } => {
-                let cell = self.resolve(cell);
+                let cell = self.cell(cell);
                 FlatPureOp::CellWrite(cell, self.compile_expr(value))
             }
-            TypedExpr::CellRead { cell, .. } => FlatPureOp::CellRead(self.resolve(cell)),
+            TypedExpr::CellRead { cell, .. } => FlatPureOp::CellRead(self.cell(cell)),
             TypedExpr::EffectPure { value, .. } => FlatPureOp::EffectPure(self.compile_expr(value)),
             TypedExpr::EffectBind {
                 effect,
@@ -2147,28 +2162,30 @@ mod tests {
             expect![[r#"
                 fn Counter@f0(label@v16: String) -> Html {
                   let v17: Int = 0
-                  let v18: Int = cell(v17)
-                  let v19: Bool = false
-                  let v20: Bool = cell(v19)
-                  let v29: () -> Effect[()] = fn() {
-                    let v21: Int = 1
-                    let v22: Int = add(v18, v21)
-                    let v23: Effect[()] = v18 := v22
-                    let v27: (()) -> Effect[()] = fn(v24: ()) {
-                      let v25: Bool = true
-                      let v26: Effect[()] = v20 := v25
-                      v26
+                  let v18: Cell[Int] = cell(v17)
+                  let v19: Int = sample(v18)
+                  let v20: Bool = false
+                  let v21: Cell[Bool] = cell(v20)
+                  let v22: Bool = sample(v21)
+                  let v31: () -> Effect[()] = fn() {
+                    let v23: Int = 1
+                    let v24: Int = add(v19, v23)
+                    let v25: Effect[()] = v18 := v24
+                    let v29: (()) -> Effect[()] = fn(v26: ()) {
+                      let v27: Bool = true
+                      let v28: Effect[()] = v21 := v27
+                      v28
                     }
-                    let v28: Effect[()] = bind(v23, v27)
-                    v28
+                    let v30: Effect[()] = bind(v25, v29)
+                    v30
                   }
-                  let v30: Html = escape(v16)
-                  let v31: Html = text(" ")
-                  let v32: String = v18.to_string()
-                  let v33: Html = escape(v32)
-                  let v34: Html = concat(v30, v31, v33)
-                  let v35: Html = element("button", {}, v34) on_click v29
-                  v35
+                  let v32: Html = escape(v16)
+                  let v33: Html = text(" ")
+                  let v34: String = v19.to_string()
+                  let v35: Html = escape(v34)
+                  let v36: Html = concat(v32, v33, v35)
+                  let v37: Html = element("button", {}, v36) on_click v31
+                  v37
                 }
                 entrypoint body@e0() -> Html {
                   let v0: Int = 1
@@ -2214,33 +2231,34 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Button@f0(on_press@v11: () -> Effect[()], children@v12: Html) -> Html {
-                  let v13: Html = concat(v12)
-                  let v14: Html = element("button", {}, v13) on_click v11
-                  v14
+                fn Button@f0(on_press@v12: () -> Effect[()], children@v13: Html) -> Html {
+                  let v14: Html = concat(v13)
+                  let v15: Html = element("button", {}, v14) on_click v12
+                  v15
                 }
                 entrypoint body@e0() -> Html {
                   let v0: Bool = false
-                  let v1: Bool = cell(v0)
-                  let v4: () -> Effect[()] = fn() {
-                    let v2: Bool = not(v1)
-                    let v3: Effect[()] = v1 := v2
-                    v3
+                  let v1: Cell[Bool] = cell(v0)
+                  let v2: Bool = sample(v1)
+                  let v5: () -> Effect[()] = fn() {
+                    let v3: Bool = not(v2)
+                    let v4: Effect[()] = v1 := v3
+                    v4
                   }
-                  let v7: String = match v1 {
+                  let v8: String = match v2 {
                     true => {
-                      let v5: String = "on"
-                      v5
-                    }
-                    false => {
-                      let v6: String = "off"
+                      let v6: String = "on"
                       v6
                     }
+                    false => {
+                      let v7: String = "off"
+                      v7
+                    }
                   }
-                  let v8: Html = escape(v7)
-                  let v9: Html = concat(v8)
-                  let v10: Html = Button@f0(v4, v9)
-                  v10
+                  let v9: Html = escape(v8)
+                  let v10: Html = concat(v9)
+                  let v11: Html = Button@f0(v5, v10)
+                  v11
                 }
                 page Test: e0
             "#]],
@@ -2266,34 +2284,35 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn bump@f0(n@v16: Int) -> Effect[Int] {
-                  let v17: Int = 1
-                  let v18: Int = add(v16, v17)
-                  let v19: Effect[Int] = pure(v18)
-                  v19
+                fn bump@f0(n@v17: Int) -> Effect[Int] {
+                  let v18: Int = 1
+                  let v19: Int = add(v17, v18)
+                  let v20: Effect[Int] = pure(v19)
+                  v20
                 }
                 entrypoint body@e0() -> Html {
                   let v0: Int = 0
-                  let v1: Int = cell(v0)
-                  let v11: () -> Effect[()] = fn() {
-                    let v2: Effect[Int] = read(v1)
-                    let v9: (Int) -> Effect[()] = fn(v3: Int) {
-                      let v4: Effect[Int] = bump@f0(v3)
-                      let v7: (Int) -> Effect[()] = fn(v5: Int) {
-                        let v6: Effect[()] = v1 := v3
-                        v6
+                  let v1: Cell[Int] = cell(v0)
+                  let v2: Int = sample(v1)
+                  let v12: () -> Effect[()] = fn() {
+                    let v3: Effect[Int] = read(v1)
+                    let v10: (Int) -> Effect[()] = fn(v4: Int) {
+                      let v5: Effect[Int] = bump@f0(v4)
+                      let v8: (Int) -> Effect[()] = fn(v6: Int) {
+                        let v7: Effect[()] = v1 := v4
+                        v7
                       }
-                      let v8: Effect[()] = bind(v4, v7)
-                      v8
+                      let v9: Effect[()] = bind(v5, v8)
+                      v9
                     }
-                    let v10: Effect[()] = bind(v2, v9)
-                    v10
+                    let v11: Effect[()] = bind(v3, v10)
+                    v11
                   }
-                  let v12: String = v1.to_string()
-                  let v13: Html = escape(v12)
-                  let v14: Html = concat(v13)
-                  let v15: Html = element("button", {}, v14) on_click v11
-                  v15
+                  let v13: String = v2.to_string()
+                  let v14: Html = escape(v13)
+                  let v15: Html = concat(v14)
+                  let v16: Html = element("button", {}, v15) on_click v12
+                  v16
                 }
                 page Test: e0
             "#]],

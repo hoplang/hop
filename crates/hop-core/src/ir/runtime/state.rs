@@ -36,11 +36,10 @@ impl PartialEq for State<'_> {
 impl Eq for State<'_> {}
 
 impl<'a> State<'a> {
-    pub fn bind_cell(&mut self, old: &State<'a>, place: &Place, initial: &Value<'a>) -> Value<'a> {
+    pub fn bind_cell(&mut self, old: &State<'a>, place: &Place, initial: &Value<'a>) {
         let value = old.cells.get(place).unwrap_or(initial).clone();
-        let previous = self.cells.insert(place.clone(), value.clone());
+        let previous = self.cells.insert(place.clone(), value);
         assert!(previous.is_none(), "two cells are bound at the same place");
-        value
     }
 
     pub fn bind_element(&mut self, old: &State<'a>, place: &Place) -> NodeId {
