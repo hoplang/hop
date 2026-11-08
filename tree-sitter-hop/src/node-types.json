@@ -68,10 +68,6 @@
         "named": true
       },
       {
-        "type": "cell_write",
-        "named": true
-      },
-      {
         "type": "field_expression",
         "named": true
       },
@@ -426,32 +422,6 @@
         ]
       },
       "function": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "_expression",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "cell_write",
-    "named": true,
-    "fields": {
-      "cell": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "_expression",
-            "named": true
-          }
-        ]
-      },
-      "value": {
         "multiple": false,
         "required": true,
         "types": [
@@ -1029,6 +999,10 @@
         "types": [
           {
             "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "wildcard_pattern",
             "named": true
           }
         ]
@@ -1837,10 +1811,6 @@
   },
   {
     "type": "::",
-    "named": false
-  },
-  {
-    "type": ":=",
     "named": false
   },
   {

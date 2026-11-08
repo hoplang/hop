@@ -8,7 +8,6 @@
 // than removing work: text tokens are kept out of expression positions.
 
 const PREC = {
-  cell_write: 0,
   or: 1,
   and: 2,
   equality: 3,
@@ -180,7 +179,6 @@ module.exports = grammar({
 
     _expression: ($) =>
       choice(
-        $.cell_write,
         $.identifier,
         $.type_identifier,
         $.scoped_identifier,
@@ -273,18 +271,6 @@ module.exports = grammar({
       );
     },
 
-    // Permissive: the parser requires the cell to be a variable and rejects
-    // a chain of writes.
-    cell_write: ($) =>
-      prec.right(
-        PREC.cell_write,
-        seq(
-          field("cell", $._expression),
-          ":=",
-          field("value", $._expression),
-        ),
-      ),
-
     field_expression: ($) =>
       prec.left(
         PREC.postfix,
@@ -351,7 +337,7 @@ module.exports = grammar({
 
     lambda_parameter: ($) =>
       seq(
-        field("name", $.identifier),
+        field("name", choice($.identifier, $.wildcard_pattern)),
         optional(seq(":", field("type", $._type))),
       ),
 

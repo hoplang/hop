@@ -961,10 +961,6 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "cell_write"
-        },
-        {
-          "type": "SYMBOL",
           "name": "identifier"
         },
         {
@@ -1766,35 +1762,6 @@
         }
       ]
     },
-    "cell_write": {
-      "type": "PREC_RIGHT",
-      "value": 0,
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "FIELD",
-            "name": "cell",
-            "content": {
-              "type": "SYMBOL",
-              "name": "_expression"
-            }
-          },
-          {
-            "type": "STRING",
-            "value": ":="
-          },
-          {
-            "type": "FIELD",
-            "name": "value",
-            "content": {
-              "type": "SYMBOL",
-              "name": "_expression"
-            }
-          }
-        ]
-      }
-    },
     "field_expression": {
       "type": "PREC_LEFT",
       "value": 8,
@@ -2312,8 +2279,17 @@
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "identifier"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "wildcard_pattern"
+              }
+            ]
           }
         },
         {

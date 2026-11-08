@@ -416,11 +416,11 @@ fn f() -> Html {
           (tag_name))))))
 
 ================================================================================
-cell write binds looser than every binary operator
+effects: cell methods, and_then with a wildcard parameter, pure
 ================================================================================
 
-fn f() -> Effect {
-  a := b || c && d < e + 1
+fn f() -> Effect[()] {
+  count.set(count + 1).and_then(fn(_) { count.get() }).and_then(fn(n: Int) { pure!(()) })
 }
 
 --------------------------------------------------------------------------------
@@ -429,87 +429,47 @@ fn f() -> Effect {
   (function_declaration
     (identifier)
     (parameters)
-    (type_identifier)
+    (generic_type
+      (type_identifier)
+      (type_arguments
+        (tuple_type)))
     (block
-      (cell_write
-        (identifier)
-        (binary_expression
-          (identifier)
-          (binary_expression
-            (identifier)
-            (binary_expression
-              (identifier)
-              (binary_expression
+      (call_expression
+        (field_expression
+          (call_expression
+            (field_expression
+              (call_expression
+                (field_expression
+                  (identifier)
+                  (field_identifier))
+                (arguments
+                  (binary_expression
+                    (identifier)
+                    (integer_literal))))
+              (field_identifier))
+            (arguments
+              (lambda_expression
+                (lambda_parameters
+                  (lambda_parameter
+                    (wildcard_pattern)))
+                (block
+                  (call_expression
+                    (field_expression
+                      (identifier)
+                      (field_identifier))
+                    (arguments))))))
+          (field_identifier))
+        (arguments
+          (lambda_expression
+            (lambda_parameters
+              (lambda_parameter
                 (identifier)
-                (integer_literal)))))))))
-
-================================================================================
-cell writes in click handlers, arguments and effects
-================================================================================
-
-fn f() -> Html {
-  <button on:click={effects!(a := 1, b := g((c := 2) == x))}>{a}</button>
-}
-
---------------------------------------------------------------------------------
-
-(source_file
-  (function_declaration
-    (identifier)
-    (parameters)
-    (type_identifier)
-    (block
-      (element
-        (start_tag
-          (tag_name)
-          (attribute
-            (attribute_name)
-            (interpolation
+                (type_identifier)))
+            (block
               (macro_invocation
                 (identifier)
                 (arguments
-                  (cell_write
-                    (identifier)
-                    (integer_literal))
-                  (cell_write
-                    (identifier)
-                    (call_expression
-                      (identifier)
-                      (arguments
-                        (binary_expression
-                          (parenthesized_expression
-                            (cell_write
-                              (identifier)
-                              (integer_literal)))
-                          (identifier))))))))))
-        (interpolation
-          (identifier))
-        (end_tag
-          (tag_name))))))
-
-================================================================================
-permissive: the cell may be any expression and writes may chain
-================================================================================
-
-fn f() -> Effect {
-  a + b := c := d
-}
-
---------------------------------------------------------------------------------
-
-(source_file
-  (function_declaration
-    (identifier)
-    (parameters)
-    (type_identifier)
-    (block
-      (cell_write
-        (binary_expression
-          (identifier)
-          (identifier))
-        (cell_write
-          (identifier)
-          (identifier))))))
+                  (tuple_expression))))))))))
 
 ================================================================================
 keyed for over an array and over a range
