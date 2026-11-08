@@ -60,15 +60,13 @@ impl<'a> State<'a> {
         })
     }
 
-    /// Runs the effect, and writes the cells only if it succeeds.
     #[cfg(test)]
     pub fn run(
         &mut self,
         effect: &Effect<'a>,
         functions: &'a [FlatFunction],
     ) -> Result<(), EvalError> {
-        let mut cells = self.cells.clone();
-        run_effect(effect, &mut cells, functions, &mut 0)?;
+        let (_, cells) = run_effect(effect, &self.cells, functions, &mut 0)?;
         self.cells = cells;
         Ok(())
     }

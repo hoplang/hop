@@ -327,10 +327,21 @@ pub fn evaluate_pure_apply<'a>(
     evaluate_pure_block(&lambda.body, &body_env, functions, depth + 1, op_count)
 }
 
-/// Performs the effect on the cells, which a continuation that fails leaves
-/// partly written.
+/// Performs the effect on the cells and gives its value and the cells as it
+/// leaves them.
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn run_effect<'a>(
+    effect: &Effect<'a>,
+    cells: &BTreeMap<Place, Value<'a>>,
+    functions: &'a [FlatFunction],
+    op_count: &mut usize,
+) -> Result<(Value<'a>, BTreeMap<Place, Value<'a>>), EvalError> {
+    let mut cells = cells.clone();
+    let value = perform_effect(effect, &mut cells, functions, op_count)?;
+    Ok((value, cells))
+}
+
+fn perform_effect<'a>(
     effect: &Effect<'a>,
     cells: &mut BTreeMap<Place, Value<'a>>,
     functions: &'a [FlatFunction],
@@ -344,13 +355,13 @@ pub fn run_effect<'a>(
         }
         Effect::Read(place) => Ok(cells[place].clone()),
         Effect::Then(first, second) => {
-            run_effect(first, cells, functions, op_count)?;
-            run_effect(second, cells, functions, op_count)
+            perform_effect(first, cells, functions, op_count)?;
+            perform_effect(second, cells, functions, op_count)
         }
         Effect::Bind(effect, continuation) => {
-            let value = run_effect(effect, cells, functions, op_count)?;
+            let value = perform_effect(effect, cells, functions, op_count)?;
             let next = evaluate_pure_apply(continuation, vec![value], functions, 0, op_count)?;
-            run_effect(next.as_effect(), cells, functions, op_count)
+            perform_effect(next.as_effect(), cells, functions, op_count)
         }
     }
 }
