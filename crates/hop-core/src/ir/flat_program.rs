@@ -48,13 +48,11 @@ pub type FlatHtmlBlock = IrBlock<FlatHtmlBinding>;
 #[derive(Debug, Clone)]
 pub enum FlatHtmlBinding {
     Pure(IrBinding<IrFunctionDataType, FlatPureOp>),
-    /// Binds a cell of the binder's type, whose initial value the name
-    /// holds. The name has the type `Cell[T]`, and is what a cell write, a
-    /// cell read and a sample take.
-    Cell(IrBinder<IrDataType>, ValueId),
-    /// Binds the value the cell the name holds has when the block renders.
-    Sample(IrBinder<IrDataType>, ValueId),
     Html(IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
+    /// Bind a cell with an initial value. `T -> Cell[T]`.
+    Cell(IrBinder<IrDataType>, ValueId),
+    /// Bind the value of a cell. `Cell[T] -> T`.
+    Sample(IrBinder<IrDataType>, ValueId),
 }
 
 pub type FlatPureLambda = IrLambda<IrFunctionDataType, FlatPureBlock>;
@@ -63,58 +61,49 @@ pub type FlatHtmlLambda = IrLambda<IrType, FlatHtmlBlock>;
 #[derive(Debug, Clone)]
 pub enum FlatPureOp {
     Data(IrDataOp),
-    /// Invokes a function that computes a value.
-    /// The arguments follow the function's parameters, one for each.
+    /// Invoke a function.
     Call(IrFunction, Vec<ValueId>),
-    /// A match with the arms of the source. Each arm is a block that
-    /// produces the match's value, and a name its pattern binds is the part
-    /// of the subject it binds.
-    ///
-    /// Matching is exhaustive, a value must match at least one arm.
+    /// Match exhaustively.
     Match(IrMatch<FlatPureBlock>),
-    /// The effect that writes the cell the first name holds to the value of
-    /// the second, of the cell's type. It is a value, which writes nothing
-    /// until it runs.
+    /// Write a cell. `(Cell[T], T) -> Effect[()]`.
     CellWrite(ValueId, ValueId),
-    /// The effect that gives the value of the cell the name holds when it
-    /// runs.
+    /// Read a cell. `Cell[T] -> Effect[T]`.
     CellRead(ValueId),
+    /// Lift a value to an effect. `T -> Effect[T]`.
     EffectPure(ValueId),
-    /// Runs the first name's effect, then the effect the second name's
-    /// closure gives for its result.
+    /// Run the first effect, then return the effect the second closure
+    /// gives for its result. `(Effect[A], (A) -> Effect[B]) -> Effect[B]`.
     EffectBind(ValueId, ValueId),
+    /// Bind a closure.
     Lambda(FlatPureLambda),
-    /// Invokes a closure.
-    /// The arguments follow the closure's parameters, one for each.
+    /// Invoke a closure.
     Apply(ValueId, Vec<ValueId>),
 }
 
 #[derive(Debug, Clone)]
 pub enum FlatHtmlOp {
-    /// Invokes a function that returns Html and produces its result. The
-    /// arguments follow the function's parameters, one for each.
+    /// Invoke a function.
     Call(IrFunction, Vec<ValueId>),
-    /// A match with the arms of the source, as a match of a value has, whose
-    /// arms render Html.
+    /// Match exhaustively.
     Match(IrMatch<FlatHtmlBlock>),
-    /// Text that renders as written, without escaping.
+    /// Render text as written. `Html`.
     Text(CheapString),
-    /// Must name a String. Produces its HTML escaped form as Html.
+    /// Html-escape a string. `String -> Html`.
     Escape(ValueId),
-    /// N-ary mappend over Html names. Part order is output order.
+    /// Concatenate Html. `(Html, ..., Html) -> Html`.
     Concat(Vec<ValueId>),
-    /// An element whose children are the Html a name holds.
+    /// Bind a Html element. `Html -> Html`.
     Element(IrHtmlElement<ValueId>),
+    /// Run a fold-map over an array, where each iteration produces a Html value.
+    /// The key, when there is one, gives each element the identity its
+    /// cells keep across renders. `Array[T] -> Html`.
     For(FlatFor),
+    /// Bind a closure.
     Lambda(FlatHtmlLambda),
-    /// Invokes a closure.
-    /// The arguments follow the closure's parameters, one for each.
+    /// Invoke a closure.
     Apply(ValueId, Vec<ValueId>),
 }
 
-/// A foldMap over the array, concatenating the body's Html once per element
-/// in order. The key, when there is one, gives each element the identity its
-/// cells keep across renders.
 #[derive(Debug, Clone)]
 pub struct FlatFor {
     pub var: Option<IrBinder<IrDataType>>,
