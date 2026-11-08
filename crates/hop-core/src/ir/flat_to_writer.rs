@@ -366,7 +366,10 @@ impl<'a> Lowerer<'a> {
             match binding {
                 FlatHtmlBinding::Pure(binding) => self.analyze_pure_binding(binding),
                 FlatHtmlBinding::Cell(binder, initial) => {
-                    self.binder_types.insert(binder.var, binder.typ.clone());
+                    let IrFunctionDataType::Cell(typ) = &binder.typ else {
+                        unreachable!("a cell binding binds a cell");
+                    };
+                    self.binder_types.insert(binder.var, typ.clone());
                     self.read(*initial, Reader::Value);
                 }
                 FlatHtmlBinding::Track(binder, cell) => {

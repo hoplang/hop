@@ -54,7 +54,7 @@ pub enum FlatHtmlBinding {
     Html(IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
     /// Bind a cell with an initial value, which the cell takes only when its
     /// place is new. `T -> Cell[T]`.
-    Cell(IrBinder<IrDataType>, ValueId),
+    Cell(IrBinder<IrFunctionDataType>, ValueId),
     /// Bind the value a cell has at this render. `Cell[T] -> T`.
     Track(IrBinder<IrDataType>, ValueId),
 }
@@ -269,13 +269,7 @@ impl fmt::Display for FlatHtmlBinding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FlatHtmlBinding::Pure(binding) => binding.fmt(f),
-            FlatHtmlBinding::Cell(binder, initial) => {
-                write!(
-                    f,
-                    "let {}: Cell[{}] = cell({initial})",
-                    binder.var, binder.typ
-                )
-            }
+            FlatHtmlBinding::Cell(binder, initial) => write!(f, "let {binder} = cell({initial})"),
             FlatHtmlBinding::Track(binder, cell) => write!(f, "let {binder} = track({cell})"),
             FlatHtmlBinding::Html(binding) => binding.fmt(f),
         }

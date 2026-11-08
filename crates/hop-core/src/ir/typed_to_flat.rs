@@ -832,7 +832,7 @@ impl<'a> Compiler<'a> {
                     self.bindings.push(FlatHtmlBinding::Cell(
                         IrBinder {
                             var: cell,
-                            typ: typ.clone(),
+                            typ: IrFunctionDataType::Cell(typ.clone()),
                         },
                         initial,
                     ));

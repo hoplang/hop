@@ -818,7 +818,8 @@ impl<'a> FlatBlockBuilder<'a> {
         let IrType::Data(IrFunctionDataType::Data(typ)) = typ else {
             panic!("a cell holds data, not {typ}");
         };
-        let name = self.program.binder(IrType::cell(typ.clone()));
+        let typ = IrFunctionDataType::Cell(typ);
+        let name = self.program.binder(IrType::Data(typ.clone()));
         self.bindings
             .borrow_mut()
             .push(FlatHtmlBinding::Cell(IrBinder { var: name, typ }, initial));

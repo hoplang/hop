@@ -14,7 +14,6 @@ pub enum IrType {
 pub enum IrFunctionDataType {
     Data(IrDataType),
     Effect(IrDataType),
-    #[cfg_attr(not(test), allow(dead_code))]
     Cell(IrDataType),
     Function(IrSignature<IrFunctionDataType, IrResultType>),
 }

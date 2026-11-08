@@ -1896,7 +1896,7 @@ mod tests {
     #[derive(Clone, Copy)]
     enum Binding<'a> {
         Pure(&'a IrBinding<IrFunctionDataType, FlatPureOp>),
-        Cell(&'a IrBinder<IrDataType>, ValueId),
+        Cell(&'a IrBinder<IrFunctionDataType>, ValueId),
         Track(&'a IrBinder<IrDataType>, ValueId),
         Html(&'a IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
     }
@@ -1935,7 +1935,8 @@ mod tests {
         fn var(self) -> ValueId {
             match self {
                 Binding::Pure(binding) => binding.binder.var,
-                Binding::Cell(binder, _) | Binding::Track(binder, _) => binder.var,
+                Binding::Cell(binder, _) => binder.var,
+                Binding::Track(binder, _) => binder.var,
                 Binding::Html(binding) => binding.binder.var,
             }
         }

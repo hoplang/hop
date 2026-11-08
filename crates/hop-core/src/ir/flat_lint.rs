@@ -364,10 +364,13 @@ impl<'a> Checker<'a> {
             match binding {
                 FlatHtmlBinding::Pure(binding) => self.pure_binding(binding)?,
                 FlatHtmlBinding::Cell(binder, initial) => {
-                    if self.typ(*initial)? != BoundType::Data(&binder.typ) {
+                    let IrFunctionDataType::Cell(data) = &binder.typ else {
+                        return Err(FlatLintError::IllTypedBinding);
+                    };
+                    if self.typ(*initial)? != BoundType::Data(data) {
                         return Err(FlatLintError::IllTypedBinding);
                     }
-                    self.bind(binder.var, BoundType::Cell(&binder.typ))?;
+                    self.bind(binder.var, BoundType::Cell(data))?;
                 }
                 FlatHtmlBinding::Track(binder, cell) => {
                     if self.typ(*cell)? != BoundType::Cell(&binder.typ) {
