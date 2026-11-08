@@ -1874,8 +1874,8 @@ mod tests {
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::clicks::clicks;
     use crate::ir::runtime::flat_evaluator::invoke_entrypoint;
-    use crate::ir::runtime::html_node::Html;
     use crate::ir::runtime::state::{Place, State, Step};
+    use crate::ir::runtime::value::Html;
     use expect_test::{Expect, expect};
     use rand::{RngExt, SeedableRng, rngs::SmallRng};
     use std::collections::{BTreeMap, BTreeSet, HashSet};

@@ -18,10 +18,10 @@ use crate::ir::ir_page::IrPage;
 use crate::ir::ir_type::IrFunctionDataType;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
-use crate::ir::runtime::html_node::{Html, HtmlAttribute, HtmlNode};
 use crate::ir::runtime::state::{IterationKey, Place, State, Step};
 use crate::ir::runtime::value::{
-    Closure, Effect, Lambda, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value,
+    Closure, Effect, Html, HtmlAttribute, HtmlNode, Lambda, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH,
+    Value,
 };
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
@@ -60,7 +60,7 @@ pub fn evaluate_page<'a>(
 
     let head = match &page.head {
         Some(head) => evaluate_entrypoint(program, *head, args.clone())?.unwrap_html(),
-        None => Html::empty(),
+        None => Html::new(HtmlNode::Concat(Vec::new()))?,
     };
     let body = evaluate_entrypoint(program, page.body, args)?.unwrap_html();
 
@@ -283,15 +283,10 @@ fn evaluate_pure_binding<'a>(
             Value::Effect(Rc::new(Effect::Read(env[cell].as_place().clone())))
         }
         FlatPureOp::EffectPure(value) => Value::Effect(Rc::new(Effect::Pure(env[value].clone()))),
-        FlatPureOp::EffectBind(effect, continuation) => {
-            let Value::Closure(continuation) = &env[continuation] else {
-                panic!("Expected a Closure value, found {:?}", env[continuation]);
-            };
-            Value::Effect(Rc::new(Effect::Bind(
-                env[effect].as_effect().clone(),
-                continuation.clone(),
-            )))
-        }
+        FlatPureOp::EffectBind(effect, continuation) => Value::Effect(Rc::new(Effect::Bind(
+            env[effect].as_effect().clone(),
+            env[continuation].as_closure().clone(),
+        ))),
         FlatPureOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
             lambda: Lambda::Pure(lambda),
             env: env.clone(),
@@ -351,7 +346,7 @@ fn perform_effect<'a>(
         Effect::Pure(value) => Ok(value.clone()),
         Effect::Write(place, value) => {
             *cells.get_mut(place).unwrap() = value.clone();
-            Ok(Value::unit())
+            Ok(Value::Tuple(Rc::new([])))
         }
         Effect::Read(place) => Ok(cells[place].clone()),
         Effect::Then(first, second) => {
@@ -433,10 +428,10 @@ fn evaluate_html_op<'a>(
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
     Ok(match op {
-        FlatHtmlOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.to_string()))?),
+        FlatHtmlOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.as_str()))?),
 
         FlatHtmlOp::Escape(string) => Value::Html(Html::new(HtmlNode::Escape(
-            env[string].clone().unwrap_string(),
+            env[string].as_string().clone(),
         ))?),
 
         FlatHtmlOp::Concat(parts) => Value::Html(Html::new(HtmlNode::Concat(
@@ -457,7 +452,7 @@ fn evaluate_html_op<'a>(
                 match attribute {
                     IrAttribute::Value(value) => rendered.push(HtmlAttribute {
                         name: name.clone(),
-                        value: Some(env[value].clone().unwrap_string()),
+                        value: Some(env[value].as_string().clone()),
                     }),
                     IrAttribute::Presence(present) => {
                         if env[present].as_bool() {
@@ -474,10 +469,7 @@ fn evaluate_html_op<'a>(
                 }
             }
             let children = env[children].clone().unwrap_html();
-            let on_click = on_click.map(|handler| match &env[&handler] {
-                Value::Closure(closure) => closure.clone(),
-                value => panic!("Expected a Closure value, found {value:?}"),
-            });
+            let on_click = on_click.map(|handler| env[&handler].as_closure().clone());
             let node = new_state.bind_element(old_state, place);
             Value::Html(Html::new(HtmlNode::Element {
                 element: element.clone(),
@@ -591,14 +583,14 @@ fn evaluate_data_op<'a>(
         IrDataOp::OptionSome(inner) => Value::Option(Some(Rc::new(env[inner].clone()))),
         IrDataOp::OptionNone => Value::Option(None),
         IrDataOp::StringConcat(parts) => {
-            let length: usize = parts.iter().map(|part| env[part].as_str().len()).sum();
+            let length: usize = parts.iter().map(|part| env[part].as_string().len()).sum();
             if length > MAX_STRING_LENGTH {
                 return Err(STRING_LENGTH_LIMIT_ERROR);
             }
             Value::String(
                 parts
                     .iter()
-                    .map(|part| env[part].as_str())
+                    .map(|part| &**env[part].as_string())
                     .collect::<String>()
                     .into(),
             )
@@ -619,7 +611,7 @@ fn evaluate_data_op<'a>(
             let right = &env[right];
             match &env[left] {
                 Value::Bool(left) => Value::Bool(*left == right.as_bool()),
-                Value::String(left) => Value::Bool(**left == *right.as_str()),
+                Value::String(left) => Value::Bool(left == right.as_string()),
                 Value::Int(left) => Value::Bool(*left == right.as_int()),
                 left => Value::Bool(left.as_float() == right.as_float()),
             }
@@ -659,7 +651,7 @@ fn evaluate_data_op<'a>(
                 .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
             ))
         }
-        IrDataOp::StringIsEmpty(operand) => Value::Bool(env[operand].as_str().is_empty()),
+        IrDataOp::StringIsEmpty(operand) => Value::Bool(env[operand].as_string().is_empty()),
         IrDataOp::OptionIsSome(operand) => Value::Bool(env[operand].as_option().is_some()),
         IrDataOp::OptionIsNone(operand) => Value::Bool(env[operand].as_option().is_none()),
         IrDataOp::IntToString(operand) => Value::String(env[operand].as_int().to_string().into()),

@@ -1,5 +1,5 @@
 use super::bounded_vec::BoundedVec;
-use super::value::{MAX_ARRAY_LENGTH, Value};
+use super::value::Value;
 use crate::ir::ir_type::IrDataType;
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations, IrVariant};
 use crate::symbols::type_name::TypeName;
@@ -126,7 +126,7 @@ fn generate(
             let len = if depth >= MAX_DEPTH {
                 0
             } else {
-                rng.random_range(0..=MAX_ARRAY_LENGTH.min(5))
+                rng.random_range(0..=5)
             };
             let elements =
                 (0..len).map(|_| random_value_at_depth(rng, inner, types, depth + 1, visiting));

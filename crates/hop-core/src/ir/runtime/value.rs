@@ -3,12 +3,14 @@ use std::rc::Rc;
 use rpds::HashTrieMap;
 
 use crate::hop::typing::{Constructor, Pattern};
+use crate::html::{HtmlElementKind, write_escaped_html};
 use crate::ir::flat_program::{FlatHtmlLambda, FlatPureLambda};
 use crate::ir::ir_match::IrPattern;
 use crate::ir::runtime::bounded_vec::BoundedVec;
-use crate::ir::runtime::html_node::Html;
-use crate::ir::runtime::state::Place;
+use crate::ir::runtime::eval_error::EvalError;
+use crate::ir::runtime::state::{NodeId, Place};
 use crate::ir::value_id::ValueId;
+use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::{field_name::FieldName, type_name::TypeName};
 
 pub const MAX_ARRAY_LENGTH: usize = 10_000_000;
@@ -57,38 +59,6 @@ pub enum Lambda<'a> {
 }
 
 impl<'a> Value<'a> {
-    /// Panics if the value is not a String.
-    pub fn unwrap_string(self) -> Rc<str> {
-        match self {
-            Value::String(s) => s,
-            _ => panic!("Expected a String value, found {self:?}"),
-        }
-    }
-
-    /// Panics if the value is not a String.
-    pub fn as_str(&self) -> &str {
-        match self {
-            Value::String(s) => s,
-            _ => panic!("Expected a String value, found {self:?}"),
-        }
-    }
-
-    /// Panics if the value is not Html.
-    pub fn unwrap_html(self) -> Html<'a> {
-        match self {
-            Value::Html(html) => html,
-            _ => panic!("Expected Html value, found {self:?}"),
-        }
-    }
-
-    /// The markup an Html value renders as. Panics if the value is not Html.
-    #[cfg(test)]
-    pub fn into_markup(self) -> String {
-        let mut markup = String::new();
-        self.unwrap_html().write(&mut markup);
-        markup
-    }
-
     /// Structural equality of data, comparing floats as `f64::total_cmp`
     /// does, by their bits: NaN is equal to itself, and 0.0 is not -0.0. It
     /// is an equivalence relation, so values that share an allocation are
@@ -126,11 +96,27 @@ impl<'a> Value<'a> {
         }
     }
 
+    /// Panics if the value is not Html.
+    pub fn unwrap_html(self) -> Html<'a> {
+        match self {
+            Value::Html(html) => html,
+            _ => panic!("Expected Html value, found {self:?}"),
+        }
+    }
+
+    /// Panics if the value is not a String.
+    pub fn as_string(&self) -> &Rc<str> {
+        match self {
+            Value::String(s) => s,
+            _ => panic!("Expected a String value, found {self:?}"),
+        }
+    }
+
     /// Panics if the value is not a Bool.
     pub fn as_bool(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
-            _ => panic!("Expected a Bool value, found {self:?}"),
+            _ => panic!("expected a Bool value, found {self:?}"),
         }
     }
 
@@ -138,7 +124,7 @@ impl<'a> Value<'a> {
     pub fn as_int(&self) -> i32 {
         match self {
             Value::Int(i) => *i,
-            _ => panic!("Expected an Int value, found {self:?}"),
+            _ => panic!("expected an Int value, found {self:?}"),
         }
     }
 
@@ -146,7 +132,7 @@ impl<'a> Value<'a> {
     pub fn as_float(&self) -> f64 {
         match self {
             Value::Float(f) => *f,
-            _ => panic!("Expected a Float value, found {self:?}"),
+            _ => panic!("expected a Float value, found {self:?}"),
         }
     }
 
@@ -154,7 +140,7 @@ impl<'a> Value<'a> {
     pub fn as_array(&self) -> &[Value<'a>] {
         match self {
             Value::Array(arr) => arr,
-            _ => panic!("Expected an Array value, found {self:?}"),
+            _ => panic!("expected an Array value, found {self:?}"),
         }
     }
 
@@ -162,7 +148,7 @@ impl<'a> Value<'a> {
     pub fn as_tuple(&self) -> &[Value<'a>] {
         match self {
             Value::Tuple(elements) => elements,
-            _ => panic!("Expected a Tuple value, found {self:?}"),
+            _ => panic!("expected a Tuple value, found {self:?}"),
         }
     }
 
@@ -170,7 +156,7 @@ impl<'a> Value<'a> {
     pub fn as_record(&self) -> &[(FieldName, Value<'a>)] {
         match self {
             Value::Record(rec) => rec,
-            _ => panic!("Expected a Record value, found {self:?}"),
+            _ => panic!("expected a Record value, found {self:?}"),
         }
     }
 
@@ -178,26 +164,23 @@ impl<'a> Value<'a> {
     pub fn as_option(&self) -> Option<&Value<'a>> {
         match self {
             Value::Option(opt) => opt.as_deref(),
-            _ => panic!("Expected an Option value, found {self:?}"),
+            _ => panic!("expected an Option value, found {self:?}"),
         }
     }
 
-    pub fn as_closure(&self) -> &Closure<'a> {
+    /// Panics if the value is not a Closure.
+    pub fn as_closure(&self) -> &Rc<Closure<'a>> {
         match self {
             Value::Closure(closure) => closure,
-            _ => panic!("Expected a Closure value, found {self:?}"),
+            _ => panic!("expected a Closure value, found {self:?}"),
         }
-    }
-
-    pub fn unit() -> Value<'a> {
-        Value::Tuple(Rc::new([]))
     }
 
     /// Panics if the value is not a cell.
     pub fn as_place(&self) -> &Place {
         match self {
             Value::Cell(place) => place,
-            _ => panic!("Expected a Cell value, found {self:?}"),
+            _ => panic!("expected a Cell value, found {self:?}"),
         }
     }
 
@@ -205,7 +188,7 @@ impl<'a> Value<'a> {
     pub fn as_effect(&self) -> &Rc<Effect<'a>> {
         match self {
             Value::Effect(effect) => effect,
-            _ => panic!("Expected an Effect value, found {self:?}"),
+            _ => panic!("expected an Effect value, found {self:?}"),
         }
     }
 
@@ -250,6 +233,121 @@ impl<'a> Value<'a> {
                 .zip(elements.iter())
                 .all(|(arg, element)| element.matches(arg, bound)),
             _ => panic!("{self:?} cannot match the pattern {pattern:?}"),
+        }
+    }
+
+    /// The markup an Html value renders as. Panics if the value is not Html.
+    #[cfg(test)]
+    pub fn into_markup(self) -> String {
+        let mut markup = String::new();
+        self.unwrap_html().write(&mut markup);
+        markup
+    }
+}
+
+/// The largest size an Html value may have.
+const MAX_HTML_SIZE: usize = 10_000_000;
+
+#[derive(Debug, Clone)]
+pub struct Html<'a> {
+    node: Rc<HtmlNode<'a>>,
+    size: usize,
+}
+
+#[derive(Debug)]
+pub enum HtmlNode<'a> {
+    Text(&'a str),
+    Escape(Rc<str>),
+    Element {
+        element: HtmlElementKind,
+        attributes: Vec<HtmlAttribute>,
+        children: Html<'a>,
+        #[cfg_attr(not(test), allow(dead_code))]
+        on_click: Option<Rc<Closure<'a>>>,
+        #[cfg_attr(not(test), allow(dead_code))]
+        node: NodeId,
+    },
+    Concat(Vec<Html<'a>>),
+}
+
+/// An attribute that renders. The value is unescaped and escapes when
+/// written. A boolean attribute has no value.
+#[derive(Debug)]
+pub struct HtmlAttribute {
+    pub name: AttributeName,
+    pub value: Option<Rc<str>>,
+}
+
+impl<'a> Html<'a> {
+    /// The node as Html, unless it exceeds the Html size limit.
+    pub fn new(node: HtmlNode<'a>) -> Result<Self, EvalError> {
+        let size = match &node {
+            HtmlNode::Text(text) => text.len().max(1),
+            HtmlNode::Escape(text) => text.len().max(1),
+            HtmlNode::Element {
+                attributes,
+                children,
+                ..
+            } => {
+                let values: usize = attributes
+                    .iter()
+                    .filter_map(|attribute| attribute.value.as_ref())
+                    .map(|value| value.len())
+                    .sum();
+                1 + values + children.size
+            }
+            HtmlNode::Concat(parts) => 1 + parts.iter().map(|part| part.size).sum::<usize>(),
+        };
+        if size > MAX_HTML_SIZE {
+            return Err(EvalError::HtmlSizeLimit {
+                limit: MAX_HTML_SIZE,
+            });
+        }
+        Ok(Html {
+            node: Rc::new(node),
+            size,
+        })
+    }
+
+    #[cfg(test)]
+    pub fn node(&self) -> &HtmlNode<'a> {
+        &self.node
+    }
+
+    pub fn write(&self, out: &mut String) {
+        match &*self.node {
+            HtmlNode::Text(content) => out.push_str(content),
+            HtmlNode::Escape(text) => write_escaped_html(text, out),
+            HtmlNode::Element {
+                element,
+                attributes,
+                children,
+                ..
+            } => {
+                out.push('<');
+                out.push_str(element.as_str());
+                for attribute in attributes {
+                    out.push(' ');
+                    out.push_str(attribute.name.as_str());
+                    if let Some(value) = &attribute.value {
+                        out.push_str("=\"");
+                        write_escaped_html(value, out);
+                        out.push('"');
+                    }
+                }
+                out.push('>');
+                if !element.is_void() {
+                    children.write(out);
+                    out.push_str("</");
+                    out.push_str(element.as_str());
+                    out.push('>');
+                }
+            }
+            HtmlNode::Concat(parts) => {
+                for part in parts {
+                    part.write(out);
+                }
+            }
         }
     }
 }

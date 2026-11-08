@@ -3,9 +3,8 @@ use std::rc::Rc;
 use crate::ir::flat_program::FlatFunction;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::flat_evaluator::evaluate_pure_apply;
-use crate::ir::runtime::html_node::{Html, HtmlNode};
 use crate::ir::runtime::state::NodeId;
-use crate::ir::runtime::value::Effect;
+use crate::ir::runtime::value::{Effect, Html, HtmlNode};
 
 /// The effect of a click on each element of `html` that has a handler or is
 /// inside an element that has one, by its node, in document order. The

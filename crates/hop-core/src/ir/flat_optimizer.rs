@@ -22,10 +22,9 @@ mod tests {
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::clicks::clicks;
     use crate::ir::runtime::flat_evaluator::invoke_entrypoint;
-    use crate::ir::runtime::html_node::{Html, HtmlNode};
     use crate::ir::runtime::labels::Labels;
     use crate::ir::runtime::state::State;
-    use crate::ir::runtime::value::Value;
+    use crate::ir::runtime::value::{Html, HtmlNode, Value};
     use crate::symbols::attribute_name::AttributeName;
     use expect_test::{Expect, expect};
     use rand::{SeedableRng, rngs::SmallRng};
