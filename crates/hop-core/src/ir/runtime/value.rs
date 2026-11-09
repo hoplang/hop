@@ -1,6 +1,5 @@
+use std::ops::Index;
 use std::rc::Rc;
-
-use rpds::HashTrieMap;
 
 use crate::hop::typing::{Constructor, Pattern};
 use crate::html::{HtmlElementKind, write_escaped_html};
@@ -49,7 +48,42 @@ pub enum Effect<'a> {
 #[derive(Debug)]
 pub struct Closure<'a> {
     pub lambda: Lambda<'a>,
-    pub env: HashTrieMap<ValueId, Value<'a>>,
+    pub env: Option<Rc<Env<'a>>>,
+}
+
+#[derive(Debug, Default)]
+pub struct Env<'a> {
+    pub parent: Option<Rc<Env<'a>>>,
+    pub bindings: Vec<(ValueId, Value<'a>)>,
+}
+
+impl<'a> Env<'a> {
+    pub fn freeze(&mut self) -> Option<Rc<Env<'a>>> {
+        if !self.bindings.is_empty() {
+            self.parent = Some(Rc::new(Env {
+                parent: self.parent.take(),
+                bindings: std::mem::take(&mut self.bindings),
+            }));
+        }
+        self.parent.clone()
+    }
+}
+
+impl<'a> Index<&ValueId> for Env<'a> {
+    type Output = Value<'a>;
+
+    fn index(&self, name: &ValueId) -> &Value<'a> {
+        let mut env = self;
+        loop {
+            if let Some((_, value)) = env.bindings.iter().rev().find(|(bound, _)| bound == name) {
+                return value;
+            }
+            env = env
+                .parent
+                .as_deref()
+                .unwrap_or_else(|| panic!("{name} is not in scope"));
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

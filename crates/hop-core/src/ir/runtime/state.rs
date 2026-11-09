@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use rpds::Vector;
-
 #[cfg(test)]
 use crate::ir::flat_program::FlatFunction;
 #[cfg(test)]
@@ -74,7 +72,7 @@ impl<'a> State<'a> {
 
 pub type NodeId = usize;
 
-pub type Place = Vector<Step>;
+pub type Place = Rc<[Step]>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Step {

@@ -1,8 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
-use rpds::HashTrieMap;
-
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
@@ -20,10 +18,9 @@ use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::state::{IterationKey, Place, State, Step};
 use crate::ir::runtime::value::{
-    Closure, Effect, Html, HtmlAttribute, HtmlNode, Lambda, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH,
-    Value,
+    Closure, Effect, Env, Html, HtmlAttribute, HtmlNode, Lambda, MAX_ARRAY_LENGTH,
+    MAX_STRING_LENGTH, Value,
 };
-use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 
@@ -97,7 +94,7 @@ pub fn invoke_entrypoint<'a>(
     state: &State<'a>,
 ) -> Result<(Value<'a>, State<'a>), EvalError> {
     let entrypoint = &program.entrypoints[entrypoint_id];
-    let mut env = HashTrieMap::new();
+    let mut env = Env::default();
     for param in &entrypoint.parameters {
         let value = args
             .remove(param.name())
@@ -105,7 +102,7 @@ pub fn invoke_entrypoint<'a>(
                 entrypoint: entrypoint.name.clone(),
                 param: param.name().clone(),
             })?;
-        env.insert_mut(param.binder.var, value);
+        env.bindings.push((param.binder.var, value));
     }
     let mut new_state = State {
         cells: BTreeMap::new(),
@@ -114,9 +111,9 @@ pub fn invoke_entrypoint<'a>(
     };
     let value = evaluate_html_block(
         &entrypoint.body,
-        &env,
+        env,
         &program.functions,
-        &Place::new(),
+        &Place::from([]),
         state,
         &mut new_state,
         1,
@@ -150,7 +147,10 @@ fn evaluate_html_function<'a>(
     let vars = decl.parameters.iter().map(|param| param.binder.var);
     evaluate_html_block(
         &decl.body,
-        &vars.zip(args).collect(),
+        Env {
+            parent: None,
+            bindings: vars.zip(args).collect(),
+        },
         functions,
         place,
         old_state,
@@ -182,7 +182,10 @@ fn evaluate_pure_function<'a>(
     let vars = decl.parameters.iter().map(|param| param.binder.var);
     evaluate_pure_block(
         &decl.body,
-        &vars.zip(args).collect(),
+        Env {
+            parent: None,
+            bindings: vars.zip(args).collect(),
+        },
         functions,
         depth + 1,
         op_count,
@@ -191,12 +194,11 @@ fn evaluate_pure_function<'a>(
 
 fn evaluate_pure_block<'a>(
     block: &'a FlatPureBlock,
-    env: &HashTrieMap<ValueId, Value<'a>>,
+    mut env: Env<'a>,
     functions: &'a [FlatFunction],
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
-    let mut env = env.clone();
     for binding in &block.bindings {
         *op_count += 1;
         if *op_count > MAX_OP_COUNT {
@@ -211,7 +213,7 @@ fn evaluate_pure_block<'a>(
 
 fn evaluate_html_block<'a>(
     block: &'a FlatHtmlBlock,
-    env: &HashTrieMap<ValueId, Value<'a>>,
+    mut env: Env<'a>,
     functions: &'a [FlatFunction],
     place: &Place,
     old_state: &State<'a>,
@@ -219,7 +221,6 @@ fn evaluate_html_block<'a>(
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
-    let mut env = env.clone();
     for binding in &block.bindings {
         *op_count += 1;
         if *op_count > MAX_OP_COUNT {
@@ -232,26 +233,34 @@ fn evaluate_html_block<'a>(
                 evaluate_pure_binding(binding, &mut env, functions, depth, op_count)?;
             }
             FlatHtmlBinding::Cell(binder, initial) => {
-                let place = place.push_back(Step::Name(binder.var));
+                let place: Place = place
+                    .iter()
+                    .cloned()
+                    .chain([Step::Name(binder.var)])
+                    .collect();
                 new_state.bind_cell(old_state, &place, &env[initial]);
-                env.insert_mut(binder.var, Value::Cell(place));
+                env.bindings.push((binder.var, Value::Cell(place)));
             }
             FlatHtmlBinding::Track(binder, cell) => {
                 let value = new_state.cells[env[cell].as_place()].clone();
-                env.insert_mut(binder.var, value);
+                env.bindings.push((binder.var, value));
             }
             FlatHtmlBinding::Html(binding) => {
                 let value = evaluate_html_op(
                     &binding.op,
-                    &env,
+                    &mut env,
                     functions,
-                    &place.push_back(Step::Name(binding.binder.var)),
+                    &place
+                        .iter()
+                        .cloned()
+                        .chain([Step::Name(binding.binder.var)])
+                        .collect(),
                     old_state,
                     new_state,
                     depth,
                     op_count,
                 )?;
-                env.insert_mut(binding.binder.var, value);
+                env.bindings.push((binding.binder.var, value));
             }
         }
     }
@@ -260,7 +269,7 @@ fn evaluate_html_block<'a>(
 
 fn evaluate_pure_binding<'a>(
     binding: &'a IrBinding<IrFunctionDataType, FlatPureOp>,
-    env: &mut HashTrieMap<ValueId, Value<'a>>,
+    env: &mut Env<'a>,
     functions: &'a [FlatFunction],
     depth: usize,
     op_count: &mut usize,
@@ -273,7 +282,7 @@ fn evaluate_pure_binding<'a>(
         }
         FlatPureOp::Match(match_) => {
             let (body, env) = enter_arm(match_, env);
-            evaluate_pure_block(body, &env, functions, depth, op_count)?
+            evaluate_pure_block(body, env, functions, depth, op_count)?
         }
         FlatPureOp::CellWrite(cell, value) => Value::Effect(Rc::new(Effect::Write(
             env[cell].as_place().clone(),
@@ -289,14 +298,14 @@ fn evaluate_pure_binding<'a>(
         ))),
         FlatPureOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
             lambda: Lambda::Pure(lambda),
-            env: env.clone(),
+            env: env.freeze(),
         })),
         FlatPureOp::Apply(closure, args) => {
             let args = args.iter().map(|arg| env[arg].clone()).collect();
             evaluate_pure_apply(env[closure].as_closure(), args, functions, depth, op_count)?
         }
     };
-    env.insert_mut(binding.binder.var, value);
+    env.bindings.push((binding.binder.var, value));
     Ok(())
 }
 
@@ -315,11 +324,16 @@ pub fn evaluate_pure_apply<'a>(
     let Lambda::Pure(lambda) = closure.lambda else {
         panic!("a Pure application applies a closure that renders Html");
     };
-    let mut body_env = closure.env.clone();
-    for (param, arg) in lambda.parameters.iter().zip(args) {
-        body_env.insert_mut(param.var, arg);
-    }
-    evaluate_pure_block(&lambda.body, &body_env, functions, depth + 1, op_count)
+    let body_env = Env {
+        parent: closure.env.clone(),
+        bindings: lambda
+            .parameters
+            .iter()
+            .map(|param| param.var)
+            .zip(args)
+            .collect(),
+    };
+    evaluate_pure_block(&lambda.body, body_env, functions, depth + 1, op_count)
 }
 
 /// Performs the effect on the cells and gives its value and the cells as it
@@ -379,13 +393,18 @@ fn evaluate_html_apply<'a>(
     let Lambda::Html(lambda) = closure.lambda else {
         panic!("an Html application applies a closure that computes a value");
     };
-    let mut body_env = closure.env.clone();
-    for (param, arg) in lambda.parameters.iter().zip(args) {
-        body_env.insert_mut(param.var, arg);
-    }
+    let body_env = Env {
+        parent: closure.env.clone(),
+        bindings: lambda
+            .parameters
+            .iter()
+            .map(|param| param.var)
+            .zip(args)
+            .collect(),
+    };
     evaluate_html_block(
         &lambda.body,
-        &body_env,
+        body_env,
         functions,
         place,
         old_state,
@@ -395,10 +414,7 @@ fn evaluate_html_apply<'a>(
     )
 }
 
-fn enter_arm<'a, B>(
-    match_: &'a IrMatch<B>,
-    env: &HashTrieMap<ValueId, Value<'a>>,
-) -> (&'a B, HashTrieMap<ValueId, Value<'a>>) {
+fn enter_arm<'a, B>(match_: &'a IrMatch<B>, env: &mut Env<'a>) -> (&'a B, Env<'a>) {
     let subject = &env[&match_.subject];
     let (arm, bound) = match_
         .arms
@@ -410,16 +426,16 @@ fn enter_arm<'a, B>(
                 .then_some((arm, bound))
         })
         .unwrap();
-    let mut env = env.clone();
-    for (name, value) in bound {
-        env.insert_mut(name, value);
-    }
+    let env = Env {
+        parent: env.freeze(),
+        bindings: bound,
+    };
     (&arm.body, env)
 }
 
 fn evaluate_html_op<'a>(
     op: &'a FlatHtmlOp,
-    env: &HashTrieMap<ValueId, Value<'a>>,
+    env: &mut Env<'a>,
     functions: &'a [FlatFunction],
     place: &Place,
     old_state: &State<'a>,
@@ -490,7 +506,7 @@ fn evaluate_html_op<'a>(
         FlatHtmlOp::Match(match_) => {
             let (body, env) = enter_arm(match_, env);
             evaluate_html_block(
-                body, &env, functions, place, old_state, new_state, depth, op_count,
+                body, env, functions, place, old_state, new_state, depth, op_count,
             )?
         }
 
@@ -502,22 +518,37 @@ fn evaluate_html_op<'a>(
         }) => {
             let mut parts = Vec::new();
             let mut occurrences: BTreeMap<IterationKey, usize> = BTreeMap::new();
-            for (index, item) in env[array].as_array().iter().enumerate() {
-                let mut env = env.clone();
-                if let Some(binder) = var {
-                    env.insert_mut(binder.var, item.clone());
-                }
+            let items = env[array].clone();
+            let parent = env.freeze();
+            for (index, item) in items.as_array().iter().enumerate() {
+                let mut env = Env {
+                    parent: parent.clone(),
+                    bindings: var
+                        .iter()
+                        .map(|binder| (binder.var, item.clone()))
+                        .collect(),
+                };
                 let key = match key {
-                    Some(key) => IterationKey::from_value(evaluate_pure_block(
-                        key, &env, functions, depth, op_count,
-                    )?),
+                    Some(key) => {
+                        let env = Env {
+                            parent: env.freeze(),
+                            bindings: Vec::new(),
+                        };
+                        IterationKey::from_value(evaluate_pure_block(
+                            key, env, functions, depth, op_count,
+                        )?)
+                    }
                     None => IterationKey::Int(index as i32),
                 };
                 let occurrence = occurrences.entry(key.clone()).or_default();
-                let iteration = place.push_back(Step::Iteration(key, *occurrence));
+                let iteration: Place = place
+                    .iter()
+                    .cloned()
+                    .chain([Step::Iteration(key, *occurrence)])
+                    .collect();
                 *occurrence += 1;
                 let part = evaluate_html_block(
-                    body, &env, functions, &iteration, old_state, new_state, depth, op_count,
+                    body, env, functions, &iteration, old_state, new_state, depth, op_count,
                 )?;
                 parts.push(part.unwrap_html());
             }
@@ -526,7 +557,7 @@ fn evaluate_html_op<'a>(
 
         FlatHtmlOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
             lambda: Lambda::Html(lambda),
-            env: env.clone(),
+            env: env.freeze(),
         })),
 
         FlatHtmlOp::Apply(closure, args) => {
@@ -545,10 +576,7 @@ fn evaluate_html_op<'a>(
     })
 }
 
-fn evaluate_data_op<'a>(
-    op: &IrDataOp,
-    env: &HashTrieMap<ValueId, Value<'a>>,
-) -> Result<Value<'a>, EvalError> {
+fn evaluate_data_op<'a>(op: &IrDataOp, env: &Env<'a>) -> Result<Value<'a>, EvalError> {
     Ok(match op {
         IrDataOp::StringLiteral(value) => Value::String(value.as_str().into()),
         IrDataOp::IntLiteral(value) => Value::Int(*value),

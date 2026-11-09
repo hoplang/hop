@@ -2364,7 +2364,7 @@ mod tests {
                 let changed: Vec<&Value<'_>> = next
                     .cells
                     .iter()
-                    .filter(|(place, value)| !state.cells[place].total_eq(value))
+                    .filter(|(place, value)| !state.cells[*place].total_eq(value))
                     .map(|(_, value)| value)
                     .collect();
                 if changed.is_empty() {
