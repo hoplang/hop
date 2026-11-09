@@ -691,6 +691,7 @@ fn evaluate_data_op<'a>(op: &IrDataOp, env: &Env<'a>) -> Result<Value<'a>, EvalE
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::counting_allocator;
     use crate::hop::typing::Ty;
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
@@ -722,6 +723,35 @@ mod tests {
             }
             Ok(())
         });
+    }
+
+    #[test]
+    fn count_allocations_in_random_programs() {
+        const ARBTEST_SIZE_BYTES: u64 = 65_536;
+        let mut generation_allocs = 0;
+        let mut evaluation_allocs = 0;
+        for seed in 0..32u64 {
+            arbtest::arbtest(|u| {
+                let allocations = counting_allocator::allocations();
+                let program = random_program(u);
+                generation_allocs += counting_allocator::allocations() - allocations;
+
+                let allocations = counting_allocator::allocations();
+                for (entrypoint, args) in random_entrypoint_args(&program, u)? {
+                    let _ = evaluate_entrypoint(&program, entrypoint, args);
+                }
+                evaluation_allocs += counting_allocator::allocations() - allocations;
+                Ok(())
+            })
+            .seed(seed << 32 | ARBTEST_SIZE_BYTES);
+        }
+        expect![[r#"
+            program generation: 2607630 allocations
+            program evaluation: 17139 allocations
+        "#]]
+        .assert_eq(&format!(
+            "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
+        ));
     }
 
     fn check(

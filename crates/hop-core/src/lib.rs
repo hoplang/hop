@@ -1,6 +1,8 @@
 mod asset_path_rewriter;
 mod asset_reference;
 mod config;
+#[cfg(test)]
+mod counting_allocator;
 mod css;
 mod css_error;
 mod definition_link;
