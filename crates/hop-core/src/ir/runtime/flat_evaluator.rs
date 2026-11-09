@@ -703,14 +703,12 @@ mod tests {
     use crate::ir::runtime::value_builder::ValueBuilder;
     use crate::symbols::function_name::FunctionName;
     use expect_test::{Expect, expect};
-    use rand::{SeedableRng, rngs::SmallRng};
 
     #[test]
     fn fuzz_random_programs_evaluate_without_panicking() {
         arbtest::arbtest(|u| {
             let program = random_program(u);
-            let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            for (entrypoint, args) in random_entrypoint_args(&program, &mut rng) {
+            for (entrypoint, args) in random_entrypoint_args(&program, u)? {
                 match evaluate_entrypoint(&program, entrypoint, args) {
                     Ok(_)
                     | Err(
@@ -1588,12 +1586,11 @@ mod tests {
     fn fuzz_random_programs_keep_cells_and_clicks_and_evaluate_to_a_fixed_point() {
         arbtest::arbtest(|u| {
             let program = random_program(u);
-            let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
             // The state of each entrypoint, in the order the program declares
             // them, which each invocation takes from the one before it.
             let mut states = Vec::new();
             for _ in 0..u.int_in_range(1..=4)? {
-                let invocations = random_entrypoint_args(&program, &mut rng);
+                let invocations = random_entrypoint_args(&program, u)?;
                 states.resize(invocations.len(), State::default());
                 for ((entrypoint, args), state) in invocations.into_iter().zip(&mut states) {
                     // An invocation, then a few clicks, each followed by an

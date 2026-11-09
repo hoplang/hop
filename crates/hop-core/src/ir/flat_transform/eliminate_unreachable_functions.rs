@@ -50,14 +50,12 @@ mod tests {
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::ir::runtime::value::Value;
-    use rand::{SeedableRng, rngs::SmallRng};
 
     #[test]
     fn fuzz_random_programs_evaluate_identically_after_elimination() {
         arbtest::arbtest(|u| {
             let program = random_program(u);
-            let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entrypoint_args = random_entrypoint_args(&program, &mut rng);
+            let entrypoint_args = random_entrypoint_args(&program, u)?;
 
             let before_program = program.clone();
             let before: Vec<Option<String>> = entrypoint_args

@@ -17,7 +17,7 @@ use crate::ir::runtime::value::Value;
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use arbitrary::Unstructured;
-use rand::Rng;
+use rand::{SeedableRng, rngs::SmallRng};
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
@@ -383,9 +383,10 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
 
 pub fn random_entrypoint_args(
     program: &FlatProgram,
-    rng: &mut impl Rng,
-) -> Vec<(EntrypointId, HashMap<AttributeName, Value<'static>>)> {
-    program
+    u: &mut Unstructured<'_>,
+) -> arbitrary::Result<Vec<(EntrypointId, HashMap<AttributeName, Value<'static>>)>> {
+    let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
+    Ok(program
         .entrypoints
         .iter_enumerated()
         .map(|(id, decl)| {
@@ -393,13 +394,13 @@ pub fn random_entrypoint_args(
                 .parameters
                 .iter()
                 .map(|param| {
-                    let value = random_value(rng, &param.binder.typ, &program.types);
+                    let value = random_value(&mut rng, &param.binder.typ, &program.types);
                     (param.name.clone(), value)
                 })
                 .collect();
             (id, args)
         })
-        .collect()
+        .collect())
 }
 
 impl FlatGenerator<'_, '_> {
@@ -1877,7 +1878,7 @@ mod tests {
     use crate::ir::runtime::state::{Place, State, Step};
     use crate::ir::runtime::value::Html;
     use expect_test::{Expect, expect};
-    use rand::{RngExt, SeedableRng, rngs::SmallRng};
+    use rand::RngExt;
     use std::collections::{BTreeMap, BTreeSet, HashSet};
 
     fn check(seed: u64, len: usize, expected: Expect) {
@@ -2437,7 +2438,7 @@ mod tests {
             exhausted += u.is_empty() as usize;
             let bucket = SIZE_EDGES.iter().position(|edge| used < *edge);
             sizes[bucket.unwrap_or(SIZE_EDGES.len())] += 1;
-            for (entrypoint, args) in random_entrypoint_args(&program, &mut rng) {
+            for (entrypoint, args) in random_entrypoint_args(&program, &mut u).unwrap() {
                 entrypoints += 1;
                 let result =
                     invoke_entrypoint(&program, entrypoint, args.clone(), &State::default());
@@ -2619,100 +2620,100 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            7875 of 65536 input bytes consumed per program on average, at most 47999
-            0 of 100 programs exhaust the input
+            9080 of 65536 input bytes consumed per program on average, at most 65536
+            1 of 100 programs exhaust the input
 
             -- sizes --
-            under 256    10  ###########
-            under 1K      8  #########
-            under 4K     33  #####################################
-            under 16K    35  ########################################
-            under 64K    14  ################
-            at 64K        0
+            under 256    12  #########
+            under 1K      5  ####
+            under 4K     22  #################
+            under 16K    49  ########################################
+            under 64K    11  ########
+            at 64K        1
 
             -- programs --
-            212 of 12948 Html bindings have more than one reference
-            2.5 arms per match on average, at least 2 and at most 12
-            8035 of 20451 match arms bind names
-            7830 cells
-            446 parameters take a cell, and 355 arguments pass one
-            463 of 790 loops have a key
-            2142 of 2725 elements have a click
-            363 handlers have more than one click
-            605 clicks apply a handler bound outside their block, 7 of them a parameter
+            114 of 9521 Html bindings have more than one reference
+            2.6 arms per match on average, at least 2 and at most 18
+            10861 of 26169 match arms bind names
+            5807 cells
+            446 parameters take a cell, and 457 arguments pass one
+            422 of 745 loops have a key
+            1583 of 1970 elements have a click
+            273 handlers have more than one click
+            474 clicks apply a handler bound outside their block, 13 of them a parameter
 
             -- invocations --
-            199 invocations
+            218 invocations
             4 invocations hit the call depth limit
             0 invocations hit the array length limit
             0 invocations hit the string length limit
             0 invocations hit the Html size limit
-            5 invocations hit the op count limit
-            1375 cells bound
+            2 invocations hit the op count limit
+            1661 cells bound
 
-            493 clicks
-            54 programs have a click
-            30 programs have a click that changes a cell
+            455 clicks
+            62 programs have a click
+            35 programs have a click that changes a cell
             25 programs have a click that changes the page
-            9 programs have a click that switches an arm of a match
-            9 programs have a click that switches an arm of a match that binds cells
-            9 programs have a click that changes the iterations of a loop
-            3 programs have a click that changes an array cell
+            2 programs have a click that switches an arm of a match
+            3 programs have a click that switches an arm of a match that binds cells
+            7 programs have a click that changes the iterations of a loop
+            5 programs have a click that changes an array cell
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                       70.2    90.0    93.1    71.7
-            Array                      174.3    92.0    90.5    15.7
-            ArrayEnumerate               1.1    46.0    99.1    47.4
-            ArrayFromRange               5.5    78.0    96.3     0.0
-            ArrayGet                     7.6    82.0    90.0    58.3
-            ArrayIsEmpty                 1.4    55.0    90.7    45.7
-            ArrayLength                 13.9    86.0    94.2    44.7
-            BoolLiteral                 56.8    91.0    91.1     0.0
-            BoolNegation                 1.4    50.0    96.5    56.2
-            Call                         6.9    46.0    91.2    86.1
-            Cell                        78.3    91.0    95.4    44.5
-            CellRead                     9.2    72.0    96.6    43.5
-            CellWrite                   23.9    89.0    95.2    53.3
-            EffectApply                  7.2    78.0    95.7    67.8
-            EffectBind                 226.3    85.0    95.9    49.1
-            EffectCall                   9.1     9.0    99.9    93.1
-            EffectMatch                  7.8    71.0    96.9    90.2
-            EffectPure                 131.6    87.0    96.0     0.0
-            Enum                       106.7    71.0    92.6    18.2
-            Equals                       1.6    56.0    93.9    65.5
-            FieldAccess                  3.9    42.0    91.5    68.2
-            FloatLiteral                69.0    90.0    91.2     0.0
-            FloatToInt                  14.0    83.0    93.4    39.5
-            HtmlApply                    4.3    67.0    98.8    81.2
-            HtmlConcat                  44.4    93.0    96.6    37.9
-            HtmlElement                 27.2    87.0    96.2    65.4
-            HtmlEscape                  17.4    83.0    97.0    53.9
-            HtmlFor                      7.9    78.0    99.2    74.4
-            HtmlLambda                   8.2    67.0    94.9    59.2
-            HtmlText                     9.0    72.0    95.2     0.0
-            IntLiteral                  65.5    92.0    92.6     0.0
-            IntToFloat                  11.4    77.0    92.3    42.0
-            IntToString                 20.2    87.0    95.7    43.0
-            Lambda                     333.2    95.0    95.2    41.7
-            LessThan                     1.2    46.0    92.8    54.4
-            LessThanOrEqual              1.4    47.0    92.0    63.8
-            Match                       74.0    92.0    93.3    83.7
-            NumericAdd                  25.0    87.0    92.6    58.2
-            NumericMultiply             23.9    86.0    92.9    59.6
-            NumericNegation             26.3    88.0    93.0    43.6
-            NumericSubtract             24.8    85.0    92.7    57.4
-            OptionIsNone                 1.6    52.0    94.4    46.9
-            OptionIsSome                 1.4    41.0    93.3    47.4
-            OptionNone                 112.8    91.0    90.1     0.0
-            OptionSome                  61.8    92.0    90.6    22.7
-            Record                      87.7    73.0    89.7    21.9
-            StringConcat                20.5    83.0    95.6    49.4
-            StringIsEmpty                1.3    44.0    92.4    46.2
-            StringLiteral               54.7    95.0    92.5     0.0
-            Track                       78.3    91.0    93.7    43.4
-            Tuple                      716.1    96.0    91.2    37.4
-            TupleIndex                 395.9    92.0    89.9    67.0
+            Apply                       86.3    90.0    93.2    71.8
+            Array                      214.6    89.0    90.9    16.3
+            ArrayEnumerate               1.0    45.0    98.0    49.5
+            ArrayFromRange               5.1    80.0    96.5     0.0
+            ArrayGet                    11.5    81.0    86.9    55.2
+            ArrayIsEmpty                 1.1    50.0    87.0    40.0
+            ArrayLength                 16.9    84.0    91.6    49.1
+            BoolLiteral                 74.8    90.0    90.9     0.0
+            BoolNegation                 1.2    51.0    90.1    42.1
+            Call                         6.0    47.0    96.8    75.6
+            Cell                        58.1    87.0    93.7    34.2
+            CellRead                     8.3    71.0    94.3    35.9
+            CellWrite                   23.4    83.0    94.7    47.8
+            EffectApply                  8.4    78.0    95.5    72.0
+            EffectBind                 235.6    80.0    94.6    35.8
+            EffectCall                   3.5    11.0    95.4    52.6
+            EffectMatch                  8.8    73.0    96.3    83.6
+            EffectPure                 137.0    90.0    94.6     0.0
+            Enum                       141.3    72.0    90.6    19.8
+            Equals                       1.1    50.0    91.3    64.3
+            FieldAccess                  6.2    45.0    91.3    39.9
+            FloatLiteral                80.6    87.0    91.6     0.0
+            FloatToInt                  15.9    80.0    91.3    44.7
+            HtmlApply                    3.6    73.0    98.6    75.4
+            HtmlConcat                  31.3    95.0    93.0    33.6
+            HtmlElement                 19.7    86.0    94.2    57.8
+            HtmlEscape                  12.2    78.0    92.6    41.7
+            HtmlFor                      7.5    81.0    99.1    74.0
+            HtmlLambda                   5.4    73.0    98.3    57.5
+            HtmlText                     6.2    71.0    92.9     0.0
+            IntLiteral                  80.0    93.0    91.2     0.0
+            IntToFloat                  15.5    75.0    92.1    46.1
+            IntToString                 15.2    81.0    93.1    43.6
+            Lambda                     357.2    96.0    94.2    35.7
+            LessThan                     1.2    47.0    87.7    56.6
+            LessThanOrEqual              1.2    45.0    91.9    61.3
+            Match                       90.8    91.0    93.9    82.9
+            NumericAdd                  32.4    82.0    90.9    57.7
+            NumericMultiply             31.8    83.0    91.7    60.6
+            NumericNegation             32.5    84.0    90.3    45.3
+            NumericSubtract             32.2    81.0    91.5    59.8
+            OptionIsNone                 1.2    49.0    90.9    49.6
+            OptionIsSome                 1.2    50.0    92.4    49.2
+            OptionNone                 125.0    90.0    91.4     0.0
+            OptionSome                  70.6    90.0    91.1    23.4
+            Record                      93.1    68.0    91.7    23.1
+            StringConcat                14.6    79.0    92.2    44.0
+            StringIsEmpty                1.3    50.0    90.6    51.2
+            StringLiteral               68.6    94.0    91.2     0.0
+            Track                       58.1    87.0    89.8    32.5
+            Tuple                      870.1    95.0    91.3    38.2
+            TupleIndex                 475.1    92.0    89.9    64.1
         "#]]
         .assert_eq(&report);
     }

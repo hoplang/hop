@@ -27,15 +27,13 @@ mod tests {
     use crate::ir::runtime::value::{Html, HtmlNode, Value};
     use crate::symbols::attribute_name::AttributeName;
     use expect_test::{Expect, expect};
-    use rand::{SeedableRng, rngs::SmallRng};
     use std::collections::HashMap;
 
     #[test]
     fn fuzz_random_programs_evaluate_identically_after_optimization() {
         arbtest::arbtest(|u| {
             let program = random_program(u);
-            let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
-            let entrypoint_args = random_entrypoint_args(&program, &mut rng);
+            let entrypoint_args = random_entrypoint_args(&program, u)?;
             // The elements clicked on each entrypoint, one after each render,
             // each an index into the clicks of that render, wrapped around.
             let mut clicked = Vec::with_capacity(entrypoint_args.len());
