@@ -503,24 +503,35 @@ impl FlatGenerator<'_, '_> {
         }
     }
 
+    fn vars_in_scope(
+        b: &FlatBlockBuilder<'_>,
+        scope: &Scope,
+        fits: impl Fn(&IrDataType) -> bool,
+    ) -> Vec<(ValueId, IrDataType)> {
+        let types = b.value_types();
+        let fits = |typ: &IrType| typ.as_data().is_some_and(&fits);
+        (scope.names_where(&types, fits))
+            .map(|name| {
+                let IrType::Data(IrFunctionDataType::Data(typ)) = &types[name.index()] else {
+                    unreachable!()
+                };
+                (name, typ.clone())
+            })
+            .collect()
+    }
+
     fn var_in_scope(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &Scope,
         fits: impl Fn(&IrDataType) -> bool,
     ) -> Option<(ValueId, IrDataType)> {
-        let types = b.value_types();
-        let fits = |typ: &IrType| typ.as_data().is_some_and(&fits);
-        if scope.names_where(&types, fits).next().is_none() || self.index(10) == 0 {
+        let mut vars = Self::vars_in_scope(b, scope, fits);
+        if vars.is_empty() || self.index(10) == 0 {
             return None;
         }
-        let count = scope.names_where(&types, fits).count();
-        let index = self.index(count);
-        let name = scope.names_where(&types, fits).nth(index).unwrap();
-        let IrType::Data(IrFunctionDataType::Data(typ)) = &types[name.index()] else {
-            unreachable!()
-        };
-        Some((name, typ.clone()))
+        let index = self.index(vars.len());
+        Some(vars.swap_remove(index))
     }
 
     fn random_closure_type(&mut self, html: bool, depth: usize) -> IrType {
@@ -1387,11 +1398,25 @@ impl FlatGenerator<'_, '_> {
             Apply,
         }
         let typ = IrType::Data(IrFunctionDataType::Data(target.clone()));
+        let record_fields: Vec<(IrDataType, String)> = self
+            .record_fields_of_type(b, target)
+            .map(|(record, field)| (record.clone(), field.name.as_str().to_string()))
+            .collect();
+        let records = Self::vars_in_scope(b, scope, |ty| {
+            record_fields.iter().any(|(record, _)| record == ty)
+        });
+        let tuples = Self::vars_in_scope(
+            b,
+            scope,
+            |ty| matches!(ty, IrDataType::Tuple(elements) if elements.contains(target)),
+        );
         let mut productions: Vec<P> = Vec::new();
-        if self.record_fields_of_type(b, target).next().is_some() {
+        if !records.is_empty() {
             productions.push(P::FieldAccess);
         }
-        productions.push(P::TupleIndex);
+        if !tuples.is_empty() {
+            productions.push(P::TupleIndex);
+        }
         if *target == IrDataType::Bool {
             productions.extend([
                 P::Eq,
@@ -1438,30 +1463,17 @@ impl FlatGenerator<'_, '_> {
         if depth > 0 {
             productions.extend([P::Match, P::Apply]);
         }
+        if productions.is_empty() {
+            return self.data_leaf(b, scope, target, MAX_LITERAL_DEPTH);
+        }
         let value = match self.u.choose(&productions).unwrap() {
             P::FieldAccess => {
-                let record_fields: Vec<(IrDataType, String)> = self
-                    .record_fields_of_type(b, target)
-                    .map(|(record, field)| (record.clone(), field.name.as_str().to_string()))
+                let (object, record) = &records[self.index(records.len())];
+                let fields: Vec<&String> = (record_fields.iter())
+                    .filter(|(candidate, _)| candidate == record)
+                    .map(|(_, field)| field)
                     .collect();
-                let var = self.var_in_scope(b, scope, |ty| {
-                    record_fields.iter().any(|(record, _)| record == ty)
-                });
-                match var {
-                    Some((object, record)) => {
-                        let fields: Vec<&String> = record_fields
-                            .iter()
-                            .filter(|(candidate, _)| *candidate == record)
-                            .map(|(_, field)| field)
-                            .collect();
-                        b.field_access(object, self.u.choose(&fields).unwrap())
-                    }
-                    None => {
-                        let (record, field) = self.u.choose(&record_fields).unwrap().clone();
-                        let object = self.data_op(b, scope, &record, depth, nesting - 1);
-                        b.field_access(object, &field)
-                    }
-                }
+                b.field_access(*object, self.u.choose(&fields).unwrap())
             }
             P::Eq => {
                 let ty = match self.index(4) {
@@ -1599,43 +1611,13 @@ impl FlatGenerator<'_, '_> {
                 b.array_from_range(start, end)
             }
             P::TupleIndex => {
-                let var = self.var_in_scope(
-                    b,
-                    scope,
-                    |ty| matches!(ty, IrDataType::Tuple(elements) if elements.contains(target)),
-                );
-                match var {
-                    Some((tuple, tuple_ty)) => {
-                        let IrDataType::Tuple(elements) = tuple_ty else {
-                            unreachable!("the variable has a tuple type")
-                        };
-                        let indices: Vec<usize> = (0..elements.len())
-                            .filter(|&index| elements[index] == *target)
-                            .collect();
-                        b.tuple_index(tuple, *self.u.choose(&indices).unwrap())
-                    }
-                    None => {
-                        let arity = self.count(1..=3);
-                        let index = self.index(arity);
-                        let elements = (0..arity)
-                            .map(|i| {
-                                if i == index {
-                                    target.clone()
-                                } else {
-                                    self.random_data_type(1)
-                                }
-                            })
-                            .collect();
-                        let tuple = self.data_op(
-                            b,
-                            scope,
-                            &IrDataType::Tuple(elements),
-                            depth,
-                            nesting - 1,
-                        );
-                        b.tuple_index(tuple, index)
-                    }
-                }
+                let (tuple, IrDataType::Tuple(elements)) = &tuples[self.index(tuples.len())] else {
+                    unreachable!("the variable has a tuple type")
+                };
+                let indices: Vec<usize> = (0..elements.len())
+                    .filter(|&index| elements[index] == *target)
+                    .collect();
+                b.tuple_index(*tuple, *self.u.choose(&indices).unwrap())
             }
             P::Match => self.match_(b, scope, &typ, depth, nesting),
             P::Neg => {
@@ -2620,100 +2602,100 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            9080 of 65536 input bytes consumed per program on average, at most 65536
-            1 of 100 programs exhaust the input
+            14963 of 65536 input bytes consumed per program on average, at most 65536
+            3 of 100 programs exhaust the input
 
             -- sizes --
-            under 256    12  #########
-            under 1K      5  ####
-            under 4K     22  #################
-            under 16K    49  ########################################
-            under 64K    11  ########
-            at 64K        1
+            under 256    10  #########
+            under 1K      2  #
+            under 4K     21  ####################
+            under 16K    42  ########################################
+            under 64K    22  ####################
+            at 64K        3  ##
 
             -- programs --
-            114 of 9521 Html bindings have more than one reference
-            2.6 arms per match on average, at least 2 and at most 18
-            10861 of 26169 match arms bind names
-            5807 cells
-            446 parameters take a cell, and 457 arguments pass one
-            422 of 745 loops have a key
-            1583 of 1970 elements have a click
-            273 handlers have more than one click
-            474 clicks apply a handler bound outside their block, 13 of them a parameter
+            149 of 15425 Html bindings have more than one reference
+            2.7 arms per match on average, at least 2 and at most 27
+            24885 of 59251 match arms bind names
+            8836 cells
+            916 parameters take a cell, and 730 arguments pass one
+            533 of 870 loops have a key
+            2676 of 3346 elements have a click
+            419 handlers have more than one click
+            894 clicks apply a handler bound outside their block, 51 of them a parameter
 
             -- invocations --
             218 invocations
-            4 invocations hit the call depth limit
+            10 invocations hit the call depth limit
             0 invocations hit the array length limit
             0 invocations hit the string length limit
             0 invocations hit the Html size limit
-            2 invocations hit the op count limit
-            1661 cells bound
+            0 invocations hit the op count limit
+            1969 cells bound
 
-            455 clicks
-            62 programs have a click
-            35 programs have a click that changes a cell
-            25 programs have a click that changes the page
-            2 programs have a click that switches an arm of a match
-            3 programs have a click that switches an arm of a match that binds cells
+            505 clicks
+            59 programs have a click
+            34 programs have a click that changes a cell
+            24 programs have a click that changes the page
+            3 programs have a click that switches an arm of a match
+            4 programs have a click that switches an arm of a match that binds cells
             7 programs have a click that changes the iterations of a loop
             5 programs have a click that changes an array cell
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                       86.3    90.0    93.2    71.8
-            Array                      214.6    89.0    90.9    16.3
-            ArrayEnumerate               1.0    45.0    98.0    49.5
-            ArrayFromRange               5.1    80.0    96.5     0.0
-            ArrayGet                    11.5    81.0    86.9    55.2
-            ArrayIsEmpty                 1.1    50.0    87.0    40.0
-            ArrayLength                 16.9    84.0    91.6    49.1
-            BoolLiteral                 74.8    90.0    90.9     0.0
-            BoolNegation                 1.2    51.0    90.1    42.1
-            Call                         6.0    47.0    96.8    75.6
-            Cell                        58.1    87.0    93.7    34.2
-            CellRead                     8.3    71.0    94.3    35.9
-            CellWrite                   23.4    83.0    94.7    47.8
-            EffectApply                  8.4    78.0    95.5    72.0
-            EffectBind                 235.6    80.0    94.6    35.8
-            EffectCall                   3.5    11.0    95.4    52.6
-            EffectMatch                  8.8    73.0    96.3    83.6
-            EffectPure                 137.0    90.0    94.6     0.0
-            Enum                       141.3    72.0    90.6    19.8
-            Equals                       1.1    50.0    91.3    64.3
-            FieldAccess                  6.2    45.0    91.3    39.9
-            FloatLiteral                80.6    87.0    91.6     0.0
-            FloatToInt                  15.9    80.0    91.3    44.7
-            HtmlApply                    3.6    73.0    98.6    75.4
-            HtmlConcat                  31.3    95.0    93.0    33.6
-            HtmlElement                 19.7    86.0    94.2    57.8
-            HtmlEscape                  12.2    78.0    92.6    41.7
-            HtmlFor                      7.5    81.0    99.1    74.0
-            HtmlLambda                   5.4    73.0    98.3    57.5
-            HtmlText                     6.2    71.0    92.9     0.0
-            IntLiteral                  80.0    93.0    91.2     0.0
-            IntToFloat                  15.5    75.0    92.1    46.1
-            IntToString                 15.2    81.0    93.1    43.6
-            Lambda                     357.2    96.0    94.2    35.7
-            LessThan                     1.2    47.0    87.7    56.6
-            LessThanOrEqual              1.2    45.0    91.9    61.3
-            Match                       90.8    91.0    93.9    82.9
-            NumericAdd                  32.4    82.0    90.9    57.7
-            NumericMultiply             31.8    83.0    91.7    60.6
-            NumericNegation             32.5    84.0    90.3    45.3
-            NumericSubtract             32.2    81.0    91.5    59.8
-            OptionIsNone                 1.2    49.0    90.9    49.6
-            OptionIsSome                 1.2    50.0    92.4    49.2
-            OptionNone                 125.0    90.0    91.4     0.0
-            OptionSome                  70.6    90.0    91.1    23.4
-            Record                      93.1    68.0    91.7    23.1
-            StringConcat                14.6    79.0    92.2    44.0
-            StringIsEmpty                1.3    50.0    90.6    51.2
-            StringLiteral               68.6    94.0    91.2     0.0
-            Track                       58.1    87.0    89.8    32.5
-            Tuple                      870.1    95.0    91.3    38.2
-            TupleIndex                 475.1    92.0    89.9    64.1
+            Apply                      194.2    93.0    89.2    66.7
+            Array                      247.9    92.0    83.8    23.3
+            ArrayEnumerate               1.3    48.0    93.1    51.5
+            ArrayFromRange              14.8    89.0    83.0     0.0
+            ArrayGet                    65.4    90.0    84.6    48.3
+            ArrayIsEmpty                 3.6    66.0    89.5    53.3
+            ArrayLength                102.9    91.0    88.6    51.1
+            BoolLiteral                 70.5    89.0    86.3     0.0
+            BoolNegation                 3.6    58.0    93.9    52.2
+            Call                        34.7    53.0    91.4    85.0
+            Cell                        88.4    86.0    97.1    37.3
+            CellRead                    16.7    76.0    77.7    37.2
+            CellWrite                   41.6    86.0    83.1    47.1
+            EffectApply                 16.3    87.0    92.1    66.0
+            EffectBind                 575.7    89.0    94.7    31.8
+            EffectCall                  10.9    12.0    93.2    74.6
+            EffectMatch                 17.0    86.0    91.5    81.7
+            EffectPure                 336.0    92.0    95.3     0.0
+            Enum                       143.2    74.0    82.0    19.9
+            Equals                       3.8    66.0    88.5    57.3
+            FieldAccess                 11.4    43.0    89.8    79.7
+            FloatLiteral               116.7    89.0    83.8     0.0
+            FloatToInt                  99.0    89.0    89.0    45.4
+            HtmlApply                    4.7    69.0    98.9    83.2
+            HtmlConcat                  55.2    94.0    97.7    35.1
+            HtmlElement                 33.5    84.0    97.0    61.9
+            HtmlEscape                  22.2    84.0    97.3    40.7
+            HtmlFor                      8.7    83.0    98.0    73.6
+            HtmlLambda                   6.8    68.0    99.6    63.4
+            HtmlText                    10.8    71.0    98.3     0.0
+            IntLiteral                 164.5    93.0    82.2     0.0
+            IntToFloat                 134.4    89.0    89.3    50.4
+            IntToString                 50.1    89.0    93.1    42.3
+            Lambda                     830.8    97.0    93.2    30.5
+            LessThan                     4.0    62.0    91.3    60.6
+            LessThanOrEqual              4.0    72.0    93.5    64.6
+            Match                      200.9    93.0    89.5    79.9
+            NumericAdd                 234.9    91.0    88.9    63.4
+            NumericMultiply            229.9    90.0    88.8    63.0
+            NumericNegation            238.9    91.0    89.0    50.0
+            NumericSubtract            236.6    90.0    88.7    63.0
+            OptionIsNone                 3.6    68.0    90.7    51.6
+            OptionIsSome                 3.7    64.0    88.4    48.1
+            OptionNone                  78.5    90.0    89.4     0.0
+            OptionSome                  72.4    90.0    88.2    27.4
+            Record                     101.3    69.0    81.2    33.3
+            StringConcat                49.4    90.0    93.0    41.0
+            StringIsEmpty                3.6    73.0    89.3    38.8
+            StringLiteral               63.4    94.0    87.5     0.0
+            Track                       88.4    86.0    95.2    36.2
+            Tuple                      538.4    94.0    92.5    13.0
+            TupleIndex                  62.1    85.0    92.5    61.4
         "#]]
         .assert_eq(&report);
     }
