@@ -19,17 +19,16 @@ use crate::symbols::field_name::FieldName;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlatTypeError {
-    /// A function reads an Html value when the path has already read it,
-    /// or in a loop or lambda body that the value is bound outside of.
-    HtmlNotLive,
+    /// An Html value is read more than once: again on a path that has
+    /// already read it, or in a loop or lambda body that it is bound
+    /// outside of, which would read it on every run of the body.
+    HtmlReadMoreThanOnce,
     /// A name is bound a second time.
     BoundTwice,
     /// A name is read before it is bound.
     ReadBeforeBound,
     /// A name is read outside the block that binds it.
     ReadOutOfScope,
-    /// A closure reads an Html value bound outside it.
-    ClosureReadsOuterHtml,
     /// A binding declares a type that its op does not produce from the
     /// types of its operands.
     IllTypedBinding,
@@ -215,7 +214,7 @@ fn check_block(
 
 fn read(name: ValueId, scope: &mut [bool], html: &[bool]) -> Result<(), FlatTypeError> {
     if html[name.index()] && !std::mem::replace(&mut scope[name.index()], false) {
-        return Err(FlatTypeError::HtmlNotLive);
+        return Err(FlatTypeError::HtmlReadMoreThanOnce);
     }
     Ok(())
 }
@@ -226,7 +225,6 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatTypeError> {
         functions: &program.functions,
         names: vec![None; program.value_ids.count()],
         scope: Vec::new(),
-        lambdas: 0,
     };
     for function in &program.functions {
         checker.scoped(|checker| match function {
@@ -277,13 +275,11 @@ struct Checker<'a> {
     names: Vec<Option<Name<'a>>>,
     // The names bound in the blocks being checked, innermost last.
     scope: Vec<ValueId>,
-    lambdas: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct Name<'a> {
     typ: BoundType<'a>,
-    lambdas: usize,
     in_scope: bool,
 }
 
@@ -341,7 +337,6 @@ impl<'a> Checker<'a> {
     fn bind(&mut self, name: ValueId, typ: BoundType<'a>) -> Result<(), FlatTypeError> {
         let bound = Name {
             typ,
-            lambdas: self.lambdas,
             in_scope: true,
         };
         if self.names[name.index()].replace(bound).is_some() {
@@ -369,9 +364,6 @@ impl<'a> Checker<'a> {
         let bound = self.names[name.index()].ok_or(FlatTypeError::ReadBeforeBound)?;
         if !bound.in_scope {
             return Err(FlatTypeError::ReadOutOfScope);
-        }
-        if bound.typ == BoundType::Html && bound.lambdas != self.lambdas {
-            return Err(FlatTypeError::ClosureReadsOuterHtml);
         }
         Ok(bound.typ)
     }
@@ -524,7 +516,6 @@ impl<'a> Checker<'a> {
                     )?;
                     checker.html_block(&lambda.body, BoundType::Html)
                 })?;
-                self.lambdas -= 1;
                 true
             }
             FlatHtmlOp::Apply(closure, args) => match self.typ(*closure)? {
@@ -623,7 +614,6 @@ impl<'a> Checker<'a> {
                     )?;
                     checker.pure_block(&lambda.body, BoundType::of_result(&signature.result))
                 })?;
-                self.lambdas -= 1;
                 true
             }
             FlatPureOp::Apply(closure, args) => match self.typ(*closure)? {
@@ -667,7 +657,6 @@ impl<'a> Checker<'a> {
         signature: impl ExactSizeIterator<Item = BoundType<'a>>,
         of: impl Fn(&'a T) -> BoundType<'a>,
     ) -> Result<(), FlatTypeError> {
-        self.lambdas += 1;
         let follows = parameters.len() == signature.len()
             && (parameters.iter())
                 .zip(signature)
@@ -952,7 +941,31 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::ClosureReadsOuterHtml);
+        assert_eq!(error, FlatTypeError::HtmlReadMoreThanOnce);
+    }
+
+    #[test]
+    fn should_reject_html_read_twice() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let html = t.text("x");
+                t.html_concat([html, html])
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::HtmlReadMoreThanOnce);
+    }
+
+    #[test]
+    fn should_reject_html_read_in_a_loop_body_it_is_bound_outside_of() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
+                let html = t.text("x");
+                t.html_for(t.param("items"), |_, _| html)
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::HtmlReadMoreThanOnce);
     }
 
     #[test]
