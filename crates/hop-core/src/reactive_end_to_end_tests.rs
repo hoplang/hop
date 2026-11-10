@@ -52,9 +52,9 @@ fn run(program: &FlatProgram, page: &IrPage, events: &[Event]) -> String {
                 let tag =
                     (view.shown.get(&label)).unwrap_or_else(|| panic!("e{label} is not shown"));
                 out.push_str(&format!("-- click {tag}@e{label} --\n"));
-                let node = view.labels.node(label);
+                let identity = view.labels.identity(label);
                 let targets = clicks(&program.functions, &html);
-                let run = match targets.iter().find(|(target, _)| *target == node) {
+                let run = match targets.iter().find(|(target, _)| *target == identity) {
                     Some((_, Ok(effect))) => state.run(effect, &program.functions),
                     Some((_, Err(error))) => Err(error.clone()),
                     None => Ok(()),
@@ -119,13 +119,13 @@ impl View {
             element,
             attributes,
             children,
-            node,
+            identity,
             ..
         } = html.node()
         else {
             unreachable!("an item is an element or text");
         };
-        let label = self.labels.label(*node);
+        let label = self.labels.label(*identity);
         out.push_str(&"  ".repeat(depth));
         out.push_str(&format!("<{}@e{label}", element.as_str()));
         for attribute in attributes {
@@ -341,7 +341,7 @@ fn a_cell_and_an_element_of_a_call_in_an_arm_start_over_when_the_match_takes_the
 }
 
 #[test]
-fn an_element_bound_outside_a_match_keeps_its_node_in_each_arm() {
+fn an_element_bound_outside_a_match_keeps_its_identity_in_each_arm() {
     check(
         indoc! {r#"
             page Test {
@@ -467,7 +467,7 @@ fn a_handler_reaches_an_element_through_a_parameter() {
 }
 
 #[test]
-fn an_element_a_match_hides_keeps_its_node_while_it_is_evaluated() {
+fn an_element_a_match_hides_keeps_its_identity_while_it_is_evaluated() {
     check(
         indoc! {r#"
             page Test {
@@ -967,7 +967,7 @@ fn the_cells_of_nested_loops_follow_the_keys_of_both_loops() {
 }
 
 #[test]
-fn an_element_keeps_its_node_when_the_value_of_an_attribute_changes() {
+fn an_element_keeps_its_identity_when_the_value_of_an_attribute_changes() {
     check(
         indoc! {r#"
             page Test {

@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::ir::flat_program::FlatFunction;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::flat_evaluator::evaluate_pure_apply;
-use crate::ir::runtime::state::NodeId;
+use crate::ir::runtime::state::ElementIdentity;
 use crate::ir::runtime::value::{Effect, Html, HtmlNode};
 
 /// The effect of a click on each element of `html` that has a handler or is
@@ -15,18 +15,18 @@ use crate::ir::runtime::value::{Effect, Html, HtmlNode};
 pub fn clicks<'a>(
     functions: &'a [FlatFunction],
     html: &Html<'a>,
-) -> Vec<(NodeId, Result<Rc<Effect<'a>>, EvalError>)> {
+) -> Vec<(ElementIdentity, Result<Rc<Effect<'a>>, EvalError>)> {
     fn walk<'a>(
         functions: &'a [FlatFunction],
         html: &Html<'a>,
         around: Option<&Result<Rc<Effect<'a>>, EvalError>>,
-        out: &mut Vec<(NodeId, Result<Rc<Effect<'a>>, EvalError>)>,
+        out: &mut Vec<(ElementIdentity, Result<Rc<Effect<'a>>, EvalError>)>,
     ) {
         match html.node() {
             HtmlNode::Element {
                 children,
                 on_click,
-                node,
+                identity,
                 ..
             } => {
                 let effect = match on_click {
@@ -48,7 +48,7 @@ pub fn clicks<'a>(
                     }
                 };
                 if let Some(effect) = &effect {
-                    out.push((*node, effect.clone()));
+                    out.push((*identity, effect.clone()));
                 }
                 walk(functions, children, effect.as_ref(), out);
             }

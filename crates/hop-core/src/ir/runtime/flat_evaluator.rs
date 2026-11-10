@@ -486,13 +486,13 @@ fn evaluate_html_op<'a>(
             }
             let children = env[children].clone().unwrap_html();
             let on_click = on_click.map(|handler| env[&handler].as_closure().clone());
-            let node = new_state.bind_element(old_state, place);
+            let identity = new_state.bind_element(old_state, place);
             Value::Html(Html::new(HtmlNode::Element {
                 element: element.clone(),
                 attributes: rendered,
                 children,
                 on_click,
-                node,
+                identity,
             })?)
         }
 

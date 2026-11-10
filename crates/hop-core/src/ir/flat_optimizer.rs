@@ -81,10 +81,10 @@ mod tests {
                 HtmlNode::Element {
                     element,
                     children,
-                    node,
+                    identity,
                     ..
                 } => {
-                    out.push(format!("{}@e{}", element.as_str(), labels.label(*node)));
+                    out.push(format!("{}@e{}", element.as_str(), labels.label(*identity)));
                     shown(children, labels, out);
                 }
                 HtmlNode::Concat(parts) => {

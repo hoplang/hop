@@ -7,7 +7,7 @@ use crate::ir::flat_program::{FlatHtmlLambda, FlatPureLambda};
 use crate::ir::ir_match::IrPattern;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
-use crate::ir::runtime::state::{NodeId, Place};
+use crate::ir::runtime::state::{ElementIdentity, Place};
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::{field_name::FieldName, type_name::TypeName};
@@ -299,7 +299,7 @@ pub enum HtmlNode<'a> {
         #[cfg_attr(not(test), allow(dead_code))]
         on_click: Option<Rc<Closure<'a>>>,
         #[cfg_attr(not(test), allow(dead_code))]
-        node: NodeId,
+        identity: ElementIdentity,
     },
     Concat(Vec<Html<'a>>),
 }

@@ -15,8 +15,8 @@ use crate::ir::value_id::ValueId;
 #[derive(Debug, Clone, Default)]
 pub struct State<'a> {
     pub cells: BTreeMap<Place, Value<'a>>,
-    pub elements: BTreeMap<Place, NodeId>,
-    pub node_counter: NodeId,
+    pub elements: BTreeMap<Place, ElementIdentity>,
+    pub node_counter: ElementIdentity,
 }
 
 #[cfg(test)]
@@ -50,7 +50,7 @@ impl<'a> State<'a> {
         Self::retain(&mut self.cells, &old.cells, place, || initial.clone());
     }
 
-    pub fn bind_element(&mut self, old: &State<'a>, place: &Place) -> NodeId {
+    pub fn bind_element(&mut self, old: &State<'a>, place: &Place) -> ElementIdentity {
         let node_counter = &mut self.node_counter;
         Self::retain(&mut self.elements, &old.elements, place, || {
             *node_counter += 1;
@@ -70,7 +70,7 @@ impl<'a> State<'a> {
     }
 }
 
-pub type NodeId = usize;
+pub type ElementIdentity = usize;
 
 pub type Place = Rc<[Step]>;
 
