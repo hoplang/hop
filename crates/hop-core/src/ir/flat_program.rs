@@ -96,9 +96,10 @@ pub enum FlatHtmlOp {
     Escape(ValueId),
     /// Concatenate Html. `(Html, ..., Html) -> Html`.
     Concat(Vec<ValueId>),
-    /// Bind a Html element, whose node its place keeps across renders. The
-    /// children of a void element are a concat of nothing. `Html -> Html`.
-    Element(IrHtmlElement<ValueId>),
+    /// Bind a Html element, whose node its place keeps across renders. A void
+    /// element has no children, and every other element has them.
+    /// `Html -> Html`, or `Html` for a void element.
+    Element(IrHtmlElement<Option<ValueId>>),
     /// Run a fold-map over an array, where each iteration produces a Html value.
     /// The key, when there is one, gives each element the identity its
     /// cells and elements keep across renders. `Array[T] -> Html`.
@@ -209,7 +210,9 @@ impl FlatHtmlOp {
             }
             FlatHtmlOp::Element(element) => {
                 element.for_each_attribute_operand(f);
-                f(element.children);
+                if let Some(children) = element.children {
+                    f(children);
+                }
                 if let Some(handler) = element.on_click {
                     f(handler);
                 }
@@ -242,7 +245,9 @@ impl FlatHtmlOp {
             }
             FlatHtmlOp::Element(element) => {
                 element.for_each_attribute_operand_mut(f);
-                f(&mut element.children);
+                if let Some(children) = &mut element.children {
+                    f(children);
+                }
                 if let Some(handler) = &mut element.on_click {
                     f(handler);
                 }
@@ -317,7 +322,10 @@ impl fmt::Display for FlatHtmlOp {
                         IrAttribute::Constant(None) => {}
                     }
                 }
-                write!(f, "}}, {})", element.children)?;
+                match element.children {
+                    Some(children) => write!(f, "}}, {children})")?,
+                    None => write!(f, "}})")?,
+                }
                 if let Some(handler) = element.on_click {
                     write!(f, " on_click {handler}")?;
                 }

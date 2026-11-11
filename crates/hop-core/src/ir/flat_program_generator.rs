@@ -940,10 +940,12 @@ impl FlatGenerator<'_, '_> {
                     1 => b.text(self.u.choose(TEXTS).unwrap()),
                     _ => {
                         let (tag, void) = *self.u.choose(ELEMENTS).unwrap();
-                        let children = if void || depth == 0 {
-                            b.html_concat(Vec::new())
+                        let children = if void {
+                            None
+                        } else if depth == 0 {
+                            Some(b.html_concat(Vec::new()))
                         } else {
-                            self.html_leaf(b, scope, depth - 1)
+                            Some(self.html_leaf(b, scope, depth - 1))
                         };
                         self.element(b, scope, tag, Vec::new(), children, 0, 0)
                     }
@@ -961,7 +963,7 @@ impl FlatGenerator<'_, '_> {
         scope: &mut Scope,
         tag: &str,
         attributes: Vec<(AttributeName, IrAttribute)>,
-        children: ValueId,
+        children: Option<ValueId>,
         depth: usize,
         nesting: usize,
     ) -> ValueId {
@@ -1275,14 +1277,17 @@ impl FlatGenerator<'_, '_> {
                     let present = self.data_op(b, scope, &IrDataType::Bool, depth, nesting - 1);
                     attributes.push(b.attr_presence("disabled", present));
                 }
-                let count = if void { 0 } else { self.count(0..=4) };
-                let mut children: Vec<_> = (0..count)
-                    .map(|_| self.html_op(b, scope, depth, nesting - 1))
-                    .collect();
-                let children = if children.len() == 1 {
-                    children.pop().unwrap()
+                let children = if void {
+                    None
                 } else {
-                    b.html_concat(children)
+                    let mut children: Vec<_> = (0..self.count(0..=4))
+                        .map(|_| self.html_op(b, scope, depth, nesting - 1))
+                        .collect();
+                    Some(if children.len() == 1 {
+                        children.pop().unwrap()
+                    } else {
+                        b.html_concat(children)
+                    })
                 };
                 self.element(b, scope, tag, attributes, children, depth, nesting - 1)
             }
@@ -1356,7 +1361,12 @@ impl FlatGenerator<'_, '_> {
             .filter(|(_, void)| !void)
             .map(|(tag, _)| *tag)
             .collect();
-        b.element_on_click(self.u.choose(&tags).unwrap(), Vec::new(), handler, shown)
+        b.element_on_click(
+            self.u.choose(&tags).unwrap(),
+            Vec::new(),
+            handler,
+            Some(shown),
+        )
     }
 
     fn data_op(
@@ -2602,7 +2612,7 @@ mod tests {
             at 64K        6  #####
 
             -- programs --
-            112 of 12751 Html bindings have more than one reference
+            112 of 11989 Html bindings have more than one reference
             2.5 arms per match on average, at least 2 and at most 18
             22918 of 58379 match arms bind names
             7858 cells
@@ -2656,7 +2666,7 @@ mod tests {
             FloatLiteral               120.8    88.0    89.1     0.0
             FloatToInt                 121.3    88.0    89.3    46.3
             HtmlApply                    4.6    65.0    95.0    80.4
-            HtmlConcat                  43.9    91.0    93.8    34.0
+            HtmlConcat                  36.2    87.0    93.9    41.2
             HtmlElement                 26.9    83.0    94.1    62.2
             HtmlEscape                  17.0    85.0    93.2    44.4
             HtmlFor                      8.9    80.0    96.2    69.6

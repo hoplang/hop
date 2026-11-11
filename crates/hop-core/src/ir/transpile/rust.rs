@@ -2065,9 +2065,9 @@ mod tests {
                     let prefix = t.param("prefix");
                     let row = t.lambda([IrType::INT], |t, params| {
                         let text = t.string_concat([prefix, t.int_to_string(params[0])]);
-                        t.element("li", [], t.escape(text))
+                        t.element("li", [], Some(t.escape(text)))
                     });
-                    t.element("ul", [], t.call("Countdown", [t.int(3), row]))
+                    t.element("ul", [], Some(t.call("Countdown", [t.int(3), row])))
                 })
                 .build()
                 .unwrap(),
@@ -2264,7 +2264,9 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [], |t| {
-                    let wrap = t.lambda([IrType::HTML], |t, params| t.element("b", [], params[0]));
+                    let wrap = t.lambda([IrType::HTML], |t, params| {
+                        t.element("b", [], Some(params[0]))
+                    });
                     t.call("Wrap", [t.int(2), wrap])
                 })
                 .build()

@@ -54,54 +54,15 @@ pub enum FlatTypeError {
     /// A click names a value that is not a closure from no parameters to
     /// an Effect.
     ClickNotHandler,
-    /// A void element has children other than a concat of nothing.
+    /// A void element has children.
     VoidElementWithChildren,
+    /// An element that is not void has no children.
+    ElementWithoutChildren,
 }
 
 pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
     check_well_typed(program)?;
-    check_html_affine(program)?;
-    check_void_elements(program)
-}
-
-fn check_void_elements(program: &FlatProgram) -> Result<(), FlatTypeError> {
-    let mut empty = vec![false; program.value_ids.count()];
-    for function in &program.functions {
-        if let FlatFunction::Html(function) = function {
-            check_void_elements_in(&function.body, &mut empty)?;
-        }
-    }
-    for entrypoint in program.entrypoints.iter() {
-        check_void_elements_in(&entrypoint.body, &mut empty)?;
-    }
-    Ok(())
-}
-
-fn check_void_elements_in(block: &FlatHtmlBlock, empty: &mut [bool]) -> Result<(), FlatTypeError> {
-    for binding in &block.bindings {
-        let FlatHtmlBinding::Html(binding) = binding else {
-            continue;
-        };
-        match &binding.op {
-            FlatHtmlOp::Concat(parts) if parts.is_empty() => {
-                empty[binding.binder.var.index()] = true;
-            }
-            FlatHtmlOp::Element(element) => {
-                if element.element.is_void() && !empty[element.children.index()] {
-                    return Err(FlatTypeError::VoidElementWithChildren);
-                }
-            }
-            FlatHtmlOp::Match(match_) => {
-                for arm in &match_.arms {
-                    check_void_elements_in(&arm.body, empty)?;
-                }
-            }
-            FlatHtmlOp::For(for_) => check_void_elements_in(&for_.body, empty)?,
-            FlatHtmlOp::Lambda(lambda) => check_void_elements_in(&lambda.body, empty)?,
-            _ => {}
-        }
-    }
-    Ok(())
+    check_html_affine(program)
 }
 
 fn check_html_affine(program: &FlatProgram) -> Result<(), FlatTypeError> {
@@ -477,7 +438,13 @@ impl<'a> Checker<'a> {
                         return Err(FlatTypeError::ClickNotHandler);
                     }
                 }
-                html && attributes && self.typ(element.children)?.is(&IrType::HTML)
+                let children = match (element.element.is_void(), element.children) {
+                    (true, None) => true,
+                    (true, Some(_)) => return Err(FlatTypeError::VoidElementWithChildren),
+                    (false, None) => return Err(FlatTypeError::ElementWithoutChildren),
+                    (false, Some(children)) => self.typ(children)?.is(&IrType::HTML),
+                };
+                html && attributes && children
             }
             FlatHtmlOp::For(for_) => {
                 let Some(IrDataType::Array(element)) = self.data(for_.array)? else {
@@ -1242,7 +1209,7 @@ mod tests {
                     m.arm(Pat::False, |t, _| t.text("off"));
                 });
                 let reset = t.event_handler(|t| t.cell_write(inner.get().unwrap(), t.int(0)));
-                let button = t.element_on_click("button", vec![], reset, t.text("x"));
+                let button = t.element_on_click("button", vec![], reset, Some(t.text("x")));
                 t.html_concat([picked, button])
             })
             .build()
@@ -1256,7 +1223,7 @@ mod tests {
             .entrypoint("Test", [], |t| {
                 let count = t.int(0);
                 let reset = t.event_handler(|t| t.cell_write(count, t.int(1)));
-                t.element_on_click("button", vec![], reset, t.text("x"))
+                t.element_on_click("button", vec![], reset, Some(t.text("x")))
             })
             .build()
             .unwrap_err();
@@ -1269,7 +1236,7 @@ mod tests {
             .entrypoint("Test", [], |t| {
                 let count = t.cell(t.int(0));
                 let flip = t.event_handler(|t| t.cell_write(count, t.bool(true)));
-                t.element_on_click("button", vec![], flip, t.text("x"))
+                t.element_on_click("button", vec![], flip, Some(t.text("x")))
             })
             .build()
             .unwrap_err();
@@ -1284,7 +1251,7 @@ mod tests {
                 let read = t.cell_read(count);
                 let continuation = t.lambda([IrType::STRING], |t, _| t.effect_pure(t.int(1)));
                 let handler = t.event_handler(|t| t.effect_bind(read, continuation));
-                t.element_on_click("button", vec![], handler, t.text("x"))
+                t.element_on_click("button", vec![], handler, Some(t.text("x")))
             })
             .build()
             .unwrap_err();
@@ -1295,7 +1262,7 @@ mod tests {
     fn should_reject_a_click_whose_handler_is_a_value() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                t.element_on_click("button", vec![], t.int(1), t.text("x"))
+                t.element_on_click("button", vec![], t.int(1), Some(t.text("x")))
             })
             .build()
             .unwrap_err();
@@ -1308,7 +1275,7 @@ mod tests {
             .entrypoint("Test", [], |t| {
                 let count = t.cell(t.int(0));
                 let reset = t.cell_write(count, t.int(0));
-                t.element_on_click("button", vec![], reset, t.text("x"))
+                t.element_on_click("button", vec![], reset, Some(t.text("x")))
             })
             .build()
             .unwrap_err();
@@ -1321,7 +1288,7 @@ mod tests {
             .entrypoint("Test", [], |t| {
                 let count = t.cell(t.int(0));
                 let set = t.lambda([IrType::INT], |t, params| t.cell_write(count, params[0]));
-                t.element_on_click("button", vec![], set, t.text("x"))
+                t.element_on_click("button", vec![], set, Some(t.text("x")))
             })
             .build()
             .unwrap_err();
@@ -1334,7 +1301,7 @@ mod tests {
             .entrypoint("Test", [], |t| {
                 let count = t.track(t.cell(t.int(0)));
                 let next = t.lambda([], |t, _| t.add(NumericType::Int, count, t.int(1)));
-                t.element_on_click("button", vec![], next, t.text("x"))
+                t.element_on_click("button", vec![], next, Some(t.text("x")))
             })
             .build()
             .unwrap_err();
@@ -1349,7 +1316,12 @@ mod tests {
                 let bump = t.event_handler(|t| {
                     t.cell_write(t.param("count"), t.add(NumericType::Int, shown, t.int(1)))
                 });
-                t.element_on_click("button", vec![], bump, t.escape(t.int_to_string(shown)))
+                t.element_on_click(
+                    "button",
+                    vec![],
+                    bump,
+                    Some(t.escape(t.int_to_string(shown))),
+                )
             })
             .entrypoint("Test", [], |t| {
                 let count = t.cell(t.int(0));
@@ -1362,10 +1334,19 @@ mod tests {
     #[test]
     fn should_reject_a_void_element_with_children() {
         let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], |t| t.element("br", vec![], t.text("x")))
+            .entrypoint("Test", [], |t| t.element("br", vec![], Some(t.text("x"))))
             .build()
             .unwrap_err();
         assert_eq!(error, FlatTypeError::VoidElementWithChildren);
+    }
+
+    #[test]
+    fn should_reject_an_element_without_children() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| t.element("div", vec![], None))
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::ElementWithoutChildren);
     }
 
     #[test]

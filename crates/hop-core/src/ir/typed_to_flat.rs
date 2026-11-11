@@ -776,7 +776,11 @@ impl<'a> Compiler<'a> {
                     }
                 }
                 let on_click = on_click.as_ref().map(|handler| self.compile_expr(handler));
-                let children = self.compile_expr(children);
+                let children = if element.is_void() {
+                    None
+                } else {
+                    Some(self.compile_expr(children))
+                };
                 return self.push_html(FlatHtmlOp::Element(IrHtmlElement {
                     element: element.clone(),
                     attributes,
@@ -1571,9 +1575,8 @@ mod tests {
             "#},
             expect![[r#"
                 entrypoint body@e0() -> Html {
-                  let v0: Html = concat()
-                  let v1: Html = element("br", {}, v0)
-                  v1
+                  let v0: Html = element("br", {})
+                  v0
                 }
                 page Test: e0
             "#]],

@@ -790,7 +790,7 @@ impl<'a> FlatBlockBuilder<'a> {
         &self,
         tag: &str,
         attributes: impl IntoIterator<Item = (AttributeName, IrAttribute)>,
-        children: ValueId,
+        children: Option<ValueId>,
     ) -> ValueId {
         self.push_element(tag, attributes, children, None)
     }
@@ -800,7 +800,7 @@ impl<'a> FlatBlockBuilder<'a> {
         tag: &str,
         attributes: impl IntoIterator<Item = (AttributeName, IrAttribute)>,
         event_handler: ValueId,
-        children: ValueId,
+        children: Option<ValueId>,
     ) -> ValueId {
         self.push_element(tag, attributes, children, Some(event_handler))
     }
@@ -809,7 +809,7 @@ impl<'a> FlatBlockBuilder<'a> {
         &self,
         tag: &str,
         attributes: impl IntoIterator<Item = (AttributeName, IrAttribute)>,
-        children: ValueId,
+        children: Option<ValueId>,
         on_click: Option<ValueId>,
     ) -> ValueId {
         self.push_html(FlatHtmlOp::Element(IrHtmlElement {

@@ -169,12 +169,12 @@ mod tests {
                     |t| {
                         let rows =
                             t.html_for(t.param("items"), |t, item| t.apply(t.param("row"), [item]));
-                        t.element("ul", [], rows)
+                        t.element("ul", [], Some(rows))
                     },
                 )
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     let row = t.lambda([IrType::STRING], |t, params| {
-                        t.element("li", [], t.escape(params[0]))
+                        t.element("li", [], Some(t.escape(params[0])))
                     });
                     t.call("Rows", [t.param("items"), row])
                 })
@@ -223,9 +223,9 @@ mod tests {
                     t.element(
                         "ul",
                         [],
-                        t.html_for(t.param("items"), |t, item| {
-                            t.element("li", vec![], t.escape(item))
-                        }),
+                        Some(t.html_for(t.param("items"), |t, item| {
+                            t.element("li", vec![], Some(t.escape(item)))
+                        })),
                     )
                 })
                 .build()

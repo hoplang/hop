@@ -523,7 +523,7 @@ mod tests {
             FlatProgramBuilder::new()
                 .function("list", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.html_for(t.param("items"), |t, item| {
-                        t.element("li", [], t.escape(item))
+                        t.element("li", [], Some(t.escape(item)))
                     })
                 })
                 .entrypoint(
@@ -584,7 +584,7 @@ mod tests {
                     let bump = t.event_handler(|t| {
                         t.cell_write(n, t.add(NumericType::Int, count, t.int(1)))
                     });
-                    t.element_on_click("button", [], bump, t.escape(t.int_to_string(count)))
+                    t.element_on_click("button", [], bump, Some(t.escape(t.int_to_string(count))))
                 })
                 .entrypoint("Test", [], |t| {
                     t.html_concat([t.call("counter", []), t.call("counter", [])])
@@ -675,7 +675,7 @@ mod tests {
                         let flip = t.cell_write(on, t.not(is_on));
                         t.call("both", [bump, flip])
                     });
-                    t.element_on_click("button", [], both, t.escape(t.int_to_string(n)))
+                    t.element_on_click("button", [], both, Some(t.escape(t.int_to_string(n))))
                 })
                 .build()
                 .unwrap(),
@@ -893,7 +893,7 @@ mod tests {
                     let bump = t.event_handler(|t| {
                         t.cell_write(t.param("count"), t.add(NumericType::Int, shown, t.int(1)))
                     });
-                    t.element_on_click("button", [], bump, t.escape(t.int_to_string(shown)))
+                    t.element_on_click("button", [], bump, Some(t.escape(t.int_to_string(shown))))
                 })
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(t.int(0));

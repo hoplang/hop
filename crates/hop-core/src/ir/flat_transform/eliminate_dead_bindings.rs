@@ -264,7 +264,7 @@ mod tests {
                 .entrypoint("Test", [], |t| {
                     let n = t.cell(t.int(0));
                     let set = t.event_handler(|t| t.cell_write(n, t.int(1)));
-                    t.element_on_click("button", [], set, t.text("x"))
+                    t.element_on_click("button", [], set, Some(t.text("x")))
                 })
                 .build()
                 .unwrap(),
@@ -310,7 +310,7 @@ mod tests {
                     let _idle = t.cell_write(unseen, t.int(1));
                     let bump = t.cell_write(n, t.add(NumericType::Int, t.track(n), t.int(1)));
                     let bump = t.event_handler(|_| bump);
-                    t.element_on_click("button", [], bump, t.text("x"))
+                    t.element_on_click("button", [], bump, Some(t.text("x")))
                 })
                 .build()
                 .unwrap(),

@@ -1141,7 +1141,11 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn write_element(&mut self, element: &'a IrHtmlElement<ValueId>, out: &mut Vec<WriterStmt>) {
+    fn write_element(
+        &mut self,
+        element: &'a IrHtmlElement<Option<ValueId>>,
+        out: &mut Vec<WriterStmt>,
+    ) {
         let IrHtmlElement {
             element,
             attributes,
@@ -1178,7 +1182,7 @@ impl<'a> Lowerer<'a> {
             }
         }
         write(&mut unit, ">");
-        if !element.is_void() {
+        if let Some(children) = children {
             self.write_html(*children, &mut unit);
             write(&mut unit, &format!("</{}>", element.as_str()));
         }
@@ -1353,8 +1357,12 @@ mod tests {
                             m.arm(Pat::True, |t, _| t.html_concat([]));
                             m.arm(Pat::False, |t, _| {
                                 let label = t.escape(t.int_to_string(t.param("n")));
-                                let button =
-                                    t.element_on_click("button", [], t.param("on_press"), label);
+                                let button = t.element_on_click(
+                                    "button",
+                                    [],
+                                    t.param("on_press"),
+                                    Some(label),
+                                );
                                 let rest = t.sub(NumericType::Int, t.param("n"), t.int(1));
                                 let rest = t.call("Buttons", [rest, t.param("on_press")]);
                                 t.html_concat([button, rest])
@@ -1474,9 +1482,9 @@ mod tests {
                     let prefix = t.param("prefix");
                     let row = t.lambda([IrType::INT], |t, params| {
                         let text = t.string_concat([prefix, t.int_to_string(params[0])]);
-                        t.element("li", [], t.escape(text))
+                        t.element("li", [], Some(t.escape(text)))
                     });
-                    t.element("ul", [], t.call("Countdown", [t.int(3), row]))
+                    t.element("ul", [], Some(t.call("Countdown", [t.int(3), row])))
                 })
                 .build()
                 .unwrap(),
@@ -1686,7 +1694,9 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [], |t| {
-                    let wrap = t.lambda([IrType::HTML], |t, params| t.element("b", [], params[0]));
+                    let wrap = t.lambda([IrType::HTML], |t, params| {
+                        t.element("b", [], Some(params[0]))
+                    });
                     t.call("Wrap", [t.int(2), wrap])
                 })
                 .build()
@@ -1810,10 +1820,9 @@ mod tests {
             expect![[r#"
                 -- flat --
                 entrypoint body@e0(id@v0: String, flag@v1: Bool) -> Html {
-                  let v5: Html = concat()
-                  let v6: Html = element("input", {disabled, checked: v1}, v5)
-                  let v8: Html = element("div", {class: "a<b", id: v0}, v6)
-                  v8
+                  let v5: Html = element("input", {disabled, checked: v1})
+                  let v7: Html = element("div", {class: "a<b", id: v0}, v5)
+                  v7
                 }
 
                 -- writer --
@@ -2537,13 +2546,13 @@ mod tests {
                     |t| {
                         let greeting = t.match_(t.param("name"), |m| {
                             m.arm(Pat::some(Pat::bind("n")), |t, arm| {
-                                t.element("b", [], t.escape(arm.binding("n")))
+                                t.element("b", [], Some(t.escape(arm.binding("n"))))
                             });
                             m.arm(Pat::None, |t, _| t.text("anonymous"));
                         });
                         t.match_(t.param("formal"), |m| {
-                            m.arm(Pat::True, |t, _| t.element("p", [], greeting));
-                            m.arm(Pat::False, |t, _| t.element("i", [], greeting));
+                            m.arm(Pat::True, |t, _| t.element("p", [], Some(greeting)));
+                            m.arm(Pat::False, |t, _| t.element("i", [], Some(greeting)));
                         })
                     },
                 )
@@ -2627,9 +2636,9 @@ mod tests {
                         t.element(
                             "ul",
                             [],
-                            t.html_for(t.param("items"), |t, _| {
-                                t.element("li", [t.attr_value("data-x", data_x)], t.text("x"))
-                            }),
+                            Some(t.html_for(t.param("items"), |t, _| {
+                                t.element("li", [t.attr_value("data-x", data_x)], Some(t.text("x")))
+                            })),
                         )
                     },
                 )
@@ -2672,17 +2681,17 @@ mod tests {
         check_program(
             FlatProgramBuilder::new()
                 .function("Badge", [("label", Ty::String)], Ty::Html, |t| {
-                    t.element("span", [], t.escape(t.param("label")))
+                    t.element("span", [], Some(t.escape(t.param("label"))))
                 })
                 .function("Wrap", [("content", Ty::Html)], Ty::Html, |t| {
-                    t.element("div", [], t.param("content"))
+                    t.element("div", [], Some(t.param("content")))
                 })
                 .entrypoint("Test", [("label", Ty::String)], |t| {
                     t.call(
                         "Wrap",
                         [t.html_concat(vec![
                             t.call("Badge", vec![t.param("label")]),
-                            t.element("b", vec![], t.html_concat(vec![])),
+                            t.element("b", vec![], Some(t.html_concat(vec![]))),
                         ])],
                     )
                 })
@@ -2719,7 +2728,7 @@ mod tests {
                     let bump = t.event_handler(|t| {
                         t.cell_write(t.param("count"), t.add(NumericType::Int, shown, t.int(1)))
                     });
-                    t.element_on_click("button", [], bump, t.escape(t.int_to_string(shown)))
+                    t.element_on_click("button", [], bump, Some(t.escape(t.int_to_string(shown))))
                 })
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(t.int(7));

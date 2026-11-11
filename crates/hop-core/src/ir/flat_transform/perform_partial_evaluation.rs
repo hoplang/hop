@@ -1723,7 +1723,7 @@ mod tests {
                             t.attr_presence("hidden", t.bool(true)),
                             t.attr_presence("open", t.bool(false)),
                         ],
-                        t.text("text"),
+                        Some(t.text("text")),
                     )
                 })
                 .build()
@@ -1796,7 +1796,7 @@ mod tests {
                 .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
                     let label = t.str("row");
                     t.html_for_unbound(t.param("items"), |t| {
-                        t.element("li", [t.attr_value("title", label)], t.escape(label))
+                        t.element("li", [t.attr_value("title", label)], Some(t.escape(label)))
                     })
                 })
                 .build()

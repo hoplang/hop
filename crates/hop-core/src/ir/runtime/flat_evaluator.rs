@@ -485,7 +485,10 @@ fn evaluate_html_op<'a>(
                     }),
                 }
             }
-            let children = env[children].clone().unwrap_html();
+            let children = match children {
+                Some(children) => env[children].clone().unwrap_html(),
+                None => Html::new(HtmlNode::Concat(Vec::new()))?,
+            };
             let on_click = on_click.map(|handler| env[&handler].as_closure().clone());
             let identity = new_state.bind_element(old_state, place);
             Value::Html(Html::new(HtmlNode::Element {
@@ -761,8 +764,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 1504870 allocations
-            program evaluation: 14792 allocations
+            program generation: 1504827 allocations
+            program evaluation: 14765 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -793,9 +796,9 @@ mod tests {
                     t.element(
                         "ul",
                         [],
-                        t.html_for(t.param("items"), |t, item| {
-                            t.element("li", vec![], t.escape(item))
-                        }),
+                        Some(t.html_for(t.param("items"), |t, item| {
+                            t.element("li", vec![], Some(t.escape(item)))
+                        })),
                     )
                 })
                 .build()
@@ -1106,7 +1109,9 @@ mod tests {
     fn should_evaluate_an_element() {
         check(
             FlatProgramBuilder::new()
-                .entrypoint("Test", [], |t| t.element("div", [], t.text("Hello World")))
+                .entrypoint("Test", [], |t| {
+                    t.element("div", [], Some(t.text("Hello World")))
+                })
                 .build()
                 .unwrap(),
             |_| vec![],
@@ -1136,7 +1141,7 @@ mod tests {
                             t.attr_presence("disabled", t.param("flag")),
                             t.attr_presence("checked", t.bool(false)),
                         ],
-                        t.html_concat(vec![]),
+                        None,
                     )
                 })
                 .build()
@@ -1146,9 +1151,8 @@ mod tests {
                 -- before --
                 entrypoint Test@e0(cls@v0: String, flag@v1: Bool) -> Html {
                   let v2: Bool = false
-                  let v3: Html = concat()
-                  let v4: Html = element("input", {class: v0, disabled: v1, checked: v2}, v3)
-                  v4
+                  let v3: Html = element("input", {class: v0, disabled: v1, checked: v2})
+                  v3
                 }
 
                 -- after --
@@ -1186,7 +1190,9 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("show", Ty::Bool)], |t| {
                     t.match_(t.param("show"), |m| {
-                        m.arm(Pat::True, |t, _| t.element("div", [], t.text("Visible")));
+                        m.arm(Pat::True, |t, _| {
+                            t.element("div", [], Some(t.text("Visible")))
+                        });
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
                 })
@@ -1222,7 +1228,9 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("show", Ty::Bool)], |t| {
                     t.match_(t.param("show"), |m| {
-                        m.arm(Pat::True, |t, _| t.element("div", [], t.text("Hidden")));
+                        m.arm(Pat::True, |t, _| {
+                            t.element("div", [], Some(t.text("Hidden")))
+                        });
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
                 })
@@ -1258,7 +1266,7 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     t.html_for(t.param("items"), |t, item| {
-                        t.html_concat([t.element("li", vec![], t.escape(item)), t.text("\n")])
+                        t.html_concat([t.element("li", vec![], Some(t.escape(item))), t.text("\n")])
                     })
                 })
                 .build()
@@ -1405,14 +1413,14 @@ mod tests {
                     |t| {
                         let rows =
                             t.html_for(t.param("items"), |t, item| t.apply(t.param("row"), [item]));
-                        t.element("ul", [], rows)
+                        t.element("ul", [], Some(rows))
                     },
                 )
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     let prefix = t.str("- ");
                     let row = t.lambda([IrType::STRING], |t, params| {
                         let text = t.html_concat([t.escape(prefix), t.escape(params[0])]);
-                        t.element("li", [], text)
+                        t.element("li", [], Some(text))
                     });
                     t.call("Rows", [t.param("items"), row])
                 })
