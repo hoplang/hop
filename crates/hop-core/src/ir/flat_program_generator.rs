@@ -1,4 +1,4 @@
-use crate::hop::typing::Ty;
+use crate::hop::typing::{ComparableType, EquatableType, NumericType, Ty};
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::flat_program_builder::{
@@ -1390,10 +1390,10 @@ impl FlatGenerator<'_, '_> {
             ArrayEnumerate,
             ArrayFromRange,
             TupleIndex,
-            Neg,
-            Add,
-            Sub,
-            Mul,
+            Neg(NumericType),
+            Add(NumericType),
+            Sub(NumericType),
+            Mul(NumericType),
             Call,
             Apply,
         }
@@ -1432,15 +1432,21 @@ impl FlatGenerator<'_, '_> {
         if *target == IrDataType::Int {
             productions.extend([
                 P::ArrayLength,
-                P::Neg,
-                P::Add,
-                P::Sub,
-                P::Mul,
+                P::Neg(NumericType::Int),
+                P::Add(NumericType::Int),
+                P::Sub(NumericType::Int),
+                P::Mul(NumericType::Int),
                 P::FloatToInt,
             ]);
         }
         if *target == IrDataType::Float {
-            productions.extend([P::Neg, P::Add, P::Sub, P::Mul, P::IntToFloat]);
+            productions.extend([
+                P::Neg(NumericType::Float),
+                P::Add(NumericType::Float),
+                P::Sub(NumericType::Float),
+                P::Mul(NumericType::Float),
+                P::IntToFloat,
+            ]);
         }
         if matches!(target, IrDataType::Array(element) if **element == IrDataType::Int) {
             productions.push(P::ArrayFromRange);
@@ -1476,35 +1482,35 @@ impl FlatGenerator<'_, '_> {
                 b.field_access(*object, self.u.choose(&fields).unwrap())
             }
             P::Eq => {
-                let ty = match self.index(4) {
-                    0 => IrDataType::Int,
-                    1 => IrDataType::String,
-                    2 => IrDataType::Bool,
-                    _ => IrDataType::Float,
+                let (row, ty) = match self.index(4) {
+                    0 => (EquatableType::Int, IrDataType::Int),
+                    1 => (EquatableType::String, IrDataType::String),
+                    2 => (EquatableType::Bool, IrDataType::Bool),
+                    _ => (EquatableType::Float, IrDataType::Float),
                 };
                 let left = self.data_op(b, scope, &ty, depth, nesting - 1);
                 let right = self.data_op(b, scope, &ty, depth, nesting - 1);
-                b.eq(left, right)
+                b.eq(row, left, right)
             }
             P::Lt => {
-                let ty = if self.coin() {
-                    IrDataType::Int
+                let (row, ty) = if self.coin() {
+                    (ComparableType::Int, IrDataType::Int)
                 } else {
-                    IrDataType::Float
+                    (ComparableType::Float, IrDataType::Float)
                 };
                 let left = self.data_op(b, scope, &ty, depth, nesting - 1);
                 let right = self.data_op(b, scope, &ty, depth, nesting - 1);
-                b.lt(left, right)
+                b.lt(row, left, right)
             }
             P::Lte => {
-                let ty = if self.coin() {
-                    IrDataType::Int
+                let (row, ty) = if self.coin() {
+                    (ComparableType::Int, IrDataType::Int)
                 } else {
-                    IrDataType::Float
+                    (ComparableType::Float, IrDataType::Float)
                 };
                 let left = self.data_op(b, scope, &ty, depth, nesting - 1);
                 let right = self.data_op(b, scope, &ty, depth, nesting - 1);
-                b.lte(left, right)
+                b.lte(row, left, right)
             }
             P::Not => {
                 let operand = self.data_op(b, scope, &IrDataType::Bool, depth, nesting - 1);
@@ -1620,24 +1626,24 @@ impl FlatGenerator<'_, '_> {
                 b.tuple_index(*tuple, *self.u.choose(&indices).unwrap())
             }
             P::Match => self.match_(b, scope, &typ, depth, nesting),
-            P::Neg => {
+            P::Neg(row) => {
                 let operand = self.data_op(b, scope, target, depth, nesting - 1);
-                b.neg(operand)
+                b.neg(*row, operand)
             }
-            P::Add => {
+            P::Add(row) => {
                 let left = self.data_op(b, scope, target, depth, nesting - 1);
                 let right = self.data_op(b, scope, target, depth, nesting - 1);
-                b.add(left, right)
+                b.add(*row, left, right)
             }
-            P::Sub => {
+            P::Sub(row) => {
                 let left = self.data_op(b, scope, target, depth, nesting - 1);
                 let right = self.data_op(b, scope, target, depth, nesting - 1);
-                b.sub(left, right)
+                b.sub(*row, left, right)
             }
-            P::Mul => {
+            P::Mul(row) => {
                 let left = self.data_op(b, scope, target, depth, nesting - 1);
                 let right = self.data_op(b, scope, target, depth, nesting - 1);
-                b.mul(left, right)
+                b.mul(*row, left, right)
             }
             P::Call => self.call(b, scope, &typ, depth, nesting),
             P::Apply => self.apply(b, scope, &typ, depth, nesting),

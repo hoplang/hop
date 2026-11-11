@@ -13,7 +13,7 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use indexmap::IndexMap;
 
-use super::r#type::{NumericType, Type};
+use super::r#type::{ComparableType, EquatableType, NumericType, Type};
 
 #[derive(Debug, Clone)]
 pub enum TypedExpr {
@@ -166,36 +166,42 @@ pub enum TypedExpr {
     Equals {
         left: Box<Self>,
         right: Box<Self>,
+        operand_type: EquatableType,
     },
 
     /// Not equals expression
     NotEquals {
         left: Box<Self>,
         right: Box<Self>,
+        operand_type: EquatableType,
     },
 
     /// Less than expression
     LessThan {
         left: Box<Self>,
         right: Box<Self>,
+        operand_type: ComparableType,
     },
 
     /// Greater than expression
     GreaterThan {
         left: Box<Self>,
         right: Box<Self>,
+        operand_type: ComparableType,
     },
 
     /// Less than or equal expression
     LessThanOrEqual {
         left: Box<Self>,
         right: Box<Self>,
+        operand_type: ComparableType,
     },
 
     /// Greater than or equal expression
     GreaterThanOrEqual {
         left: Box<Self>,
         right: Box<Self>,
+        operand_type: ComparableType,
     },
 
     /// A let binding expression.
@@ -533,12 +539,14 @@ impl Display for TypedExpr {
             TypedExpr::NumericMultiply { left, right, .. } => write!(f, "mul({left}, {right})"),
             TypedExpr::BoolNegation { operand, .. } => write!(f, "not({operand})"),
             TypedExpr::NumericNegation { operand, .. } => write!(f, "neg({operand})"),
-            TypedExpr::Equals { left, right } => write!(f, "eq({left}, {right})"),
-            TypedExpr::NotEquals { left, right } => write!(f, "not_eq({left}, {right})"),
-            TypedExpr::LessThan { left, right } => write!(f, "lt({left}, {right})"),
-            TypedExpr::GreaterThan { left, right } => write!(f, "gt({left}, {right})"),
-            TypedExpr::LessThanOrEqual { left, right } => write!(f, "lt_eq({left}, {right})"),
-            TypedExpr::GreaterThanOrEqual { left, right } => write!(f, "gt_eq({left}, {right})"),
+            TypedExpr::Equals { left, right, .. } => write!(f, "eq({left}, {right})"),
+            TypedExpr::NotEquals { left, right, .. } => write!(f, "not_eq({left}, {right})"),
+            TypedExpr::LessThan { left, right, .. } => write!(f, "lt({left}, {right})"),
+            TypedExpr::GreaterThan { left, right, .. } => write!(f, "gt({left}, {right})"),
+            TypedExpr::LessThanOrEqual { left, right, .. } => write!(f, "lt_eq({left}, {right})"),
+            TypedExpr::GreaterThanOrEqual { left, right, .. } => {
+                write!(f, "gt_eq({left}, {right})")
+            }
             TypedExpr::BoolLogicalAnd { left, right, .. } => write!(f, "and({left}, {right})"),
             TypedExpr::BoolLogicalOr { left, right, .. } => write!(f, "or({left}, {right})"),
             TypedExpr::Enum {

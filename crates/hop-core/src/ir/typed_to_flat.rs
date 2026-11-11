@@ -499,9 +499,13 @@ impl<'a> Compiler<'a> {
             TypedExpr::BoolNegation { operand, .. } => {
                 FlatPureOp::Data(IrDataOp::BoolNegation(self.compile_expr(operand)))
             }
-            TypedExpr::NumericNegation { operand, .. } => {
-                FlatPureOp::Data(IrDataOp::NumericNegation(self.compile_expr(operand)))
-            }
+            TypedExpr::NumericNegation {
+                operand,
+                operand_type,
+            } => FlatPureOp::Data(IrDataOp::NumericNegation(
+                *operand_type,
+                self.compile_expr(operand),
+            )),
             TypedExpr::Array { elements, .. } => FlatPureOp::Data(IrDataOp::Array(
                 elements.iter().map(|e| self.compile_expr(e)).collect(),
             )),
@@ -550,36 +554,65 @@ impl<'a> Compiler<'a> {
             TypedExpr::StringConcat { parts, .. } => FlatPureOp::Data(IrDataOp::StringConcat(
                 parts.iter().map(|part| self.compile_expr(part)).collect(),
             )),
-            TypedExpr::Equals { left, right } => FlatPureOp::Data(IrDataOp::Equals(
+            TypedExpr::Equals {
+                left,
+                right,
+                operand_type,
+            } => FlatPureOp::Data(IrDataOp::Equals(
+                *operand_type,
                 self.compile_expr(left),
                 self.compile_expr(right),
             )),
-            TypedExpr::NotEquals { left, right } => {
+            TypedExpr::NotEquals {
+                left,
+                right,
+                operand_type,
+            } => {
                 // Desugar NotEquals into BoolNegation(Equals(...))
                 let equals = FlatPureOp::Data(IrDataOp::Equals(
+                    *operand_type,
                     self.compile_expr(left),
                     self.compile_expr(right),
                 ));
                 FlatPureOp::Data(IrDataOp::BoolNegation(self.push(Type::BOOL, equals)))
             }
-            TypedExpr::LessThan { left, right } => FlatPureOp::Data(IrDataOp::LessThan(
+            TypedExpr::LessThan {
+                left,
+                right,
+                operand_type,
+            } => FlatPureOp::Data(IrDataOp::LessThan(
+                *operand_type,
                 self.compile_expr(left),
                 self.compile_expr(right),
             )),
             // Convert a > b to b < a
-            TypedExpr::GreaterThan { left, right } => {
+            TypedExpr::GreaterThan {
+                left,
+                right,
+                operand_type,
+            } => {
                 let left = self.compile_expr(left);
                 let right = self.compile_expr(right);
-                FlatPureOp::Data(IrDataOp::LessThan(right, left))
+                FlatPureOp::Data(IrDataOp::LessThan(*operand_type, right, left))
             }
-            TypedExpr::LessThanOrEqual { left, right } => FlatPureOp::Data(
-                IrDataOp::LessThanOrEqual(self.compile_expr(left), self.compile_expr(right)),
-            ),
+            TypedExpr::LessThanOrEqual {
+                left,
+                right,
+                operand_type,
+            } => FlatPureOp::Data(IrDataOp::LessThanOrEqual(
+                *operand_type,
+                self.compile_expr(left),
+                self.compile_expr(right),
+            )),
             // Convert a >= b to b <= a
-            TypedExpr::GreaterThanOrEqual { left, right } => {
+            TypedExpr::GreaterThanOrEqual {
+                left,
+                right,
+                operand_type,
+            } => {
                 let left = self.compile_expr(left);
                 let right = self.compile_expr(right);
-                FlatPureOp::Data(IrDataOp::LessThanOrEqual(right, left))
+                FlatPureOp::Data(IrDataOp::LessThanOrEqual(*operand_type, right, left))
             }
             // The right operand runs only when the left one is true, so it
             // becomes the true arm. The false arm is false.
@@ -631,16 +664,33 @@ impl<'a> Compiler<'a> {
                     },
                 ],
             }),
-            TypedExpr::NumericAdd { left, right, .. } => FlatPureOp::Data(IrDataOp::NumericAdd(
+            TypedExpr::NumericAdd {
+                left,
+                right,
+                operand_types,
+            } => FlatPureOp::Data(IrDataOp::NumericAdd(
+                *operand_types,
                 self.compile_expr(left),
                 self.compile_expr(right),
             )),
-            TypedExpr::NumericSubtract { left, right, .. } => FlatPureOp::Data(
-                IrDataOp::NumericSubtract(self.compile_expr(left), self.compile_expr(right)),
-            ),
-            TypedExpr::NumericMultiply { left, right, .. } => FlatPureOp::Data(
-                IrDataOp::NumericMultiply(self.compile_expr(left), self.compile_expr(right)),
-            ),
+            TypedExpr::NumericSubtract {
+                left,
+                right,
+                operand_types,
+            } => FlatPureOp::Data(IrDataOp::NumericSubtract(
+                *operand_types,
+                self.compile_expr(left),
+                self.compile_expr(right),
+            )),
+            TypedExpr::NumericMultiply {
+                left,
+                right,
+                operand_types,
+            } => FlatPureOp::Data(IrDataOp::NumericMultiply(
+                *operand_types,
+                self.compile_expr(left),
+                self.compile_expr(right),
+            )),
             TypedExpr::Enum {
                 variant_name,
                 fields,
@@ -1715,11 +1765,11 @@ mod tests {
             expect![[r#"
                 fn Nest@f0(depth@v3: Int, id@v4: String) -> Html {
                   let v5: Int = 0
-                  let v6: Bool = lt(v5, v3)
+                  let v6: Bool = lt[Int](v5, v3)
                   let v12: Html = match v6 {
                     true => {
                       let v7: Int = 1
-                      let v8: Int = sub(v3, v7)
+                      let v8: Int = sub[Int](v3, v7)
                       let v9: String = "inner"
                       let v10: Html = Nest@f1(v8, v9)
                       v10
@@ -1735,11 +1785,11 @@ mod tests {
                 }
                 fn Nest@f1(depth@v15: Int, class@v16: String) -> Html {
                   let v17: Int = 0
-                  let v18: Bool = lt(v17, v15)
+                  let v18: Bool = lt[Int](v17, v15)
                   let v24: Html = match v18 {
                     true => {
                       let v19: Int = 1
-                      let v20: Int = sub(v15, v19)
+                      let v20: Int = sub[Int](v15, v19)
                       let v21: String = "inner"
                       let v22: Html = Nest@f1(v20, v21)
                       v22
@@ -1871,7 +1921,7 @@ mod tests {
                 }
                 fn width@f1(n@v11: Int) -> Int {
                   let v12: Int = 0
-                  let v13: Bool = lt_eq(v11, v12)
+                  let v13: Bool = lt_eq[Int](v11, v12)
                   let v20: Int = match v13 {
                     true => {
                       let v14: Int = 0
@@ -1879,10 +1929,10 @@ mod tests {
                     }
                     false => {
                       let v15: Int = 1
-                      let v16: Int = sub(v11, v15)
+                      let v16: Int = sub[Int](v11, v15)
                       let v17: Int = width@f1(v16)
                       let v18: Int = 2
-                      let v19: Int = add(v17, v18)
+                      let v19: Int = add[Int](v17, v18)
                       v19
                     }
                   }
@@ -1933,7 +1983,7 @@ mod tests {
                 }
                 entrypoint body@e0(labels@v0: Array[String], scale@v1: Int) -> Html {
                   let v4: (Int) -> Int = fn(v2: Int) {
-                    let v3: Int = mul(v2, v1)
+                    let v3: Int = mul[Int](v2, v1)
                     v3
                   }
                   let v13: (String) -> Html = fn(v5: String) {
@@ -1975,7 +2025,7 @@ mod tests {
             expect![[r#"
                 fn width@f0(scale@v10: (Int) -> Int, n@v11: Int) -> Int {
                   let v12: Int = 0
-                  let v13: Bool = lt_eq(v11, v12)
+                  let v13: Bool = lt_eq[Int](v11, v12)
                   let v19: Int = match v13 {
                     true => {
                       let v14: Int = 2
@@ -1984,7 +2034,7 @@ mod tests {
                     }
                     false => {
                       let v16: Int = 1
-                      let v17: Int = sub(v11, v16)
+                      let v17: Int = sub[Int](v11, v16)
                       let v18: Int = width@f0(v10, v17)
                       v18
                     }
@@ -1993,7 +2043,7 @@ mod tests {
                 }
                 entrypoint body@e0(n@v0: Int) -> Html {
                   let v3: (Int) -> Int = fn(v1: Int) {
-                    let v2: Int = add(v1, v0)
+                    let v2: Int = add[Int](v1, v0)
                     v2
                   }
                   let v4: Int = 3
@@ -2037,7 +2087,7 @@ mod tests {
             expect![[r#"
                 fn width@f0(n@v9: Int) -> Int {
                   let v10: Int = 0
-                  let v11: Bool = lt_eq(v9, v10)
+                  let v11: Bool = lt_eq[Int](v9, v10)
                   let v18: Int = match v11 {
                     true => {
                       let v12: Int = 0
@@ -2045,10 +2095,10 @@ mod tests {
                     }
                     false => {
                       let v13: Int = 1
-                      let v14: Int = sub(v9, v13)
+                      let v14: Int = sub[Int](v9, v13)
                       let v15: Int = width@f0(v14)
                       let v16: Int = 2
-                      let v17: Int = add(v15, v16)
+                      let v17: Int = add[Int](v15, v16)
                       v17
                     }
                   }
@@ -2169,7 +2219,7 @@ mod tests {
                   let v22: Bool = track(v21)
                   let v31: () -> Effect[()] = fn() {
                     let v23: Int = 1
-                    let v24: Int = add(v19, v23)
+                    let v24: Int = add[Int](v19, v23)
                     let v25: Effect[()] = v18 := v24
                     let v29: (()) -> Effect[()] = fn(v26: ()) {
                       let v27: Bool = true
@@ -2286,7 +2336,7 @@ mod tests {
             expect![[r#"
                 fn bump@f0(n@v17: Int) -> Effect[Int] {
                   let v18: Int = 1
-                  let v19: Int = add(v17, v18)
+                  let v19: Int = add[Int](v17, v18)
                   let v20: Effect[Int] = pure(v19)
                   v20
                 }

@@ -1298,7 +1298,7 @@ impl<'a> Lowerer<'a> {
 mod tests {
     use super::*;
     use crate::document::Document;
-    use crate::hop::typing::Ty;
+    use crate::hop::typing::{ComparableType, NumericType, Ty};
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::random_program;
     use crate::ir::ir_parameter::IrParameter;
@@ -1349,13 +1349,13 @@ mod tests {
                     ],
                     Ty::Html,
                     |t| {
-                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                        t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
                             m.arm(Pat::True, |t, _| t.html_concat([]));
                             m.arm(Pat::False, |t, _| {
                                 let label = t.escape(t.int_to_string(t.param("n")));
                                 let button =
                                     t.element_on_click("button", [], t.param("on_press"), label);
-                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.sub(NumericType::Int, t.param("n"), t.int(1));
                                 let rest = t.call("Buttons", [rest, t.param("on_press")]);
                                 t.html_concat([button, rest])
                             });
@@ -1365,7 +1365,9 @@ mod tests {
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(t.int(0));
                     let n = t.track(count);
-                    let bump = t.event_handler(|t| t.cell_write(count, t.add(n, t.int(1))));
+                    let bump = t.event_handler(|t| {
+                        t.cell_write(count, t.add(NumericType::Int, n, t.int(1)))
+                    });
                     let buttons = t.call("Buttons", [t.int(2), bump]);
                     let shown = t.escape(t.int_to_string(n));
                     t.html_concat([shown, buttons])
@@ -1376,7 +1378,7 @@ mod tests {
                 -- flat --
                 fn Buttons@f0(n@v0: Int, on_press@v1: () -> Effect[()]) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq(v0, v2)
+                  let v3: Bool = lt_eq[Int](v0, v2)
                   let v12: Html = match v3 {
                     true => {
                       let v4: Html = concat()
@@ -1387,7 +1389,7 @@ mod tests {
                       let v6: Html = escape(v5)
                       let v7: Html = element("button", {}, v6) on_click v1
                       let v8: Int = 1
-                      let v9: Int = sub(v0, v8)
+                      let v9: Int = sub[Int](v0, v8)
                       let v10: Html = Buttons@f0(v9, v1)
                       let v11: Html = concat(v7, v10)
                       v11
@@ -1401,7 +1403,7 @@ mod tests {
                   let v15: Int = track(v14)
                   let v19: () -> Effect[()] = fn() {
                     let v16: Int = 1
-                    let v17: Int = add(v15, v16)
+                    let v17: Int = add[Int](v15, v16)
                     let v18: Effect[()] = v14 := v17
                     v18
                   }
@@ -1416,14 +1418,14 @@ mod tests {
                 -- writer --
                 fn Buttons@f0(n@v0: Int, on_press@v1: () -> ()) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq(v0, v2)
+                  let v3: Bool = lt_eq[Int](v0, v2)
                   match v3 {
                     true => {
                     }
                     false => {
                       let v5: String = v0.to_string()
                       let v8: Int = 1
-                      let v9: Int = sub(v0, v8)
+                      let v9: Int = sub[Int](v0, v8)
                       write("<button>")
                       write_string(v5)
                       write("</button>")
@@ -1435,7 +1437,7 @@ mod tests {
                   let v13: Int = 0
                   let v19: () -> () = fn() {
                     let v16: Int = 1
-                    let v17: Int = add(v13, v16)
+                    let v17: Int = add[Int](v13, v16)
                     let v18: () = ()
                     v18
                   }
@@ -1457,11 +1459,11 @@ mod tests {
                     [("n", Ty::Int), ("row", Ty::function([Ty::Int], Ty::Html))],
                     Ty::Html,
                     |t| {
-                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                        t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
                             m.arm(Pat::True, |t, _| t.html_concat([]));
                             m.arm(Pat::False, |t, _| {
                                 let row = t.apply(t.param("row"), [t.param("n")]);
-                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.sub(NumericType::Int, t.param("n"), t.int(1));
                                 let rest = t.call("Countdown", [rest, t.param("row")]);
                                 t.html_concat([row, rest])
                             });
@@ -1482,7 +1484,7 @@ mod tests {
                 -- flat --
                 fn Countdown@f0(n@v0: Int, row@v1: (Int) -> Html) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq(v0, v2)
+                  let v3: Bool = lt_eq[Int](v0, v2)
                   let v10: Html = match v3 {
                     true => {
                       let v4: Html = concat()
@@ -1491,7 +1493,7 @@ mod tests {
                     false => {
                       let v5: Html = v1(v0)
                       let v6: Int = 1
-                      let v7: Int = sub(v0, v6)
+                      let v7: Int = sub[Int](v0, v6)
                       let v8: Html = Countdown@f0(v7, v1)
                       let v9: Html = concat(v5, v8)
                       v9
@@ -1516,13 +1518,13 @@ mod tests {
                 -- writer --
                 fn Countdown@f0(n@v0: Int, row@v1: (Int) -> Html) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq(v0, v2)
+                  let v3: Bool = lt_eq[Int](v0, v2)
                   match v3 {
                     true => {
                     }
                     false => {
                       let v6: Int = 1
-                      let v7: Int = sub(v0, v6)
+                      let v7: Int = sub[Int](v0, v6)
                       write_apply v1(v0)
                       write_function Countdown@f0(v7, v1)
                     }
@@ -1554,13 +1556,13 @@ mod tests {
                     [("n", Ty::Int), ("scale", Ty::function([Ty::Int], Ty::Int))],
                     Ty::Int,
                     |t| {
-                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                        t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
                             m.arm(Pat::True, |t, _| t.int(0));
                             m.arm(Pat::False, |t, _| {
                                 let scaled = t.apply(t.param("scale"), [t.param("n")]);
-                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.sub(NumericType::Int, t.param("n"), t.int(1));
                                 let rest = t.call("Sum", [rest, t.param("scale")]);
-                                t.add(scaled, rest)
+                                t.add(NumericType::Int, scaled, rest)
                             });
                         })
                     },
@@ -1568,7 +1570,9 @@ mod tests {
                 .entrypoint("Test", [("double", Ty::Bool)], |t| {
                     let scale = t.lambda([IrType::INT], |t, params| {
                         t.match_(t.param("double"), |m| {
-                            m.arm(Pat::True, |t, _| t.mul(params[0], t.int(2)));
+                            m.arm(Pat::True, |t, _| {
+                                t.mul(NumericType::Int, params[0], t.int(2))
+                            });
                             m.arm(Pat::False, |_, _| params[0]);
                         })
                     });
@@ -1581,7 +1585,7 @@ mod tests {
                 -- flat --
                 fn Sum@f0(n@v0: Int, scale@v1: (Int) -> Int) -> Int {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq(v0, v2)
+                  let v3: Bool = lt_eq[Int](v0, v2)
                   let v10: Int = match v3 {
                     true => {
                       let v4: Int = 0
@@ -1590,9 +1594,9 @@ mod tests {
                     false => {
                       let v5: Int = v1(v0)
                       let v6: Int = 1
-                      let v7: Int = sub(v0, v6)
+                      let v7: Int = sub[Int](v0, v6)
                       let v8: Int = Sum@f0(v7, v1)
-                      let v9: Int = add(v5, v8)
+                      let v9: Int = add[Int](v5, v8)
                       v9
                     }
                   }
@@ -1603,7 +1607,7 @@ mod tests {
                     let v15: Int = match v11 {
                       true => {
                         let v13: Int = 2
-                        let v14: Int = mul(v12, v13)
+                        let v14: Int = mul[Int](v12, v13)
                         v14
                       }
                       false => {
@@ -1622,7 +1626,7 @@ mod tests {
                 -- writer --
                 fn Sum@f0(n@v0: Int, scale@v1: (Int) -> Int) -> Int {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq(v0, v2)
+                  let v3: Bool = lt_eq[Int](v0, v2)
                   let v22: Int = match v3 {
                     true => {
                       let v4: Int = 0
@@ -1631,9 +1635,9 @@ mod tests {
                     false => {
                       let v5: Int = v1(v0)
                       let v6: Int = 1
-                      let v7: Int = sub(v0, v6)
+                      let v7: Int = sub[Int](v0, v6)
                       let v8: Int = Sum@f0(v7, v1)
-                      let v9: Int = add(v5, v8)
+                      let v9: Int = add[Int](v5, v8)
                       v9
                     }
                   }
@@ -1644,7 +1648,7 @@ mod tests {
                     let v21: Int = match v11 {
                       true => {
                         let v13: Int = 2
-                        let v14: Int = mul(v12, v13)
+                        let v14: Int = mul[Int](v12, v13)
                         v14
                       }
                       false => {
@@ -1671,10 +1675,10 @@ mod tests {
                     [("n", Ty::Int), ("wrap", Ty::function([Ty::Html], Ty::Html))],
                     Ty::Html,
                     |t| {
-                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                        t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
                             m.arm(Pat::True, |t, _| t.text("x"));
                             m.arm(Pat::False, |t, _| {
-                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.sub(NumericType::Int, t.param("n"), t.int(1));
                                 let inner = t.call("Wrap", [rest, t.param("wrap")]);
                                 t.apply(t.param("wrap"), [inner])
                             });
@@ -1691,7 +1695,7 @@ mod tests {
                 -- flat --
                 fn Wrap@f0(n@v0: Int, wrap@v1: (Html) -> Html) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq(v0, v2)
+                  let v3: Bool = lt_eq[Int](v0, v2)
                   let v9: Html = match v3 {
                     true => {
                       let v4: Html = text("x")
@@ -1699,7 +1703,7 @@ mod tests {
                     }
                     false => {
                       let v5: Int = 1
-                      let v6: Int = sub(v0, v5)
+                      let v6: Int = sub[Int](v0, v5)
                       let v7: Html = Wrap@f0(v6, v1)
                       let v8: Html = v1(v7)
                       v8
@@ -1720,14 +1724,14 @@ mod tests {
                 -- writer --
                 fn Wrap@f0(n@v0: Int, wrap@v1: (() -> Html) -> Html) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq(v0, v2)
+                  let v3: Bool = lt_eq[Int](v0, v2)
                   match v3 {
                     true => {
                       write("x")
                     }
                     false => {
                       let v5: Int = 1
-                      let v6: Int = sub(v0, v5)
+                      let v6: Int = sub[Int](v0, v5)
                       let v15: () -> Html = fn() {
                         write_function Wrap@f0(v6, v1)
                       }
@@ -2467,11 +2471,11 @@ mod tests {
                 -- flat --
                 fn Nest@f0(depth@v7: Int, children@v8: Html) -> Html {
                   let v9: Int = 0
-                  let v10: Bool = lt(v9, v7)
+                  let v10: Bool = lt[Int](v9, v7)
                   let v17: Html = match v10 {
                     true => {
                       let v11: Int = 1
-                      let v12: Int = sub(v7, v11)
+                      let v12: Int = sub[Int](v7, v11)
                       let v14: Html = Nest@f0(v12, v8)
                       let v16: Html = element("div", {}, v14)
                       v16
@@ -2493,11 +2497,11 @@ mod tests {
                 -- writer --
                 fn Nest@f0(depth@v7: Int, children@v8: () -> Html) -> Html {
                   let v9: Int = 0
-                  let v10: Bool = lt(v9, v7)
+                  let v10: Bool = lt[Int](v9, v7)
                   match v10 {
                     true => {
                       let v11: Int = 1
-                      let v12: Int = sub(v7, v11)
+                      let v12: Int = sub[Int](v7, v11)
                       write("<div>")
                       write_function Nest@f0(v12, v8)
                       write("</div>")
@@ -2615,7 +2619,8 @@ mod tests {
                     [("items", Ty::array(Ty::String)), ("n", Ty::Int)],
                     |t| {
                         let _unused = t.text("never");
-                        let data_x = t.int_to_string(t.add(t.param("n"), t.int(1)));
+                        let data_x =
+                            t.int_to_string(t.add(NumericType::Int, t.param("n"), t.int(1)));
                         t.element(
                             "ul",
                             [],
@@ -2631,7 +2636,7 @@ mod tests {
                 -- flat --
                 entrypoint Items@e0(items@v0: Array[String], n@v1: Int) -> Html {
                   let v3: Int = 1
-                  let v4: Int = add(v1, v3)
+                  let v4: Int = add[Int](v1, v3)
                   let v5: String = v4.to_string()
                   let v9: Html = for _ in v0 {
                     let v7: Html = text("x")
@@ -2645,7 +2650,7 @@ mod tests {
                 -- writer --
                 page Items(items@v0: Array[String], n@v1: Int) {
                   let v3: Int = 1
-                  let v4: Int = add(v1, v3)
+                  let v4: Int = add[Int](v1, v3)
                   let v5: String = v4.to_string()
                   write("<ul>")
                   for _ in v0 {
@@ -2708,8 +2713,9 @@ mod tests {
             FlatProgramBuilder::new()
                 .function("Show", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
                     let shown = t.track(t.param("count"));
-                    let bump =
-                        t.event_handler(|t| t.cell_write(t.param("count"), t.add(shown, t.int(1))));
+                    let bump = t.event_handler(|t| {
+                        t.cell_write(t.param("count"), t.add(NumericType::Int, shown, t.int(1)))
+                    });
                     t.element_on_click("button", [], bump, t.escape(t.int_to_string(shown)))
                 })
                 .entrypoint("Test", [], |t| {
@@ -2726,7 +2732,7 @@ mod tests {
                   let v12: Int = track(v10)
                   let v16: () -> Effect[()] = fn() {
                     let v13: Int = 1
-                    let v14: Int = add(v12, v13)
+                    let v14: Int = add[Int](v12, v13)
                     let v15: Effect[()] = v10 := v14
                     v15
                   }
@@ -2741,7 +2747,7 @@ mod tests {
                   let v9: Int = 7
                   let v16: () -> () = fn() {
                     let v13: Int = 1
-                    let v14: Int = add(v9, v13)
+                    let v14: Int = add[Int](v9, v13)
                     let v15: () = ()
                     v15
                   }

@@ -448,66 +448,41 @@ pub trait Transpiler {
             WriterOp::Data(IrDataOp::StringConcat(parts)) => {
                 self.transpile_string_concat(arena, parts)
             }
-            WriterOp::Data(IrDataOp::NumericAdd(left, right)) => {
-                match self.name_type(*left).as_numeric_type() {
-                    Some(NumericType::Int) => self.transpile_int_add(arena, *left, *right),
-                    Some(NumericType::Float) => self.transpile_float_add(arena, *left, *right),
-                    None => unreachable!("NumericAdd must read Ints or Floats"),
-                }
-            }
-            WriterOp::Data(IrDataOp::NumericSubtract(left, right)) => {
-                match self.name_type(*left).as_numeric_type() {
-                    Some(NumericType::Int) => self.transpile_int_subtract(arena, *left, *right),
-                    Some(NumericType::Float) => self.transpile_float_subtract(arena, *left, *right),
-                    None => unreachable!("NumericSubtract must read Ints or Floats"),
-                }
-            }
-            WriterOp::Data(IrDataOp::NumericMultiply(left, right)) => {
-                match self.name_type(*left).as_numeric_type() {
-                    Some(NumericType::Int) => self.transpile_int_multiply(arena, *left, *right),
-                    Some(NumericType::Float) => self.transpile_float_multiply(arena, *left, *right),
-                    None => unreachable!("NumericMultiply must read Ints or Floats"),
-                }
-            }
-            WriterOp::Data(IrDataOp::Equals(left, right)) => match self
-                .name_type(*left)
-                .as_equatable_type()
-            {
-                Some(EquatableType::String) => self.transpile_string_equals(arena, *left, *right),
-                Some(EquatableType::Bool) => self.transpile_bool_equals(arena, *left, *right),
-                Some(EquatableType::Int) => self.transpile_int_equals(arena, *left, *right),
-                Some(EquatableType::Float) => self.transpile_float_equals(arena, *left, *right),
-                None => unreachable!("Equals must read Strings, Bools, Ints or Floats"),
+            WriterOp::Data(IrDataOp::NumericAdd(typ, left, right)) => match typ {
+                NumericType::Int => self.transpile_int_add(arena, *left, *right),
+                NumericType::Float => self.transpile_float_add(arena, *left, *right),
             },
-            WriterOp::Data(IrDataOp::LessThan(left, right)) => match self
-                .name_type(*left)
-                .as_comparable_type()
-            {
-                Some(ComparableType::Int) => self.transpile_int_less_than(arena, *left, *right),
-                Some(ComparableType::Float) => self.transpile_float_less_than(arena, *left, *right),
-                None => unreachable!("LessThan must read Ints or Floats"),
+            WriterOp::Data(IrDataOp::NumericSubtract(typ, left, right)) => match typ {
+                NumericType::Int => self.transpile_int_subtract(arena, *left, *right),
+                NumericType::Float => self.transpile_float_subtract(arena, *left, *right),
             },
-            WriterOp::Data(IrDataOp::LessThanOrEqual(left, right)) => {
-                match self.name_type(*left).as_comparable_type() {
-                    Some(ComparableType::Int) => {
-                        self.transpile_int_less_than_or_equal(arena, *left, *right)
-                    }
-                    Some(ComparableType::Float) => {
-                        self.transpile_float_less_than_or_equal(arena, *left, *right)
-                    }
-                    None => unreachable!("LessThanOrEqual must read Ints or Floats"),
+            WriterOp::Data(IrDataOp::NumericMultiply(typ, left, right)) => match typ {
+                NumericType::Int => self.transpile_int_multiply(arena, *left, *right),
+                NumericType::Float => self.transpile_float_multiply(arena, *left, *right),
+            },
+            WriterOp::Data(IrDataOp::Equals(typ, left, right)) => match typ {
+                EquatableType::String => self.transpile_string_equals(arena, *left, *right),
+                EquatableType::Bool => self.transpile_bool_equals(arena, *left, *right),
+                EquatableType::Int => self.transpile_int_equals(arena, *left, *right),
+                EquatableType::Float => self.transpile_float_equals(arena, *left, *right),
+            },
+            WriterOp::Data(IrDataOp::LessThan(typ, left, right)) => match typ {
+                ComparableType::Int => self.transpile_int_less_than(arena, *left, *right),
+                ComparableType::Float => self.transpile_float_less_than(arena, *left, *right),
+            },
+            WriterOp::Data(IrDataOp::LessThanOrEqual(typ, left, right)) => match typ {
+                ComparableType::Int => self.transpile_int_less_than_or_equal(arena, *left, *right),
+                ComparableType::Float => {
+                    self.transpile_float_less_than_or_equal(arena, *left, *right)
                 }
-            }
+            },
             WriterOp::Data(IrDataOp::ArrayFromRange(left, right)) => {
                 self.transpile_array_from_range(arena, *left, *right)
             }
-            WriterOp::Data(IrDataOp::NumericNegation(operand)) => {
-                match self.name_type(*operand).as_numeric_type() {
-                    Some(NumericType::Int) => self.transpile_int_negation(arena, *operand),
-                    Some(NumericType::Float) => self.transpile_float_negation(arena, *operand),
-                    None => unreachable!("NumericNegation must read an Int or a Float"),
-                }
-            }
+            WriterOp::Data(IrDataOp::NumericNegation(typ, operand)) => match typ {
+                NumericType::Int => self.transpile_int_negation(arena, *operand),
+                NumericType::Float => self.transpile_float_negation(arena, *operand),
+            },
             WriterOp::Data(IrDataOp::BoolNegation(operand)) => self.transpile_not(arena, *operand),
             WriterOp::Data(IrDataOp::ArrayLength(operand)) => {
                 self.transpile_array_length(arena, *operand)

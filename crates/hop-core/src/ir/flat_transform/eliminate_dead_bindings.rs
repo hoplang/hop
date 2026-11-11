@@ -195,7 +195,7 @@ fn eliminate_match<B>(
 mod tests {
 
     use super::*;
-    use crate::hop::typing::Ty;
+    use crate::hop::typing::{NumericType, Ty};
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
@@ -308,7 +308,7 @@ mod tests {
                     let n = t.cell(t.int(0));
                     let unseen = t.cell(t.int(0));
                     let _idle = t.cell_write(unseen, t.int(1));
-                    let bump = t.cell_write(n, t.add(t.track(n), t.int(1)));
+                    let bump = t.cell_write(n, t.add(NumericType::Int, t.track(n), t.int(1)));
                     let bump = t.event_handler(|_| bump);
                     t.element_on_click("button", [], bump, t.text("x"))
                 })
@@ -325,7 +325,7 @@ mod tests {
                   let v5: Effect[()] = v3 := v4
                   let v6: Int = track(v1)
                   let v7: Int = 1
-                  let v8: Int = add(v6, v7)
+                  let v8: Int = add[Int](v6, v7)
                   let v9: Effect[()] = v1 := v8
                   let v10: () -> Effect[()] = fn() {
                     v9
@@ -341,7 +341,7 @@ mod tests {
                   let v1: Cell[Int] = cell(v0)
                   let v6: Int = track(v1)
                   let v7: Int = 1
-                  let v8: Int = add(v6, v7)
+                  let v8: Int = add[Int](v6, v7)
                   let v9: Effect[()] = v1 := v8
                   let v10: () -> Effect[()] = fn() {
                     v9

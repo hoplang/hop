@@ -1,7 +1,6 @@
 use std::fmt;
 
 use crate::display::write_tuple;
-use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::symbols::type_name::TypeName;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,18 +126,6 @@ impl IrType {
             | IrType::Html(_) => None,
         }
     }
-
-    pub fn as_equatable_type(&self) -> Option<EquatableType> {
-        self.as_data()?.as_equatable_type()
-    }
-
-    pub fn as_comparable_type(&self) -> Option<ComparableType> {
-        self.as_data()?.as_comparable_type()
-    }
-
-    pub fn as_numeric_type(&self) -> Option<NumericType> {
-        self.as_data()?.as_numeric_type()
-    }
 }
 
 #[cfg(test)]
@@ -161,48 +148,6 @@ impl IrFunctionDataType {
 
 impl IrDataType {
     pub const UNIT: IrDataType = IrDataType::Tuple(Vec::new());
-
-    pub fn as_equatable_type(&self) -> Option<EquatableType> {
-        match self {
-            IrDataType::Bool => Some(EquatableType::Bool),
-            IrDataType::String => Some(EquatableType::String),
-            IrDataType::Int => Some(EquatableType::Int),
-            IrDataType::Float => Some(EquatableType::Float),
-            IrDataType::Option(_)
-            | IrDataType::Array(_)
-            | IrDataType::Tuple(_)
-            | IrDataType::Record(_)
-            | IrDataType::Enum(_) => None,
-        }
-    }
-
-    pub fn as_comparable_type(&self) -> Option<ComparableType> {
-        match self {
-            IrDataType::Int => Some(ComparableType::Int),
-            IrDataType::Float => Some(ComparableType::Float),
-            IrDataType::Bool
-            | IrDataType::String
-            | IrDataType::Array(_)
-            | IrDataType::Option(_)
-            | IrDataType::Tuple(_)
-            | IrDataType::Record(_)
-            | IrDataType::Enum(_) => None,
-        }
-    }
-
-    pub fn as_numeric_type(&self) -> Option<NumericType> {
-        match self {
-            IrDataType::Int => Some(NumericType::Int),
-            IrDataType::Float => Some(NumericType::Float),
-            IrDataType::Bool
-            | IrDataType::String
-            | IrDataType::Array(_)
-            | IrDataType::Option(_)
-            | IrDataType::Tuple(_)
-            | IrDataType::Record(_)
-            | IrDataType::Enum(_) => None,
-        }
-    }
 }
 
 impl fmt::Display for IrType {

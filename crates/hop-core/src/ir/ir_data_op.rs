@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::display::{join, write_tuple};
 use crate::document::CheapString;
+use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -19,25 +20,25 @@ pub enum IrDataOp {
     OptionSome(ValueId),
     OptionNone,
     StringConcat(Vec<ValueId>),
-    /// `(T, T) -> T, T in {Float, Int}`.
-    NumericAdd(ValueId, ValueId),
-    /// `(T, T) -> T, T in {Float, Int}`.
-    NumericSubtract(ValueId, ValueId),
-    /// `(T, T) -> T, T in {Float, Int}`.
-    NumericMultiply(ValueId, ValueId),
-    /// `(T, T) -> Bool, T in {Int, Bool, Float, String}`,
-    Equals(ValueId, ValueId),
-    /// `(T, T) -> Bool, T in {Float, Int}`.
-    LessThan(ValueId, ValueId),
-    /// `(T, T) -> Bool, T in {Float, Int}`.
-    LessThanOrEqual(ValueId, ValueId),
+    /// `(T, T) -> T` for the `T` it stores.
+    NumericAdd(NumericType, ValueId, ValueId),
+    /// `(T, T) -> T` for the `T` it stores.
+    NumericSubtract(NumericType, ValueId, ValueId),
+    /// `(T, T) -> T` for the `T` it stores.
+    NumericMultiply(NumericType, ValueId, ValueId),
+    /// `(T, T) -> Bool` for the `T` it stores.
+    Equals(EquatableType, ValueId, ValueId),
+    /// `(T, T) -> Bool` for the `T` it stores.
+    LessThan(ComparableType, ValueId, ValueId),
+    /// `(T, T) -> Bool` for the `T` it stores.
+    LessThanOrEqual(ComparableType, ValueId, ValueId),
     /// Produce an Array of the Ints from the first to the second inclusive, in
     /// increasing order, which is empty when the first is greater than the
     /// second.
     /// `(Int, Int) -> Array[Int]`.
     ArrayFromRange(ValueId, ValueId),
-    /// `Int -> Int` or `Float -> Float`.
-    NumericNegation(ValueId),
+    /// `T -> T` for the `T` it stores.
+    NumericNegation(NumericType, ValueId),
     /// `Bool -> Bool`.
     BoolNegation(ValueId),
     /// `Array[T] -> Int`.
@@ -78,7 +79,7 @@ impl IrDataOp {
             IrDataOp::FieldAccess(name, _)
             | IrDataOp::TupleIndex(name, _)
             | IrDataOp::OptionSome(name)
-            | IrDataOp::NumericNegation(name)
+            | IrDataOp::NumericNegation(_, name)
             | IrDataOp::BoolNegation(name)
             | IrDataOp::ArrayLength(name)
             | IrDataOp::ArrayIsEmpty(name)
@@ -102,12 +103,12 @@ impl IrDataOp {
                 }
             }
 
-            IrDataOp::NumericAdd(left, right)
-            | IrDataOp::NumericSubtract(left, right)
-            | IrDataOp::NumericMultiply(left, right)
-            | IrDataOp::Equals(left, right)
-            | IrDataOp::LessThan(left, right)
-            | IrDataOp::LessThanOrEqual(left, right)
+            IrDataOp::NumericAdd(_, left, right)
+            | IrDataOp::NumericSubtract(_, left, right)
+            | IrDataOp::NumericMultiply(_, left, right)
+            | IrDataOp::Equals(_, left, right)
+            | IrDataOp::LessThan(_, left, right)
+            | IrDataOp::LessThanOrEqual(_, left, right)
             | IrDataOp::ArrayFromRange(left, right)
             | IrDataOp::ArrayGet(left, right) => {
                 f(*left);
@@ -129,7 +130,7 @@ impl IrDataOp {
             IrDataOp::FieldAccess(name, _)
             | IrDataOp::TupleIndex(name, _)
             | IrDataOp::OptionSome(name)
-            | IrDataOp::NumericNegation(name)
+            | IrDataOp::NumericNegation(_, name)
             | IrDataOp::BoolNegation(name)
             | IrDataOp::ArrayLength(name)
             | IrDataOp::ArrayIsEmpty(name)
@@ -153,12 +154,12 @@ impl IrDataOp {
                 }
             }
 
-            IrDataOp::NumericAdd(left, right)
-            | IrDataOp::NumericSubtract(left, right)
-            | IrDataOp::NumericMultiply(left, right)
-            | IrDataOp::Equals(left, right)
-            | IrDataOp::LessThan(left, right)
-            | IrDataOp::LessThanOrEqual(left, right)
+            IrDataOp::NumericAdd(_, left, right)
+            | IrDataOp::NumericSubtract(_, left, right)
+            | IrDataOp::NumericMultiply(_, left, right)
+            | IrDataOp::Equals(_, left, right)
+            | IrDataOp::LessThan(_, left, right)
+            | IrDataOp::LessThanOrEqual(_, left, right)
             | IrDataOp::ArrayFromRange(left, right)
             | IrDataOp::ArrayGet(left, right) => {
                 f(left);
@@ -197,14 +198,20 @@ impl fmt::Display for IrDataOp {
             IrDataOp::OptionSome(value) => write!(f, "Some({value})"),
             IrDataOp::OptionNone => f.write_str("None"),
             IrDataOp::StringConcat(parts) => write!(f, "string_concat({})", join(parts, ", ")),
-            IrDataOp::NumericAdd(left, right) => write!(f, "add({left}, {right})"),
-            IrDataOp::NumericSubtract(left, right) => write!(f, "sub({left}, {right})"),
-            IrDataOp::NumericMultiply(left, right) => write!(f, "mul({left}, {right})"),
-            IrDataOp::Equals(left, right) => write!(f, "eq({left}, {right})"),
-            IrDataOp::LessThan(left, right) => write!(f, "lt({left}, {right})"),
-            IrDataOp::LessThanOrEqual(left, right) => write!(f, "lt_eq({left}, {right})"),
+            IrDataOp::NumericAdd(typ, left, right) => write!(f, "add[{typ:?}]({left}, {right})"),
+            IrDataOp::NumericSubtract(typ, left, right) => {
+                write!(f, "sub[{typ:?}]({left}, {right})")
+            }
+            IrDataOp::NumericMultiply(typ, left, right) => {
+                write!(f, "mul[{typ:?}]({left}, {right})")
+            }
+            IrDataOp::Equals(typ, left, right) => write!(f, "eq[{typ:?}]({left}, {right})"),
+            IrDataOp::LessThan(typ, left, right) => write!(f, "lt[{typ:?}]({left}, {right})"),
+            IrDataOp::LessThanOrEqual(typ, left, right) => {
+                write!(f, "lt_eq[{typ:?}]({left}, {right})")
+            }
             IrDataOp::ArrayFromRange(left, right) => write!(f, "{left}..={right}"),
-            IrDataOp::NumericNegation(operand) => write!(f, "neg({operand})"),
+            IrDataOp::NumericNegation(typ, operand) => write!(f, "neg[{typ:?}]({operand})"),
             IrDataOp::BoolNegation(operand) => write!(f, "not({operand})"),
             IrDataOp::ArrayLength(operand) => write!(f, "{operand}.len()"),
             IrDataOp::ArrayIsEmpty(operand) => write!(f, "{operand}.is_empty()"),

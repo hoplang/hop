@@ -680,7 +680,7 @@ impl<'a> Evaluator<'a> {
             }
             data => {
                 let folded = match &data {
-                    IrDataOp::NumericAdd(left, right) => {
+                    IrDataOp::NumericAdd(_, left, right) => {
                         match (self.values.get(left), self.values.get(right)) {
                             (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
                                 Some(IrDataOp::IntLiteral(l.wrapping_add(*r)))
@@ -691,7 +691,7 @@ impl<'a> Evaluator<'a> {
                             _ => None,
                         }
                     }
-                    IrDataOp::NumericSubtract(left, right) => {
+                    IrDataOp::NumericSubtract(_, left, right) => {
                         match (self.values.get(left), self.values.get(right)) {
                             (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
                                 Some(IrDataOp::IntLiteral(l.wrapping_sub(*r)))
@@ -702,7 +702,7 @@ impl<'a> Evaluator<'a> {
                             _ => None,
                         }
                     }
-                    IrDataOp::NumericMultiply(left, right) => {
+                    IrDataOp::NumericMultiply(_, left, right) => {
                         match (self.values.get(left), self.values.get(right)) {
                             (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
                                 Some(IrDataOp::IntLiteral(l.wrapping_mul(*r)))
@@ -713,7 +713,7 @@ impl<'a> Evaluator<'a> {
                             _ => None,
                         }
                     }
-                    IrDataOp::Equals(left, right) => {
+                    IrDataOp::Equals(_, left, right) => {
                         match (self.values.get(left), self.values.get(right)) {
                             (Some(IrDataOp::BoolLiteral(l)), Some(IrDataOp::BoolLiteral(r))) => {
                                 Some(IrDataOp::BoolLiteral(l == r))
@@ -731,7 +731,7 @@ impl<'a> Evaluator<'a> {
                             _ => None,
                         }
                     }
-                    IrDataOp::LessThan(left, right) => {
+                    IrDataOp::LessThan(_, left, right) => {
                         match (self.values.get(left), self.values.get(right)) {
                             (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
                                 Some(IrDataOp::BoolLiteral(l < r))
@@ -742,7 +742,7 @@ impl<'a> Evaluator<'a> {
                             _ => None,
                         }
                     }
-                    IrDataOp::LessThanOrEqual(left, right) => {
+                    IrDataOp::LessThanOrEqual(_, left, right) => {
                         match (self.values.get(left), self.values.get(right)) {
                             (Some(IrDataOp::IntLiteral(l)), Some(IrDataOp::IntLiteral(r))) => {
                                 Some(IrDataOp::BoolLiteral(l <= r))
@@ -753,7 +753,7 @@ impl<'a> Evaluator<'a> {
                             _ => None,
                         }
                     }
-                    IrDataOp::NumericNegation(operand) => match self.values.get(operand) {
+                    IrDataOp::NumericNegation(_, operand) => match self.values.get(operand) {
                         Some(IrDataOp::IntLiteral(value)) => {
                             Some(IrDataOp::IntLiteral(value.wrapping_neg()))
                         }
@@ -840,7 +840,7 @@ mod tests {
 
     use super::*;
     use crate::document::Document;
-    use crate::hop::typing::Ty;
+    use crate::hop::typing::{EquatableType, NumericType, Ty};
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
@@ -932,7 +932,9 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("n", Ty::Int)], |t| {
                     let ten = t.int(10);
-                    let add = t.lambda([IrType::INT], |t, params| t.add(params[0], ten));
+                    let add = t.lambda([IrType::INT], |t, params| {
+                        t.add(NumericType::Int, params[0], ten)
+                    });
                     let known = t.apply(add, [t.int(1)]);
                     let unknown = t.apply(add, [t.param("n")]);
                     t.html_concat([
@@ -947,7 +949,7 @@ mod tests {
                 entrypoint Test@e0(n@v0: Int) -> Html {
                   let v1: Int = 10
                   let v4: (Int) -> Int = fn(v2: Int) {
-                    let v3: Int = add(v2, v1)
+                    let v3: Int = add[Int](v2, v1)
                     v3
                   }
                   let v5: Int = 1
@@ -965,12 +967,12 @@ mod tests {
                 entrypoint Test@e0(n@v0: Int) -> Html {
                   let v1: Int = 10
                   let v4: (Int) -> Int = fn(v2: Int) {
-                    let v3: Int = add(v2, v1)
+                    let v3: Int = add[Int](v2, v1)
                     v3
                   }
                   let v5: Int = 1
                   let v13: Int = 11
-                  let v14: Int = add(v0, v1)
+                  let v14: Int = add[Int](v0, v1)
                   let v8: String = "11"
                   let v9: Html = text("11")
                   let v10: String = v14.to_string()
@@ -1108,7 +1110,9 @@ mod tests {
     fn should_fold_arithmetic_with_wrapping() {
         check(
             FlatProgramBuilder::new()
-                .function("wrap", [], Ty::Int, |t| t.add(t.int(i32::MAX), t.int(1)))
+                .function("wrap", [], Ty::Int, |t| {
+                    t.add(NumericType::Int, t.int(i32::MAX), t.int(1))
+                })
                 .build()
                 .unwrap(),
             expect![[r#"
@@ -1116,7 +1120,7 @@ mod tests {
                 fn wrap@f0() -> Int {
                   let v0: Int = 2147483647
                   let v1: Int = 1
-                  let v2: Int = add(v0, v1)
+                  let v2: Int = add[Int](v0, v1)
                   v2
                 }
 
@@ -1502,7 +1506,9 @@ mod tests {
                             m.arm(Pat::variant("Dot", []), |t, _| t.int(0));
                             m.arm(
                                 Pat::variant("Circle", [("radius", Pat::bind("r"))]),
-                                |t, arm| t.mul(arm.binding("r"), arm.binding("r")),
+                                |t, arm| {
+                                    t.mul(NumericType::Int, arm.binding("r"), arm.binding("r"))
+                                },
                             );
                         },
                     )
@@ -1519,7 +1525,7 @@ mod tests {
                       v2
                     }
                     Shape::Circle {radius@v3: Int} => {
-                      let v4: Int = mul(v3, v3)
+                      let v4: Int = mul[Int](v3, v3)
                       v4
                     }
                   }
@@ -1529,7 +1535,7 @@ mod tests {
                 -- after --
                 fn area@f0(n@v0: Int) -> Int {
                   let v1: Shape = Circle {radius: v0}
-                  let v4: Int = mul(v0, v0)
+                  let v4: Int = mul[Int](v0, v0)
                   v4
                 }
             "#]],
@@ -1609,7 +1615,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
-                    t.match_(t.eq(t.str("a"), t.str("a")), |m| {
+                    t.match_(t.eq(EquatableType::String, t.str("a"), t.str("a")), |m| {
                         m.arm(Pat::True, |t, _| t.text("same"));
                         m.arm(Pat::False, |t, _| t.text("other"));
                     })
@@ -1621,7 +1627,7 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
-                  let v2: Bool = eq(v0, v1)
+                  let v2: Bool = eq[String](v0, v1)
                   let v5: Html = match v2 {
                     true => {
                       let v3: Html = text("same")

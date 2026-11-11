@@ -264,8 +264,16 @@ pub fn typecheck_expr(
                     }
                     let (left, right) = (Box::new(typed_left), Box::new(typed_right));
                     Some(match operator {
-                        ParsedBinaryOp::Eq => TypedExpr::Equals { left, right },
-                        ParsedBinaryOp::NotEq => TypedExpr::NotEquals { left, right },
+                        ParsedBinaryOp::Eq => TypedExpr::Equals {
+                            left,
+                            right,
+                            operand_type: left_comparable,
+                        },
+                        ParsedBinaryOp::NotEq => TypedExpr::NotEquals {
+                            left,
+                            right,
+                            operand_type: left_comparable,
+                        },
                         _ => unreachable!(),
                     })
                 }
@@ -299,14 +307,26 @@ pub fn typecheck_expr(
                     }
                     let (left, right) = (Box::new(typed_left), Box::new(typed_right));
                     Some(match operator {
-                        ParsedBinaryOp::LessThan => TypedExpr::LessThan { left, right },
-                        ParsedBinaryOp::GreaterThan => TypedExpr::GreaterThan { left, right },
-                        ParsedBinaryOp::LessThanOrEqual => {
-                            TypedExpr::LessThanOrEqual { left, right }
-                        }
-                        ParsedBinaryOp::GreaterThanOrEqual => {
-                            TypedExpr::GreaterThanOrEqual { left, right }
-                        }
+                        ParsedBinaryOp::LessThan => TypedExpr::LessThan {
+                            left,
+                            right,
+                            operand_type: left_comparable,
+                        },
+                        ParsedBinaryOp::GreaterThan => TypedExpr::GreaterThan {
+                            left,
+                            right,
+                            operand_type: left_comparable,
+                        },
+                        ParsedBinaryOp::LessThanOrEqual => TypedExpr::LessThanOrEqual {
+                            left,
+                            right,
+                            operand_type: left_comparable,
+                        },
+                        ParsedBinaryOp::GreaterThanOrEqual => TypedExpr::GreaterThanOrEqual {
+                            left,
+                            right,
+                            operand_type: left_comparable,
+                        },
                         _ => unreachable!(),
                     })
                 }

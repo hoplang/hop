@@ -140,7 +140,7 @@ impl RustTranspiler {
                 | IrDataOp::LessThan(..)
                 | IrDataOp::LessThanOrEqual(..)
                 | IrDataOp::ArrayFromRange(..)
-                | IrDataOp::NumericNegation(_)
+                | IrDataOp::NumericNegation(..)
                 | IrDataOp::BoolNegation(_)
                 | IrDataOp::ArrayLength(_)
                 | IrDataOp::ArrayIsEmpty(_)
@@ -2020,7 +2020,7 @@ impl Transpiler for RustTranspiler {
 mod tests {
     use super::*;
     use crate::document::Document;
-    use crate::hop::typing::Ty;
+    use crate::hop::typing::{ComparableType, NumericType, Ty};
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_to_writer;
@@ -2050,11 +2050,11 @@ mod tests {
                     [("n", Ty::Int), ("row", Ty::function([Ty::Int], Ty::Html))],
                     Ty::Html,
                     |t| {
-                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                        t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
                             m.arm(Pat::True, |t, _| t.html_concat([]));
                             m.arm(Pat::False, |t, _| {
                                 let row = t.apply(t.param("row"), [t.param("n")]);
-                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.sub(NumericType::Int, t.param("n"), t.int(1));
                                 let rest = t.call("Countdown", [rest, t.param("row")]);
                                 t.html_concat([row, rest])
                             });
@@ -2143,13 +2143,13 @@ mod tests {
                     [("n", Ty::Int), ("scale", Ty::function([Ty::Int], Ty::Int))],
                     Ty::Int,
                     |t| {
-                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                        t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
                             m.arm(Pat::True, |t, _| t.int(0));
                             m.arm(Pat::False, |t, _| {
                                 let scaled = t.apply(t.param("scale"), [t.param("n")]);
-                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.sub(NumericType::Int, t.param("n"), t.int(1));
                                 let rest = t.call("Sum", [rest, t.param("scale")]);
-                                t.add(scaled, rest)
+                                t.add(NumericType::Int, scaled, rest)
                             });
                         })
                     },
@@ -2157,7 +2157,9 @@ mod tests {
                 .entrypoint("Test", [("double", Ty::Bool)], |t| {
                     let scale = t.lambda([IrType::INT], |t, params| {
                         t.match_(t.param("double"), |m| {
-                            m.arm(Pat::True, |t, _| t.mul(params[0], t.int(2)));
+                            m.arm(Pat::True, |t, _| {
+                                t.mul(NumericType::Int, params[0], t.int(2))
+                            });
                             m.arm(Pat::False, |_, _| params[0]);
                         })
                     });
@@ -2251,10 +2253,10 @@ mod tests {
                     [("n", Ty::Int), ("wrap", Ty::function([Ty::Html], Ty::Html))],
                     Ty::Html,
                     |t| {
-                        t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                        t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
                             m.arm(Pat::True, |t, _| t.text("x"));
                             m.arm(Pat::False, |t, _| {
-                                let rest = t.sub(t.param("n"), t.int(1));
+                                let rest = t.sub(NumericType::Int, t.param("n"), t.int(1));
                                 let inner = t.call("Wrap", [rest, t.param("wrap")]);
                                 t.apply(t.param("wrap"), [inner])
                             });

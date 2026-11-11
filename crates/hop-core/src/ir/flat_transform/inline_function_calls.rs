@@ -303,7 +303,7 @@ impl<'a> Inliner<'a> {
 mod tests {
 
     use super::*;
-    use crate::hop::typing::Ty;
+    use crate::hop::typing::{ComparableType, NumericType, Ty};
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::flat_typecheck;
@@ -380,7 +380,9 @@ mod tests {
                 )
                 .entrypoint("Test", [("n", Ty::Int)], |t| {
                     let n = t.param("n");
-                    let add = t.lambda([IrType::INT], |t, params| t.add(params[0], n));
+                    let add = t.lambda([IrType::INT], |t, params| {
+                        t.add(NumericType::Int, params[0], n)
+                    });
                     let twice = t.call("Twice", [add, t.int(1)]);
                     t.escape(t.int_to_string(twice))
                 })
@@ -399,7 +401,7 @@ mod tests {
                 }
                 entrypoint Test@e0(n@v7: Int) -> Html {
                   let v10: (Int) -> Int = fn(v8: Int) {
-                    let v9: Int = add(v8, v7)
+                    let v9: Int = add[Int](v8, v7)
                     v9
                   }
                   let v11: Int = 1
@@ -412,7 +414,7 @@ mod tests {
                 -- after --
                 entrypoint Test@e0(n@v7: Int) -> Html {
                   let v10: (Int) -> Int = fn(v8: Int) {
-                    let v9: Int = add(v8, v7)
+                    let v9: Int = add[Int](v8, v7)
                     v9
                   }
                   let v11: Int = 1
@@ -435,7 +437,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("double", [("x", Ty::Int)], Ty::Int, |t| {
-                    t.add(t.param("x"), t.param("x"))
+                    t.add(NumericType::Int, t.param("x"), t.param("x"))
                 })
                 .entrypoint("Test", [("n", Ty::Int)], |t| {
                     t.escape(t.int_to_string(t.call("double", [t.param("n")])))
@@ -445,7 +447,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn double@f0(x@v0: Int) -> Int {
-                  let v1: Int = add(v0, v0)
+                  let v1: Int = add[Int](v0, v0)
                   v1
                 }
                 entrypoint Test@e0(n@v2: Int) -> Html {
@@ -457,7 +459,7 @@ mod tests {
 
                 -- after --
                 entrypoint Test@e0(n@v2: Int) -> Html {
-                  let v6: Int = add(v2, v2)
+                  let v6: Int = add[Int](v2, v2)
                   let v4: String = v6.to_string()
                   let v5: Html = escape(v4)
                   v5
@@ -471,10 +473,10 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("inner", [("x", Ty::Int)], Ty::Int, |t| {
-                    t.add(t.param("x"), t.int(1))
+                    t.add(NumericType::Int, t.param("x"), t.int(1))
                 })
                 .function("outer", [("y", Ty::Int)], Ty::Int, |t| {
-                    t.mul(t.call("inner", [t.param("y")]), t.int(2))
+                    t.mul(NumericType::Int, t.call("inner", [t.param("y")]), t.int(2))
                 })
                 .entrypoint("Test", [("n", Ty::Int)], |t| {
                     t.escape(t.int_to_string(t.call("outer", [t.param("n")])))
@@ -485,13 +487,13 @@ mod tests {
                 -- before --
                 fn inner@f0(x@v0: Int) -> Int {
                   let v1: Int = 1
-                  let v2: Int = add(v0, v1)
+                  let v2: Int = add[Int](v0, v1)
                   v2
                 }
                 fn outer@f1(y@v3: Int) -> Int {
                   let v4: Int = inner@f0(v3)
                   let v5: Int = 2
-                  let v6: Int = mul(v4, v5)
+                  let v6: Int = mul[Int](v4, v5)
                   v6
                 }
                 entrypoint Test@e0(n@v7: Int) -> Html {
@@ -504,9 +506,9 @@ mod tests {
                 -- after --
                 entrypoint Test@e0(n@v7: Int) -> Html {
                   let v13: Int = 1
-                  let v14: Int = add(v7, v13)
+                  let v14: Int = add[Int](v7, v13)
                   let v15: Int = 2
-                  let v16: Int = mul(v14, v15)
+                  let v16: Int = mul[Int](v14, v15)
                   let v9: String = v16.to_string()
                   let v10: Html = escape(v9)
                   v10
@@ -579,7 +581,9 @@ mod tests {
                 .function("counter", [], Ty::Html, |t| {
                     let n = t.cell(t.int(0));
                     let count = t.track(n);
-                    let bump = t.event_handler(|t| t.cell_write(n, t.add(count, t.int(1))));
+                    let bump = t.event_handler(|t| {
+                        t.cell_write(n, t.add(NumericType::Int, count, t.int(1)))
+                    });
                     t.element_on_click("button", [], bump, t.escape(t.int_to_string(count)))
                 })
                 .entrypoint("Test", [], |t| {
@@ -595,7 +599,7 @@ mod tests {
                   let v2: Int = track(v1)
                   let v6: () -> Effect[()] = fn() {
                     let v3: Int = 1
-                    let v4: Int = add(v2, v3)
+                    let v4: Int = add[Int](v2, v3)
                     let v5: Effect[()] = v1 := v4
                     v5
                   }
@@ -618,7 +622,7 @@ mod tests {
                   let v15: Int = track(v14)
                   let v19: () -> Effect[()] = fn() {
                     let v16: Int = 1
-                    let v17: Int = add(v15, v16)
+                    let v17: Int = add[Int](v15, v16)
                     let v18: Effect[()] = v14 := v17
                     v18
                   }
@@ -630,7 +634,7 @@ mod tests {
                   let v25: Int = track(v24)
                   let v29: () -> Effect[()] = fn() {
                     let v26: Int = 1
-                    let v27: Int = add(v25, v26)
+                    let v27: Int = add[Int](v25, v26)
                     let v28: Effect[()] = v24 := v27
                     v28
                   }
@@ -667,7 +671,7 @@ mod tests {
                     let n = t.track(count);
                     let is_on = t.track(on);
                     let both = t.event_handler(|t| {
-                        let bump = t.cell_write(count, t.add(n, t.int(1)));
+                        let bump = t.cell_write(count, t.add(NumericType::Int, n, t.int(1)));
                         let flip = t.cell_write(on, t.not(is_on));
                         t.call("both", [bump, flip])
                     });
@@ -693,7 +697,7 @@ mod tests {
                   let v10: Bool = track(v8)
                   let v17: () -> Effect[()] = fn() {
                     let v11: Int = 1
-                    let v12: Int = add(v9, v11)
+                    let v12: Int = add[Int](v9, v11)
                     let v13: Effect[()] = v6 := v12
                     let v14: Bool = not(v10)
                     let v15: Effect[()] = v8 := v14
@@ -716,7 +720,7 @@ mod tests {
                   let v10: Bool = track(v8)
                   let v17: () -> Effect[()] = fn() {
                     let v11: Int = 1
-                    let v12: Int = add(v9, v11)
+                    let v12: Int = add[Int](v9, v11)
                     let v13: Effect[()] = v6 := v12
                     let v14: Bool = not(v10)
                     let v15: Effect[()] = v8 := v14
@@ -740,10 +744,10 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("count", [("n", Ty::Int)], Ty::Html, |t| {
-                    t.match_(t.lt(t.param("n"), t.int(1)), |m| {
+                    t.match_(t.lt(ComparableType::Int, t.param("n"), t.int(1)), |m| {
                         m.arm(Pat::True, |t, _| t.text("."));
                         m.arm(Pat::False, |t, _| {
-                            t.call("count", [t.sub(t.param("n"), t.int(1))])
+                            t.call("count", [t.sub(NumericType::Int, t.param("n"), t.int(1))])
                         });
                     })
                 })
@@ -754,7 +758,7 @@ mod tests {
                 -- before --
                 fn count@f0(n@v0: Int) -> Html {
                   let v1: Int = 1
-                  let v2: Bool = lt(v0, v1)
+                  let v2: Bool = lt[Int](v0, v1)
                   let v7: Html = match v2 {
                     true => {
                       let v3: Html = text(".")
@@ -762,7 +766,7 @@ mod tests {
                     }
                     false => {
                       let v4: Int = 1
-                      let v5: Int = sub(v0, v4)
+                      let v5: Int = sub[Int](v0, v4)
                       let v6: Html = count@f0(v5)
                       v6
                     }
@@ -778,7 +782,7 @@ mod tests {
                 -- after --
                 fn count@f0(n@v0: Int) -> Html {
                   let v1: Int = 1
-                  let v2: Bool = lt(v0, v1)
+                  let v2: Bool = lt[Int](v0, v1)
                   let v7: Html = match v2 {
                     true => {
                       let v3: Html = text(".")
@@ -786,7 +790,7 @@ mod tests {
                     }
                     false => {
                       let v4: Int = 1
-                      let v5: Int = sub(v0, v4)
+                      let v5: Int = sub[Int](v0, v4)
                       let v6: Html = count@f0(v5)
                       v6
                     }
@@ -809,10 +813,10 @@ mod tests {
                 .declare("ping", [("n", Ty::Int)], Ty::Html)
                 .declare("pong", [("n", Ty::Int)], Ty::Html)
                 .define("ping", |t, _| {
-                    t.match_(t.lt(t.param("n"), t.int(1)), |m| {
+                    t.match_(t.lt(ComparableType::Int, t.param("n"), t.int(1)), |m| {
                         m.arm(Pat::True, |t, _| t.text("."));
                         m.arm(Pat::False, |t, _| {
-                            t.call("pong", [t.sub(t.param("n"), t.int(1))])
+                            t.call("pong", [t.sub(NumericType::Int, t.param("n"), t.int(1))])
                         });
                     })
                 })
@@ -824,7 +828,7 @@ mod tests {
                 -- before --
                 fn ping@f0(n@v0: Int) -> Html {
                   let v2: Int = 1
-                  let v3: Bool = lt(v0, v2)
+                  let v3: Bool = lt[Int](v0, v2)
                   let v8: Html = match v3 {
                     true => {
                       let v4: Html = text(".")
@@ -832,7 +836,7 @@ mod tests {
                     }
                     false => {
                       let v5: Int = 1
-                      let v6: Int = sub(v0, v5)
+                      let v6: Int = sub[Int](v0, v5)
                       let v7: Html = pong@f1(v6)
                       v7
                     }
@@ -852,7 +856,7 @@ mod tests {
                 -- after --
                 fn ping@f0(n@v0: Int) -> Html {
                   let v2: Int = 1
-                  let v3: Bool = lt(v0, v2)
+                  let v3: Bool = lt[Int](v0, v2)
                   let v8: Html = match v3 {
                     true => {
                       let v4: Html = text(".")
@@ -860,7 +864,7 @@ mod tests {
                     }
                     false => {
                       let v5: Int = 1
-                      let v6: Int = sub(v0, v5)
+                      let v6: Int = sub[Int](v0, v5)
                       let v7: Html = pong@f1(v6)
                       v7
                     }
@@ -886,8 +890,9 @@ mod tests {
             FlatProgramBuilder::new()
                 .function("Bump", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
                     let shown = t.track(t.param("count"));
-                    let bump =
-                        t.event_handler(|t| t.cell_write(t.param("count"), t.add(shown, t.int(1))));
+                    let bump = t.event_handler(|t| {
+                        t.cell_write(t.param("count"), t.add(NumericType::Int, shown, t.int(1)))
+                    });
                     t.element_on_click("button", [], bump, t.escape(t.int_to_string(shown)))
                 })
                 .entrypoint("Test", [], |t| {
@@ -902,7 +907,7 @@ mod tests {
                   let v1: Int = track(v0)
                   let v5: () -> Effect[()] = fn() {
                     let v2: Int = 1
-                    let v3: Int = add(v1, v2)
+                    let v3: Int = add[Int](v1, v2)
                     let v4: Effect[()] = v0 := v3
                     v4
                   }
@@ -925,7 +930,7 @@ mod tests {
                   let v12: Int = track(v10)
                   let v16: () -> Effect[()] = fn() {
                     let v13: Int = 1
-                    let v14: Int = add(v12, v13)
+                    let v14: Int = add[Int](v12, v13)
                     let v15: Effect[()] = v10 := v14
                     v15
                   }

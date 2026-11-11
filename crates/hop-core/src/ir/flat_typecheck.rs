@@ -1,4 +1,6 @@
-use crate::hop::typing::{Constructor, Pattern, compile_arms};
+use crate::hop::typing::{
+    ComparableType, Constructor, EquatableType, NumericType, Pattern, compile_arms,
+};
 use crate::ir::flat_program::{
     FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram, FlatPureBlock,
     FlatPureOp,
@@ -671,11 +673,6 @@ impl<'a> Checker<'a> {
     }
 
     fn data_op(&self, op: &IrDataOp, declared: &IrDataType) -> Result<bool, FlatTypeError> {
-        let same = |left: ValueId, right: ValueId| {
-            let left = self.data(left)?;
-            let right = self.data(right)?;
-            Ok::<_, FlatTypeError>(if left == right { left } else { None })
-        };
         let all =
             |names: &[ValueId], typ: IrType| try_all(names, |name| Ok(self.typ(*name)?.is(&typ)));
         let declared_data = Some(declared);
@@ -725,25 +722,47 @@ impl<'a> Checker<'a> {
             IrDataOp::StringConcat(parts) => {
                 all(parts, IrType::STRING)? && *declared == IrDataType::String
             }
-            IrDataOp::NumericAdd(left, right)
-            | IrDataOp::NumericSubtract(left, right)
-            | IrDataOp::NumericMultiply(left, right) => same(*left, *right)?
-                .is_some_and(|typ| typ.as_numeric_type().is_some() && Some(typ) == declared_data),
-            IrDataOp::Equals(left, right) => {
-                same(*left, *right)?.is_some_and(|typ| typ.as_equatable_type().is_some())
-                    && *declared == IrDataType::Bool
+            IrDataOp::NumericAdd(typ, left, right)
+            | IrDataOp::NumericSubtract(typ, left, right)
+            | IrDataOp::NumericMultiply(typ, left, right) => {
+                let typ = match typ {
+                    NumericType::Int => IrDataType::Int,
+                    NumericType::Float => IrDataType::Float,
+                };
+                all(
+                    &[*left, *right],
+                    IrType::Data(IrFunctionDataType::Data(typ.clone())),
+                )? && *declared == typ
             }
-            IrDataOp::LessThan(left, right) | IrDataOp::LessThanOrEqual(left, right) => {
-                same(*left, *right)?.is_some_and(|typ| typ.as_comparable_type().is_some())
-                    && *declared == IrDataType::Bool
+            IrDataOp::Equals(typ, left, right) => {
+                let typ = match typ {
+                    EquatableType::String => IrType::STRING,
+                    EquatableType::Bool => IrType::BOOL,
+                    EquatableType::Int => IrType::INT,
+                    EquatableType::Float => IrType::FLOAT,
+                };
+                all(&[*left, *right], typ)? && *declared == IrDataType::Bool
+            }
+            IrDataOp::LessThan(typ, left, right) | IrDataOp::LessThanOrEqual(typ, left, right) => {
+                let typ = match typ {
+                    ComparableType::Int => IrType::INT,
+                    ComparableType::Float => IrType::FLOAT,
+                };
+                all(&[*left, *right], typ)? && *declared == IrDataType::Bool
             }
             IrDataOp::ArrayFromRange(start, end) => {
                 all(&[*start, *end], IrType::INT)?
                     && matches!(declared_data, Some(IrDataType::Array(element)) if **element == IrDataType::Int)
             }
-            IrDataOp::NumericNegation(operand) => {
-                let typ = self.data(*operand)?;
-                typ.and_then(IrDataType::as_numeric_type).is_some() && typ == declared_data
+            IrDataOp::NumericNegation(typ, operand) => {
+                let typ = match typ {
+                    NumericType::Int => IrDataType::Int,
+                    NumericType::Float => IrDataType::Float,
+                };
+                all(
+                    &[*operand],
+                    IrType::Data(IrFunctionDataType::Data(typ.clone())),
+                )? && *declared == typ
             }
             IrDataOp::BoolNegation(operand) => {
                 all(&[*operand], IrType::BOOL)? && *declared == IrDataType::Bool
@@ -927,7 +946,7 @@ mod tests {
     use std::cell::Cell;
 
     use super::FlatTypeError;
-    use crate::hop::typing::Ty;
+    use crate::hop::typing::{ComparableType, EquatableType, NumericType, Ty};
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::ir_type::IrType;
 
@@ -974,7 +993,9 @@ mod tests {
             .entrypoint("Test", [("double", Ty::Bool)], |t| {
                 let scale = t.match_(t.param("double"), |m| {
                     m.arm(Pat::True, |t, _| {
-                        t.lambda([IrType::INT], |t, params| t.add(params[0], params[0]))
+                        t.lambda([IrType::INT], |t, params| {
+                            t.add(NumericType::Int, params[0], params[0])
+                        })
                     });
                     m.arm(Pat::False, |t, _| {
                         t.lambda([IrType::INT], |_, params| params[0])
@@ -992,7 +1013,9 @@ mod tests {
     fn should_reject_an_application_with_the_wrong_arguments() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let double = t.lambda([IrType::INT], |t, params| t.add(params[0], params[0]));
+                let double = t.lambda([IrType::INT], |t, params| {
+                    t.add(NumericType::Int, params[0], params[0])
+                });
                 let doubled = t.apply(double, [t.str("one")]);
                 t.escape(t.int_to_string(doubled))
             })
@@ -1005,8 +1028,62 @@ mod tests {
     fn should_reject_an_op_with_ill_typed_operands() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let sum = t.add(t.int(1), t.str("one"));
+                let sum = t.add(NumericType::Int, t.int(1), t.str("one"));
                 t.escape(t.int_to_string(sum))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::IllTypedBinding);
+    }
+
+    #[test]
+    fn should_reject_an_arithmetic_op_of_a_type_its_operands_do_not_have() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let sum = t.add(NumericType::Float, t.int(1), t.int(2));
+                t.escape(t.int_to_string(t.float_to_int(sum)))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::IllTypedBinding);
+    }
+
+    #[test]
+    fn should_reject_a_negation_of_a_type_its_operand_does_not_have() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let negated = t.neg(NumericType::Int, t.float(1.0));
+                t.escape(t.int_to_string(negated))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::IllTypedBinding);
+    }
+
+    #[test]
+    fn should_reject_an_equality_of_a_type_its_operands_do_not_have() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let same = t.eq(EquatableType::Int, t.str("a"), t.str("a"));
+                t.match_(same, |m| {
+                    m.arm(Pat::True, |t, _| t.text("same"));
+                    m.arm(Pat::False, |t, _| t.text("other"));
+                })
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::IllTypedBinding);
+    }
+
+    #[test]
+    fn should_reject_a_comparison_of_a_type_its_operands_do_not_have() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let less = t.lt(ComparableType::Float, t.int(1), t.int(2));
+                t.match_(less, |m| {
+                    m.arm(Pat::True, |t, _| t.text("less"));
+                    m.arm(Pat::False, |t, _| t.text("not less"));
+                })
             })
             .build()
             .unwrap_err();
@@ -1074,7 +1151,7 @@ mod tests {
                     });
                     m.arm(Pat::False, |t, _| t.int(0));
                 });
-                let sum = t.add(inner.get().unwrap(), picked);
+                let sum = t.add(NumericType::Int, inner.get().unwrap(), picked);
                 t.escape(t.int_to_string(sum))
             })
             .build()
@@ -1105,7 +1182,7 @@ mod tests {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
                 t.html_for_keyed(t.param("items"), |t, item| {
-                    let doubled = t.add(item, item);
+                    let doubled = t.add(NumericType::Int, item, item);
                     key.set(Some(doubled));
                     doubled
                 })
@@ -1126,7 +1203,7 @@ mod tests {
                     params[0]
                 });
                 let one = t.apply(id, [t.int(1)]);
-                let sum = t.add(one, param.get().unwrap());
+                let sum = t.add(NumericType::Int, one, param.get().unwrap());
                 t.escape(t.int_to_string(sum))
             })
             .build()
@@ -1143,7 +1220,11 @@ mod tests {
                 t.param("n")
             })
             .entrypoint("Test", [], |t| {
-                let sum = t.add(t.call("id", [t.int(1)]), param.get().unwrap());
+                let sum = t.add(
+                    NumericType::Int,
+                    t.call("id", [t.int(1)]),
+                    param.get().unwrap(),
+                );
                 t.escape(t.int_to_string(sum))
             })
             .build()
@@ -1256,7 +1337,7 @@ mod tests {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.track(t.cell(t.int(0)));
-                let next = t.lambda([], |t, _| t.add(count, t.int(1)));
+                let next = t.lambda([], |t, _| t.add(NumericType::Int, count, t.int(1)));
                 t.element_on_click("button", vec![], next, t.text("x"))
             })
             .build()
@@ -1269,8 +1350,9 @@ mod tests {
         FlatProgramBuilder::new()
             .function("Bump", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
                 let shown = t.track(t.param("count"));
-                let bump =
-                    t.event_handler(|t| t.cell_write(t.param("count"), t.add(shown, t.int(1))));
+                let bump = t.event_handler(|t| {
+                    t.cell_write(t.param("count"), t.add(NumericType::Int, shown, t.int(1)))
+                });
                 t.element_on_click("button", vec![], bump, t.escape(t.int_to_string(shown)))
             })
             .entrypoint("Test", [], |t| {

@@ -13,7 +13,7 @@ pub fn optimize_flat(program: FlatProgram) -> FlatProgram {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::typing::Ty;
+    use crate::hop::typing::{NumericType, Ty};
     use crate::ir::entrypoint_id::EntrypointId;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
@@ -303,7 +303,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("double", [("x", Ty::Int)], Ty::Int, |t| {
-                    t.add(t.param("x"), t.param("x"))
+                    t.add(NumericType::Int, t.param("x"), t.param("x"))
                 })
                 .entrypoint("Test", [], |t| {
                     t.escape(t.int_to_string(t.call("double", [t.int(21)])))
@@ -313,7 +313,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn double@f0(x@v0: Int) -> Int {
-                  let v1: Int = add(v0, v0)
+                  let v1: Int = add[Int](v0, v0)
                   v1
                 }
                 entrypoint Test@e0() -> Html {

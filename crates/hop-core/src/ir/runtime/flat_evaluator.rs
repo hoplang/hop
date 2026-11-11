@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
+use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
@@ -623,43 +624,58 @@ fn evaluate_data_op<'a>(op: &IrDataOp, env: &Env<'a>) -> Result<Value<'a>, EvalE
                     .into(),
             )
         }
-        IrDataOp::NumericAdd(left, right) => match &env[left] {
-            Value::Int(left) => Value::Int(left.wrapping_add(env[right].as_int())),
-            left => Value::Float(left.as_float() + env[right].as_float()),
-        },
-        IrDataOp::NumericSubtract(left, right) => match &env[left] {
-            Value::Int(left) => Value::Int(left.wrapping_sub(env[right].as_int())),
-            left => Value::Float(left.as_float() - env[right].as_float()),
-        },
-        IrDataOp::NumericMultiply(left, right) => match &env[left] {
-            Value::Int(left) => Value::Int(left.wrapping_mul(env[right].as_int())),
-            left => Value::Float(left.as_float() * env[right].as_float()),
-        },
-        IrDataOp::Equals(left, right) => {
-            let right = &env[right];
-            match &env[left] {
-                Value::Bool(left) => Value::Bool(*left == right.as_bool()),
-                Value::String(left) => Value::Bool(left == right.as_string()),
-                Value::Int(left) => Value::Bool(*left == right.as_int()),
-                left => Value::Bool(left.as_float() == right.as_float()),
-            }
+        IrDataOp::NumericAdd(NumericType::Int, left, right) => {
+            Value::Int(env[left].as_int().wrapping_add(env[right].as_int()))
         }
-        IrDataOp::LessThan(left, right) => match &env[left] {
-            Value::Int(left) => Value::Bool(*left < env[right].as_int()),
-            left => Value::Bool(left.as_float() < env[right].as_float()),
-        },
-        IrDataOp::LessThanOrEqual(left, right) => match &env[left] {
-            Value::Int(left) => Value::Bool(*left <= env[right].as_int()),
-            left => Value::Bool(left.as_float() <= env[right].as_float()),
-        },
+        IrDataOp::NumericAdd(NumericType::Float, left, right) => {
+            Value::Float(env[left].as_float() + env[right].as_float())
+        }
+        IrDataOp::NumericSubtract(NumericType::Int, left, right) => {
+            Value::Int(env[left].as_int().wrapping_sub(env[right].as_int()))
+        }
+        IrDataOp::NumericSubtract(NumericType::Float, left, right) => {
+            Value::Float(env[left].as_float() - env[right].as_float())
+        }
+        IrDataOp::NumericMultiply(NumericType::Int, left, right) => {
+            Value::Int(env[left].as_int().wrapping_mul(env[right].as_int()))
+        }
+        IrDataOp::NumericMultiply(NumericType::Float, left, right) => {
+            Value::Float(env[left].as_float() * env[right].as_float())
+        }
+        IrDataOp::Equals(EquatableType::Bool, left, right) => {
+            Value::Bool(env[left].as_bool() == env[right].as_bool())
+        }
+        IrDataOp::Equals(EquatableType::String, left, right) => {
+            Value::Bool(env[left].as_string() == env[right].as_string())
+        }
+        IrDataOp::Equals(EquatableType::Int, left, right) => {
+            Value::Bool(env[left].as_int() == env[right].as_int())
+        }
+        IrDataOp::Equals(EquatableType::Float, left, right) => {
+            Value::Bool(env[left].as_float() == env[right].as_float())
+        }
+        IrDataOp::LessThan(ComparableType::Int, left, right) => {
+            Value::Bool(env[left].as_int() < env[right].as_int())
+        }
+        IrDataOp::LessThan(ComparableType::Float, left, right) => {
+            Value::Bool(env[left].as_float() < env[right].as_float())
+        }
+        IrDataOp::LessThanOrEqual(ComparableType::Int, left, right) => {
+            Value::Bool(env[left].as_int() <= env[right].as_int())
+        }
+        IrDataOp::LessThanOrEqual(ComparableType::Float, left, right) => {
+            Value::Bool(env[left].as_float() <= env[right].as_float())
+        }
         IrDataOp::ArrayFromRange(left, right) => Value::Array(Rc::new(
             BoundedVec::new((env[left].as_int()..=env[right].as_int()).map(Value::Int))
                 .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
         )),
-        IrDataOp::NumericNegation(operand) => match &env[operand] {
-            Value::Int(value) => Value::Int(value.wrapping_neg()),
-            operand => Value::Float(-operand.as_float()),
-        },
+        IrDataOp::NumericNegation(NumericType::Int, operand) => {
+            Value::Int(env[operand].as_int().wrapping_neg())
+        }
+        IrDataOp::NumericNegation(NumericType::Float, operand) => {
+            Value::Float(-env[operand].as_float())
+        }
         IrDataOp::BoolNegation(operand) => Value::Bool(!env[operand].as_bool()),
         IrDataOp::ArrayLength(operand) => Value::Int(env[operand].as_array().len() as i32),
         IrDataOp::ArrayIsEmpty(operand) => Value::Bool(env[operand].as_array().is_empty()),
@@ -692,7 +708,7 @@ fn evaluate_data_op<'a>(op: &IrDataOp, env: &Env<'a>) -> Result<Value<'a>, EvalE
 mod tests {
     use super::*;
     use crate::counting_allocator;
-    use crate::hop::typing::Ty;
+    use crate::hop::typing::{ComparableType, NumericType, Ty};
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
@@ -746,7 +762,7 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 1269344 allocations
+            program generation: 1280513 allocations
             program evaluation: 28562 allocations
         "#]]
         .assert_eq(&format!(
@@ -1036,7 +1052,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
-                    let sum = t.add(t.int(2147483647), t.int(1));
+                    let sum = t.add(NumericType::Int, t.int(2147483647), t.int(1));
                     t.escape(t.int_to_string(sum))
                 })
                 .build()
@@ -1047,7 +1063,7 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v0: Int = 2147483647
                   let v1: Int = 1
-                  let v2: Int = add(v0, v1)
+                  let v2: Int = add[Int](v0, v1)
                   let v3: String = v2.to_string()
                   let v4: Html = escape(v3)
                   v4
@@ -1253,10 +1269,14 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("Sum", [("n", Ty::Int)], Ty::Int, |t| {
-                    t.match_(t.lte(t.param("n"), t.int(0)), |m| {
+                    t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
                         m.arm(Pat::True, |t, _| t.int(0));
                         m.arm(Pat::False, |t, _| {
-                            t.add(t.param("n"), t.call("Sum", [t.sub(t.param("n"), t.int(1))]))
+                            t.add(
+                                NumericType::Int,
+                                t.param("n"),
+                                t.call("Sum", [t.sub(NumericType::Int, t.param("n"), t.int(1))]),
+                            )
                         });
                     })
                 })
@@ -1270,7 +1290,7 @@ mod tests {
                 -- before --
                 fn Sum@f0(n@v0: Int) -> Int {
                   let v1: Int = 0
-                  let v2: Bool = lt_eq(v0, v1)
+                  let v2: Bool = lt_eq[Int](v0, v1)
                   let v8: Int = match v2 {
                     true => {
                       let v3: Int = 0
@@ -1278,9 +1298,9 @@ mod tests {
                     }
                     false => {
                       let v4: Int = 1
-                      let v5: Int = sub(v0, v4)
+                      let v5: Int = sub[Int](v0, v4)
                       let v6: Int = Sum@f0(v5)
-                      let v7: Int = add(v0, v6)
+                      let v7: Int = add[Int](v0, v6)
                       v7
                     }
                   }
@@ -1306,7 +1326,9 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("base", Ty::Int)], |t| {
                     let base = t.param("base");
-                    let add = t.lambda([IrType::INT], |t, params| t.add(params[0], base));
+                    let add = t.lambda([IrType::INT], |t, params| {
+                        t.add(NumericType::Int, params[0], base)
+                    });
                     let one = t.apply(add, [t.int(1)]);
                     let two = t.apply(add, [t.int(2)]);
                     t.html_concat([
@@ -1321,7 +1343,7 @@ mod tests {
                 -- before --
                 entrypoint Test@e0(base@v0: Int) -> Html {
                   let v3: (Int) -> Int = fn(v1: Int) {
-                    let v2: Int = add(v1, v0)
+                    let v2: Int = add[Int](v1, v0)
                     v2
                   }
                   let v4: Int = 1
@@ -1408,7 +1430,9 @@ mod tests {
                 let mut closure = t.lambda([], |t, _| t.int(0));
                 for _ in 1..12 {
                     let inner = closure;
-                    closure = t.lambda([], |t, _| t.add(t.apply(inner, []), t.int(1)));
+                    closure = t.lambda([], |t, _| {
+                        t.add(NumericType::Int, t.apply(inner, []), t.int(1))
+                    });
                 }
                 t.escape(t.int_to_string(t.apply(closure, [])))
             })
@@ -1425,7 +1449,7 @@ mod tests {
     fn should_error_when_a_function_never_stops_calling_itself() {
         let program = FlatProgramBuilder::new()
             .function("Loop", [("n", Ty::Int)], Ty::Int, |t| {
-                t.call("Loop", [t.add(t.param("n"), t.int(1))])
+                t.call("Loop", [t.add(NumericType::Int, t.param("n"), t.int(1))])
             })
             .entrypoint("Test", [], |t| {
                 t.escape(t.int_to_string(t.call("Loop", [t.int(0)])))
@@ -1538,11 +1562,13 @@ mod tests {
         let program = FlatProgramBuilder::new()
             .function("Tree", [("n", Ty::Int)], Ty::Html, |t| {
                 let n = t.param("n");
-                let deeper = t.lt(n, t.int(10));
+                let deeper = t.lt(ComparableType::Int, n, t.int(10));
                 t.match_(deeper, |m| {
                     m.arm(Pat::True, |t, _| {
                         let three = t.array_from_range(t.int(1), t.int(3));
-                        t.html_for_unbound(three, |t| t.call("Tree", [t.add(n, t.int(1))]))
+                        t.html_for_unbound(three, |t| {
+                            t.call("Tree", [t.add(NumericType::Int, n, t.int(1))])
+                        })
                     });
                     m.arm(Pat::False, |t, _| t.text("leaf"));
                 })

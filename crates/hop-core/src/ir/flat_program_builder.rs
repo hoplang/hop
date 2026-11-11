@@ -1,5 +1,7 @@
 use crate::document::CheapString;
-use crate::hop::typing::{Constructor, Pattern, PatternField, Ty};
+use crate::hop::typing::{
+    ComparableType, Constructor, EquatableType, NumericType, Pattern, PatternField, Ty,
+};
 use crate::html::HtmlElementKind;
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
@@ -362,45 +364,57 @@ impl<'a> FlatBlockBuilder<'a> {
             .var
     }
 
-    pub fn eq(&self, left: ValueId, right: ValueId) -> ValueId {
+    pub fn eq(&self, typ: EquatableType, left: ValueId, right: ValueId) -> ValueId {
         self.push(
             IrType::BOOL,
-            FlatPureOp::Data(IrDataOp::Equals(left, right)),
+            FlatPureOp::Data(IrDataOp::Equals(typ, left, right)),
         )
     }
 
-    pub fn lt(&self, left: ValueId, right: ValueId) -> ValueId {
+    pub fn lt(&self, typ: ComparableType, left: ValueId, right: ValueId) -> ValueId {
         self.push(
             IrType::BOOL,
-            FlatPureOp::Data(IrDataOp::LessThan(left, right)),
+            FlatPureOp::Data(IrDataOp::LessThan(typ, left, right)),
         )
     }
 
-    pub fn lte(&self, left: ValueId, right: ValueId) -> ValueId {
+    pub fn lte(&self, typ: ComparableType, left: ValueId, right: ValueId) -> ValueId {
         self.push(
             IrType::BOOL,
-            FlatPureOp::Data(IrDataOp::LessThanOrEqual(left, right)),
+            FlatPureOp::Data(IrDataOp::LessThanOrEqual(typ, left, right)),
         )
     }
 
-    pub fn add(&self, left: ValueId, right: ValueId) -> ValueId {
+    pub fn add(&self, typ: NumericType, left: ValueId, right: ValueId) -> ValueId {
+        let result = match typ {
+            NumericType::Int => IrType::INT,
+            NumericType::Float => IrType::FLOAT,
+        };
         self.push(
-            self.typ(left),
-            FlatPureOp::Data(IrDataOp::NumericAdd(left, right)),
+            result,
+            FlatPureOp::Data(IrDataOp::NumericAdd(typ, left, right)),
         )
     }
 
-    pub fn sub(&self, left: ValueId, right: ValueId) -> ValueId {
+    pub fn sub(&self, typ: NumericType, left: ValueId, right: ValueId) -> ValueId {
+        let result = match typ {
+            NumericType::Int => IrType::INT,
+            NumericType::Float => IrType::FLOAT,
+        };
         self.push(
-            self.typ(left),
-            FlatPureOp::Data(IrDataOp::NumericSubtract(left, right)),
+            result,
+            FlatPureOp::Data(IrDataOp::NumericSubtract(typ, left, right)),
         )
     }
 
-    pub fn mul(&self, left: ValueId, right: ValueId) -> ValueId {
+    pub fn mul(&self, typ: NumericType, left: ValueId, right: ValueId) -> ValueId {
+        let result = match typ {
+            NumericType::Int => IrType::INT,
+            NumericType::Float => IrType::FLOAT,
+        };
         self.push(
-            self.typ(left),
-            FlatPureOp::Data(IrDataOp::NumericMultiply(left, right)),
+            result,
+            FlatPureOp::Data(IrDataOp::NumericMultiply(typ, left, right)),
         )
     }
 
@@ -411,10 +425,14 @@ impl<'a> FlatBlockBuilder<'a> {
         )
     }
 
-    pub fn neg(&self, operand: ValueId) -> ValueId {
+    pub fn neg(&self, typ: NumericType, operand: ValueId) -> ValueId {
+        let result = match typ {
+            NumericType::Int => IrType::INT,
+            NumericType::Float => IrType::FLOAT,
+        };
         self.push(
-            self.typ(operand),
-            FlatPureOp::Data(IrDataOp::NumericNegation(operand)),
+            result,
+            FlatPureOp::Data(IrDataOp::NumericNegation(typ, operand)),
         )
     }
 

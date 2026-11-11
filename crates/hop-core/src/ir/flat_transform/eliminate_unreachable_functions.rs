@@ -43,7 +43,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     use super::*;
-    use crate::hop::typing::Ty;
+    use crate::hop::typing::{NumericType, Ty};
     use crate::ir::flat_program_builder::FlatProgramBuilder;
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::flat_typecheck;
@@ -254,7 +254,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("double", [("n", Ty::Int)], Ty::Int, |t| {
-                    t.mul(t.param("n"), t.int(2))
+                    t.mul(NumericType::Int, t.param("n"), t.int(2))
                 })
                 .entrypoint("Count", [("n", Ty::Int)], |t| {
                     t.escape(t.int_to_string(t.call("double", [t.param("n")])))
@@ -266,7 +266,7 @@ mod tests {
                 -- before --
                 fn double@f0(n@v0: Int) -> Int {
                   let v1: Int = 2
-                  let v2: Int = mul(v0, v1)
+                  let v2: Int = mul[Int](v0, v1)
                   v2
                 }
                 entrypoint Count@e0(n@v3: Int) -> Html {
@@ -283,7 +283,7 @@ mod tests {
                 -- after --
                 fn double@f0(n@v0: Int) -> Int {
                   let v1: Int = 2
-                  let v2: Int = mul(v0, v1)
+                  let v2: Int = mul[Int](v0, v1)
                   v2
                 }
                 entrypoint Count@e0(n@v3: Int) -> Html {
