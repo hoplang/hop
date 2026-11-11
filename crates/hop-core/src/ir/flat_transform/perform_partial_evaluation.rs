@@ -992,7 +992,7 @@ mod tests {
                 -- before --
                 entrypoint body@e0(nickname@v0: Option[String]) -> Html {
                   let v1: Bool = true
-                  let v2: (Bool, Option[String]) = (v1, v0)
+                  let v2: Tuple[Bool, Option[String]] = (v1, v0)
                   let v13: Html = match v2 {
                     (false, _) => {
                       let v3: Html = text("guest")
@@ -1022,7 +1022,7 @@ mod tests {
                 -- after --
                 entrypoint body@e0(nickname@v0: Option[String]) -> Html {
                   let v1: Bool = true
-                  let v2: (Bool, Option[String]) = (v1, v0)
+                  let v2: Tuple[Bool, Option[String]] = (v1, v0)
                   let v9: String = match v0 {
                     Some(v7: String) => {
                       v7
@@ -1057,7 +1057,7 @@ mod tests {
                 -- before --
                 entrypoint body@e0(nickname@v0: Option[String]) -> Html {
                   let v1: Bool = true
-                  let v2: (Bool, Option[String]) = (v1, v0)
+                  let v2: Tuple[Bool, Option[String]] = (v1, v0)
                   let v10: Html = match v2 {
                     (true, Some(v3: String)) => {
                       let v4: Html = escape(v3)
@@ -1078,7 +1078,7 @@ mod tests {
                 -- after --
                 entrypoint body@e0(nickname@v0: Option[String]) -> Html {
                   let v1: Bool = true
-                  let v2: (Bool, Option[String]) = (v1, v0)
+                  let v2: Tuple[Bool, Option[String]] = (v1, v0)
                   let v10: Html = match v2 {
                     (true, Some(v3: String)) => {
                       let v4: Html = escape(v3)
@@ -1273,7 +1273,7 @@ mod tests {
                 fn second@f0() -> String {
                   let v0: Int = 1
                   let v1: String = "two"
-                  let v2: (Int, String) = (v0, v1)
+                  let v2: Tuple[Int, String] = (v0, v1)
                   let v4: String = match v2 {
                     (_, v3: String) => {
                       v3
@@ -1286,7 +1286,7 @@ mod tests {
                 fn second@f0() -> String {
                   let v0: Int = 1
                   let v1: String = "two"
-                  let v2: (Int, String) = (v0, v1)
+                  let v2: Tuple[Int, String] = (v0, v1)
                   v1
                 }
             "#]],

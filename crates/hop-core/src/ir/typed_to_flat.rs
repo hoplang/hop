@@ -1535,7 +1535,7 @@ mod tests {
             "#},
             expect![[r#"
                 entrypoint body@e0(signed_in@v0: Bool, status@v1: Status) -> Html {
-                  let v2: (Bool, Status) = (v0, v1)
+                  let v2: Tuple[Bool, Status] = (v0, v1)
                   let v13: Html = match v2 {
                     (true, Status::Away {since@v3: String}) => {
                       let v4: Html = escape(v3)
@@ -2220,16 +2220,16 @@ mod tests {
                   let v20: Bool = false
                   let v21: Cell[Bool] = cell(v20)
                   let v22: Bool = track(v21)
-                  let v31: () -> Effect[()] = fn() {
+                  let v31: () -> Effect[Tuple[]] = fn() {
                     let v23: Int = 1
                     let v24: Int = add[Int](v19, v23)
-                    let v25: Effect[()] = v18 := v24
-                    let v29: (()) -> Effect[()] = fn(v26: ()) {
+                    let v25: Effect[Tuple[]] = v18 := v24
+                    let v29: (Tuple[]) -> Effect[Tuple[]] = fn(v26: Tuple[]) {
                       let v27: Bool = true
-                      let v28: Effect[()] = v21 := v27
+                      let v28: Effect[Tuple[]] = v21 := v27
                       v28
                     }
-                    let v30: Effect[()] = bind(v25, v29)
+                    let v30: Effect[Tuple[]] = bind(v25, v29)
                     v30
                   }
                   let v32: Html = escape(v16)
@@ -2284,7 +2284,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Button@f0(on_press@v12: () -> Effect[()], children@v13: Html) -> Html {
+                fn Button@f0(on_press@v12: () -> Effect[Tuple[]], children@v13: Html) -> Html {
                   let v14: Html = concat(v13)
                   let v15: Html = element("button", {}, v14) on_click v12
                   v15
@@ -2293,9 +2293,9 @@ mod tests {
                   let v0: Bool = false
                   let v1: Cell[Bool] = cell(v0)
                   let v2: Bool = track(v1)
-                  let v5: () -> Effect[()] = fn() {
+                  let v5: () -> Effect[Tuple[]] = fn() {
                     let v3: Bool = not(v2)
-                    let v4: Effect[()] = v1 := v3
+                    let v4: Effect[Tuple[]] = v1 := v3
                     v4
                   }
                   let v8: String = match v2 {
@@ -2347,18 +2347,18 @@ mod tests {
                   let v0: Int = 0
                   let v1: Cell[Int] = cell(v0)
                   let v2: Int = track(v1)
-                  let v12: () -> Effect[()] = fn() {
+                  let v12: () -> Effect[Tuple[]] = fn() {
                     let v3: Effect[Int] = read(v1)
-                    let v10: (Int) -> Effect[()] = fn(v4: Int) {
+                    let v10: (Int) -> Effect[Tuple[]] = fn(v4: Int) {
                       let v5: Effect[Int] = bump@f0(v4)
-                      let v8: (Int) -> Effect[()] = fn(v6: Int) {
-                        let v7: Effect[()] = v1 := v4
+                      let v8: (Int) -> Effect[Tuple[]] = fn(v6: Int) {
+                        let v7: Effect[Tuple[]] = v1 := v4
                         v7
                       }
-                      let v9: Effect[()] = bind(v5, v8)
+                      let v9: Effect[Tuple[]] = bind(v5, v8)
                       v9
                     }
-                    let v11: Effect[()] = bind(v3, v10)
+                    let v11: Effect[Tuple[]] = bind(v3, v10)
                     v11
                   }
                   let v13: String = v2.to_string()

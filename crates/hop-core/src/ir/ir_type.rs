@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::display::write_tuple;
+use crate::display::join;
 use crate::symbols::type_name::TypeName;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -220,7 +220,7 @@ impl fmt::Display for IrDataType {
             IrDataType::Bool => f.write_str("Bool"),
             IrDataType::Array(element) => write!(f, "Array[{element}]"),
             IrDataType::Option(element) => write!(f, "Option[{element}]"),
-            IrDataType::Tuple(elements) => write_tuple(f, elements),
+            IrDataType::Tuple(elements) => write!(f, "Tuple[{}]", join(elements, ", ")),
             IrDataType::Record(name) | IrDataType::Enum(name) => f.write_str(name.as_str()),
         }
     }

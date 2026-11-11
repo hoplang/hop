@@ -69,7 +69,7 @@ pub enum FlatPureOp {
     Call(IrFunction, Vec<ValueId>),
     /// Match exhaustively.
     Match(IrMatch<FlatPureBlock>),
-    /// Write a cell. `(Cell[T], T) -> Effect[()]`.
+    /// Write a cell. `(Cell[T], T) -> Effect[Tuple[]]`.
     CellWrite(ValueId, ValueId),
     /// Read a cell. `Cell[T] -> Effect[T]`.
     CellRead(ValueId),

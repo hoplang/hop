@@ -597,10 +597,10 @@ mod tests {
                   let v0: Int = 0
                   let v1: Cell[Int] = cell(v0)
                   let v2: Int = track(v1)
-                  let v6: () -> Effect[()] = fn() {
+                  let v6: () -> Effect[Tuple[]] = fn() {
                     let v3: Int = 1
                     let v4: Int = add[Int](v2, v3)
-                    let v5: Effect[()] = v1 := v4
+                    let v5: Effect[Tuple[]] = v1 := v4
                     v5
                   }
                   let v7: String = v2.to_string()
@@ -620,10 +620,10 @@ mod tests {
                   let v13: Int = 0
                   let v14: Cell[Int] = cell(v13)
                   let v15: Int = track(v14)
-                  let v19: () -> Effect[()] = fn() {
+                  let v19: () -> Effect[Tuple[]] = fn() {
                     let v16: Int = 1
                     let v17: Int = add[Int](v15, v16)
-                    let v18: Effect[()] = v14 := v17
+                    let v18: Effect[Tuple[]] = v14 := v17
                     v18
                   }
                   let v20: String = v15.to_string()
@@ -632,10 +632,10 @@ mod tests {
                   let v23: Int = 0
                   let v24: Cell[Int] = cell(v23)
                   let v25: Int = track(v24)
-                  let v29: () -> Effect[()] = fn() {
+                  let v29: () -> Effect[Tuple[]] = fn() {
                     let v26: Int = 1
                     let v27: Int = add[Int](v25, v26)
-                    let v28: Effect[()] = v24 := v27
+                    let v28: Effect[Tuple[]] = v24 := v27
                     v28
                   }
                   let v30: String = v25.to_string()
@@ -681,11 +681,11 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn both@f0(first@v0: Effect[()], second@v1: Effect[()]) -> Effect[()] {
-                  let v3: (()) -> Effect[()] = fn(v2: ()) {
+                fn both@f0(first@v0: Effect[Tuple[]], second@v1: Effect[Tuple[]]) -> Effect[Tuple[]] {
+                  let v3: (Tuple[]) -> Effect[Tuple[]] = fn(v2: Tuple[]) {
                     v1
                   }
-                  let v4: Effect[()] = bind(v0, v3)
+                  let v4: Effect[Tuple[]] = bind(v0, v3)
                   v4
                 }
                 entrypoint Test@e0() -> Html {
@@ -695,13 +695,13 @@ mod tests {
                   let v8: Cell[Bool] = cell(v7)
                   let v9: Int = track(v6)
                   let v10: Bool = track(v8)
-                  let v17: () -> Effect[()] = fn() {
+                  let v17: () -> Effect[Tuple[]] = fn() {
                     let v11: Int = 1
                     let v12: Int = add[Int](v9, v11)
-                    let v13: Effect[()] = v6 := v12
+                    let v13: Effect[Tuple[]] = v6 := v12
                     let v14: Bool = not(v10)
-                    let v15: Effect[()] = v8 := v14
-                    let v16: Effect[()] = both@f0(v13, v15)
+                    let v15: Effect[Tuple[]] = v8 := v14
+                    let v16: Effect[Tuple[]] = both@f0(v13, v15)
                     v16
                   }
                   let v18: String = v9.to_string()
@@ -718,16 +718,16 @@ mod tests {
                   let v8: Cell[Bool] = cell(v7)
                   let v9: Int = track(v6)
                   let v10: Bool = track(v8)
-                  let v17: () -> Effect[()] = fn() {
+                  let v17: () -> Effect[Tuple[]] = fn() {
                     let v11: Int = 1
                     let v12: Int = add[Int](v9, v11)
-                    let v13: Effect[()] = v6 := v12
+                    let v13: Effect[Tuple[]] = v6 := v12
                     let v14: Bool = not(v10)
-                    let v15: Effect[()] = v8 := v14
-                    let v22: (()) -> Effect[()] = fn(v21: ()) {
+                    let v15: Effect[Tuple[]] = v8 := v14
+                    let v22: (Tuple[]) -> Effect[Tuple[]] = fn(v21: Tuple[]) {
                       v15
                     }
-                    let v23: Effect[()] = bind(v13, v22)
+                    let v23: Effect[Tuple[]] = bind(v13, v22)
                     v23
                   }
                   let v18: String = v9.to_string()
@@ -905,10 +905,10 @@ mod tests {
                 -- before --
                 fn Bump@f0(count@v0: Cell[Int]) -> Html {
                   let v1: Int = track(v0)
-                  let v5: () -> Effect[()] = fn() {
+                  let v5: () -> Effect[Tuple[]] = fn() {
                     let v2: Int = 1
                     let v3: Int = add[Int](v1, v2)
-                    let v4: Effect[()] = v0 := v3
+                    let v4: Effect[Tuple[]] = v0 := v3
                     v4
                   }
                   let v6: String = v1.to_string()
@@ -928,10 +928,10 @@ mod tests {
                   let v9: Int = 0
                   let v10: Cell[Int] = cell(v9)
                   let v12: Int = track(v10)
-                  let v16: () -> Effect[()] = fn() {
+                  let v16: () -> Effect[Tuple[]] = fn() {
                     let v13: Int = 1
                     let v14: Int = add[Int](v12, v13)
-                    let v15: Effect[()] = v10 := v14
+                    let v15: Effect[Tuple[]] = v10 := v14
                     v15
                   }
                   let v17: String = v12.to_string()

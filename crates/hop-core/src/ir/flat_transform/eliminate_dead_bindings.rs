@@ -273,9 +273,9 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v0: Int = 0
                   let v1: Cell[Int] = cell(v0)
-                  let v4: () -> Effect[()] = fn() {
+                  let v4: () -> Effect[Tuple[]] = fn() {
                     let v2: Int = 1
-                    let v3: Effect[()] = v1 := v2
+                    let v3: Effect[Tuple[]] = v1 := v2
                     v3
                   }
                   let v5: Html = text("x")
@@ -287,9 +287,9 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v0: Int = 0
                   let v1: Cell[Int] = cell(v0)
-                  let v4: () -> Effect[()] = fn() {
+                  let v4: () -> Effect[Tuple[]] = fn() {
                     let v2: Int = 1
-                    let v3: Effect[()] = v1 := v2
+                    let v3: Effect[Tuple[]] = v1 := v2
                     v3
                   }
                   let v5: Html = text("x")
@@ -322,12 +322,12 @@ mod tests {
                   let v2: Int = 0
                   let v3: Cell[Int] = cell(v2)
                   let v4: Int = 1
-                  let v5: Effect[()] = v3 := v4
+                  let v5: Effect[Tuple[]] = v3 := v4
                   let v6: Int = track(v1)
                   let v7: Int = 1
                   let v8: Int = add[Int](v6, v7)
-                  let v9: Effect[()] = v1 := v8
-                  let v10: () -> Effect[()] = fn() {
+                  let v9: Effect[Tuple[]] = v1 := v8
+                  let v10: () -> Effect[Tuple[]] = fn() {
                     v9
                   }
                   let v11: Html = text("x")
@@ -342,8 +342,8 @@ mod tests {
                   let v6: Int = track(v1)
                   let v7: Int = 1
                   let v8: Int = add[Int](v6, v7)
-                  let v9: Effect[()] = v1 := v8
-                  let v10: () -> Effect[()] = fn() {
+                  let v9: Effect[Tuple[]] = v1 := v8
+                  let v10: () -> Effect[Tuple[]] = fn() {
                     v9
                   }
                   let v11: Html = text("x")

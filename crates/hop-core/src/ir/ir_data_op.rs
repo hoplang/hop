@@ -47,7 +47,7 @@ pub enum IrDataOp {
     ArrayIsEmpty(ValueId),
     /// `(Array[T], Int) -> Option[T]`.
     ArrayGet(ValueId, ValueId),
-    /// `Array[T] -> Array[(Int, T)]`.
+    /// `Array[T] -> Array[Tuple[Int, T]]`.
     ArrayEnumerate(ValueId),
     /// `String -> Bool`.
     StringIsEmpty(ValueId),
@@ -58,7 +58,7 @@ pub enum IrDataOp {
     /// `Int -> String`.
     IntToString(ValueId),
     /// Saturates at the i32 bounds and maps NaN to 0.
-    /// `Float -> String`.
+    /// `Float -> Int`.
     FloatToInt(ValueId),
     /// `Int -> Float`.
     IntToFloat(ValueId),

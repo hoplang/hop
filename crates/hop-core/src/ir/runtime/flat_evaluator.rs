@@ -949,10 +949,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 entrypoint Test@e0() -> Html {
-                  let v0: () = ()
+                  let v0: Tuple[] = ()
                   let v1: Holder = {nothing: v0}
-                  let v2: () = v1.nothing
-                  let v3: Array[()] = [v2]
+                  let v2: Tuple[] = v1.nothing
+                  let v3: Array[Tuple[]] = [v2]
                   let v4: Int = v3.len()
                   let v5: String = v4.to_string()
                   let v6: Html = escape(v5)
@@ -986,7 +986,7 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v0: Int = 1
                   let v1: String = "two"
-                  let v2: (Int, String) = (v0, v1)
+                  let v2: Tuple[Int, String] = (v0, v1)
                   let v5: Html = match v2 {
                     (_, v3: String) => {
                       let v4: Html = escape(v3)
@@ -1021,7 +1021,7 @@ mod tests {
                 -- before --
                 entrypoint Test@e0() -> Html {
                   let v0: String = "alone"
-                  let v1: (String,) = (v0,)
+                  let v1: Tuple[String] = (v0,)
                   let v4: Html = match v1 {
                     (v2: String,) => {
                       let v3: Html = escape(v2)
@@ -1062,9 +1062,9 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v0: String = "deep"
                   let v1: Int = 2
-                  let v2: (String, Int) = (v0, v1)
+                  let v2: Tuple[String, Int] = (v0, v1)
                   let v3: Int = 1
-                  let v4: (Int, (String, Int)) = (v3, v2)
+                  let v4: Tuple[Int, Tuple[String, Int]] = (v3, v2)
                   let v7: Html = match v4 {
                     (_, (v5: String, _)) => {
                       let v6: Html = escape(v5)

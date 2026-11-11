@@ -2563,33 +2563,33 @@ mod tests {
             expect![[r#"
                 record R0 {
                   f0: Bool,
-                  f1: Array[()],
-                  f2: (Float, Int, R1),
+                  f1: Array[Tuple[]],
+                  f2: Tuple[Float, Int, R1],
                 }
 
                 record R1 {
-                  f0: ((), Option[R1]),
-                  f1: (Option[E1], Float),
+                  f0: Tuple[Tuple[], Option[R1]],
+                  f1: Tuple[Option[E1], Float],
                 }
 
                 enum E0 {
                   W0,
-                  W1 {f0: (Array[String], Float, Option[E1])},
+                  W1 {f0: Tuple[Array[String], Float, Option[E1]]},
                 }
 
                 enum E1 {
                   W0,
-                  W1 {f0: ()},
+                  W1 {f0: Tuple[]},
                 }
 
-                fn C0@f0(p0@v0: ((Float, R0), Cell[String]) -> (Float, E1, Bool), p1@v1: Option[Array[R1]], p2@v2: E0, p3@v3: (() -> R0, () -> Array[Bool]) -> Html, p4@v4: Option[String], p5@v5: Option[Float]) -> Html {
+                fn C0@f0(p0@v0: (Tuple[Float, R0], Cell[String]) -> Tuple[Float, E1, Bool], p1@v1: Option[Array[R1]], p2@v2: E0, p3@v3: (() -> R0, () -> Array[Bool]) -> Html, p4@v4: Option[String], p5@v5: Option[Float]) -> Html {
                   let v8: Int = -2147483648
                   let v9: Cell[Int] = cell(v8)
                   let v10: Int = track(v9)
                   let v11: Html = concat()
                   v11
                 }
-                fn C1@f1(p0@v6: Html, p1@v7: Effect[()]) -> Html {
+                fn C1@f1(p0@v6: Html, p1@v7: Effect[Tuple[]]) -> Html {
                   let v12: Int = -2147483648
                   let v13: Cell[Int] = cell(v12)
                   let v14: Int = track(v13)
@@ -2628,9 +2628,9 @@ mod tests {
                 }
                 entrypoint V1@e1() -> Html {
                   let v3: Html = concat()
-                  let v6: () -> Effect[()] = fn() {
-                    let v4: () = ()
-                    let v5: Effect[()] = pure(v4)
+                  let v6: () -> Effect[Tuple[]] = fn() {
+                    let v4: Tuple[] = ()
+                    let v5: Effect[Tuple[]] = pure(v4)
                     v5
                   }
                   let v7: Html = element("section", {}, v3) on_click v6

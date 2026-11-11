@@ -1384,7 +1384,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- flat --
-                fn Buttons@f0(n@v0: Int, on_press@v1: () -> Effect[()]) -> Html {
+                fn Buttons@f0(n@v0: Int, on_press@v1: () -> Effect[Tuple[]]) -> Html {
                   let v2: Int = 0
                   let v3: Bool = lt_eq[Int](v0, v2)
                   let v12: Html = match v3 {
@@ -1409,10 +1409,10 @@ mod tests {
                   let v13: Int = 0
                   let v14: Cell[Int] = cell(v13)
                   let v15: Int = track(v14)
-                  let v19: () -> Effect[()] = fn() {
+                  let v19: () -> Effect[Tuple[]] = fn() {
                     let v16: Int = 1
                     let v17: Int = add[Int](v15, v16)
-                    let v18: Effect[()] = v14 := v17
+                    let v18: Effect[Tuple[]] = v14 := v17
                     v18
                   }
                   let v20: Int = 2
@@ -1424,7 +1424,7 @@ mod tests {
                 }
 
                 -- writer --
-                fn Buttons@f0(n@v0: Int, on_press@v1: () -> ()) -> Html {
+                fn Buttons@f0(n@v0: Int, on_press@v1: () -> Tuple[]) -> Html {
                   let v2: Int = 0
                   let v3: Bool = lt_eq[Int](v0, v2)
                   match v3 {
@@ -1443,10 +1443,10 @@ mod tests {
                 }
                 page Test() {
                   let v13: Int = 0
-                  let v19: () -> () = fn() {
+                  let v19: () -> Tuple[] = fn() {
                     let v16: Int = 1
                     let v17: Int = add[Int](v13, v16)
-                    let v18: () = ()
+                    let v18: Tuple[] = ()
                     v18
                   }
                   let v20: Int = 2
@@ -2006,7 +2006,7 @@ mod tests {
             expect![[r#"
                 -- flat --
                 entrypoint body@e0(signed_in@v0: Bool, nickname@v1: Option[String]) -> Html {
-                  let v2: (Bool, Option[String]) = (v0, v1)
+                  let v2: Tuple[Bool, Option[String]] = (v0, v1)
                   let v11: Html = match v2 {
                     (true, Some(v3: String)) => {
                       let v5: Html = escape(v3)
@@ -2208,7 +2208,7 @@ mod tests {
             expect![[r#"
                 -- flat --
                 entrypoint body@e0(signed_in@v0: Bool, nickname@v1: Option[String], count@v2: Int) -> Html {
-                  let v3: (Bool, Option[String]) = (v0, v1)
+                  let v3: Tuple[Bool, Option[String]] = (v0, v1)
                   let v6: String = match v3 {
                     (true, Some(v4: String)) => {
                       v4
@@ -2220,7 +2220,7 @@ mod tests {
                   }
                   let v7: Html = escape(v6)
                   let v9: Html = element("p", {}, v7)
-                  let v10: (Bool, Option[String]) = (v0, v1)
+                  let v10: Tuple[Bool, Option[String]] = (v0, v1)
                   let v27: Html = match v10 {
                     (true, Some(v11: String)) => {
                       let v12: Html = escape(v11)
@@ -2412,7 +2412,7 @@ mod tests {
             expect![[r#"
                 -- flat --
                 entrypoint body@e0(count@v0: Option[Int], exact@v1: Bool) -> Html {
-                  let v2: (Option[Int], Bool) = (v0, v1)
+                  let v2: Tuple[Option[Int], Bool] = (v0, v1)
                   let v7: String = match v2 {
                     (Some(v3: Int), true) => {
                       let v4: String = v3.to_string()
@@ -2742,10 +2742,10 @@ mod tests {
                   let v9: Int = 7
                   let v10: Cell[Int] = cell(v9)
                   let v12: Int = track(v10)
-                  let v16: () -> Effect[()] = fn() {
+                  let v16: () -> Effect[Tuple[]] = fn() {
                     let v13: Int = 1
                     let v14: Int = add[Int](v12, v13)
-                    let v15: Effect[()] = v10 := v14
+                    let v15: Effect[Tuple[]] = v10 := v14
                     v15
                   }
                   let v17: String = v12.to_string()
@@ -2757,10 +2757,10 @@ mod tests {
                 -- writer --
                 page Test() {
                   let v9: Int = 7
-                  let v16: () -> () = fn() {
+                  let v16: () -> Tuple[] = fn() {
                     let v13: Int = 1
                     let v14: Int = add[Int](v9, v13)
-                    let v15: () = ()
+                    let v15: Tuple[] = ()
                     v15
                   }
                   let v17: String = v9.to_string()
