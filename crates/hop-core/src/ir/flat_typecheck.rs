@@ -37,8 +37,6 @@ pub enum FlatTypeError {
     BlockOfWrongType,
     /// A call calls a function that the program does not declare.
     UndeclaredCallee,
-    /// A match produces a closure.
-    MatchProducesClosure,
     /// A match has a subject that is not data.
     MatchSubjectNotData,
     /// A match has a value of its subject's type that no arm matches.
@@ -403,7 +401,7 @@ impl<'a> Checker<'a> {
             },
             FlatHtmlOp::Match(match_) => {
                 if !html {
-                    return Err(FlatTypeError::MatchProducesClosure);
+                    return Err(FlatTypeError::IllTypedBinding);
                 }
                 let subject = self
                     .data(match_.subject)?
@@ -535,7 +533,7 @@ impl<'a> Checker<'a> {
             },
             FlatPureOp::Match(match_) => {
                 if !declared.is_result() {
-                    return Err(FlatTypeError::MatchProducesClosure);
+                    return Err(FlatTypeError::IllTypedBinding);
                 }
                 let subject = self
                     .data(match_.subject)?
@@ -955,7 +953,24 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::MatchProducesClosure);
+        assert_eq!(error, FlatTypeError::IllTypedBinding);
+    }
+
+    #[test]
+    fn should_reject_a_match_that_produces_a_cell() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [("first", Ty::Bool)], |t| {
+                let one = t.cell(t.int(1));
+                let two = t.cell(t.int(2));
+                let picked = t.match_(t.param("first"), |m| {
+                    m.arm(Pat::True, |_, _| one);
+                    m.arm(Pat::False, |_, _| two);
+                });
+                t.escape(t.int_to_string(t.track(picked)))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::IllTypedBinding);
     }
 
     #[test]
