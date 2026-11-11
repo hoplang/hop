@@ -479,17 +479,6 @@ impl<'a> FlatBlockBuilder<'a> {
         )
     }
 
-    pub fn tuple_index(&self, tuple: ValueId, index: usize) -> ValueId {
-        let IrType::Data(IrFunctionDataType::Data(IrDataType::Tuple(elements))) = self.typ(tuple)
-        else {
-            panic!();
-        };
-        self.push(
-            IrType::Data(IrFunctionDataType::Data(elements[index].clone())),
-            FlatPureOp::Data(IrDataOp::TupleIndex(tuple, index)),
-        )
-    }
-
     pub fn int_to_string(&self, value: ValueId) -> ValueId {
         self.push(
             IrType::STRING,

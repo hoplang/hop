@@ -588,7 +588,6 @@ fn evaluate_data_op<'a>(op: &IrDataOp, env: &Env<'a>) -> Result<Value<'a>, EvalE
             let (_, value) = record.iter().find(|(name, _)| name == field).unwrap();
             value.clone()
         }
-        IrDataOp::TupleIndex(tuple, index) => env[tuple].as_tuple()[*index].clone(),
         IrDataOp::Array(elements) => Value::Array(Rc::new(
             BoundedVec::new(elements.iter().map(|e| env[e].clone()))
                 .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
@@ -762,8 +761,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 1280513 allocations
-            program evaluation: 28562 allocations
+            program generation: 1504870 allocations
+            program evaluation: 14792 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -966,7 +965,12 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
                     let pair = t.tuple([t.int(1), t.str("two")]);
-                    t.escape(t.tuple_index(pair, 1))
+                    t.match_(pair, |m| {
+                        m.arm(
+                            Pat::Tuple(vec![Pat::Wildcard, Pat::bind("second")]),
+                            |t, arm| t.escape(arm.binding("second")),
+                        );
+                    })
                 })
                 .build()
                 .unwrap(),
@@ -977,9 +981,13 @@ mod tests {
                   let v0: Int = 1
                   let v1: String = "two"
                   let v2: (Int, String) = (v0, v1)
-                  let v3: String = v2.1
-                  let v4: Html = escape(v3)
-                  v4
+                  let v5: Html = match v2 {
+                    (_, v3: String) => {
+                      let v4: Html = escape(v3)
+                      v4
+                    }
+                  }
+                  v5
                 }
 
                 -- after --
@@ -994,7 +1002,11 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
                     let only = t.tuple([t.str("alone")]);
-                    t.escape(t.tuple_index(only, 0))
+                    t.match_(only, |m| {
+                        m.arm(Pat::Tuple(vec![Pat::bind("only")]), |t, arm| {
+                            t.escape(arm.binding("only"))
+                        });
+                    })
                 })
                 .build()
                 .unwrap(),
@@ -1004,9 +1016,13 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v0: String = "alone"
                   let v1: (String,) = (v0,)
-                  let v2: String = v1.0
-                  let v3: Html = escape(v2)
-                  v3
+                  let v4: Html = match v1 {
+                    (v2: String,) => {
+                      let v3: Html = escape(v2)
+                      v3
+                    }
+                  }
+                  v4
                 }
 
                 -- after --
@@ -1016,13 +1032,21 @@ mod tests {
     }
 
     #[test]
-    fn should_index_a_nested_tuple() {
+    fn should_destructure_a_nested_tuple() {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
                     let inner = t.tuple([t.str("deep"), t.int(2)]);
                     let outer = t.tuple([t.int(1), inner]);
-                    t.escape(t.tuple_index(t.tuple_index(outer, 1), 0))
+                    t.match_(outer, |m| {
+                        m.arm(
+                            Pat::Tuple(vec![
+                                Pat::Wildcard,
+                                Pat::Tuple(vec![Pat::bind("deep"), Pat::Wildcard]),
+                            ]),
+                            |t, arm| t.escape(arm.binding("deep")),
+                        );
+                    })
                 })
                 .build()
                 .unwrap(),
@@ -1035,9 +1059,12 @@ mod tests {
                   let v2: (String, Int) = (v0, v1)
                   let v3: Int = 1
                   let v4: (Int, (String, Int)) = (v3, v2)
-                  let v5: (String, Int) = v4.1
-                  let v6: String = v5.0
-                  let v7: Html = escape(v6)
+                  let v7: Html = match v4 {
+                    (_, (v5: String, _)) => {
+                      let v6: Html = escape(v5)
+                      v6
+                    }
+                  }
                   v7
                 }
 

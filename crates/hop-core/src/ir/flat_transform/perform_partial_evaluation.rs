@@ -612,15 +612,6 @@ impl<'a> Evaluator<'a> {
                 ),
                 _ => Folded::Op(IrDataOp::FieldAccess(record, field)),
             },
-            IrDataOp::TupleIndex(tuple, index) => match self.values.get(&tuple) {
-                Some(IrDataOp::Tuple(elements)) => {
-                    let len = elements.len();
-                    Folded::Name(*elements.get(index).unwrap_or_else(|| {
-                        panic!("index {index} is out of range for a tuple of {len}")
-                    }))
-                }
-                _ => Folded::Op(IrDataOp::TupleIndex(tuple, index)),
-            },
             IrDataOp::StringConcat(parts) => {
                 let mut flattened = Vec::with_capacity(parts.len());
                 for part in parts {
@@ -1264,11 +1255,16 @@ mod tests {
     }
 
     #[test]
-    fn should_read_an_element_of_a_tuple_constructor() {
+    fn should_select_the_tuple_arm_and_bind_its_components() {
         check(
             FlatProgramBuilder::new()
                 .function("second", [], Ty::String, |t| {
-                    t.tuple_index(t.tuple([t.int(1), t.str("two")]), 1)
+                    t.match_(t.tuple([t.int(1), t.str("two")]), |m| {
+                        m.arm(
+                            Pat::Tuple(vec![Pat::Wildcard, Pat::bind("second")]),
+                            |_, arm| arm.binding("second"),
+                        );
+                    })
                 })
                 .build()
                 .unwrap(),
@@ -1278,8 +1274,12 @@ mod tests {
                   let v0: Int = 1
                   let v1: String = "two"
                   let v2: (Int, String) = (v0, v1)
-                  let v3: String = v2.1
-                  v3
+                  let v4: String = match v2 {
+                    (_, v3: String) => {
+                      v3
+                    }
+                  }
+                  v4
                 }
 
                 -- after --

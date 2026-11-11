@@ -178,14 +178,6 @@ impl<'a> Value<'a> {
         }
     }
 
-    /// Panics if the value is not a Tuple.
-    pub fn as_tuple(&self) -> &[Value<'a>] {
-        match self {
-            Value::Tuple(elements) => elements,
-            _ => panic!("expected a Tuple value, found {self:?}"),
-        }
-    }
-
     /// Panics if the value is not a Record.
     pub fn as_record(&self) -> &[(FieldName, Value<'a>)] {
         match self {

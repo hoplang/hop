@@ -801,7 +801,7 @@ impl<'a> Lowerer<'a> {
                             var: name,
                             typ: IrType::Data(IrFunctionDataType::Data(element.typ.clone())),
                         },
-                        op: WriterOp::Data(IrDataOp::TupleIndex(tuple, index)),
+                        op: WriterOp::TupleIndex(tuple, index),
                     });
                     name
                 }
@@ -2123,7 +2123,10 @@ mod tests {
         fn let_(&mut self, let_: &IrBinding<IrType, WriterOp>) {
             self.bind(let_.binder.var);
             match &let_.op {
-                WriterOp::Data(_) | WriterOp::Call(..) | WriterOp::Apply(..) => {}
+                WriterOp::Data(_)
+                | WriterOp::TupleIndex(..)
+                | WriterOp::Call(..)
+                | WriterOp::Apply(..) => {}
                 WriterOp::Match(switch) => self.switch(switch, Self::value_block),
                 WriterOp::Lambda(lambda) => {
                     for param in &lambda.parameters {

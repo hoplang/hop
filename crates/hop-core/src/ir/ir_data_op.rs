@@ -63,7 +63,6 @@ pub enum IrDataOp {
     /// `Int -> Float`.
     IntToFloat(ValueId),
     FieldAccess(ValueId, FieldName),
-    TupleIndex(ValueId, usize),
 }
 
 impl IrDataOp {
@@ -77,7 +76,6 @@ impl IrDataOp {
             | IrDataOp::OptionNone => {}
 
             IrDataOp::FieldAccess(name, _)
-            | IrDataOp::TupleIndex(name, _)
             | IrDataOp::OptionSome(name)
             | IrDataOp::NumericNegation(_, name)
             | IrDataOp::BoolNegation(name)
@@ -128,7 +126,6 @@ impl IrDataOp {
             | IrDataOp::OptionNone => {}
 
             IrDataOp::FieldAccess(name, _)
-            | IrDataOp::TupleIndex(name, _)
             | IrDataOp::OptionSome(name)
             | IrDataOp::NumericNegation(_, name)
             | IrDataOp::BoolNegation(name)
@@ -177,7 +174,6 @@ impl fmt::Display for IrDataOp {
             IrDataOp::FloatLiteral(value) => write!(f, "{value}"),
             IrDataOp::BoolLiteral(value) => write!(f, "{value}"),
             IrDataOp::FieldAccess(record, field) => write!(f, "{record}.{}", field.as_str()),
-            IrDataOp::TupleIndex(tuple, index) => write!(f, "{tuple}.{index}"),
             IrDataOp::Array(elements) => write!(f, "[{}]", join(elements, ", ")),
             IrDataOp::Tuple(elements) => write_tuple(f, elements),
             IrDataOp::Enum(variant_name, fields) if fields.is_empty() => {

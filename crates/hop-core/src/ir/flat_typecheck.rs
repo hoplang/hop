@@ -815,10 +815,6 @@ impl<'a> Checker<'a> {
                     .is_some_and(|field| Some(&field.typ) == declared_data),
                 _ => false,
             },
-            IrDataOp::TupleIndex(tuple, index) => match self.data(*tuple)? {
-                Some(IrDataType::Tuple(elements)) => elements.get(*index) == declared_data,
-                _ => false,
-            },
         })
     }
 
