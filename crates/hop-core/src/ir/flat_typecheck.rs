@@ -40,6 +40,8 @@ pub enum FlatTypeError {
     UndeclaredCallee,
     /// A match produces a closure.
     MatchProducesClosure,
+    /// A match has a subject that is not data.
+    MatchSubjectNotData,
     /// A match has a value of its subject's type that no arm matches.
     NoArmMatches,
     /// A match has an arm whose values the arms before it all match.
@@ -405,14 +407,16 @@ impl<'a> Checker<'a> {
                 if !html {
                     return Err(FlatTypeError::MatchProducesClosure);
                 }
-                let subject = self.typ(match_.subject)?;
+                let subject = self
+                    .data(match_.subject)?
+                    .ok_or(FlatTypeError::MatchSubjectNotData)?;
                 for arm in &match_.arms {
                     self.scoped(|checker| {
-                        checker.pattern(&arm.pattern, subject)?;
+                        checker.data_pattern(&arm.pattern, subject)?;
                         checker.html_block(&arm.body, declared)
                     })?;
                 }
-                self.arms(match_)?;
+                self.arms(match_, subject)?;
                 true
             }
             FlatHtmlOp::Text(_) => html,
@@ -535,14 +539,16 @@ impl<'a> Checker<'a> {
                 if !declared.is_result() {
                     return Err(FlatTypeError::MatchProducesClosure);
                 }
-                let subject = self.typ(match_.subject)?;
+                let subject = self
+                    .data(match_.subject)?
+                    .ok_or(FlatTypeError::MatchSubjectNotData)?;
                 for arm in &match_.arms {
                     self.scoped(|checker| {
-                        checker.pattern(&arm.pattern, subject)?;
+                        checker.data_pattern(&arm.pattern, subject)?;
                         checker.pure_block(&arm.body, declared)
                     })?;
                 }
-                self.arms(match_)?;
+                self.arms(match_, subject)?;
                 true
             }
             FlatPureOp::CellWrite(cell, value) => match self.typ(*cell)? {
@@ -803,10 +809,7 @@ impl<'a> Checker<'a> {
             })?)
     }
 
-    fn arms<B>(&self, match_: &IrMatch<B>) -> Result<(), FlatTypeError> {
-        let Some(subject) = self.data(match_.subject)? else {
-            return Ok(());
-        };
+    fn arms<B>(&self, match_: &IrMatch<B>, subject: &IrDataType) -> Result<(), FlatTypeError> {
         let patterns: Vec<IrPattern> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
         let (_, reachable, missing) = compile_arms(self.declarations, &patterns, subject.clone());
         if !missing.is_empty() {
@@ -816,21 +819,6 @@ impl<'a> Checker<'a> {
             return Err(FlatTypeError::UnreachableArm);
         }
         Ok(())
-    }
-
-    fn pattern(&mut self, pattern: &'a IrPattern, typ: BoundType<'a>) -> Result<(), FlatTypeError> {
-        match (pattern, typ) {
-            (Pattern::Wildcard, _) => Ok(()),
-            (_, BoundType::Data(data)) => self.data_pattern(pattern, data),
-            (
-                _,
-                BoundType::Effect(_)
-                | BoundType::Cell(_)
-                | BoundType::DataFunction(_)
-                | BoundType::Html
-                | BoundType::HtmlFunction(_),
-            ) => Err(FlatTypeError::PatternMismatch),
-        }
     }
 
     fn data_pattern(
@@ -1099,6 +1087,20 @@ mod tests {
             .build()
             .unwrap_err();
         assert_eq!(error, FlatTypeError::UnreachableArm);
+    }
+
+    #[test]
+    fn should_reject_a_match_on_a_cell() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.cell(t.int(0));
+                t.match_(count, |m| {
+                    m.arm(Pat::Wildcard, |t, _| t.text("any"));
+                })
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::MatchSubjectNotData);
     }
 
     #[test]
