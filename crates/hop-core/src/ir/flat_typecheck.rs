@@ -60,135 +60,15 @@ pub enum FlatTypeError {
 }
 
 pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
-    check_well_typed(program)?;
-    check_html_affine(program)
-}
-
-fn check_html_affine(program: &FlatProgram) -> Result<(), FlatTypeError> {
-    let mut html = vec![false; program.value_ids.count()];
-    let html_functions = program
-        .functions
-        .iter()
-        .filter_map(|function| match function {
-            FlatFunction::Html(function) => Some(function),
-            FlatFunction::Pure(_) => None,
-        });
-    for function in html_functions.clone() {
-        for param in &function.parameters {
-            if param.binder.typ == IrType::HTML {
-                html[param.binder.var.index()] = true;
-            }
-        }
-        collect_html(&function.body, &mut html);
-    }
-    for entrypoint in program.entrypoints.iter() {
-        collect_html(&entrypoint.body, &mut html);
-    }
-    for function in html_functions {
-        let mut scope = vec![false; html.len()];
-        for param in &function.parameters {
-            if html[param.binder.var.index()] {
-                scope[param.binder.var.index()] = true;
-            }
-        }
-        check_block(&function.body, scope, &html)?;
-    }
-    for entrypoint in program.entrypoints.iter() {
-        check_block(&entrypoint.body, vec![false; html.len()], &html)?;
-    }
-    Ok(())
-}
-
-fn collect_html(block: &FlatHtmlBlock, html: &mut [bool]) {
-    for binding in &block.bindings {
-        let FlatHtmlBinding::Html(binding) = binding else {
-            continue;
-        };
-        if binding.binder.typ == IrFunctionHtmlType::Html(IrHtmlType) {
-            html[binding.binder.var.index()] = true;
-        }
-        match &binding.op {
-            FlatHtmlOp::Match(match_) => {
-                for arm in &match_.arms {
-                    collect_html(&arm.body, html);
-                }
-            }
-            FlatHtmlOp::For(for_) => collect_html(&for_.body, html),
-            FlatHtmlOp::Lambda(lambda) => {
-                for param in &lambda.parameters {
-                    if param.typ == IrType::HTML {
-                        html[param.var.index()] = true;
-                    }
-                }
-                collect_html(&lambda.body, html);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn check_block(
-    block: &FlatHtmlBlock,
-    mut scope: Vec<bool>,
-    html: &[bool],
-) -> Result<Vec<bool>, FlatTypeError> {
-    for binding in &block.bindings {
-        let FlatHtmlBinding::Html(binding) = binding else {
-            continue;
-        };
-        let mut operands = Ok(());
-        binding.op.for_each_operand(&mut |operand| {
-            if operands.is_ok() {
-                operands = read(operand, &mut scope, html);
-            }
-        });
-        operands?;
-        match &binding.op {
-            FlatHtmlOp::Match(match_) => {
-                let mut after = scope.clone();
-                for arm in &match_.arms {
-                    let inner = check_block(&arm.body, scope.clone(), html)?;
-                    for (name, live) in after.iter_mut().zip(&inner) {
-                        *name = *name && *live;
-                    }
-                }
-                scope = after;
-            }
-            FlatHtmlOp::For(for_) => {
-                check_block(&for_.body, vec![false; html.len()], html)?;
-            }
-            FlatHtmlOp::Lambda(lambda) => {
-                let mut inner = vec![false; html.len()];
-                for param in &lambda.parameters {
-                    inner[param.var.index()] = html[param.var.index()];
-                }
-                check_block(&lambda.body, inner, html)?;
-            }
-            _ => {}
-        }
-        if html[binding.binder.var.index()] {
-            scope[binding.binder.var.index()] = true;
-        }
-    }
-    read(block.result, &mut scope, html)?;
-    Ok(scope)
-}
-
-fn read(name: ValueId, scope: &mut [bool], html: &[bool]) -> Result<(), FlatTypeError> {
-    if html[name.index()] && !std::mem::replace(&mut scope[name.index()], false) {
-        return Err(FlatTypeError::HtmlReadMoreThanOnce);
-    }
-    Ok(())
-}
-
-fn check_well_typed(program: &FlatProgram) -> Result<(), FlatTypeError> {
     let mut checker = Checker {
         declarations: &program.types,
         functions: &program.functions,
         names: vec![None; program.value_ids.count()],
         scope: Vec::new(),
+        live: Vec::new(),
     };
     for function in &program.functions {
+        checker.live.clear();
         checker.scoped(|checker| match function {
             FlatFunction::Pure(pure) => {
                 for param in &pure.parameters {
@@ -209,6 +89,7 @@ fn check_well_typed(program: &FlatProgram) -> Result<(), FlatTypeError> {
         })?;
     }
     for entrypoint in program.entrypoints.iter() {
+        checker.live.clear();
         checker.scoped(|checker| {
             for param in &entrypoint.parameters {
                 checker.bind(param.binder.var, BoundType::Data(&param.binder.typ))?;
@@ -237,6 +118,10 @@ struct Checker<'a> {
     names: Vec<Option<Name<'a>>>,
     // The names bound in the blocks being checked, innermost last.
     scope: Vec<ValueId>,
+    // The Html names bound in the function, lambda or loop body being
+    // checked that are not yet read on this path. A body starts with none
+    // but the Html parameters of its lambda or function.
+    live: Vec<ValueId>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -305,6 +190,9 @@ impl<'a> Checker<'a> {
             return Err(FlatTypeError::BoundTwice);
         }
         self.scope.push(name);
+        if typ == BoundType::Html {
+            self.live.push(name);
+        }
         Ok(())
     }
 
@@ -322,15 +210,23 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
-    fn typ(&self, name: ValueId) -> Result<BoundType<'a>, FlatTypeError> {
-        match self.names[name.index()] {
-            Some(bound) if bound.in_scope => Ok(bound.typ),
-            _ => Err(FlatTypeError::ReadOutOfScope),
+    /// The type of a name the binding being checked reads. A read of Html
+    /// uses it up on this path.
+    fn read(&mut self, name: ValueId) -> Result<BoundType<'a>, FlatTypeError> {
+        let Some(bound) = self.names[name.index()].filter(|bound| bound.in_scope) else {
+            return Err(FlatTypeError::ReadOutOfScope);
+        };
+        if bound.typ == BoundType::Html {
+            let index = (self.live.iter())
+                .position(|live| *live == name)
+                .ok_or(FlatTypeError::HtmlReadMoreThanOnce)?;
+            self.live.swap_remove(index);
         }
+        Ok(bound.typ)
     }
 
-    fn data(&self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatTypeError> {
-        Ok(match self.typ(name)? {
+    fn data(&mut self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatTypeError> {
+        Ok(match self.read(name)? {
             BoundType::Data(data) => Some(data),
             BoundType::Effect(_)
             | BoundType::Cell(_)
@@ -363,13 +259,13 @@ impl<'a> Checker<'a> {
                     let IrFunctionDataType::Cell(data) = &binder.typ else {
                         return Err(FlatTypeError::IllTypedBinding);
                     };
-                    if self.typ(*initial)? != BoundType::Data(data) {
+                    if self.read(*initial)? != BoundType::Data(data) {
                         return Err(FlatTypeError::IllTypedBinding);
                     }
                     self.bind(binder.var, BoundType::Cell(data))?;
                 }
                 FlatHtmlBinding::Track(binder, cell) => {
-                    if self.typ(*cell)? != BoundType::Cell(&binder.typ) {
+                    if self.read(*cell)? != BoundType::Cell(&binder.typ) {
                         return Err(FlatTypeError::IllTypedBinding);
                     }
                     self.bind(binder.var, BoundType::Data(&binder.typ))?;
@@ -406,30 +302,36 @@ impl<'a> Checker<'a> {
                 let subject = self
                     .data(match_.subject)?
                     .ok_or(FlatTypeError::MatchSubjectNotData)?;
+                // Html stays live after the match only if no arm reads it.
+                let before = self.live.clone();
+                let mut after = before.clone();
                 for arm in &match_.arms {
+                    self.live = before.clone();
                     self.scoped(|checker| {
                         checker.data_pattern(&arm.pattern, subject)?;
                         checker.html_block(&arm.body, declared)
                     })?;
+                    after.retain(|name| self.live.contains(name));
                 }
+                self.live = after;
                 self.arms(match_, subject)?;
                 true
             }
             FlatHtmlOp::Text(_) => html,
-            FlatHtmlOp::Escape(name) => html && self.typ(*name)?.is(&IrType::STRING),
+            FlatHtmlOp::Escape(name) => html && self.read(*name)?.is(&IrType::STRING),
             FlatHtmlOp::Concat(parts) => {
-                html && try_all(parts, |part| Ok(self.typ(*part)?.is(&IrType::HTML)))?
+                html && try_all(parts, |part| Ok(self.read(*part)?.is(&IrType::HTML)))?
             }
             FlatHtmlOp::Element(element) => {
                 let attributes = try_all(element.attributes.values(), |attribute| {
                     Ok(match attribute {
-                        IrAttribute::Value(name) => self.typ(*name)?.is(&IrType::STRING),
-                        IrAttribute::Presence(name) => self.typ(*name)?.is(&IrType::BOOL),
+                        IrAttribute::Value(name) => self.read(*name)?.is(&IrType::STRING),
+                        IrAttribute::Presence(name) => self.read(*name)?.is(&IrType::BOOL),
                         IrAttribute::Constant(_) => true,
                     })
                 })?;
                 if let Some(handler) = element.on_click {
-                    let BoundType::DataFunction(signature) = self.typ(handler)? else {
+                    let BoundType::DataFunction(signature) = self.read(handler)? else {
                         return Err(FlatTypeError::ClickNotHandler);
                     };
                     if !signature.parameters.is_empty()
@@ -442,7 +344,7 @@ impl<'a> Checker<'a> {
                     (true, None) => true,
                     (true, Some(_)) => return Err(FlatTypeError::VoidElementWithChildren),
                     (false, None) => return Err(FlatTypeError::ElementWithoutChildren),
-                    (false, Some(children)) => self.typ(children)?.is(&IrType::HTML),
+                    (false, Some(children)) => self.read(children)?.is(&IrType::HTML),
                 };
                 html && attributes && children
             }
@@ -450,6 +352,9 @@ impl<'a> Checker<'a> {
                 let Some(IrDataType::Array(element)) = self.data(for_.array)? else {
                     return Err(FlatTypeError::IllTypedBinding);
                 };
+                // The body runs once per element, so it reads no Html bound
+                // outside of it.
+                let outer = std::mem::take(&mut self.live);
                 self.scoped(|checker| {
                     if let Some(var) = &for_.var {
                         if var.typ != **element {
@@ -462,7 +367,7 @@ impl<'a> Checker<'a> {
                             for binding in &key.bindings {
                                 checker.pure_binding(binding)?;
                             }
-                            let typ = checker.typ(key.result)?;
+                            let typ = checker.read(key.result)?;
                             if !typ.is(&IrType::INT) && !typ.is(&IrType::STRING) {
                                 return Err(FlatTypeError::KeyNotIntOrString);
                             }
@@ -471,12 +376,16 @@ impl<'a> Checker<'a> {
                     }
                     checker.html_block(&for_.body, BoundType::Html)
                 })?;
+                self.live = outer;
                 html
             }
             FlatHtmlOp::Lambda(lambda) => {
                 let BoundType::HtmlFunction(signature) = declared else {
                     return Err(FlatTypeError::IllTypedBinding);
                 };
+                // The body runs once per application, so it reads no Html
+                // bound outside of it.
+                let outer = std::mem::take(&mut self.live);
                 self.scoped(|checker| {
                     checker.lambda_parameters(
                         &lambda.parameters,
@@ -485,9 +394,10 @@ impl<'a> Checker<'a> {
                     )?;
                     checker.html_block(&lambda.body, BoundType::Html)
                 })?;
+                self.live = outer;
                 true
             }
-            FlatHtmlOp::Apply(closure, args) => match self.typ(*closure)? {
+            FlatHtmlOp::Apply(closure, args) => match self.read(*closure)? {
                 BoundType::HtmlFunction(signature) => {
                     html && self.args(args, signature.parameters.iter().map(BoundType::of))?
                 }
@@ -500,8 +410,12 @@ impl<'a> Checker<'a> {
         self.bind(binding.binder.var, declared)
     }
 
-    fn block_result(&self, result: ValueId, expected: BoundType<'a>) -> Result<(), FlatTypeError> {
-        let found = self.typ(result)?;
+    fn block_result(
+        &mut self,
+        result: ValueId,
+        expected: BoundType<'a>,
+    ) -> Result<(), FlatTypeError> {
+        let found = self.read(result)?;
         if found != expected {
             return Err(FlatTypeError::BlockOfWrongType);
         }
@@ -547,23 +461,23 @@ impl<'a> Checker<'a> {
                 self.arms(match_, subject)?;
                 true
             }
-            FlatPureOp::CellWrite(cell, value) => match self.typ(*cell)? {
+            FlatPureOp::CellWrite(cell, value) => match self.read(*cell)? {
                 BoundType::Cell(data) => {
                     declared == BoundType::Effect(&IrDataType::UNIT)
-                        && self.typ(*value)? == BoundType::Data(data)
+                        && self.read(*value)? == BoundType::Data(data)
                 }
                 _ => false,
             },
-            FlatPureOp::CellRead(cell) => match self.typ(*cell)? {
+            FlatPureOp::CellRead(cell) => match self.read(*cell)? {
                 BoundType::Cell(data) => declared == BoundType::Effect(data),
                 _ => false,
             },
-            FlatPureOp::EffectPure(value) => match self.typ(*value)? {
+            FlatPureOp::EffectPure(value) => match self.read(*value)? {
                 BoundType::Data(data) => declared == BoundType::Effect(data),
                 _ => false,
             },
             FlatPureOp::EffectBind(effect, continuation) => {
-                match (self.typ(*effect)?, self.typ(*continuation)?) {
+                match (self.read(*effect)?, self.read(*continuation)?) {
                     (BoundType::Effect(payload), BoundType::DataFunction(signature)) => {
                         signature.parameters.len() == 1
                             && signature.parameters[0] == IrFunctionDataType::Data(payload.clone())
@@ -587,7 +501,7 @@ impl<'a> Checker<'a> {
                 })?;
                 true
             }
-            FlatPureOp::Apply(closure, args) => match self.typ(*closure)? {
+            FlatPureOp::Apply(closure, args) => match self.read(*closure)? {
                 BoundType::DataFunction(signature) => {
                     declared == BoundType::of_result(&signature.result)
                         && self.args(
@@ -612,13 +526,13 @@ impl<'a> Checker<'a> {
     }
 
     fn args<'t>(
-        &self,
+        &mut self,
         args: &[ValueId],
         params: impl ExactSizeIterator<Item = BoundType<'t>>,
     ) -> Result<bool, FlatTypeError> {
         Ok(args.len() == params.len()
             && try_all(args.iter().zip(params), |(arg, param)| {
-                Ok(self.typ(*arg)? == param)
+                Ok(self.read(*arg)? == param)
             })?)
     }
 
@@ -641,9 +555,9 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
-    fn data_op(&self, op: &IrDataOp, declared: &IrDataType) -> Result<bool, FlatTypeError> {
-        let all =
-            |names: &[ValueId], typ: IrType| try_all(names, |name| Ok(self.typ(*name)?.is(&typ)));
+    fn data_op(&mut self, op: &IrDataOp, declared: &IrDataType) -> Result<bool, FlatTypeError> {
+        let mut all =
+            |names: &[ValueId], typ: IrType| try_all(names, |name| Ok(self.read(*name)?.is(&typ)));
         let declared_data = Some(declared);
         Ok(match op {
             IrDataOp::StringLiteral(_) => *declared == IrDataType::String,
@@ -788,7 +702,7 @@ impl<'a> Checker<'a> {
     }
 
     fn fields(
-        &self,
+        &mut self,
         given: &[(FieldName, ValueId)],
         declared: &[IrField],
     ) -> Result<bool, FlatTypeError> {
@@ -932,6 +846,36 @@ mod tests {
             .build()
             .unwrap_err();
         assert_eq!(error, FlatTypeError::HtmlReadMoreThanOnce);
+    }
+
+    #[test]
+    fn should_reject_html_read_after_a_match_with_an_arm_that_reads_it() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [("on", Ty::Bool)], |t| {
+                let html = t.text("x");
+                let picked = t.match_(t.param("on"), |m| {
+                    m.arm(Pat::True, |_, _| html);
+                    m.arm(Pat::False, |t, _| t.text("y"));
+                });
+                t.html_concat([picked, html])
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::HtmlReadMoreThanOnce);
+    }
+
+    #[test]
+    fn should_accept_html_read_in_every_arm_of_a_match() {
+        FlatProgramBuilder::new()
+            .entrypoint("Test", [("on", Ty::Bool)], |t| {
+                let html = t.text("x");
+                t.match_(t.param("on"), |m| {
+                    m.arm(Pat::True, |_, _| html);
+                    m.arm(Pat::False, |t, _| t.html_concat([t.text("y"), html]));
+                })
+            })
+            .build()
+            .unwrap();
     }
 
     #[test]
