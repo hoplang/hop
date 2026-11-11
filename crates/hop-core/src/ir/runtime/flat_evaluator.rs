@@ -764,8 +764,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 1504827 allocations
-            program evaluation: 14765 allocations
+            program generation: 1390450 allocations
+            program evaluation: 29479 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"

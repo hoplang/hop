@@ -167,16 +167,46 @@ impl Scope {
             .filter(move |name| !name.used && fits(&types[name.var.index()]))
             .map(|name| name.var)
     }
+}
 
-    fn cells<'a>(&'a self, types: &'a [IrType]) -> impl Iterator<Item = ValueId> + 'a {
-        (self.names.iter())
-            .filter(|name| {
-                matches!(
-                    types[name.var.index()],
-                    IrType::Data(IrFunctionDataType::Cell(_))
-                )
-            })
-            .map(|name| name.var)
+enum TyPat {
+    Var(usize),
+    Ground(IrDataType),
+    Array(Box<TyPat>),
+    Option(Box<TyPat>),
+}
+
+enum Layer {
+    Data,
+    Cell,
+}
+
+type Subst = HashMap<usize, IrDataType>;
+
+/// Whether typ has the shape of pattern, binding the variables of the
+/// pattern in subst.
+fn match_type(pattern: &TyPat, typ: &IrDataType, subst: &mut Subst) -> bool {
+    match (pattern, typ) {
+        (TyPat::Var(var), _) => subst.entry(*var).or_insert_with(|| typ.clone()) == typ,
+        (TyPat::Ground(ground), _) => ground == typ,
+        (TyPat::Array(element), IrDataType::Array(typ))
+        | (TyPat::Option(element), IrDataType::Option(typ)) => match_type(element, typ, subst),
+        _ => false,
+    }
+}
+
+/// The data type pattern stands for under subst, binding each variable
+/// still unbound to a type from fresh.
+fn instantiate(
+    pattern: &TyPat,
+    subst: &mut Subst,
+    fresh: &mut impl FnMut() -> IrDataType,
+) -> IrDataType {
+    match pattern {
+        TyPat::Var(var) => subst.entry(*var).or_insert_with(&mut *fresh).clone(),
+        TyPat::Ground(typ) => typ.clone(),
+        TyPat::Array(element) => IrDataType::Array(Box::new(instantiate(element, subst, fresh))),
+        TyPat::Option(element) => IrDataType::Option(Box::new(instantiate(element, subst, fresh))),
     }
 }
 
@@ -503,35 +533,68 @@ impl FlatGenerator<'_, '_> {
         }
     }
 
-    fn vars_in_scope(
-        b: &FlatBlockBuilder<'_>,
-        scope: &Scope,
-        fits: impl Fn(&IrDataType) -> bool,
-    ) -> Vec<(ValueId, IrDataType)> {
-        let types = b.value_types();
-        let fits = |typ: &IrType| typ.as_data().is_some_and(&fits);
-        (scope.names_where(&types, fits))
-            .map(|name| {
-                let IrType::Data(IrFunctionDataType::Data(typ)) = &types[name.index()] else {
-                    unreachable!()
-                };
-                (name, typ.clone())
-            })
-            .collect()
-    }
-
     fn var_in_scope(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &Scope,
         fits: impl Fn(&IrDataType) -> bool,
     ) -> Option<(ValueId, IrDataType)> {
-        let mut vars = Self::vars_in_scope(b, scope, fits);
+        let types = b.value_types();
+        let mut vars: Vec<(ValueId, IrDataType)> = (scope
+            .names_where(&types, |typ| typ.as_data().is_some_and(&fits)))
+        .map(|name| (name, types[name.index()].as_data().unwrap().clone()))
+        .collect();
+        drop(types);
         if vars.is_empty() || self.index(10) == 0 {
             return None;
         }
         let index = self.index(vars.len());
         Some(vars.swap_remove(index))
+    }
+
+    /// The names in scope that are values, or cells, by layer, of a data
+    /// type that matches pattern, each with what the variables of the
+    /// pattern bind to.
+    fn candidates(
+        b: &FlatBlockBuilder<'_>,
+        scope: &Scope,
+        layer: Layer,
+        pattern: &TyPat,
+    ) -> Vec<(ValueId, Subst)> {
+        let types = b.value_types();
+        (scope.names_where(&types, |_| true))
+            .filter_map(|name| {
+                let ((Layer::Data, IrType::Data(IrFunctionDataType::Data(typ)))
+                | (Layer::Cell, IrType::Data(IrFunctionDataType::Cell(typ)))) =
+                    (&layer, &types[name.index()])
+                else {
+                    return None;
+                };
+                let mut subst = Subst::new();
+                match_type(pattern, typ, &mut subst).then_some((name, subst))
+            })
+            .collect()
+    }
+
+    /// An operand whose data type matches pattern, with what the variables
+    /// of the pattern bind to: one of the values in scope that match, or,
+    /// one time in ten or when none matches, an op built at depth and
+    /// nesting for the pattern with its variables bound to random types.
+    fn operand(
+        &mut self,
+        b: &FlatBlockBuilder<'_>,
+        scope: &mut Scope,
+        pattern: &TyPat,
+        depth: usize,
+        nesting: usize,
+    ) -> (ValueId, Subst) {
+        let mut candidates = Self::candidates(b, scope, Layer::Data, pattern);
+        if !candidates.is_empty() && self.index(10) != 0 {
+            return candidates.swap_remove(self.index(candidates.len()));
+        }
+        let mut subst = Subst::new();
+        let typ = instantiate(pattern, &mut subst, &mut || self.random_data_type(1));
+        (self.data_op(b, scope, &typ, depth, nesting), subst)
     }
 
     fn random_closure_type(&mut self, html: bool, depth: usize) -> IrType {
@@ -1302,14 +1365,13 @@ impl FlatGenerator<'_, '_> {
             P::Match => self.match_(b, scope, &IrType::HTML, depth, nesting),
             P::Apply => self.apply(b, scope, &IrType::HTML, depth, nesting),
             P::ForArray => {
-                let var = self.var_in_scope(b, scope, |ty| matches!(ty, IrDataType::Array(_)));
-                let array = match var {
-                    Some((array, _)) => array,
-                    None => {
-                        let array_ty = IrDataType::Array(Box::new(self.random_data_type(1)));
-                        self.data_op(b, scope, &array_ty, depth, nesting - 1)
-                    }
-                };
+                let (array, _) = self.operand(
+                    b,
+                    scope,
+                    &TyPat::Array(Box::new(TyPat::Var(0))),
+                    depth,
+                    nesting - 1,
+                );
                 let array = if self.index(4) == 0 {
                     let enumerated = b.array_enumerate(array);
                     self.bind(b, scope, enumerated)
@@ -1411,11 +1473,20 @@ impl FlatGenerator<'_, '_> {
             .record_fields_of_type(b, target)
             .map(|(record, field)| (record.clone(), field.name.as_str().to_string()))
             .collect();
-        let records = Self::vars_in_scope(b, scope, |ty| {
-            record_fields.iter().any(|(record, _)| record == ty)
-        });
+        let mut records: Vec<&IrDataType> =
+            (record_fields.iter()).map(|(record, _)| record).collect();
+        // record_fields_of_type yields the fields of each record together,
+        // so removing consecutive repeats leaves each record once.
+        records.dedup();
+        let objects: Vec<(ValueId, &IrDataType)> = (records.into_iter())
+            .flat_map(|record| {
+                let pattern = TyPat::Ground(record.clone());
+                (Self::candidates(b, scope, Layer::Data, &pattern).into_iter())
+                    .map(move |(object, _)| (object, record))
+            })
+            .collect();
         let mut productions: Vec<P> = Vec::new();
-        if !records.is_empty() {
+        if !objects.is_empty() {
             productions.push(P::FieldAccess);
         }
         if *target == IrDataType::Bool {
@@ -1475,12 +1546,12 @@ impl FlatGenerator<'_, '_> {
         }
         let value = match self.u.choose(&productions).unwrap() {
             P::FieldAccess => {
-                let (object, record) = &records[self.index(records.len())];
+                let (object, record) = objects[self.index(objects.len())];
                 let fields: Vec<&String> = (record_fields.iter())
                     .filter(|(candidate, _)| candidate == record)
                     .map(|(_, field)| field)
                     .collect();
-                b.field_access(*object, self.u.choose(&fields).unwrap())
+                b.field_access(object, self.u.choose(&fields).unwrap())
             }
             P::Eq => {
                 let (row, ty) = match self.index(4) {
@@ -1536,23 +1607,23 @@ impl FlatGenerator<'_, '_> {
                 b.int_to_float(operand)
             }
             P::OptionIsNone => {
-                let operand = self
-                    .var_in_scope(b, scope, |ty| matches!(ty, IrDataType::Option(_)))
-                    .map(|(var, _)| var)
-                    .unwrap_or_else(|| {
-                        let option_ty = IrDataType::Option(Box::new(self.random_data_type(1)));
-                        self.data_op(b, scope, &option_ty, depth, nesting - 1)
-                    });
+                let (operand, _) = self.operand(
+                    b,
+                    scope,
+                    &TyPat::Option(Box::new(TyPat::Var(0))),
+                    depth,
+                    nesting - 1,
+                );
                 b.option_is_none(operand)
             }
             P::OptionIsSome => {
-                let operand = self
-                    .var_in_scope(b, scope, |ty| matches!(ty, IrDataType::Option(_)))
-                    .map(|(var, _)| var)
-                    .unwrap_or_else(|| {
-                        let option_ty = IrDataType::Option(Box::new(self.random_data_type(1)));
-                        self.data_op(b, scope, &option_ty, depth, nesting - 1)
-                    });
+                let (operand, _) = self.operand(
+                    b,
+                    scope,
+                    &TyPat::Option(Box::new(TyPat::Var(0))),
+                    depth,
+                    nesting - 1,
+                );
                 b.option_is_some(operand)
             }
             P::StringIsEmpty => {
@@ -1560,34 +1631,36 @@ impl FlatGenerator<'_, '_> {
                 b.string_is_empty(operand)
             }
             P::ArrayIsEmpty => {
-                let operand = self
-                    .var_in_scope(b, scope, |ty| matches!(ty, IrDataType::Array(_)))
-                    .map(|(var, _)| var)
-                    .unwrap_or_else(|| {
-                        let array_ty = IrDataType::Array(Box::new(self.random_data_type(1)));
-                        self.data_op(b, scope, &array_ty, depth, nesting - 1)
-                    });
+                let (operand, _) = self.operand(
+                    b,
+                    scope,
+                    &TyPat::Array(Box::new(TyPat::Var(0))),
+                    depth,
+                    nesting - 1,
+                );
                 b.array_is_empty(operand)
             }
             P::ArrayLength => {
-                let operand = self
-                    .var_in_scope(b, scope, |ty| matches!(ty, IrDataType::Array(_)))
-                    .map(|(var, _)| var)
-                    .unwrap_or_else(|| {
-                        let array_ty = IrDataType::Array(Box::new(self.random_data_type(1)));
-                        self.data_op(b, scope, &array_ty, depth, nesting - 1)
-                    });
+                let (operand, _) = self.operand(
+                    b,
+                    scope,
+                    &TyPat::Array(Box::new(TyPat::Var(0))),
+                    depth,
+                    nesting - 1,
+                );
                 b.array_length(operand)
             }
             P::ArrayGet => {
                 let IrDataType::Option(element) = target else {
                     unreachable!("ArrayGet is offered for an Option only")
                 };
-                let array_ty = IrDataType::Array(element.clone());
-                let array = self
-                    .var_in_scope(b, scope, |ty| *ty == array_ty)
-                    .map(|(var, _)| var)
-                    .unwrap_or_else(|| self.data_op(b, scope, &array_ty, depth, nesting - 1));
+                let (array, _) = self.operand(
+                    b,
+                    scope,
+                    &TyPat::Ground(IrDataType::Array(element.clone())),
+                    depth,
+                    nesting - 1,
+                );
                 let index = if self.coin() {
                     let index = b.int(self.zigzag(3));
                     self.bind(b, scope, index)
@@ -1603,11 +1676,13 @@ impl FlatGenerator<'_, '_> {
                 let IrDataType::Tuple(types) = pair.as_ref() else {
                     unreachable!("ArrayEnumerate is offered for an Array of pairs only")
                 };
-                let array_ty = IrDataType::Array(Box::new(types[1].clone()));
-                let array = self
-                    .var_in_scope(b, scope, |ty| *ty == array_ty)
-                    .map(|(var, _)| var)
-                    .unwrap_or_else(|| self.data_op(b, scope, &array_ty, depth, nesting - 1));
+                let (array, _) = self.operand(
+                    b,
+                    scope,
+                    &TyPat::Ground(IrDataType::Array(Box::new(types[1].clone()))),
+                    depth,
+                    nesting - 1,
+                );
                 b.array_enumerate(array)
             }
             P::ArrayFromRange => {
@@ -1666,35 +1741,20 @@ impl FlatGenerator<'_, '_> {
         self.effect_op(b, scope, depth, MAX_EXPRESSION_DEPTH)
     }
 
-    fn cell_in_scope(
-        &mut self,
-        b: &FlatBlockBuilder<'_>,
-        scope: &Scope,
-    ) -> Option<(ValueId, IrDataType)> {
-        let types = b.value_types();
-        let cells: Vec<ValueId> = scope.cells(&types).collect();
-        if cells.is_empty() {
-            return None;
-        }
-        let cell = cells[self.index(cells.len())];
-        let IrType::Data(IrFunctionDataType::Cell(typ)) = &types[cell.index()] else {
-            unreachable!("a cell has a cell type");
-        };
-        Some((cell, typ.clone()))
-    }
-
     fn effect_leaf(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope) -> ValueId {
         if self.coin()
             && let Some(name) = self.name_in_scope(b, scope, &IrType::EFFECT)
         {
             return name;
         }
-        let leaf = match self.cell_in_scope(b, scope) {
-            Some((cell, typ)) if self.index(4) != 0 => {
-                let value = self.literal(b, scope, &typ, MAX_LITERAL_DEPTH);
-                b.cell_write(cell, value)
-            }
-            _ => b.effect_pure(b.tuple([])),
+        let mut cells = Self::candidates(b, scope, Layer::Cell, &TyPat::Var(0));
+        let leaf = if !cells.is_empty() && self.index(4) != 0 {
+            let (cell, subst) = cells.swap_remove(self.index(cells.len()));
+            let typ = subst[&0].clone();
+            let value = self.literal(b, scope, &typ, MAX_LITERAL_DEPTH);
+            b.cell_write(cell, value)
+        } else {
+            b.effect_pure(b.tuple([]))
         };
         scope.push(leaf)
     }
@@ -1717,8 +1777,9 @@ impl FlatGenerator<'_, '_> {
             Match,
             Apply,
         }
+        let mut cells = Self::candidates(b, scope, Layer::Cell, &TyPat::Var(0));
         let mut productions = vec![P::Bind];
-        if scope.cells(&b.value_types()).next().is_some() {
+        if !cells.is_empty() {
             productions.extend([P::CellWrite, P::CellRead]);
         }
         if !Self::callees(b, scope, &IrType::EFFECT).is_empty() {
@@ -1729,16 +1790,14 @@ impl FlatGenerator<'_, '_> {
         }
         let value = match self.u.choose(&productions).unwrap() {
             P::CellWrite => {
-                let (cell, typ) = self
-                    .cell_in_scope(b, scope)
-                    .expect("a cell write is made when a cell is in scope");
+                let (cell, subst) = cells.swap_remove(self.index(cells.len()));
+                let typ = subst[&0].clone();
                 let value = self.data_op(b, scope, &typ, depth, nesting - 1);
                 b.cell_write(cell, value)
             }
             P::CellRead => {
-                let (cell, typ) = self
-                    .cell_in_scope(b, scope)
-                    .expect("a cell read is made when a cell is in scope");
+                let (cell, subst) = cells.swap_remove(self.index(cells.len()));
+                let typ = subst[&0].clone();
                 let read = b.cell_read(cell);
                 let parameter = IrType::Data(IrFunctionDataType::Data(typ));
                 self.effect_bind(b, scope, read, parameter, depth, nesting)
@@ -2600,99 +2659,99 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            15613 of 65536 input bytes consumed per program on average, at most 65536
-            6 of 100 programs exhaust the input
+            16625 of 65536 input bytes consumed per program on average, at most 65536
+            7 of 100 programs exhaust the input
 
             -- sizes --
-            under 256    11  ##########
-            under 1K      2  #
-            under 4K     13  ############
-            under 16K    41  ########################################
-            under 64K    27  ##########################
-            at 64K        6  #####
+            under 256    11  ###########
+            under 1K      2  ##
+            under 4K     14  ###############
+            under 16K    37  ########################################
+            under 64K    29  ###############################
+            at 64K        7  #######
 
             -- programs --
-            112 of 11989 Html bindings have more than one reference
-            2.5 arms per match on average, at least 2 and at most 18
-            22918 of 58379 match arms bind names
-            7858 cells
-            829 parameters take a cell, and 432 arguments pass one
-            536 of 889 loops have a key
-            2185 of 2693 elements have a click
-            381 handlers have more than one click
-            622 clicks apply a handler bound outside their block, 32 of them a parameter
+            93 of 9822 Html bindings have more than one reference
+            2.6 arms per match on average, at least 2 and at most 18
+            25916 of 64960 match arms bind names
+            6839 cells
+            901 parameters take a cell, and 535 arguments pass one
+            457 of 765 loops have a key
+            1757 of 2172 elements have a click
+            303 handlers have more than one click
+            474 clicks apply a handler bound outside their block, 34 of them a parameter
 
             -- invocations --
             218 invocations
-            13 invocations hit the call depth limit
+            7 invocations hit the call depth limit
             0 invocations hit the array length limit
             0 invocations hit the string length limit
             0 invocations hit the Html size limit
-            4 invocations hit the op count limit
-            1497 cells bound
+            5 invocations hit the op count limit
+            1547 cells bound
 
-            256 clicks
-            48 programs have a click
-            22 programs have a click that changes a cell
-            16 programs have a click that changes the page
-            7 programs have a click that switches an arm of a match
-            6 programs have a click that switches an arm of a match that binds cells
-            6 programs have a click that changes the iterations of a loop
-            4 programs have a click that changes an array cell
+            286 clicks
+            56 programs have a click
+            20 programs have a click that changes a cell
+            17 programs have a click that changes the page
+            1 programs have a click that switches an arm of a match
+            1 programs have a click that switches an arm of a match that binds cells
+            4 programs have a click that changes the iterations of a loop
+            3 programs have a click that changes an array cell
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      208.8    93.0    90.2    66.8
-            Array                      252.1    91.0    88.9    24.4
-            ArrayEnumerate               1.3    52.0    94.8    49.3
-            ArrayFromRange              14.7    89.0    87.4     0.0
-            ArrayGet                    64.3    89.0    83.7    44.9
-            ArrayIsEmpty                 4.3    69.0    85.9    48.0
-            ArrayLength                124.1    90.0    89.2    49.7
-            BoolLiteral                 72.8    90.0    89.4     0.0
-            BoolNegation                 4.2    63.0    84.2    43.7
-            Call                        42.1    52.0    83.1    76.8
-            Cell                        78.6    84.0    92.5    39.1
-            CellRead                    14.9    75.0    89.4    44.1
-            CellWrite                   37.2    87.0    90.1    50.3
-            EffectApply                 15.8    86.0    92.4    70.8
-            EffectBind                 533.4    87.0    91.4    31.2
-            EffectCall                  10.2    12.0    83.1    53.3
-            EffectMatch                 15.4    83.0    90.3    82.6
-            EffectPure                 313.0    91.0    91.5     0.0
-            Enum                       140.6    74.0    89.3    22.6
-            Equals                       4.5    70.0    86.7    58.8
-            FieldAccess                 12.1    48.0    76.6    55.5
-            FloatLiteral               120.8    88.0    89.1     0.0
-            FloatToInt                 121.3    88.0    89.3    46.3
-            HtmlApply                    4.6    65.0    95.0    80.4
-            HtmlConcat                  36.2    87.0    93.9    41.2
-            HtmlElement                 26.9    83.0    94.1    62.2
-            HtmlEscape                  17.0    85.0    93.2    44.4
-            HtmlFor                      8.9    80.0    96.2    69.6
-            HtmlLambda                   5.6    65.0    94.1    59.4
-            HtmlText                     8.9    74.0    94.1     0.0
-            IntLiteral                 164.6    93.0    87.9     0.0
-            IntToFloat                 162.4    87.0    89.0    47.9
-            IntToString                 53.3    89.0    91.6    46.5
-            Lambda                     799.5    97.0    91.1    30.8
-            LessThan                     4.1    64.0    83.1    58.6
-            LessThanOrEqual              4.5    73.0    87.0    58.1
-            Match                      214.6    93.0    90.5    78.9
-            NumericAdd                 287.8    90.0    88.9    62.6
-            NumericMultiply            284.3    89.0    88.5    61.3
-            NumericNegation            290.6    90.0    89.1    49.4
-            NumericSubtract            285.6    89.0    88.9    62.5
-            OptionIsNone                 4.3    68.0    81.4    41.9
-            OptionIsSome                 4.1    68.0    85.5    47.1
-            OptionNone                  77.7    90.0    89.6     0.0
-            OptionSome                  68.9    90.0    89.5    28.0
-            Record                      97.7    68.0    87.3    30.0
-            StringConcat                54.3    90.0    90.5    43.9
-            StringIsEmpty                4.2    69.0    85.8    36.6
-            StringLiteral               63.2    94.0    89.7     0.0
-            Track                       78.6    84.0    91.2    38.2
-            Tuple                      522.6    94.0    90.4    14.1
+            Apply                      223.5    93.0    87.1    65.8
+            Array                      295.2    91.0    83.1    23.6
+            ArrayEnumerate               1.1    51.0    98.1    48.1
+            ArrayFromRange              15.2    89.0    85.4     0.0
+            ArrayGet                    71.7    89.0    80.5    43.4
+            ArrayIsEmpty                 4.4    71.0    84.7    48.7
+            ArrayLength                135.3    90.0    86.7    49.2
+            BoolLiteral                 80.8    90.0    80.4     0.0
+            BoolNegation                 4.6    68.0    84.4    42.3
+            Call                        42.4    50.0    84.6    79.0
+            Cell                        68.4    85.0    94.8    42.9
+            CellRead                    17.6    75.0    84.6    44.7
+            CellWrite                   41.4    87.0    86.4    53.9
+            EffectApply                 16.2    83.0    93.7    72.4
+            EffectBind                 563.8    86.0    93.3    31.6
+            EffectCall                   9.9    12.0    81.3    50.9
+            EffectMatch                 16.1    82.0    92.5    85.9
+            EffectPure                 329.2    91.0    93.7     0.0
+            Enum                       154.6    74.0    82.7    22.1
+            Equals                       4.8    65.0    86.5    59.8
+            FieldAccess                 11.0    43.0    80.7    73.0
+            FloatLiteral               133.2    88.0    83.9     0.0
+            FloatToInt                 129.5    88.0    86.8    46.5
+            HtmlApply                    4.1    64.0    99.0    87.7
+            HtmlConcat                  28.2    85.0    95.6    43.9
+            HtmlElement                 21.7    81.0    96.0    65.4
+            HtmlEscape                  13.6    81.0    95.6    48.3
+            HtmlFor                      7.7    77.0    98.4    75.8
+            HtmlLambda                   4.6    65.0    98.0    65.6
+            HtmlText                     7.7    76.0    95.4     0.0
+            IntLiteral                 178.5    93.0    81.2     0.0
+            IntToFloat                 170.9    87.0    86.9    48.5
+            IntToString                 50.0    89.0    91.3    48.0
+            Lambda                     846.6    97.0    91.4    31.0
+            LessThan                     4.3    66.0    83.7    56.6
+            LessThanOrEqual              4.5    76.0    84.7    56.4
+            Match                      231.2    93.0    87.1    77.9
+            NumericAdd                 305.4    90.0    87.2    62.8
+            NumericMultiply            302.2    89.0    86.8    62.1
+            NumericNegation            309.6    90.0    86.9    49.6
+            NumericSubtract            305.9    89.0    86.8    62.3
+            OptionIsNone                 4.2    71.0    84.5    47.1
+            OptionIsSome                 4.1    68.0    85.0    48.5
+            OptionNone                  83.0    90.0    86.9     0.0
+            OptionSome                  73.8    90.0    86.6    27.5
+            Record                     105.0    68.0    78.5    28.8
+            StringConcat                50.0    91.0    91.3    46.2
+            StringIsEmpty                4.5    74.0    84.1    39.6
+            StringLiteral               68.8    94.0    88.1     0.0
+            Track                       68.4    85.0    92.8    41.7
+            Tuple                      557.7    94.0    90.1    14.2
         "#]]
         .assert_eq(&report);
     }
