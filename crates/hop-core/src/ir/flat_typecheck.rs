@@ -27,9 +27,8 @@ pub enum FlatTypeError {
     HtmlReadMoreThanOnce,
     /// A name is bound a second time.
     BoundTwice,
-    /// A name is read before it is bound.
-    ReadBeforeBound,
-    /// A name is read outside the block that binds it.
+    /// A name is read where it is not in scope: before it is bound, or
+    /// outside the block that binds it.
     ReadOutOfScope,
     /// A binding declares a type that its op does not produce from the
     /// types of its operands.
@@ -326,11 +325,10 @@ impl<'a> Checker<'a> {
     }
 
     fn typ(&self, name: ValueId) -> Result<BoundType<'a>, FlatTypeError> {
-        let bound = self.names[name.index()].ok_or(FlatTypeError::ReadBeforeBound)?;
-        if !bound.in_scope {
-            return Err(FlatTypeError::ReadOutOfScope);
+        match self.names[name.index()] {
+            Some(bound) if bound.in_scope => Ok(bound.typ),
+            _ => Err(FlatTypeError::ReadOutOfScope),
         }
-        Ok(bound.typ)
     }
 
     fn data(&self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatTypeError> {
