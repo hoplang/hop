@@ -13,6 +13,7 @@ use crate::ir::flat_program::{
     FlatEntrypoint, FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
     FlatPureBlock, FlatPureOp,
 };
+use crate::ir::flat_typecheck;
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::index_vec::IndexVec;
 use crate::ir::ir_binder::IrBinder;
@@ -116,15 +117,16 @@ pub fn typed_to_flat(
         .map(|page| page.declare(&mut entrypoints))
         .collect();
 
-    (
-        FlatProgram {
-            types: lower_type_declarations(registry),
-            functions,
-            entrypoints,
-            value_ids,
-        },
-        pages,
-    )
+    let program = FlatProgram {
+        types: lower_type_declarations(registry),
+        functions,
+        entrypoints,
+        value_ids,
+    };
+    if let Err(error) = flat_typecheck::typecheck(&program) {
+        panic!("typed_to_flat produced an ill-typed program: {error:?}\n{program}");
+    }
+    (program, pages)
 }
 
 /// A function compiled for one list of attributes supplied to its rest.
@@ -1186,7 +1188,6 @@ mod tests {
 
     use super::*;
     use crate::document::Document;
-    use crate::ir::flat_typecheck;
     use crate::session::Session;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -1202,7 +1203,6 @@ mod tests {
         let diagnostics = session.diagnostics();
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
         let (flat, pages) = session.compile_flat(None, None);
-        flat_typecheck::typecheck(&flat).unwrap();
         let pages: String = pages.iter().map(|page| format!("{page}\n")).collect();
         expected.assert_eq(&format!("{flat}{pages}"));
     }

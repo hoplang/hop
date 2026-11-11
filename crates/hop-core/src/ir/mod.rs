@@ -29,7 +29,6 @@ pub mod writer_program;
 pub mod flat_program_builder;
 #[cfg(test)]
 pub mod flat_program_generator;
-#[cfg(test)]
 pub mod flat_typecheck;
 #[cfg(test)]
 pub mod ir_type_declarations_builder;

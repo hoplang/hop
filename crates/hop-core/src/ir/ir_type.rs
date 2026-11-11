@@ -54,10 +54,6 @@ pub struct IrSignature<Param, Result> {
 
 #[cfg(test)]
 impl IrType {
-    pub const STRING: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::String));
-    pub const BOOL: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Bool));
-    pub const INT: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Int));
-    pub const FLOAT: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Float));
     pub const EFFECT: IrType = IrType::Data(IrFunctionDataType::Effect(IrDataType::UNIT));
 
     pub fn cell(data: IrDataType) -> IrType {
@@ -106,6 +102,10 @@ impl IrType {
 }
 
 impl IrType {
+    pub const STRING: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::String));
+    pub const BOOL: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Bool));
+    pub const INT: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Int));
+    pub const FLOAT: IrType = IrType::Data(IrFunctionDataType::Data(IrDataType::Float));
     pub const HTML: IrType = IrType::Html(IrFunctionHtmlType::Html(IrHtmlType));
 
     pub fn html_function(parameters: impl IntoIterator<Item = IrType>) -> IrType {
