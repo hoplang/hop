@@ -1911,14 +1911,9 @@ mod tests {
         FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatPureBlock, FlatPureOp,
     };
     use crate::ir::ir_binder::IrBinder;
-    use crate::ir::runtime::EvalError;
-    use crate::ir::runtime::clicks::clicks;
-    use crate::ir::runtime::flat_evaluator::invoke_entrypoint;
-    use crate::ir::runtime::state::{Place, State, Step};
-    use crate::ir::runtime::value::Html;
     use expect_test::{Expect, expect};
     use rand::RngExt;
-    use std::collections::{BTreeMap, BTreeSet, HashSet};
+    use std::collections::{BTreeMap, HashSet};
 
     fn check(seed: u64, len: usize, expected: Expect) {
         let mut rng = SmallRng::seed_from_u64(seed);
@@ -2303,160 +2298,12 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
-    struct ClickStats {
-        /// The clicks rendered, over all programs.
-        clicks: usize,
-        /// Programs with a click.
-        clicked: usize,
-        /// Programs with a click that writes a cell a value other than the
-        /// one it holds.
-        changing: usize,
-        /// Programs with a click after which the page renders differently.
-        rerendering: usize,
-        /// Programs with a click after which an element is evaluated or no
-        /// longer evaluated although each iteration it is in is evaluated
-        /// both before and after, as a match took another arm.
-        switching_arms: usize,
-        /// Programs with a click after which a cell is bound or no longer
-        /// bound although each iteration it is in is evaluated both before
-        /// and after, as a match took another arm. A cell that is no longer
-        /// bound starts over when its arm is taken again.
-        switching_cells: usize,
-        /// Programs with a click after which a loop has other iterations:
-        /// it gained, lost or re-keyed some. A match that takes another arm
-        /// with a loop in it counts here as well.
-        changing_loops: usize,
-        /// Programs with a click that changes an array cell.
-        changing_arrays: usize,
-        /// What the clicks of the program being counted have done so far.
-        program: Clicked,
-    }
-
-    #[derive(Default)]
-    struct Clicked {
-        any: bool,
-        changing: bool,
-        rerendering: bool,
-        switching_arms: bool,
-        switching_cells: bool,
-        changing_loops: bool,
-        changing_arrays: bool,
-    }
-
-    /// The iterations of the places, each as the steps up to and including
-    /// it.
-    fn iterations<'p>(places: impl Iterator<Item = &'p Place>) -> BTreeSet<Vec<Step>> {
-        let mut iterations = BTreeSet::new();
-        for place in places {
-            let steps: Vec<Step> = place.iter().cloned().collect();
-            for (index, step) in steps.iter().enumerate() {
-                if matches!(step, Step::Iteration(..)) {
-                    iterations.insert(steps[..=index].to_vec());
-                }
-            }
-        }
-        iterations
-    }
-
-    /// Whether each iteration of the place is in `both`, the iterations two
-    /// invocations both evaluate, so that a place only one of them
-    /// evaluates is not explained by a loop.
-    fn in_both_iterations(place: &Place, both: &BTreeSet<Vec<Step>>) -> bool {
-        let steps: Vec<Step> = place.iter().cloned().collect();
-        (steps.iter().enumerate()).all(|(index, step)| {
-            !matches!(step, Step::Iteration(..)) || both.contains(&steps[..=index])
-        })
-    }
-
-    impl ClickStats {
-        fn finish_program(&mut self) {
-            let program = std::mem::take(&mut self.program);
-            self.clicked += usize::from(program.any);
-            self.changing += usize::from(program.changing);
-            self.rerendering += usize::from(program.rerendering);
-            self.switching_arms += usize::from(program.switching_arms);
-            self.switching_cells += usize::from(program.switching_cells);
-            self.changing_loops += usize::from(program.changing_loops);
-            self.changing_arrays += usize::from(program.changing_arrays);
-        }
-
-        fn count<'a>(
-            &mut self,
-            program: &'a FlatProgram,
-            entrypoint: EntrypointId,
-            args: &HashMap<AttributeName, Value<'a>>,
-            html: &Html<'a>,
-            state: &State<'a>,
-        ) {
-            let mut markup = String::new();
-            html.write(&mut markup);
-            for (_, target) in clicks(&program.functions, html) {
-                self.clicks += 1;
-                self.program.any = true;
-                let Ok(effect) = target else {
-                    continue;
-                };
-                let mut next = state.clone();
-                if next.run(&effect, &program.functions).is_err() {
-                    continue;
-                }
-                let changed: Vec<&Value<'_>> = next
-                    .cells
-                    .iter()
-                    .filter(|(place, value)| !state.cells[*place].total_eq(value))
-                    .map(|(_, value)| value)
-                    .collect();
-                if changed.is_empty() {
-                    continue;
-                }
-                self.program.changing = true;
-                self.program.changing_arrays |=
-                    changed.iter().any(|value| matches!(value, Value::Array(_)));
-                if let Ok((value, next_state)) =
-                    invoke_entrypoint(program, entrypoint, args.clone(), &next)
-                {
-                    let mut next_markup = String::new();
-                    value.unwrap_html().write(&mut next_markup);
-                    self.program.rerendering |= markup != next_markup;
-                    // A loop iteration can hold cells and no elements, so
-                    // the iterations come from both.
-                    let before = iterations(state.elements.keys().chain(state.cells.keys()));
-                    let after =
-                        iterations(next_state.elements.keys().chain(next_state.cells.keys()));
-                    let both = before.intersection(&after).cloned().collect();
-                    self.program.changing_loops |= before != after;
-                    let (elements, next_elements) = (&state.elements, &next_state.elements);
-                    let dropped =
-                        (elements.keys()).filter(|place| !next_elements.contains_key(*place));
-                    let bound =
-                        (next_elements.keys()).filter(|place| !elements.contains_key(*place));
-                    self.program.switching_arms |= dropped
-                        .chain(bound)
-                        .any(|place| in_both_iterations(place, &both));
-                    let (cells, next_cells) = (&state.cells, &next_state.cells);
-                    let dropped = (cells.keys()).filter(|place| !next_cells.contains_key(*place));
-                    let bound = (next_cells.keys()).filter(|place| !cells.contains_key(*place));
-                    self.program.switching_cells |= dropped
-                        .chain(bound)
-                        .any(|place| in_both_iterations(place, &both));
-                }
-            }
-        }
-    }
-
     #[test]
     fn should_report_generator_stats() {
         const SAMPLES: usize = 100;
         const INPUT_LEN: usize = 65_536;
         let mut rng = SmallRng::seed_from_u64(0);
         let mut counts = BTreeMap::new();
-        let mut entrypoints = 0;
-        let mut call_depth_limit = 0;
-        let mut array_len_limit = 0;
-        let mut string_len_limit = 0;
-        let mut html_size_limit = 0;
-        let mut op_count_limit = 0;
         let mut consumed = 0;
         let mut most_consumed = 0;
         let mut exhausted = 0;
@@ -2464,9 +2311,7 @@ mod tests {
         let mut sizes = [0usize; SIZE_EDGES.len() + 1];
         let mut html_bindings = 0;
         let mut shared_html = 0;
-        let mut cells_bound = 0;
         let mut shape_stats = ShapeStats::default();
-        let mut click_stats = ClickStats::default();
         for _ in 0..SAMPLES {
             let bytes: Vec<u8> = (0..INPUT_LEN).map(|_| rng.random()).collect();
             let mut u = Unstructured::new(&bytes);
@@ -2477,25 +2322,6 @@ mod tests {
             exhausted += u.is_empty() as usize;
             let bucket = SIZE_EDGES.iter().position(|edge| used < *edge);
             sizes[bucket.unwrap_or(SIZE_EDGES.len())] += 1;
-            for (entrypoint, args) in random_entrypoint_args(&program, &mut u).unwrap() {
-                entrypoints += 1;
-                let result =
-                    invoke_entrypoint(&program, entrypoint, args.clone(), &State::default());
-                call_depth_limit +=
-                    matches!(result, Err(EvalError::CallDepthLimit { .. })) as usize;
-                array_len_limit +=
-                    matches!(result, Err(EvalError::ArrayLengthLimit { .. })) as usize;
-                string_len_limit +=
-                    matches!(result, Err(EvalError::StringLengthLimit { .. })) as usize;
-                html_size_limit += matches!(result, Err(EvalError::HtmlSizeLimit { .. })) as usize;
-                op_count_limit += matches!(result, Err(EvalError::OpCountLimit { .. })) as usize;
-                if let Ok((value, state)) = result {
-                    cells_bound += state.cells.len();
-                    let html = value.unwrap_html();
-                    click_stats.count(&program, entrypoint, &args, &html, &state);
-                }
-            }
-            click_stats.finish_program();
             let mut live = HashSet::new();
             let mut dynamic = HashSet::new();
             let bodies: Vec<Block<'_>> = program
@@ -2573,17 +2399,6 @@ mod tests {
             cell_parameters,
             cell_arguments,
         } = shape_stats;
-        let ClickStats {
-            clicks: targets,
-            clicked,
-            changing,
-            rerendering,
-            switching_arms,
-            switching_cells,
-            changing_loops,
-            changing_arrays,
-            program: _,
-        } = click_stats;
         let arms: usize = arm_counts.iter().sum();
         let fewest_arms = arm_counts.iter().min().unwrap();
         let most_arms = arm_counts.iter().max().unwrap();
@@ -2622,22 +2437,6 @@ mod tests {
              {shared_handlers} handlers have more than one click\n\
              {clicks_from_outside} clicks apply a handler bound outside their block, \
              {clicks_on_parameters} of them a parameter\n\n\
-             -- invocations --\n\
-             {entrypoints} invocations\n\
-             {call_depth_limit} invocations hit the call depth limit\n\
-             {array_len_limit} invocations hit the array length limit\n\
-             {string_len_limit} invocations hit the string length limit\n\
-             {html_size_limit} invocations hit the Html size limit\n\
-             {op_count_limit} invocations hit the op count limit\n\
-             {cells_bound} cells bound\n\n\
-             {targets} clicks\n\
-             {clicked} programs have a click\n\
-             {changing} programs have a click that changes a cell\n\
-             {rerendering} programs have a click that changes the page\n\
-             {switching_arms} programs have a click that switches an arm of a match\n\
-             {switching_cells} programs have a click that switches an arm of a match that binds cells\n\
-             {changing_loops} programs have a click that changes the iterations of a loop\n\
-             {changing_arrays} programs have a click that changes an array cell\n\n\
              -- ops --\n\
              {:<20}{:>12}{:>8}{:>8}{:>8}\n",
             consumed / SAMPLES,
@@ -2680,24 +2479,6 @@ mod tests {
             1757 of 2172 elements have a click
             303 handlers have more than one click
             474 clicks apply a handler bound outside their block, 34 of them a parameter
-
-            -- invocations --
-            218 invocations
-            7 invocations hit the call depth limit
-            0 invocations hit the array length limit
-            0 invocations hit the string length limit
-            0 invocations hit the Html size limit
-            5 invocations hit the op count limit
-            1547 cells bound
-
-            286 clicks
-            56 programs have a click
-            20 programs have a click that changes a cell
-            17 programs have a click that changes the page
-            1 programs have a click that switches an arm of a match
-            1 programs have a click that switches an arm of a match that binds cells
-            4 programs have a click that changes the iterations of a loop
-            3 programs have a click that changes an array cell
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
