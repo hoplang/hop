@@ -665,33 +665,23 @@ impl<'a> FlatBlockBuilder<'a> {
         listed: Vec<(String, Pat)>,
         bindings: &mut ArmBindings,
     ) -> Vec<PatternField<IrBinder<IrDataType>>> {
-        let mut patterns: Vec<(String, IrPattern)> = Vec::new();
-        for (field_name, field_pat) in listed {
-            assert!(!patterns.iter().any(|(listed, _)| *listed == field_name));
-            let field = declared
-                .iter()
-                .find(|field| field.name.as_str() == field_name)
-                .unwrap();
-            let pattern = self.resolve_pat(
-                &IrType::Data(IrFunctionDataType::Data(field.typ.clone())),
-                field_pat,
-                bindings,
-            );
-            patterns.push((field_name, pattern));
-        }
-        declared
-            .iter()
-            .enumerate()
-            .map(|(index, field)| PatternField {
-                name: field.name.clone(),
-                index,
-                pattern: match patterns
+        listed
+            .into_iter()
+            .map(|(field_name, field_pat)| {
+                let (index, field) = declared
                     .iter()
-                    .position(|(listed, _)| listed == field.name.as_str())
-                {
-                    Some(position) => patterns.swap_remove(position).1,
-                    None => Pattern::Wildcard,
-                },
+                    .enumerate()
+                    .find(|(_, field)| field.name.as_str() == field_name)
+                    .unwrap();
+                PatternField {
+                    name: field.name.clone(),
+                    index,
+                    pattern: self.resolve_pat(
+                        &IrType::Data(IrFunctionDataType::Data(field.typ.clone())),
+                        field_pat,
+                        bindings,
+                    ),
+                }
             })
             .collect()
     }

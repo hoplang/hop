@@ -43,7 +43,8 @@ pub enum FlatTypeError {
     NoArmMatches,
     /// A match has an arm whose values the arms before it all match.
     UnreachableArm,
-    /// A pattern is matched against a type whose values it cannot match.
+    /// A pattern is matched against a type whose values it cannot match,
+    /// or names a field more than once.
     PatternMismatch,
     /// A pattern binder binds a type other than the one it is matched
     /// against.
@@ -789,7 +790,13 @@ impl<'a> Checker<'a> {
                 for (arg, arg_type) in args.iter().zip(arg_types) {
                     self.data_pattern(arg, arg_type)?;
                 }
-                for field in fields {
+                for (index, field) in fields.iter().enumerate() {
+                    if fields[..index]
+                        .iter()
+                        .any(|earlier| earlier.name == field.name)
+                    {
+                        return Err(FlatTypeError::PatternMismatch);
+                    }
                     let declared = declared_fields
                         .get(field.index)
                         .filter(|declared| declared.name == field.name)
@@ -810,6 +817,7 @@ mod tests {
     use crate::hop::typing::{ComparableType, EquatableType, NumericType, Ty};
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::ir_type::IrType;
+    use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
 
     #[test]
     fn should_reject_a_closure_that_reads_html_bound_outside_it() {
@@ -1058,6 +1066,40 @@ mod tests {
             .build()
             .unwrap_err();
         assert_eq!(error, FlatTypeError::MatchSubjectNotData);
+    }
+
+    #[test]
+    fn should_reject_a_pattern_that_names_a_field_twice() {
+        let types = IrTypeDeclarationsBuilder::new()
+            .record("User", [("name", Ty::String)])
+            .build();
+        let error = FlatProgramBuilder::with_types(types)
+            .entrypoint("Test", [("user", Ty::named("User"))], |t| {
+                t.match_(t.param("user"), |m| {
+                    m.arm(
+                        Pat::Record(vec![
+                            ("name".into(), Pat::Wildcard),
+                            ("name".into(), Pat::Wildcard),
+                        ]),
+                        |t, _| t.text("user"),
+                    );
+                })
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::PatternMismatch);
+    }
+
+    #[test]
+    fn should_reject_a_loop_whose_key_is_neither_an_int_nor_a_string() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [("items", Ty::array(Ty::Bool))], |t| {
+                t.html_for_keyed(t.param("items"), |_, item| item)
+                    .body(|t, _| t.text("item"))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::KeyNotIntOrString);
     }
 
     #[test]
