@@ -1856,12 +1856,16 @@ mod tests {
     /// click or hits a limit of the evaluator.
     const CLICKS: usize = 8;
 
-    /// Follow clicks on `program` as a page does, and check that its cells
-    /// and elements keep their places and that each invocation is a fixed
-    /// point. For each of `ARGUMENT_SETS` argument sets, each entrypoint is
-    /// invoked on the state its invocation before left, then up to `CLICKS`
-    /// clicks follow, each followed by an invocation on the same arguments.
-    /// With `stats`, counts what each invocation gave and what each click it
+    /// Follow clicks on `program` as a page does. For each of `ARGUMENT_SETS`
+    /// argument sets, each entrypoint is invoked on the state its invocation
+    /// before left, then up to `CLICKS` clicks follow, each followed by an
+    /// invocation on the same arguments. After each invocation, check that
+    /// each node occurs at most once in the Html, that a cell or element at a
+    /// place the state before had keeps its value or node, that an element at
+    /// a new place has a new node, and that the
+    /// state the invocation leaves is a fixed point: invoking again on it with
+    /// the same arguments gives the same Html and the same state. With
+    /// `stats`, counts what each invocation gave and what each click it
     /// rendered would do.
     fn follow_clicks(
         program: &FlatProgram,
@@ -1896,6 +1900,21 @@ mod tests {
                         Err(error) => panic!("{error}"),
                     };
                     let html = value.unwrap_html();
+                    // Each node occurs at most once in the Html.
+                    let mut nodes = BTreeSet::new();
+                    let mut pending = vec![&html];
+                    while let Some(part) = pending.pop() {
+                        match part.node() {
+                            HtmlNode::Element {
+                                children, identity, ..
+                            } => {
+                                assert!(nodes.insert(*identity), "node {identity} occurs twice");
+                                pending.push(children);
+                            }
+                            HtmlNode::Concat(parts) => pending.extend(parts),
+                            HtmlNode::Text(_) | HtmlNode::Escape(_) => {}
+                        }
+                    }
                     if let Some(stats) = stats.as_deref_mut() {
                         stats.count_clicks(program, entrypoint, &args, &html, &new_state);
                     }
