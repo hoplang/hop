@@ -7,18 +7,20 @@ use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::runtime::clicks::clicks;
 use crate::ir::runtime::eval_error::EvalError;
-use crate::ir::runtime::flat_evaluator::invoke_entrypoint;
-use crate::ir::runtime::state::{ElementIdentity, State};
+use crate::ir::runtime::flat_evaluator::{invoke_entrypoint, run_effect};
+use crate::ir::runtime::state::{ElementId, State};
 use crate::ir::runtime::value::{Effect, Html, HtmlNode, Value};
 use crate::symbols::attribute_name::AttributeName;
 
 /// An entrypoint as a page runs it: the state of its cells and elements, the
 /// Html its latest render gave, and the label of each element it has shown.
 ///
-/// A click runs the effect of its handlers on the state, then commits: the
-/// entrypoint renders on the new state, and the runtime takes the state and
-/// the Html the render gives. A click that fails, whether its effect or the
-/// render after it, leaves the runtime as it was.
+/// A click runs the effect of its handlers in an effect transaction on the
+/// state, then renders the entrypoint in a render transaction on the state
+/// the effects leave, and the runtime takes the state and the Html the
+/// render gives. The runtime takes nothing until both have finished, so a
+/// click that fails, whether its effect or the render after it, leaves the
+/// runtime as it was.
 ///
 /// An element is labelled by the order in which a render first shows it, in
 /// document order, so that its label does not depend on the identity the
@@ -30,7 +32,7 @@ pub struct PageRuntime<'a> {
     args: HashMap<AttributeName, Value<'a>>,
     state: State<'a>,
     html: Html<'a>,
-    targets: Vec<(ElementIdentity, Result<Rc<Effect<'a>>, EvalError>)>,
+    targets: Vec<(ElementId, Result<Rc<Effect<'a>>, EvalError>)>,
     shown: Vec<Shown>,
     labels: Labels,
 }
@@ -52,8 +54,8 @@ impl<'a> PageRuntime<'a> {
         entrypoint: EntrypointId,
         args: HashMap<AttributeName, Value<'a>>,
     ) -> Result<Self, EvalError> {
-        let (value, state) =
-            invoke_entrypoint(program, entrypoint, args.clone(), &State::default())?;
+        let render = State::default().begin_render();
+        let (value, state) = invoke_entrypoint(program, entrypoint, args.clone(), render)?;
         let mut runtime = PageRuntime {
             program,
             entrypoint,
@@ -92,10 +94,11 @@ impl<'a> PageRuntime<'a> {
             return Ok(());
         };
         let effect = target.clone()?;
-        let mut state = self.state.clone();
-        state.run(&effect, &self.program.functions)?;
+        let mut effects = self.state.begin_effects();
+        run_effect(&effect, &mut effects, &self.program.functions)?;
+        let render = effects.commit().begin_render();
         let (value, state) =
-            invoke_entrypoint(self.program, self.entrypoint, self.args.clone(), &state)?;
+            invoke_entrypoint(self.program, self.entrypoint, self.args.clone(), render)?;
         self.state = state;
         self.html = value.unwrap_html();
         self.show();
@@ -134,15 +137,15 @@ impl<'a> PageRuntime<'a> {
 /// shows them.
 #[derive(Default)]
 struct Labels {
-    identities: Vec<ElementIdentity>,
-    labels: HashMap<ElementIdentity, usize>,
+    identities: Vec<ElementId>,
+    labels: HashMap<ElementId, usize>,
 }
 
 impl Labels {
     /// The label of the identity, which takes the next label if the run has not
     /// shown it before. Should be called on each element a render shows, in
     /// document order.
-    fn label(&mut self, node: ElementIdentity) -> usize {
+    fn label(&mut self, node: ElementId) -> usize {
         *self.labels.entry(node).or_insert_with(|| {
             self.identities.push(node);
             self.identities.len()
@@ -150,12 +153,12 @@ impl Labels {
     }
 
     /// The label of the identity. Panics if the run has not shown it.
-    fn get(&self, node: ElementIdentity) -> usize {
+    fn get(&self, node: ElementId) -> usize {
         self.labels[&node]
     }
 
     /// The identity of the label. Panics if the run has not shown it.
-    fn identity(&self, label: usize) -> ElementIdentity {
+    fn identity(&self, label: usize) -> ElementId {
         self.identities[label - 1]
     }
 }

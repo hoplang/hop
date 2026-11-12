@@ -49,7 +49,6 @@ mod tests {
     use crate::ir::flat_typecheck;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
-    use crate::ir::runtime::value::Value;
 
     #[test]
     fn fuzz_random_programs_evaluate_identically_after_elimination() {
@@ -61,9 +60,7 @@ mod tests {
             let before: Vec<Option<String>> = entrypoint_args
                 .iter()
                 .map(|(entrypoint, args)| {
-                    match evaluate_entrypoint(&program, *entrypoint, args.clone())
-                        .map(Value::into_markup)
-                    {
+                    match evaluate_entrypoint(&program, *entrypoint, args.clone()) {
                         Ok(output) => Some(output),
                         Err(
                             EvalError::CallDepthLimit { .. }
@@ -84,9 +81,7 @@ mod tests {
                 let Some(before) = before else {
                     continue;
                 };
-                let after = evaluate_entrypoint(&program, *entrypoint, args.clone())
-                    .unwrap()
-                    .into_markup();
+                let after = evaluate_entrypoint(&program, *entrypoint, args.clone()).unwrap();
                 assert_eq!(
                     before, &after,
                     "entrypoint {entrypoint}\n-- before --\n{before_program}\n-- after --\n{program}"

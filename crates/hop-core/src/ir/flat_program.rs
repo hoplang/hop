@@ -46,14 +46,14 @@ pub type FlatPureBlock = IrBlock<IrBinding<IrFunctionDataType, FlatPureOp>>;
 pub type FlatHtmlBlock = IrBlock<FlatHtmlBinding>;
 
 /// A binding of a block that renders Html. The cells and elements a render
-/// binds are retained across renders by place: the path of binding names
-/// and loop iterations that reaches them.
+/// binds are retained across renders by path: the binding names and loop
+/// iterations that reach them.
 #[derive(Debug, Clone)]
 pub enum FlatHtmlBinding {
     Pure(IrBinding<IrFunctionDataType, FlatPureOp>),
     Html(IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
     /// Bind a cell with an initial value, which the cell takes only when its
-    /// place is new. `T -> Cell[T]`.
+    /// path is new. `T -> Cell[T]`.
     Cell(IrBinder<IrFunctionDataType>, ValueId),
     /// Bind the value a cell has at this render. `Cell[T] -> T`.
     Track(IrBinder<IrDataType>, ValueId),
@@ -96,7 +96,7 @@ pub enum FlatHtmlOp {
     Escape(ValueId),
     /// Concatenate Html. `(Html, ..., Html) -> Html`.
     Concat(Vec<ValueId>),
-    /// Bind a Html element, whose node its place keeps across renders. A void
+    /// Bind a Html element, whose node its path keeps across renders. A void
     /// element has no children, and every other element has them.
     /// `Html -> Html`, or `Html` for a void element.
     Element(IrHtmlElement<Option<ValueId>>),

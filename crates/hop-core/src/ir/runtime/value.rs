@@ -7,17 +7,26 @@ use crate::ir::flat_program::{FlatHtmlLambda, FlatPureLambda};
 use crate::ir::ir_match::IrPattern;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
-use crate::ir::runtime::state::{ElementIdentity, Place};
+use crate::ir::runtime::state::{CellId, ElementId};
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::{field_name::FieldName, type_name::TypeName};
 
+/// The most elements an Array may hold.
 pub const MAX_ARRAY_LENGTH: usize = 10_000_000;
 
 /// The most bytes a String may hold.
 pub const MAX_STRING_LENGTH: usize = 10_000_000;
 
-/// Runtime value for the evaluator.
+/// The largest size an Html value may have.
+const MAX_HTML_SIZE: usize = 10_000_000;
+
+#[derive(Debug, Default)]
+pub struct Env<'a> {
+    pub parent: Option<Rc<Env<'a>>>,
+    pub bindings: Vec<(ValueId, Value<'a>)>,
+}
+
 #[derive(Debug, Clone)]
 pub enum Value<'a> {
     String(Rc<str>),
@@ -32,15 +41,15 @@ pub enum Value<'a> {
     Enum(TypeName, Rc<[(FieldName, Value<'a>)]>),
     Closure(Rc<Closure<'a>>),
     Effect(Rc<Effect<'a>>),
-    Cell(Place),
+    Cell(CellId),
 }
 
 #[derive(Debug)]
 #[cfg_attr(not(test), allow(dead_code))]
 pub enum Effect<'a> {
     Pure(Value<'a>),
-    Write(Place, Value<'a>),
-    Read(Place),
+    Write(CellId, Value<'a>),
+    Read(CellId),
     Bind(Rc<Effect<'a>>, Rc<Closure<'a>>),
     Then(Rc<Effect<'a>>, Rc<Effect<'a>>),
 }
@@ -51,10 +60,40 @@ pub struct Closure<'a> {
     pub env: Option<Rc<Env<'a>>>,
 }
 
-#[derive(Debug, Default)]
-pub struct Env<'a> {
-    pub parent: Option<Rc<Env<'a>>>,
-    pub bindings: Vec<(ValueId, Value<'a>)>,
+#[derive(Debug, Clone, Copy)]
+pub enum Lambda<'a> {
+    Pure(&'a FlatPureLambda),
+    Html(&'a FlatHtmlLambda),
+}
+
+#[derive(Debug, Clone)]
+pub struct Html<'a> {
+    node: Rc<HtmlNode<'a>>,
+    size: usize,
+}
+
+#[derive(Debug)]
+pub(super) enum HtmlNode<'a> {
+    Text(&'a str),
+    Escape(Rc<str>),
+    Element {
+        element: HtmlElementKind,
+        attributes: Vec<HtmlAttribute>,
+        children: Html<'a>,
+        #[cfg_attr(not(test), allow(dead_code))]
+        on_click: Option<Rc<Closure<'a>>>,
+        #[cfg_attr(not(test), allow(dead_code))]
+        identity: ElementId,
+    },
+    Concat(Vec<Html<'a>>),
+}
+
+/// An attribute that renders. The value is unescaped and escapes when
+/// written. A boolean attribute has no value.
+#[derive(Debug)]
+pub struct HtmlAttribute {
+    pub name: AttributeName,
+    pub value: Option<Rc<str>>,
 }
 
 impl<'a> Env<'a> {
@@ -84,12 +123,6 @@ impl<'a> Index<&ValueId> for Env<'a> {
                 .unwrap_or_else(|| panic!("{name} is not in scope"));
         }
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Lambda<'a> {
-    Pure(&'a FlatPureLambda),
-    Html(&'a FlatHtmlLambda),
 }
 
 impl<'a> Value<'a> {
@@ -202,10 +235,10 @@ impl<'a> Value<'a> {
         }
     }
 
-    /// Panics if the value is not a cell.
-    pub fn as_place(&self) -> &Place {
+    /// The identity of the cell. Panics if the value is not a cell.
+    pub fn as_cell(&self) -> CellId {
         match self {
-            Value::Cell(place) => place,
+            Value::Cell(cell) => *cell,
             _ => panic!("expected a Cell value, found {self:?}"),
         }
     }
@@ -261,52 +294,11 @@ impl<'a> Value<'a> {
             _ => panic!("{self:?} cannot match the pattern {pattern:?}"),
         }
     }
-
-    /// The markup an Html value renders as. Panics if the value is not Html.
-    #[cfg(test)]
-    pub fn into_markup(self) -> String {
-        let mut markup = String::new();
-        self.unwrap_html().write(&mut markup);
-        markup
-    }
-}
-
-/// The largest size an Html value may have.
-const MAX_HTML_SIZE: usize = 10_000_000;
-
-#[derive(Debug, Clone)]
-pub struct Html<'a> {
-    node: Rc<HtmlNode<'a>>,
-    size: usize,
-}
-
-#[derive(Debug)]
-pub enum HtmlNode<'a> {
-    Text(&'a str),
-    Escape(Rc<str>),
-    Element {
-        element: HtmlElementKind,
-        attributes: Vec<HtmlAttribute>,
-        children: Html<'a>,
-        #[cfg_attr(not(test), allow(dead_code))]
-        on_click: Option<Rc<Closure<'a>>>,
-        #[cfg_attr(not(test), allow(dead_code))]
-        identity: ElementIdentity,
-    },
-    Concat(Vec<Html<'a>>),
-}
-
-/// An attribute that renders. The value is unescaped and escapes when
-/// written. A boolean attribute has no value.
-#[derive(Debug)]
-pub struct HtmlAttribute {
-    pub name: AttributeName,
-    pub value: Option<Rc<str>>,
 }
 
 impl<'a> Html<'a> {
     /// The node as Html, unless it exceeds the Html size limit.
-    pub fn new(node: HtmlNode<'a>) -> Result<Self, EvalError> {
+    pub(super) fn new(node: HtmlNode<'a>) -> Result<Self, EvalError> {
         let size = match &node {
             HtmlNode::Text(text) => text.len().max(1),
             HtmlNode::Escape(text) => text.len().max(1),
@@ -336,7 +328,7 @@ impl<'a> Html<'a> {
     }
 
     #[cfg(test)]
-    pub fn node(&self) -> &HtmlNode<'a> {
+    pub(super) fn node(&self) -> &HtmlNode<'a> {
         &self.node
     }
 

@@ -840,7 +840,6 @@ mod tests {
     use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
-    use crate::ir::runtime::value::Value;
     use crate::root_contained_file_path::RootContainedFilePath;
     use crate::session::Session;
     use expect_test::{Expect, expect};
@@ -855,9 +854,7 @@ mod tests {
             let before_program = program.clone();
             let before: Vec<Result<String, EvalError>> = entrypoint_args
                 .iter()
-                .map(|(entrypoint, args)| {
-                    evaluate_entrypoint(&program, *entrypoint, args.clone()).map(Value::into_markup)
-                })
+                .map(|(entrypoint, args)| evaluate_entrypoint(&program, *entrypoint, args.clone()))
                 .collect();
 
             let program = perform_partial_evaluation(program);
@@ -866,8 +863,7 @@ mod tests {
             // The pass drops no computation but a selected arm's siblings,
             // which never ran, so the output stays the same.
             for ((entrypoint, args), before) in entrypoint_args.iter().zip(before) {
-                let after = evaluate_entrypoint(&program, *entrypoint, args.clone())
-                    .map(Value::into_markup);
+                let after = evaluate_entrypoint(&program, *entrypoint, args.clone());
                 match (before, after) {
                     (Ok(before), Ok(after)) => assert_eq!(
                         before, after,

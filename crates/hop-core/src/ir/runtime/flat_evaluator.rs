@@ -17,7 +17,7 @@ use crate::ir::ir_page::IrPage;
 use crate::ir::ir_type::IrFunctionDataType;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
-use crate::ir::runtime::state::{IterationKey, Place, State, Step};
+use crate::ir::runtime::state::{EffectTransaction, IterationKey, RenderTransaction, State, Step};
 use crate::ir::runtime::value::{
     Closure, Effect, Env, Html, HtmlAttribute, HtmlNode, Lambda, MAX_ARRAY_LENGTH,
     MAX_STRING_LENGTH, Value,
@@ -57,23 +57,23 @@ pub fn evaluate_page<'a>(
         })?;
 
     let head = match &page.head {
-        Some(head) => evaluate_entrypoint(program, *head, args.clone())?.unwrap_html(),
-        None => Html::new(HtmlNode::Concat(Vec::new()))?,
+        Some(head) => evaluate_entrypoint(program, *head, args.clone())?,
+        None => String::new(),
     };
-    let body = evaluate_entrypoint(program, page.body, args)?.unwrap_html();
+    let body = evaluate_entrypoint(program, page.body, args)?;
 
     let mut html = String::new();
     match shell {
         Some(shell) => {
             html.push_str(shell.before_head);
-            head.write(&mut html);
+            html.push_str(&head);
             html.push_str(&shell.after_head);
-            body.write(&mut html);
+            html.push_str(&body);
             html.push_str(shell.after_body);
         }
         None => {
-            head.write(&mut html);
-            body.write(&mut html);
+            html.push_str(&head);
+            html.push_str(&body);
         }
     }
     Ok(html)
@@ -83,16 +83,19 @@ pub fn evaluate_entrypoint<'a>(
     program: &'a FlatProgram,
     entrypoint_id: EntrypointId,
     args: HashMap<AttributeName, Value<'a>>,
-) -> Result<Value<'a>, EvalError> {
-    let (value, _) = invoke_entrypoint(program, entrypoint_id, args, &State::default())?;
-    Ok(value)
+) -> Result<String, EvalError> {
+    let render = State::default().begin_render();
+    let (value, _) = invoke_entrypoint(program, entrypoint_id, args, render)?;
+    let mut markup = String::new();
+    value.unwrap_html().write(&mut markup);
+    Ok(markup)
 }
 
-pub fn invoke_entrypoint<'a>(
+pub(super) fn invoke_entrypoint<'a>(
     program: &'a FlatProgram,
     entrypoint_id: EntrypointId,
     mut args: HashMap<AttributeName, Value<'a>>,
-    state: &State<'a>,
+    mut render: RenderTransaction<'a>,
 ) -> Result<(Value<'a>, State<'a>), EvalError> {
     let entrypoint = &program.entrypoints[entrypoint_id];
     let mut env = Env::default();
@@ -105,31 +108,22 @@ pub fn invoke_entrypoint<'a>(
             })?;
         env.bindings.push((param.binder.var, value));
     }
-    let mut new_state = State {
-        cells: BTreeMap::new(),
-        elements: BTreeMap::new(),
-        node_counter: state.node_counter,
-    };
     let value = evaluate_html_block(
         &entrypoint.body,
         env,
         &program.functions,
-        &Place::from([]),
-        state,
-        &mut new_state,
+        &mut render,
         1,
         &mut 0,
     )?;
-    Ok((value, new_state))
+    Ok((value, render.commit()))
 }
 
 fn evaluate_html_function<'a>(
     functions: &'a [FlatFunction],
     function: &IrFunction,
     args: Vec<Value<'a>>,
-    place: &Place,
-    old_state: &State<'a>,
-    new_state: &mut State<'a>,
+    render: &mut RenderTransaction<'a>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -153,9 +147,7 @@ fn evaluate_html_function<'a>(
             bindings: vars.zip(args).collect(),
         },
         functions,
-        place,
-        old_state,
-        new_state,
+        render,
         depth + 1,
         op_count,
     )
@@ -216,9 +208,7 @@ fn evaluate_html_block<'a>(
     block: &'a FlatHtmlBlock,
     mut env: Env<'a>,
     functions: &'a [FlatFunction],
-    place: &Place,
-    old_state: &State<'a>,
-    new_state: &mut State<'a>,
+    render: &mut RenderTransaction<'a>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -234,33 +224,20 @@ fn evaluate_html_block<'a>(
                 evaluate_pure_binding(binding, &mut env, functions, depth, op_count)?;
             }
             FlatHtmlBinding::Cell(binder, initial) => {
-                let place: Place = place
-                    .iter()
-                    .cloned()
-                    .chain([Step::Name(binder.var)])
-                    .collect();
-                new_state.bind_cell(old_state, &place, &env[initial]);
-                env.bindings.push((binder.var, Value::Cell(place)));
+                render.enter(Step::Site(binder.var));
+                let cell = render.allocate_cell(&env[initial]);
+                render.exit();
+                env.bindings.push((binder.var, Value::Cell(cell)));
             }
             FlatHtmlBinding::Track(binder, cell) => {
-                let value = new_state.cells[env[cell].as_place()].clone();
+                let value = render.read(env[cell].as_cell()).clone();
                 env.bindings.push((binder.var, value));
             }
             FlatHtmlBinding::Html(binding) => {
-                let value = evaluate_html_op(
-                    &binding.op,
-                    &mut env,
-                    functions,
-                    &place
-                        .iter()
-                        .cloned()
-                        .chain([Step::Name(binding.binder.var)])
-                        .collect(),
-                    old_state,
-                    new_state,
-                    depth,
-                    op_count,
-                )?;
+                render.enter(Step::Site(binding.binder.var));
+                let value =
+                    evaluate_html_op(&binding.op, &mut env, functions, render, depth, op_count)?;
+                render.exit();
                 env.bindings.push((binding.binder.var, value));
             }
         }
@@ -286,12 +263,10 @@ fn evaluate_pure_binding<'a>(
             evaluate_pure_block(body, env, functions, depth, op_count)?
         }
         FlatPureOp::CellWrite(cell, value) => Value::Effect(Rc::new(Effect::Write(
-            env[cell].as_place().clone(),
+            env[cell].as_cell(),
             env[value].clone(),
         ))),
-        FlatPureOp::CellRead(cell) => {
-            Value::Effect(Rc::new(Effect::Read(env[cell].as_place().clone())))
-        }
+        FlatPureOp::CellRead(cell) => Value::Effect(Rc::new(Effect::Read(env[cell].as_cell()))),
         FlatPureOp::EffectPure(value) => Value::Effect(Rc::new(Effect::Pure(env[value].clone()))),
         FlatPureOp::EffectBind(effect, continuation) => Value::Effect(Rc::new(Effect::Bind(
             env[effect].as_effect().clone(),
@@ -337,41 +312,36 @@ pub fn evaluate_pure_apply<'a>(
     evaluate_pure_block(&lambda.body, body_env, functions, depth + 1, op_count)
 }
 
-/// Performs the effect on the cells and gives its value and the cells as it
-/// leaves them.
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn run_effect<'a>(
+pub(super) fn run_effect<'a>(
     effect: &Effect<'a>,
-    cells: &BTreeMap<Place, Value<'a>>,
+    effects: &mut EffectTransaction<'a>,
     functions: &'a [FlatFunction],
-    op_count: &mut usize,
-) -> Result<(Value<'a>, BTreeMap<Place, Value<'a>>), EvalError> {
-    let mut cells = cells.clone();
-    let value = perform_effect(effect, &mut cells, functions, op_count)?;
-    Ok((value, cells))
+) -> Result<Value<'a>, EvalError> {
+    perform_effect(effect, effects, functions, &mut 0)
 }
 
 fn perform_effect<'a>(
     effect: &Effect<'a>,
-    cells: &mut BTreeMap<Place, Value<'a>>,
+    effects: &mut EffectTransaction<'a>,
     functions: &'a [FlatFunction],
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
     match effect {
         Effect::Pure(value) => Ok(value.clone()),
-        Effect::Write(place, value) => {
-            *cells.get_mut(place).unwrap() = value.clone();
+        Effect::Write(cell, value) => {
+            effects.write(*cell, value.clone());
             Ok(Value::Tuple(Rc::new([])))
         }
-        Effect::Read(place) => Ok(cells[place].clone()),
+        Effect::Read(cell) => Ok(effects.read(*cell).clone()),
         Effect::Then(first, second) => {
-            perform_effect(first, cells, functions, op_count)?;
-            perform_effect(second, cells, functions, op_count)
+            perform_effect(first, effects, functions, op_count)?;
+            perform_effect(second, effects, functions, op_count)
         }
         Effect::Bind(effect, continuation) => {
-            let value = perform_effect(effect, cells, functions, op_count)?;
+            let value = perform_effect(effect, effects, functions, op_count)?;
             let next = evaluate_pure_apply(continuation, vec![value], functions, 0, op_count)?;
-            perform_effect(next.as_effect(), cells, functions, op_count)
+            perform_effect(next.as_effect(), effects, functions, op_count)
         }
     }
 }
@@ -380,9 +350,7 @@ fn evaluate_html_apply<'a>(
     closure: &Closure<'a>,
     args: Vec<Value<'a>>,
     functions: &'a [FlatFunction],
-    place: &Place,
-    old_state: &State<'a>,
-    new_state: &mut State<'a>,
+    render: &mut RenderTransaction<'a>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -407,9 +375,7 @@ fn evaluate_html_apply<'a>(
         &lambda.body,
         body_env,
         functions,
-        place,
-        old_state,
-        new_state,
+        render,
         depth + 1,
         op_count,
     )
@@ -438,9 +404,7 @@ fn evaluate_html_op<'a>(
     op: &'a FlatHtmlOp,
     env: &mut Env<'a>,
     functions: &'a [FlatFunction],
-    place: &Place,
-    old_state: &State<'a>,
-    new_state: &mut State<'a>,
+    render: &mut RenderTransaction<'a>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -490,7 +454,7 @@ fn evaluate_html_op<'a>(
                 None => Html::new(HtmlNode::Concat(Vec::new()))?,
             };
             let on_click = on_click.map(|handler| env[&handler].as_closure().clone());
-            let identity = new_state.bind_element(old_state, place);
+            let identity = render.allocate_element();
             Value::Html(Html::new(HtmlNode::Element {
                 element: element.clone(),
                 attributes: rendered,
@@ -502,16 +466,12 @@ fn evaluate_html_op<'a>(
 
         FlatHtmlOp::Call(function, args) => {
             let values = args.iter().map(|arg| env[arg].clone()).collect();
-            evaluate_html_function(
-                functions, function, values, place, old_state, new_state, depth, op_count,
-            )?
+            evaluate_html_function(functions, function, values, render, depth, op_count)?
         }
 
         FlatHtmlOp::Match(match_) => {
             let (body, env) = enter_arm(match_, env);
-            evaluate_html_block(
-                body, env, functions, place, old_state, new_state, depth, op_count,
-            )?
+            evaluate_html_block(body, env, functions, render, depth, op_count)?
         }
 
         FlatHtmlOp::For(FlatFor {
@@ -545,15 +505,10 @@ fn evaluate_html_op<'a>(
                     None => IterationKey::Int(index as i32),
                 };
                 let occurrence = occurrences.entry(key.clone()).or_default();
-                let iteration: Place = place
-                    .iter()
-                    .cloned()
-                    .chain([Step::Iteration(key, *occurrence)])
-                    .collect();
+                render.enter(Step::Iteration(key, *occurrence));
                 *occurrence += 1;
-                let part = evaluate_html_block(
-                    body, env, functions, &iteration, old_state, new_state, depth, op_count,
-                )?;
+                let part = evaluate_html_block(body, env, functions, render, depth, op_count)?;
+                render.exit();
                 parts.push(part.unwrap_html());
             }
             Value::Html(Html::new(HtmlNode::Concat(parts))?)
@@ -570,9 +525,7 @@ fn evaluate_html_op<'a>(
                 env[closure].as_closure(),
                 args,
                 functions,
-                place,
-                old_state,
-                new_state,
+                render,
                 depth,
                 op_count,
             )?
@@ -767,7 +720,7 @@ mod tests {
         }
         expect![[r#"
             program generation: 1387867 allocations
-            program evaluation: 29479 allocations
+            program evaluation: 29319 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -785,8 +738,7 @@ mod tests {
             .map(|(name, value)| (AttributeName::parse(name).unwrap(), value))
             .collect();
         let after = evaluate_entrypoint(&program, EntrypointId::new(0), args)
-            .expect("Evaluation should succeed")
-            .into_markup();
+            .expect("Evaluation should succeed");
         expected.assert_eq(&format!("-- before --\n{before}\n-- after --\n{after}\n"));
     }
 
@@ -1644,9 +1596,12 @@ mod tests {
         a: &Effect<'a>,
         b: &Effect<'a>,
     ) -> bool {
-        let (mut a_state, mut b_state) = (state.clone(), state.clone());
-        match (a_state.run(a, functions), b_state.run(b, functions)) {
-            (Ok(()), Ok(())) => a_state == b_state,
+        let (mut a_effects, mut b_effects) = (state.begin_effects(), state.begin_effects());
+        match (
+            run_effect(a, &mut a_effects, functions),
+            run_effect(b, &mut b_effects, functions),
+        ) {
+            (Ok(_), Ok(_)) => a_effects.commit() == b_effects.commit(),
             (Err(a), Err(b)) => a == b,
             _ => false,
         }
@@ -1725,28 +1680,26 @@ mod tests {
         changing_arrays: bool,
     }
 
-    /// The iterations of the places, each as the steps up to and including
+    /// The iterations of the paths, each as the steps up to and including
     /// it.
-    fn iterations<'p>(places: impl Iterator<Item = &'p Place>) -> BTreeSet<Vec<Step>> {
+    fn iterations<'p>(paths: impl Iterator<Item = &'p [Step]>) -> BTreeSet<Vec<Step>> {
         let mut iterations = BTreeSet::new();
-        for place in places {
-            let steps: Vec<Step> = place.iter().cloned().collect();
-            for (index, step) in steps.iter().enumerate() {
+        for path in paths {
+            for (index, step) in path.iter().enumerate() {
                 if matches!(step, Step::Iteration(..)) {
-                    iterations.insert(steps[..=index].to_vec());
+                    iterations.insert(path[..=index].to_vec());
                 }
             }
         }
         iterations
     }
 
-    /// Whether each iteration of the place is in `both`, the iterations two
-    /// invocations both evaluate, so that a place only one of them
+    /// Whether each iteration of the path is in `both`, the iterations two
+    /// invocations both evaluate, so that a path only one of them
     /// evaluates is not explained by a loop.
-    fn in_both_iterations(place: &Place, both: &BTreeSet<Vec<Step>>) -> bool {
-        let steps: Vec<Step> = place.iter().cloned().collect();
-        (steps.iter().enumerate()).all(|(index, step)| {
-            !matches!(step, Step::Iteration(..)) || both.contains(&steps[..=index])
+    fn in_both_iterations(path: &[Step], both: &BTreeSet<Vec<Step>>) -> bool {
+        (path.iter().enumerate()).all(|(index, step)| {
+            !matches!(step, Step::Iteration(..)) || both.contains(&path[..=index])
         })
     }
 
@@ -1787,7 +1740,7 @@ mod tests {
             html: &Html<'a>,
             state: &State<'a>,
         ) {
-            self.cells_bound += state.cells.len();
+            self.cells_bound += state.entries().filter(|(_, value)| value.is_some()).count();
             let mut markup = String::new();
             html.write(&mut markup);
             for (_, target) in clicks(&program.functions, html) {
@@ -1796,15 +1749,18 @@ mod tests {
                 let Ok(effect) = target else {
                     continue;
                 };
-                let mut next = state.clone();
-                if next.run(&effect, &program.functions).is_err() {
+                let mut effects = state.begin_effects();
+                if run_effect(&effect, &mut effects, &program.functions).is_err() {
                     continue;
                 }
-                let changed: Vec<&Value<'_>> = next
-                    .cells
-                    .iter()
-                    .filter(|(place, value)| !state.cells[*place].total_eq(value))
-                    .map(|(_, value)| value)
+                let next = effects.commit();
+                // The effects leave each path where it was, so the entries
+                // of the two states line up.
+                let changed: Vec<&Value<'_>> = (next.entries())
+                    .zip(state.entries())
+                    .filter_map(|((_, value), (_, before))| {
+                        value.filter(|value| !value.total_eq(before.unwrap()))
+                    })
                     .collect();
                 if changed.is_empty() {
                     continue;
@@ -1813,32 +1769,31 @@ mod tests {
                 self.program.changing_arrays |=
                     changed.iter().any(|value| matches!(value, Value::Array(_)));
                 if let Ok((value, next_state)) =
-                    invoke_entrypoint(program, entrypoint, args.clone(), &next)
+                    invoke_entrypoint(program, entrypoint, args.clone(), next.begin_render())
                 {
                     let mut next_markup = String::new();
                     value.unwrap_html().write(&mut next_markup);
                     self.program.rerendering |= markup != next_markup;
+                    let paths: BTreeMap<&[Step], Option<&Value<'_>>> = state.entries().collect();
+                    let next_paths: BTreeMap<&[Step], Option<&Value<'_>>> =
+                        next_state.entries().collect();
                     // A loop iteration can hold cells and no elements, so
-                    // the iterations come from both.
-                    let before = iterations(state.elements.keys().chain(state.cells.keys()));
-                    let after =
-                        iterations(next_state.elements.keys().chain(next_state.cells.keys()));
+                    // the iterations come from the paths of both.
+                    let before = iterations(paths.keys().copied());
+                    let after = iterations(next_paths.keys().copied());
                     let both = before.intersection(&after).cloned().collect();
                     self.program.changing_loops |= before != after;
-                    let (elements, next_elements) = (&state.elements, &next_state.elements);
+                    // The paths one state binds and the other does not,
+                    // each with whether it binds a cell.
                     let dropped =
-                        (elements.keys()).filter(|place| !next_elements.contains_key(*place));
-                    let bound =
-                        (next_elements.keys()).filter(|place| !elements.contains_key(*place));
-                    self.program.switching_arms |= dropped
-                        .chain(bound)
-                        .any(|place| in_both_iterations(place, &both));
-                    let (cells, next_cells) = (&state.cells, &next_state.cells);
-                    let dropped = (cells.keys()).filter(|place| !next_cells.contains_key(*place));
-                    let bound = (next_cells.keys()).filter(|place| !cells.contains_key(*place));
-                    self.program.switching_cells |= dropped
-                        .chain(bound)
-                        .any(|place| in_both_iterations(place, &both));
+                        (paths.iter()).filter(|(path, _)| !next_paths.contains_key(*path));
+                    let added = (next_paths.iter()).filter(|(path, _)| !paths.contains_key(*path));
+                    for (path, value) in dropped.chain(added) {
+                        if in_both_iterations(path, &both) {
+                            self.program.switching_cells |= value.is_some();
+                            self.program.switching_arms |= value.is_none();
+                        }
+                    }
                 }
             }
         }
@@ -1858,11 +1813,9 @@ mod tests {
     /// argument sets, each entrypoint is invoked on the state its invocation
     /// before left, then up to `CLICKS` clicks follow, each followed by an
     /// invocation on the same arguments. After each invocation, check that
-    /// each node occurs at most once in the Html, that a cell or element at a
-    /// place the state before had keeps its value or node, that an element at
-    /// a new place has a new node, and that the
-    /// state the invocation leaves is a fixed point: invoking again on it with
-    /// the same arguments gives the same Html and the same state. With
+    /// each node occurs at most once in the Html, and that the state the
+    /// invocation leaves is a fixed point: invoking again on it with the
+    /// same arguments gives the same Html and the same state. With
     /// `stats`, counts what each invocation gave and what each click it
     /// rendered would do.
     fn follow_clicks(
@@ -1871,14 +1824,16 @@ mod tests {
         mut stats: Option<&mut ClickStats>,
     ) -> arbitrary::Result<()> {
         // The state of each entrypoint, in the order the program declares
-        // them, which each invocation takes from the one before it.
+        // them, which each invocation takes from the one before it and the
+        // effects of the click after it.
         let mut states = Vec::new();
         for _ in 0..ARGUMENT_SETS {
             let invocations = random_entrypoint_args(program, u)?;
             states.resize(invocations.len(), State::default());
             for ((entrypoint, args), state) in invocations.into_iter().zip(&mut states) {
                 for _ in 0..=CLICKS {
-                    let result = invoke_entrypoint(program, entrypoint, args.clone(), state);
+                    let render = state.begin_render();
+                    let result = invoke_entrypoint(program, entrypoint, args.clone(), render);
                     if let Some(stats) = stats.as_deref_mut() {
                         stats.count_invocation(&result);
                     }
@@ -1906,7 +1861,7 @@ mod tests {
                             HtmlNode::Element {
                                 children, identity, ..
                             } => {
-                                assert!(nodes.insert(*identity), "node {identity} occurs twice");
+                                assert!(nodes.insert(*identity), "node {identity:?} occurs twice");
                                 pending.push(children);
                             }
                             HtmlNode::Concat(parts) => pending.extend(parts),
@@ -1917,25 +1872,15 @@ mod tests {
                         stats.count_clicks(program, entrypoint, &args, &html, &new_state);
                     }
                     let targets = clicks(&program.functions, &html);
-                    // A cell or an element bound at the same place as in the
-                    // invocation before keeps its value or node, although the
-                    // arguments differ, and a click wrote the cell. An
-                    // element at a new place has a new node.
-                    for (place, kept) in &new_state.cells {
-                        if let Some(before) = state.cells.get(place) {
-                            assert!(kept.total_eq(before), "{kept:?} is not {before:?}");
-                        }
-                    }
-                    for (place, node) in &new_state.elements {
-                        match state.elements.get(place) {
-                            Some(before) => assert_eq!(node, before),
-                            None => assert!(*node > state.node_counter),
-                        }
-                    }
                     // Invoking on the new state gives the same result and
                     // state.
-                    let (again, again_state) =
-                        invoke_entrypoint(program, entrypoint, args.clone(), &new_state).unwrap();
+                    let (again, again_state) = invoke_entrypoint(
+                        program,
+                        entrypoint,
+                        args.clone(),
+                        new_state.begin_render(),
+                    )
+                    .unwrap();
                     assert!(observations_are_equal(
                         &program.functions,
                         &new_state,
@@ -1949,12 +1894,16 @@ mod tests {
                     }
                     // A click whose handler reaches a limit of the evaluator
                     // performs nothing to compare.
-                    let clicked = match &u.choose(&targets)?.1 {
-                        Ok(effect) => state.run(effect, &program.functions),
+                    let ran = match &u.choose(&targets)?.1 {
+                        Ok(effect) => {
+                            let mut effects = state.begin_effects();
+                            run_effect(effect, &mut effects, &program.functions)
+                                .map(|_| effects.commit())
+                        }
                         Err(error) => Err(error.clone()),
                     };
-                    match clicked {
-                        Ok(()) => {}
+                    match ran {
+                        Ok(clicked) => *state = clicked,
                         Err(
                             EvalError::CallDepthLimit { .. }
                             | EvalError::ArrayLengthLimit { .. }
