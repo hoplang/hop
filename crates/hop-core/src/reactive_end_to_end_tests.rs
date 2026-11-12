@@ -1,18 +1,13 @@
 use crate::document::Document;
-use crate::html::write_escaped_html;
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::ir_page::IrPage;
 use crate::ir::optimize_flat;
-use crate::ir::runtime::clicks::clicks;
-use crate::ir::runtime::flat_evaluator::invoke_entrypoint;
-use crate::ir::runtime::labels::Labels;
-use crate::ir::runtime::state::State;
-use crate::ir::runtime::value::{Html, HtmlNode};
+use crate::ir::runtime::page_runtime::PageRuntime;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::session::Session;
 use expect_test::{Expect, expect};
 use indoc::indoc;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 enum Event {
     Click(usize),
@@ -43,138 +38,24 @@ fn check(source: &str, events: &[Event], expected: Expect) {
 }
 
 fn run(program: &FlatProgram, page: &IrPage, events: &[Event]) -> String {
-    let mut view = View::default();
-    let mut out = String::from("-- render --\n");
-    let (mut html, mut state) = view.render(program, page, &State::default(), &mut out);
+    let mut runtime = PageRuntime::open(program, page.body, HashMap::new()).unwrap();
+    let mut out = format!("-- render --\n{runtime}");
     for event in events {
         match *event {
             Event::Click(label) => {
-                let tag =
-                    (view.shown.get(&label)).unwrap_or_else(|| panic!("e{label} is not shown"));
-                out.push_str(&format!("-- click {tag}@e{label} --\n"));
-                let identity = view.labels.identity(label);
-                let targets = clicks(&program.functions, &html);
-                let run = match targets.iter().find(|(target, _)| *target == identity) {
-                    Some((_, Ok(effect))) => state.run(effect, &program.functions),
-                    Some((_, Err(error))) => Err(error.clone()),
-                    None => Ok(()),
-                };
-                if let Err(error) = run {
+                let shown = (runtime.shown().iter())
+                    .find(|shown| shown.label == label)
+                    .unwrap_or_else(|| panic!("e{label} is not shown"));
+                out.push_str(&format!("-- click {}@e{label} --\n", shown.tag));
+                if let Err(error) = runtime.click(label) {
                     out.push_str(&format!("error: {error}\n"));
                     continue;
                 }
             }
         }
-        (html, state) = view.render(program, page, &state, &mut out);
+        out.push_str(&runtime.to_string());
     }
     out
-}
-
-#[derive(Default)]
-struct View {
-    labels: Labels,
-    shown: BTreeMap<usize, String>,
-}
-
-enum Item<'h, 'a> {
-    Element(&'h Html<'a>),
-    Text(String),
-}
-
-impl View {
-    fn render<'a>(
-        &mut self,
-        program: &'a FlatProgram,
-        page: &IrPage,
-        state: &State<'a>,
-        out: &mut String,
-    ) -> (Html<'a>, State<'a>) {
-        let (value, state) = invoke_entrypoint(program, page.body, HashMap::new(), state).unwrap();
-        let html = value.unwrap_html();
-        self.shown.clear();
-        let mut items = Vec::new();
-        collect_items(&html, &mut items);
-        self.write_items(&items, 0, out);
-        (html, state)
-    }
-
-    fn write_items(&mut self, items: &[Item<'_, '_>], depth: usize, out: &mut String) {
-        for item in items {
-            match item {
-                Item::Text(text) => {
-                    let text = text.trim();
-                    if !text.is_empty() {
-                        out.push_str(&"  ".repeat(depth));
-                        out.push_str(text);
-                        out.push('\n');
-                    }
-                }
-                Item::Element(html) => self.write_element(html, depth, out),
-            }
-        }
-    }
-
-    fn write_element(&mut self, html: &Html<'_>, depth: usize, out: &mut String) {
-        let HtmlNode::Element {
-            element,
-            attributes,
-            children,
-            identity,
-            ..
-        } = html.node()
-        else {
-            unreachable!("an item is an element or text");
-        };
-        let label = self.labels.label(*identity);
-        out.push_str(&"  ".repeat(depth));
-        out.push_str(&format!("<{}@e{label}", element.as_str()));
-        for attribute in attributes {
-            out.push(' ');
-            out.push_str(attribute.name.as_str());
-            if let Some(value) = &attribute.value {
-                out.push_str("=\"");
-                write_escaped_html(value, out);
-                out.push('"');
-            }
-        }
-        out.push('>');
-        (self.shown).insert(label, element.as_str().to_string());
-        if element.is_void() {
-            out.push('\n');
-            return;
-        }
-        let mut items = Vec::new();
-        collect_items(children, &mut items);
-        if let [Item::Text(text)] = items.as_slice() {
-            out.push_str(text);
-        } else if !items.is_empty() {
-            out.push('\n');
-            self.write_items(&items, depth + 1, out);
-            out.push_str(&"  ".repeat(depth));
-        }
-        out.push_str(&format!("</{}>\n", element.as_str()));
-    }
-}
-
-fn collect_items<'h, 'a>(html: &'h Html<'a>, out: &mut Vec<Item<'h, 'a>>) {
-    let push_text = |out: &mut Vec<Item<'h, 'a>>, text: &str| match out.last_mut() {
-        Some(Item::Text(last)) => last.push_str(text),
-        _ => out.push(Item::Text(text.to_string())),
-    };
-    match html.node() {
-        HtmlNode::Text(text) => push_text(out, text),
-        HtmlNode::Escape(text) => {
-            let mut escaped = String::new();
-            write_escaped_html(text, &mut escaped);
-            push_text(out, &escaped);
-        }
-        HtmlNode::Element { .. } => out.push(Item::Element(html)),
-        HtmlNode::Concat(parts) => {
-            for part in parts {
-                collect_items(part, out);
-            }
-        }
-    }
 }
 
 #[test]

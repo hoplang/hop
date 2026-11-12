@@ -4,7 +4,7 @@ pub mod clicks;
 pub mod eval_error;
 pub mod flat_evaluator;
 #[cfg(test)]
-pub mod labels;
+pub mod page_runtime;
 pub mod random;
 pub mod state;
 pub mod value;

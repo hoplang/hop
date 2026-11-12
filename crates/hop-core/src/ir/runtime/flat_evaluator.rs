@@ -718,7 +718,6 @@ mod tests {
     use crate::ir::ir_type::IrType;
     use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::clicks::clicks;
-    use crate::ir::runtime::labels::Labels;
     use crate::ir::runtime::value_builder::ValueBuilder;
     use crate::symbols::function_name::FunctionName;
     use arbitrary::Unstructured;
@@ -1663,11 +1662,10 @@ mod tests {
         a.write(&mut a_markup);
         b.write(&mut b_markup);
         let (a_clicks, b_clicks) = (clicks(functions, a), clicks(functions, b));
-        let (mut a_labels, mut b_labels) = (Labels::default(), Labels::default());
         a_markup == b_markup
             && a_clicks.len() == b_clicks.len()
             && (a_clicks.iter().zip(&b_clicks)).all(|((a_node, a), (b_node, b))| {
-                a_labels.label(*a_node) == b_labels.label(*b_node)
+                a_node == b_node
                     && match (a, b) {
                         (Ok(a), Ok(b)) => effects_are_equal(functions, state, a, b),
                         (Err(a), Err(b)) => a == b,

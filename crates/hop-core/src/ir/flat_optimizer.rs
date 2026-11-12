@@ -20,11 +20,8 @@ mod tests {
     use crate::ir::flat_typecheck;
     use crate::ir::ir_type::IrType;
     use crate::ir::runtime::EvalError;
-    use crate::ir::runtime::clicks::clicks;
-    use crate::ir::runtime::flat_evaluator::invoke_entrypoint;
-    use crate::ir::runtime::labels::Labels;
-    use crate::ir::runtime::state::State;
-    use crate::ir::runtime::value::{Html, HtmlNode, Value};
+    use crate::ir::runtime::page_runtime::PageRuntime;
+    use crate::ir::runtime::value::Value;
     use crate::symbols::attribute_name::AttributeName;
     use expect_test::{Expect, expect};
     use std::collections::HashMap;
@@ -76,25 +73,6 @@ mod tests {
         args: &HashMap<AttributeName, Value<'static>>,
         clicked: &[usize],
     ) -> Vec<String> {
-        fn shown(html: &Html<'_>, labels: &mut Labels, out: &mut Vec<String>) {
-            match html.node() {
-                HtmlNode::Element {
-                    element,
-                    children,
-                    identity,
-                    ..
-                } => {
-                    out.push(format!("{}@e{}", element.as_str(), labels.label(*identity)));
-                    shown(children, labels, out);
-                }
-                HtmlNode::Concat(parts) => {
-                    for part in parts {
-                        shown(part, labels, out);
-                    }
-                }
-                HtmlNode::Text(_) | HtmlNode::Escape(_) => {}
-            }
-        }
         let is_limit = |error: &EvalError| {
             matches!(
                 error,
@@ -108,39 +86,33 @@ mod tests {
             )
         };
         let mut out = Vec::new();
-        let mut state = State::default();
-        let mut labels = Labels::default();
+        let mut runtime = match PageRuntime::open(program, entrypoint, args.clone()) {
+            Ok(runtime) => runtime,
+            Err(error) if is_limit(&error) => return out,
+            Err(error) => panic!("{error}"),
+        };
         for step in 0..=clicked.len() {
-            let (value, next_state) =
-                match invoke_entrypoint(program, entrypoint, args.clone(), &state) {
-                    Ok(invoked) => invoked,
-                    Err(error) if is_limit(&error) => break,
-                    Err(error) => panic!("{error}"),
-                };
-            let html = value.unwrap_html();
-            let targets = clicks(&program.functions, &html);
-            let mut markup = String::new();
-            html.write(&mut markup);
-            let mut elements = Vec::new();
-            shown(&html, &mut labels, &mut elements);
+            let shown = runtime.shown();
+            let clickable: Vec<usize> = (shown.iter())
+                .filter(|shown| shown.clickable)
+                .map(|shown| shown.label)
+                .collect();
+            let elements: Vec<String> = (shown.iter())
+                .map(|shown| format!("{}@e{}", shown.tag, shown.label))
+                .collect();
             out.push(format!(
-                "{markup}\n{} clicks, shown: {}",
-                targets.len(),
+                "{}\n{} clicks, shown: {}",
+                runtime.markup(),
+                clickable.len(),
                 elements.join(" ")
             ));
             let Some(choice) = clicked.get(step) else {
                 break;
             };
-            if targets.is_empty() {
+            if clickable.is_empty() {
                 break;
             }
-            let effect = match &targets[choice % targets.len()].1 {
-                Ok(effect) => effect,
-                Err(error) if is_limit(error) => break,
-                Err(error) => panic!("{error}"),
-            };
-            state = next_state;
-            match state.run(effect, &program.functions) {
+            match runtime.click(clickable[choice % clickable.len()]) {
                 Ok(()) => {}
                 Err(error) if is_limit(&error) => break,
                 Err(error) => panic!("{error}"),
