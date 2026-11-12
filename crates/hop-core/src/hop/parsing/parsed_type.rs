@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::display::{join, write_tuple};
+use crate::display::join;
 use crate::document::DocumentRange;
 use crate::symbols::type_name::TypeName;
 
@@ -77,7 +77,7 @@ impl Display for ParsedType {
             ParsedType::Effect { element, .. } => write!(f, "Effect[{element}]"),
             ParsedType::Option { element, .. } => write!(f, "Option[{element}]"),
             ParsedType::Array { element, .. } => write!(f, "Array[{element}]"),
-            ParsedType::Tuple { elements, .. } => write_tuple(f, elements),
+            ParsedType::Tuple { elements, .. } => write!(f, "Tuple[{}]", join(elements, ", ")),
             ParsedType::Named { name, .. } => write!(f, "{name}"),
             ParsedType::Function {
                 parameters, result, ..

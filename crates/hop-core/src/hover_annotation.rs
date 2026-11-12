@@ -133,7 +133,7 @@ impl Display for HoverAnnotation {
             ),
             HoverAnnotation::ArrayEnumerate { .. } => format_builtin(
                 f,
-                "Array::enumerate() -> Array[(Int, T)]",
+                "Array::enumerate() -> Array[Tuple[Int, T]]",
                 "Returns the elements paired with their indices, starting at 0.",
             ),
             HoverAnnotation::StringIsEmpty { .. } => format_builtin(
@@ -200,7 +200,7 @@ impl Display for HoverAnnotation {
             ),
             HoverAnnotation::CellSet { .. } => format_builtin(
                 f,
-                "Cell::set(value: T) -> Effect[()]",
+                "Cell::set(value: T) -> Effect[Tuple[]]",
                 "Writes the value to the cell when the effect runs.",
             ),
             HoverAnnotation::EffectAndThen { .. } => format_builtin(

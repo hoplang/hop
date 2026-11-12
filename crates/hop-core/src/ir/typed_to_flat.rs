@@ -2197,7 +2197,7 @@ mod tests {
                 fn Counter(label: String) -> Html {
                   let mut count = 0;
                   let mut clicked = false;
-                  <button on:click={fn() { count.set(count + 1).and_then(fn(_: ()) { clicked.set(true) }) }}>
+                  <button on:click={fn() { count.set(count + 1).and_then(fn(_: Tuple[]) { clicked.set(true) }) }}>
                     {label} {count.to_string()}
                   </button>
                 }
@@ -2271,7 +2271,7 @@ mod tests {
     fn should_pass_a_handler_to_an_element_through_a_parameter() {
         check(
             indoc! {r#"
-                fn Button(on_press: fn() -> Effect[()], children: Html) -> Html {
+                fn Button(on_press: fn() -> Effect[Tuple[]], children: Html) -> Html {
                   <button on:click={on_press}>{children}</button>
                 }
                 page Test() {

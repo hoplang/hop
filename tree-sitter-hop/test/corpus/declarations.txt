@@ -41,7 +41,7 @@ enum Color { Red, Rgb { r: Int } }
 function with optional parameter, rest parameter and tuple type
 ================================================================================
 
-pub fn label(prefix: String, count?: Int = 2, ...rest) -> (String, Int) {
+pub fn label(prefix: String, count?: Int = 2, ...rest) -> Tuple[String, Int] {
   let x: Int = 1;
   prefix
 }
@@ -62,9 +62,11 @@ pub fn label(prefix: String, count?: Int = 2, ...rest) -> (String, Int) {
         (integer_literal))
       (rest_parameter
         (identifier)))
-    (tuple_type
+    (generic_type
       (type_identifier)
-      (type_identifier))
+      (type_arguments
+        (type_identifier)
+        (type_identifier)))
     (block
       (let_statement
         (identifier)

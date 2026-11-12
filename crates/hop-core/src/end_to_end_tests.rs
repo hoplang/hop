@@ -509,7 +509,7 @@ fn nested_tuple_literal_argument_destructured_by_match() {
     check(
         indoc! {r#"
             -- main.hop --
-            fn Row(cell: ((String, Int), (Bool,))) -> Html {
+            fn Row(cell: Tuple[Tuple[String, Int], Tuple[Bool]]) -> Html {
               match cell {
                 ((label, count), (true,)) => <p>{label}: {count.to_string()}</p>,
                 ((label, _), (false,)) => <p>{label}</p>,

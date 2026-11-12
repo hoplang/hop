@@ -4,7 +4,7 @@
 (type_identifier) @type
 
 ((type_identifier) @type.builtin
-  (#any-of? @type.builtin "Int" "String" "Bool" "Float" "Html" "Effect" "Array" "Option"))
+  (#any-of? @type.builtin "Int" "String" "Bool" "Float" "Html" "Effect" "Array" "Option" "Tuple"))
 
 (_expression/type_identifier) @constructor
 (_pattern/type_identifier) @constructor

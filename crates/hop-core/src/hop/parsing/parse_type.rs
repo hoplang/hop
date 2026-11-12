@@ -1,5 +1,5 @@
 use super::parse_helpers::{expect_token, next_if_eq, parse_delimited, parse_delimited_list};
-use super::tokenize_expr::{next, peek, peek2};
+use super::tokenize_expr::{next, peek};
 
 use super::parsed_type::ParsedType;
 use super::token::LangToken;
@@ -92,30 +92,20 @@ pub fn parse_type(
             result: Box::new(result),
         });
     }
-    if let Some(left_paren) = next_if_eq(iter, comments, errors, LangToken::LeftParen) {
-        let mut trailing_comma = false;
-        let (elements, parens) = parse_delimited_list(
+    if let Some(type_tuple) = next_if_eq(iter, comments, errors, LangToken::TypeTuple) {
+        let left_bracket = expect_token(iter, comments, errors, &LangToken::LeftBracket)?;
+        let (elements, brackets) = parse_delimited_list(
             iter,
             comments,
             errors,
-            LangTokenPair::Parens,
-            &left_paren,
+            LangTokenPair::Brackets,
+            &left_bracket,
             &[],
-            |iter, comments, errors| {
-                let element = parse_type(iter, comments, errors)?;
-                trailing_comma = matches!(peek(iter), Some((LangToken::Comma, _)))
-                    && matches!(peek2(iter), Some((LangToken::RightParen, _)));
-                Ok(element)
-            },
+            parse_type,
         )?;
-        let tuple_range = left_paren.to(parens);
-        let mut elements = elements;
-        if elements.len() == 1 && !trailing_comma {
-            return Ok(elements.remove(0));
-        }
         return Ok(ParsedType::Tuple {
             elements,
-            range: tuple_range,
+            range: type_tuple.to(brackets),
         });
     }
     match peek(iter) {

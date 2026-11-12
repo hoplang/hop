@@ -1146,10 +1146,9 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 pub record Row {
-                  cell: (Int, Array[String]),
-                  only: (Int,),
-                  nothing: (),
-                  plain: (Int),
+                  cell: Tuple[Int, Array[String]],
+                  only: Tuple[Int],
+                  nothing: Tuple[],
                 }
             "#},
             expect![[r#"
@@ -1157,10 +1156,9 @@ mod tests {
 
                 -- type registry --
                 record Row {
-                  cell: (Int, Array[String]),
-                  only: (Int,),
-                  nothing: (),
-                  plain: Int,
+                  cell: Tuple[Int, Array[String]],
+                  only: Tuple[Int],
+                  nothing: Tuple[],
                 }
             "#]],
         );
@@ -1377,7 +1375,7 @@ mod tests {
                 fn Main(
                   items: Array[Html],
                   footer: Option[Html],
-                  pair: (String, Html),
+                  pair: Tuple[String, Html],
                 ) -> Html {
                   <></>
                 }
@@ -1396,10 +1394,10 @@ mod tests {
                   |                  ^^^^
 
                 error: Html is not allowed inside another type
-                  --> main.hop (line 4, col 18)
+                  --> main.hop (line 4, col 23)
                 3 |   footer: Option[Html],
-                4 |   pair: (String, Html),
-                  |                  ^^^^
+                4 |   pair: Tuple[String, Html],
+                  |                       ^^^^
             "#]],
         );
     }
@@ -3987,7 +3985,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(pair: (Bool, String)) -> Html {
+                fn Main(pair: Tuple[Bool, String]) -> Html {
                   match pair {
                     (true, name) => <>{name}</>,
                     (false, _) => <>none</>,
@@ -3996,7 +3994,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Main(pair: (Bool, String)) -> Html {
+                fn Main(pair: Tuple[Bool, String]) -> Html {
                   match pair {
                     (true, name) => concat(
                       escape(name),
@@ -4048,7 +4046,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Cell(pair: (String, Int)) -> Html {
+                fn Cell(pair: Tuple[String, Int]) -> Html {
                   match pair {
                     (label, _) => <>{label}</>,
                   }
@@ -4059,7 +4057,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Cell(pair: (String, Int)) -> Html {
+                fn Cell(pair: Tuple[String, Int]) -> Html {
                   match pair {
                     (label, _) => concat(
                       escape(label),
@@ -4079,7 +4077,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Cell(pair: (Option[String], Array[Int])) -> Html {
+                fn Cell(pair: Tuple[Option[String], Array[Int]]) -> Html {
                   match pair {
                     (label, _) => match label {
                       Some(l) => <>{l}</>,
@@ -4093,7 +4091,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Cell(pair: (Option[String], Array[Int])) -> Html {
+                fn Cell(pair: Tuple[Option[String], Array[Int]]) -> Html {
                   match pair {
                     (label, _) => match label {
                       Some(l) => concat(
@@ -4116,7 +4114,7 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn Cell(pair?: (String, Int) = ("a", 1)) -> Html {
+                fn Cell(pair?: Tuple[String, Int] = ("a", 1)) -> Html {
                   match pair {
                     (label, _) => <>{label}</>,
                   }
@@ -4127,7 +4125,7 @@ mod tests {
             "#},
             expect![[r#"
                 -- main.hop --
-                fn Cell(pair: (String, Int)) -> Html {
+                fn Cell(pair: Tuple[String, Int]) -> Html {
                   match pair {
                     (label, _) => concat(
                       escape(label),
@@ -4147,7 +4145,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Cell(pair: (String, Int)) -> Html {
+                fn Cell(pair: Tuple[String, Int]) -> Html {
                   match pair {
                     (label, _) => <>{label}</>,
                   }
@@ -4157,7 +4155,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected (String, Int) got (String, String)
+                error: Expected Tuple[String, Int] got Tuple[String, String]
                   --> main.hop (line 7, col 15)
                 6 | fn Main() -> Html {
                 7 |   <Cell pair={("a", "b")}/>
@@ -4171,7 +4169,7 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Cell(pair: (String, Int)) -> Html {
+                fn Cell(pair: Tuple[String, Int]) -> Html {
                   match pair {
                     (label, _) => <>{label}</>,
                   }
@@ -4181,7 +4179,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected (String, Int) got (String, Int, Bool)
+                error: Expected Tuple[String, Int] got Tuple[String, Int, Bool]
                   --> main.hop (line 7, col 15)
                 6 | fn Main() -> Html {
                 7 |   <Cell pair={("a", 1, true)}/>
@@ -4222,7 +4220,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected String or Html got (String, String)
+                error: Expected String or Html got Tuple[String, String]
                   --> main.hop (line 2, col 9)
                 1 | fn Main() -> Html {
                 2 |   <div>{("a", "b")}</div>
@@ -14884,14 +14882,14 @@ mod tests {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn both(first: fn() -> Effect[()], second: fn() -> Effect[()]) -> Effect[()] {
-                  first().and_then(fn(_: ()) { second() })
+                fn both(first: fn() -> Effect[Tuple[]], second: fn() -> Effect[Tuple[]]) -> Effect[Tuple[]] {
+                  first().and_then(fn(_: Tuple[]) { second() })
                 }
                 fn Main(ids: Array[Int]) -> Html {
                   let mut count = 0;
                   let mut on = false;
                   let bump = fn() { count.set(count + 1) };
-                  let flip = fn() -> Effect[()] { on.set(!on) };
+                  let flip = fn() -> Effect[Tuple[]] { on.set(!on) };
                   <>
                     <button on:click={fn() { both(bump, flip) }}>
                       {count.to_string()}
@@ -14905,9 +14903,9 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(ids: Array[Int]) -> Html {
-                  let mut count = 0 in let mut on = false in let bump = fn() -> Effect[()] {
+                  let mut count = 0 in let mut on = false in let bump = fn() -> Effect[Tuple[]] {
                     write(count, add(count, 1))
-                  } in let flip = fn() -> Effect[()] {
+                  } in let flip = fn() -> Effect[Tuple[]] {
                     write(on, not(on))
                   } in concat(
                     element(
@@ -14916,7 +14914,7 @@ mod tests {
                       children: concat(
                         escape(count.to_string()),
                       ),
-                      on_click: fn() -> Effect[()] {
+                      on_click: fn() -> Effect[Tuple[]] {
                         both(first: bump, second: flip)
                       },
                     ),
@@ -14932,8 +14930,8 @@ mod tests {
                   )
                 }
 
-                fn both(first: fn() -> Effect[()], second: fn() -> Effect[()]) -> Effect[()] {
-                  first().and_then(fn(_: ()) -> Effect[()] {
+                fn both(first: fn() -> Effect[Tuple[]], second: fn() -> Effect[Tuple[]]) -> Effect[Tuple[]] {
+                  first().and_then(fn(_: Tuple[]) -> Effect[Tuple[]] {
                     second()
                   })
                 }
@@ -15088,7 +15086,7 @@ mod tests {
                       children: concat(
                         escape(count.to_string()),
                       ),
-                      on_click: fn() -> Effect[()] {
+                      on_click: fn() -> Effect[Tuple[]] {
                         write(count, add(count, 1))
                       },
                     ),
@@ -15128,7 +15126,7 @@ mod tests {
                       children: concat(
                         escape(label),
                       ),
-                      on_click: fn() -> Effect[()] {
+                      on_click: fn() -> Effect[Tuple[]] {
                         write(open, not(open))
                       },
                     )
@@ -15215,13 +15213,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected fn() -> Effect[()] got Effect[()]
+                error: Expected fn() -> Effect[Tuple[]] got Effect[Tuple[]]
                   --> main.hop (line 4, col 23)
                 3 |   <>
                 4 |     <button on:click={count.set(count + 1)}>{count.to_string()}</button>
                   |                       ^^^^^^^^^^^^^^^^^^^^
 
-                error: Expected fn() -> Effect[()] got String
+                error: Expected fn() -> Effect[Tuple[]] got String
                   --> main.hop (line 5, col 22)
                 4 |     <button on:click={count.set(count + 1)}>{count.to_string()}</button>
                 5 |     <button on:click="go()">x</button>
@@ -15287,13 +15285,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected a function from () to an effect, got Int
+                error: Expected a function from Tuple[] to an effect, got Int
                   --> main.hop (line 3, col 50)
                 2 |   let mut count = 0;
                 3 |   <button on:click={fn() { count.set(1).and_then(2) }}>{count.to_string()}</button>
                   |                                                  ^
 
-                error: Effect[()] is not allowed inside another type
+                error: Effect[Tuple[]] is not allowed inside another type
                   --> main.hop (line 7, col 17)
                 6 |   let mut count = 0;
                 7 |   let writes = [count.set(1)];
@@ -15328,9 +15326,9 @@ mod tests {
                     children: concat(
                       escape(count.to_string()),
                     ),
-                    on_click: fn() -> Effect[()] {
-                      count.get().and_then(fn(n: Int) -> Effect[()] {
-                        bump(n: n).and_then(fn(_: Int) -> Effect[()] {
+                    on_click: fn() -> Effect[Tuple[]] {
+                      count.get().and_then(fn(n: Int) -> Effect[Tuple[]] {
+                        bump(n: n).and_then(fn(_: Int) -> Effect[Tuple[]] {
                           write(count, n)
                         })
                       })
@@ -15364,7 +15362,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected fn() -> Effect[()] got fn() -> Effect[Int]
+                error: Expected fn() -> Effect[Tuple[]] got fn() -> Effect[Int]
                   --> main.hop (line 5, col 23)
                  4 |   <>
                  5 |     <button on:click={fn() { count.get() }}>a</button>

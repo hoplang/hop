@@ -299,9 +299,9 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
             out.push(']');
         }
         P::Tuple => {
-            out.push('(');
+            out.push_str("Tuple[");
             list(u, 0..=3, out, |u, _, out| type_(u, depth - 1, out))?;
-            out.push(')');
+            out.push(']');
         }
         P::Function => {
             out.push_str("fn(");

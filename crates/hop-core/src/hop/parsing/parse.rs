@@ -3277,12 +3277,12 @@ mod tests {
     fn accepts_function_parameter_with_tuple_type() {
         accept(
             indoc! {"
-                fn Main(pair: (Int, String)) -> Html {
+                fn Main(pair: Tuple[Int, String]) -> Html {
                     <div></div>
                 }
             "},
             expect![[r#"
-                fn Main(pair: (Int, String)) -> Html {
+                fn Main(pair: Tuple[Int, String]) -> Html {
                   element(
                     tag: "div",
                     attrs: [],
@@ -3297,12 +3297,12 @@ mod tests {
     fn accepts_nested_tuple_type() {
         accept(
             indoc! {"
-                fn Main(rows: Array[(Int, (String, Bool))]) -> Html {
+                fn Main(rows: Array[Tuple[Int, Tuple[String, Bool]]]) -> Html {
                     <div></div>
                 }
             "},
             expect![[r#"
-                fn Main(rows: Array[(Int, (String, Bool))]) -> Html {
+                fn Main(rows: Array[Tuple[Int, Tuple[String, Bool]]]) -> Html {
                   element(
                     tag: "div",
                     attrs: [],
@@ -3317,12 +3317,12 @@ mod tests {
     fn accepts_one_tuple_type() {
         accept(
             indoc! {"
-                fn Main(only: (Int,), rows: Array[(String,)]) -> Html {
+                fn Main(only: Tuple[Int], rows: Array[Tuple[String,]]) -> Html {
                     <div></div>
                 }
             "},
             expect![[r#"
-                fn Main(only: (Int,), rows: Array[(String,)]) -> Html {
+                fn Main(only: Tuple[Int], rows: Array[Tuple[String]]) -> Html {
                   element(
                     tag: "div",
                     attrs: [],
@@ -3334,21 +3334,23 @@ mod tests {
     }
 
     #[test]
-    fn accepts_parenthesized_type_as_the_type_itself() {
-        accept(
+    fn rejects_parenthesized_type() {
+        reject(
             indoc! {"
-                fn Main(plain: (Int), nested: ((Int, String))) -> Html {
+                fn Main(plain: (Int)) -> Html {
                     <div></div>
                 }
             "},
             expect![[r#"
-                fn Main(plain: Int, nested: (Int, String)) -> Html {
-                  element(
-                    tag: "div",
-                    attrs: [],
-                    children: [],
-                  )
-                }
+                -- errors --
+                error: Expected type name but got '('
+                1 | fn Main(plain: (Int)) -> Html {
+                  |                ^
+
+                error: Expected token '->' but got ')'
+                1 | fn Main(plain: (Int)) -> Html {
+                  |                     ^
+                -- ast --
             "#]],
         );
     }
@@ -3357,12 +3359,12 @@ mod tests {
     fn accepts_empty_tuple_type() {
         accept(
             indoc! {"
-                fn Main(nothing: (), rows: Array[()]) -> Html {
+                fn Main(nothing: Tuple[], rows: Array[Tuple[]]) -> Html {
                     <div></div>
                 }
             "},
             expect![[r#"
-                fn Main(nothing: (), rows: Array[()]) -> Html {
+                fn Main(nothing: Tuple[], rows: Array[Tuple[]]) -> Html {
                   element(
                     tag: "div",
                     attrs: [],

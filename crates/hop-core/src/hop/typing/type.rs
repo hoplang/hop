@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::display::{join, write_tuple};
+use crate::display::join;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 
@@ -184,7 +184,7 @@ impl fmt::Display for DataType {
             DataType::Bool => f.write_str("Bool"),
             DataType::Array(element) => write!(f, "Array[{element}]"),
             DataType::Option(element) => write!(f, "Option[{element}]"),
-            DataType::Tuple(elements) => write_tuple(f, elements),
+            DataType::Tuple(elements) => write!(f, "Tuple[{}]", join(elements, ", ")),
             DataType::Named { name, .. } => f.write_str(name.as_str()),
         }
     }

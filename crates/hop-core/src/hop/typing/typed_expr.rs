@@ -326,7 +326,7 @@ pub enum TypedExpr {
         element: HtmlElementKind,
         attrs: TypedAttrs,
         children: Box<Self>,
-        /// The handler of a click on the element, of type `fn() -> Effect[()]`.
+        /// The handler of a click on the element, of type `fn() -> Effect[Tuple[]]`.
         on_click: Option<Box<Self>>,
     },
 

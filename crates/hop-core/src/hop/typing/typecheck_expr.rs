@@ -5383,7 +5383,7 @@ mod tests {
             TypeRegistryBuilder::new(),
             &[("items", Ty::array(Ty::String))],
             "items.enumerate()",
-            expect!["Array[(Int, String)]"],
+            expect!["Array[Tuple[Int, String]]"],
         );
     }
 

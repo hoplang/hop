@@ -419,7 +419,7 @@ fn f() -> Html {
 effects: cell methods, and_then with a wildcard parameter, pure
 ================================================================================
 
-fn f() -> Effect[()] {
+fn f() -> Effect[Tuple[]] {
   count.set(count + 1).and_then(fn(_) { count.get() }).and_then(fn(n: Int) { pure!(()) })
 }
 
@@ -432,7 +432,9 @@ fn f() -> Effect[()] {
     (generic_type
       (type_identifier)
       (type_arguments
-        (tuple_type)))
+        (generic_type
+          (type_identifier)
+          (type_arguments))))
     (block
       (call_expression
         (field_expression

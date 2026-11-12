@@ -688,7 +688,7 @@ mod tests {
             Ty::tuple([Ty::Bool, Ty::Bool]),
             "(a, b, c)",
             expect![[r#"
-                error: Pattern does not match type (Bool, Bool)
+                error: Pattern does not match type Tuple[Bool, Bool]
                 (a, b, c)
                 ^^^^^^^^^
             "#]],
@@ -702,7 +702,7 @@ mod tests {
             Ty::tuple([Ty::Bool, Ty::Bool]),
             "(a,)",
             expect![[r#"
-                error: Pattern does not match type (Bool, Bool)
+                error: Pattern does not match type Tuple[Bool, Bool]
                 (a,)
                 ^^^^
             "#]],
@@ -744,7 +744,7 @@ mod tests {
             Ty::tuple([Ty::String]),
             "User {name}",
             expect![[r#"
-                error: Pattern does not match type (String,)
+                error: Pattern does not match type Tuple[String]
                 User {name}
                 ^^^^^^^^^^^
             "#]],

@@ -88,7 +88,7 @@ Type ::= "Bool"
        | "Html"
        | "Array" "[" Type "]"
        | "Option" "[" Type "]"
-       | "(" ( Type ( "," Type )* ","? )? ")"
+       | "Tuple" "[" ( Type ( "," Type )* ","? )? "]"
        | UppercaseIdentifier
        | "fn" "(" ( Type ( "," Type )* ","? )? ")" "->" Type
 ```
@@ -97,14 +97,14 @@ An `UppercaseIdentifier` names a [record](#record-declarations) or
 [enum](#enum-declarations) type. The built-in types have these values:
 
 ```
-Bool          true, false
-Int           32-bit signed integers
-Float         IEEE 754 binary64, including ±∞ and NaN
-String        sequences of Unicode scalar values
-Html          sequences of elements and text
-Array[T]      sequences of T
-Option[T]     None, Some(v)
-(T1, T2, …)   (v1, v2, …)
+Bool              true, false
+Int               32-bit signed integers
+Float             IEEE 754 binary64, including ±∞ and NaN
+String            sequences of Unicode scalar values
+Html              sequences of elements and text
+Array[T]          sequences of T
+Option[T]         None, Some(v)
+Tuple[T1, T2, …]  (v1, v2, …)
 ```
 
 A function type `fn(T1, T2, …) -> R` is the type of a
@@ -238,7 +238,7 @@ let tags = [];                 // error: Cannot infer type of []
 
 A tuple expression `(a, b, …)` evaluates to the tuple of its elements in order.
 Its type is formed from the types of its elements, so `(1, "a")` has the type
-`(Int, String)`.
+`Tuple[Int, String]`.
 
 ```ebnf
 TupleExpr ::= "(" Expr ( "," Expr )+ ","? ")"
@@ -252,10 +252,10 @@ A tuple of one element is written with a trailing comma, since `(a)` is a
 ```hop
 let name = "Alice";
 
-(name, 36)  // ("Alice", 36), of type (String, Int)
-(name,)     // ("Alice",), of type (String,)
+(name, 36)  // ("Alice", 36), of type Tuple[String, Int]
+(name,)     // ("Alice",), of type Tuple[String]
 (name)      // "Alice", of type String
-()          // (), of type ()
+()          // (), of type Tuple[]
 ```
 
 When the context of a tuple expression expects a tuple type with as many
@@ -264,8 +264,8 @@ as with a type annotation. Without such a context, an element that cannot
 determine its own type is a compile error:
 
 ```hop
-let pair: (Option[String], Array[Int]) = (None, []); // (None, [])
-let counts = (1, []);                                // error: Cannot infer type of []
+let pair: Tuple[Option[String], Array[Int]] = (None, []); // (None, [])
+let counts = (1, []);                                     // error: Cannot infer type of []
 ```
 
 A tuple has no fields, methods or operators. Its elements are read with a
@@ -592,18 +592,18 @@ The built-in methods are listed below. Any other method name, or a different
 number of arguments, is a compile error.
 
 ```
-Receiver    Method         Result           Semantics
-Array[T]    len()          Int              number of elements
-Array[T]    is_empty()     Bool             true if the array has no elements
-Array[T]    get(i)         Option[T]        Some(x) for the element x at index i, None if i < 0 or i >= len()
-Array[T]    enumerate()    Array[(Int, T)]  each element x at index i as the pair (i, x), in order
-String      is_empty()     Bool             true if the string is ""
-Int         to_string()    String           decimal representation, such as -42
-Int         to_float()     Float            the same value as a float (exact, since Int is 32-bit)
-Float       to_int()       Int              truncates toward zero, saturates at the Int bounds, NaN becomes 0
-Option[T]   is_some()      Bool             true if the option is Some(_)
-Option[T]   is_none()      Bool             true if the option is None
-Option[T]   unwrap_or(d)   T                x if the option is Some(x), otherwise d
+Receiver    Method         Result                Semantics
+Array[T]    len()          Int                   number of elements
+Array[T]    is_empty()     Bool                  true if the array has no elements
+Array[T]    get(i)         Option[T]             Some(x) for the element x at index i, None if i < 0 or i >= len()
+Array[T]    enumerate()    Array[Tuple[Int, T]]  each element x at index i as the pair (i, x), in order
+String      is_empty()     Bool                  true if the string is ""
+Int         to_string()    String                decimal representation, such as -42
+Int         to_float()     Float                 the same value as a float (exact, since Int is 32-bit)
+Float       to_int()       Int                   truncates toward zero, saturates at the Int bounds, NaN becomes 0
+Option[T]   is_some()      Bool                  true if the option is Some(_)
+Option[T]   is_none()      Bool                  true if the option is None
+Option[T]   unwrap_or(d)   T                     x if the option is Some(x), otherwise d
 ```
 
 <a id="operator-expressions"></a>
@@ -843,7 +843,7 @@ is a compile error:
 ```hop
 let pair = ("Alice", 36);
 match pair {
-  // error: Pattern does not match type (String, Int)
+  // error: Pattern does not match type Tuple[String, Int]
   (name, _, _) => name,
 }
 ```

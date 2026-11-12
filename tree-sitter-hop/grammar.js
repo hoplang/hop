@@ -135,7 +135,6 @@ module.exports = grammar({
     _type: ($) =>
       choice(
         $.generic_type,
-        $.tuple_type,
         $.function_type,
         $.type_identifier,
       ),
@@ -146,14 +145,15 @@ module.exports = grammar({
         field("type_arguments", $.type_arguments),
       ),
 
-    type_arguments: ($) => seq("[", commaSep1($._type), "]"),
+    // Empty for `Tuple[]`.
+    type_arguments: ($) => seq("[", commaSep($._type), "]"),
 
-    tuple_type: ($) => seq("(", commaSep($._type), ")"),
+    parameter_types: ($) => seq("(", commaSep($._type), ")"),
 
     function_type: ($) =>
       seq(
         "fn",
-        field("parameters", alias($.tuple_type, $.parameter_types)),
+        field("parameters", $.parameter_types),
         "->",
         field("return_type", $._type),
       ),

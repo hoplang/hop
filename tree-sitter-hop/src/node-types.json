@@ -230,10 +230,6 @@
         "named": true
       },
       {
-        "type": "tuple_type",
-        "named": true
-      },
-      {
         "type": "type_identifier",
         "named": true
       }
@@ -1671,27 +1667,12 @@
     }
   },
   {
-    "type": "tuple_type",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "_type",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "type_arguments",
     "named": true,
     "fields": {},
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "_type",

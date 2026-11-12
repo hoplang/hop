@@ -109,6 +109,7 @@ pub enum LangToken {
     TypeEffect,
     TypeArray,
     TypeOption,
+    TypeTuple,
 }
 
 /// A token in the markup tokenization mode.
@@ -315,6 +316,7 @@ impl fmt::Display for LangToken {
             LangToken::TypeEffect => write!(f, "Effect"),
             LangToken::TypeArray => write!(f, "Array"),
             LangToken::TypeOption => write!(f, "Option"),
+            LangToken::TypeTuple => write!(f, "Tuple"),
         }
     }
 }

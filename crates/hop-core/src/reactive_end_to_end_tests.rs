@@ -442,7 +442,7 @@ fn a_click_runs_the_handlers_of_the_elements_around_it_innermost_first() {
 fn a_handler_reaches_an_element_through_a_parameter() {
     check(
         indoc! {r#"
-            fn Button(on_press: fn() -> Effect[()], children: Html) -> Html {
+            fn Button(on_press: fn() -> Effect[Tuple[]], children: Html) -> Html {
               <button on:click={on_press}>{children}</button>
             }
             page Test {
@@ -1063,7 +1063,7 @@ fn each_level_of_a_recursive_call_has_cells_of_its_own() {
 fn a_handler_performs_the_effect_a_function_gives() {
     check(
         indoc! {r#"
-            fn both(first: fn() -> Effect[()], second: fn() -> Effect[()]) -> Effect[()] {
+            fn both(first: fn() -> Effect[Tuple[]], second: fn() -> Effect[Tuple[]]) -> Effect[Tuple[]] {
               first().and_then(fn(_) { second() })
             }
             page Test {
@@ -1092,7 +1092,7 @@ fn a_handler_performs_the_effect_a_function_gives() {
 fn a_handler_performs_an_effect_passed_as_a_parameter() {
     check(
         indoc! {r#"
-            fn Button(press: Effect[()], children: Html) -> Html {
+            fn Button(press: Effect[Tuple[]], children: Html) -> Html {
               <button on:click={fn() { press }}>{children}</button>
             }
             page Test {

@@ -2000,10 +2000,10 @@ mod tests {
         check(
             indoc! {r#"
                 record Holder {
-                  nothing: (),
+                  nothing: Tuple[],
                 }
 
-                page Test(unit: ()) {
+                page Test(unit: Tuple[]) {
                   fn body() -> Html {
                     let held = Holder {nothing: ()};
                     <>{[unit, held.nothing].len().to_string()}</>

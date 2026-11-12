@@ -897,17 +897,12 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
             .append(format_type(arena, element))
             .append(arena.text("]")),
         ParsedType::Tuple { elements, .. } => arena
-            .text("(")
+            .text("Tuple[")
             .append(arena.intersperse(
                 elements.iter().map(|element| format_type(arena, element)),
                 arena.text(", "),
             ))
-            .append(if elements.len() == 1 {
-                arena.text(",")
-            } else {
-                arena.nil()
-            })
-            .append(arena.text(")")),
+            .append(arena.text("]")),
         ParsedType::Named { name, .. } => arena.text(name.to_string()),
         ParsedType::Function {
             parameters, result, ..
@@ -3185,12 +3180,12 @@ mod tests {
     fn function_with_empty_tuple_parameter() {
         check(
             indoc! {r#"
-                fn Row(nothing: (  ), rows: Array[()]) -> Html {<></>}
+                fn Row(nothing: Tuple[  ], rows: Array[Tuple[]]) -> Html {<></>}
             "#},
             expect![[r#"
                 fn Row(
-                  nothing: (),
-                  rows: Array[()],
+                  nothing: Tuple[],
+                  rows: Array[Tuple[]],
                 ) -> Html {
                   <></>
                 }
@@ -3202,10 +3197,10 @@ mod tests {
     fn function_with_tuple_parameter() {
         check(
             indoc! {r#"
-                fn Row(cell:   ( Int ,Array[String] )) -> Html {<></>}
+                fn Row(cell:   Tuple[ Int ,Array[String] ]) -> Html {<></>}
             "#},
             expect![[r#"
-                fn Row(cell: (Int, Array[String])) -> Html {
+                fn Row(cell: Tuple[Int, Array[String]]) -> Html {
                   <></>
                 }
             "#]],
@@ -3213,15 +3208,15 @@ mod tests {
     }
 
     #[test]
-    fn function_with_one_tuple_parameter_keeps_the_trailing_comma() {
+    fn function_with_one_tuple_parameter_drops_the_trailing_comma() {
         check(
             indoc! {r#"
-                fn Row(only: ( Int , ), plain: (Int)) -> Html {<></>}
+                fn Row(only: Tuple[ Int , ], also: Tuple[Int]) -> Html {<></>}
             "#},
             expect![[r#"
                 fn Row(
-                  only: (Int,),
-                  plain: Int,
+                  only: Tuple[Int],
+                  also: Tuple[Int],
                 ) -> Html {
                   <></>
                 }
@@ -3233,13 +3228,13 @@ mod tests {
     fn match_with_tuple_pattern() {
         check(
             indoc! {r#"
-                fn Main(pair: (Bool, String)) -> Html {
+                fn Main(pair: Tuple[Bool, String]) -> Html {
                   <div class={match pair { ( true ,name ) => name, (false,_) => "none" }}>
                   </div>
                 }
             "#},
             expect![[r#"
-                fn Main(pair: (Bool, String)) -> Html {
+                fn Main(pair: Tuple[Bool, String]) -> Html {
                   <div class={
                     match pair {(true, name) => name, (false, _) => "none"}
                   }>
@@ -3253,13 +3248,13 @@ mod tests {
     fn match_with_one_tuple_pattern_keeps_the_trailing_comma() {
         check(
             indoc! {r#"
-                fn Main(single: (String,)) -> Html {
+                fn Main(single: Tuple[String]) -> Html {
                   <div class={match single { ( name , ) => name }}>
                   </div>
                 }
             "#},
             expect![[r#"
-                fn Main(single: (String,)) -> Html {
+                fn Main(single: Tuple[String]) -> Html {
                   <div class={match single {(name,) => name}}>
                   </div>
                 }
@@ -3337,10 +3332,10 @@ mod tests {
     fn function_with_optional_tuple_parameter() {
         check(
             indoc! {"
-                fn Point(xy?: (Int, Int) = (0,0)) -> Html {<></>}
+                fn Point(xy?: Tuple[Int, Int] = (0,0)) -> Html {<></>}
             "},
             expect![[r#"
-                fn Point(xy?: (Int, Int) = (0, 0)) -> Html {
+                fn Point(xy?: Tuple[Int, Int] = (0, 0)) -> Html {
                   <></>
                 }
             "#]],
@@ -6048,7 +6043,7 @@ mod tests {
                 fn Counter(ids: Array[Int]) -> Html {
                   let   mut count:Int = 0;
                   let mut on = false;
-                  <ul on:click={fn()->Effect[()]{count.set(count+1).and_then(fn(_:()){on.set(!on)})}}>
+                  <ul on:click={fn()->Effect[Tuple[]]{count.set(count+1).and_then(fn(_:Tuple[]){on.set(!on)})}}>
                     {for id in ids key id*2 {
                       <li>{id.to_string()}</li>
                     }}
@@ -6062,8 +6057,8 @@ mod tests {
                 fn Counter(ids: Array[Int]) -> Html {
                   let mut count: Int = 0;
                   let mut on = false;
-                  <ul on:click={fn() -> Effect[()] {
-                    count.set(count + 1).and_then(fn(_: ()) {
+                  <ul on:click={fn() -> Effect[Tuple[]] {
+                    count.set(count + 1).and_then(fn(_: Tuple[]) {
                       on.set(!on)
                     })
                   }}>

@@ -156,6 +156,7 @@ pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
                 "Int" => LangToken::TypeInt,
                 "Option" => LangToken::TypeOption,
                 "String" => LangToken::TypeString,
+                "Tuple" => LangToken::TypeTuple,
                 _ => LangToken::Identifier(identifier.to_cheap_string()),
             };
             LexStep::Token(t, identifier)
