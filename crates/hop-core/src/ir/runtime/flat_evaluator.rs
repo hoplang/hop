@@ -22,6 +22,7 @@ use crate::ir::runtime::value::{
     Closure, Effect, Env, Html, HtmlAttribute, HtmlNode, Lambda, MAX_ARRAY_LENGTH,
     MAX_STRING_LENGTH, Value,
 };
+use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 
@@ -224,9 +225,7 @@ fn evaluate_html_block<'a>(
                 evaluate_pure_binding(binding, &mut env, functions, depth, op_count)?;
             }
             FlatHtmlBinding::Cell(binder, initial) => {
-                render.enter(Step::Site(binder.var));
-                let cell = render.allocate_cell(&env[initial]);
-                render.exit();
+                let cell = render.bind_cell(binder.var, &env[initial]);
                 env.bindings.push((binder.var, Value::Cell(cell)));
             }
             FlatHtmlBinding::Track(binder, cell) => {
@@ -234,10 +233,15 @@ fn evaluate_html_block<'a>(
                 env.bindings.push((binder.var, value));
             }
             FlatHtmlBinding::Html(binding) => {
-                render.enter(Step::Site(binding.binder.var));
-                let value =
-                    evaluate_html_op(&binding.op, &mut env, functions, render, depth, op_count)?;
-                render.exit();
+                let value = evaluate_html_op(
+                    &binding.op,
+                    binding.binder.var,
+                    &mut env,
+                    functions,
+                    render,
+                    depth,
+                    op_count,
+                )?;
                 env.bindings.push((binding.binder.var, value));
             }
         }
@@ -259,7 +263,7 @@ fn evaluate_pure_binding<'a>(
             evaluate_pure_function(functions, function, values, depth, op_count)?
         }
         FlatPureOp::Match(match_) => {
-            let (body, env) = enter_arm(match_, env);
+            let (_, body, env) = enter_arm(match_, env);
             evaluate_pure_block(body, env, functions, depth, op_count)?
         }
         FlatPureOp::CellWrite(cell, value) => Value::Effect(Rc::new(Effect::Write(
@@ -381,27 +385,29 @@ fn evaluate_html_apply<'a>(
     )
 }
 
-fn enter_arm<'a, B>(match_: &'a IrMatch<B>, env: &mut Env<'a>) -> (&'a B, Env<'a>) {
+fn enter_arm<'a, B>(match_: &'a IrMatch<B>, env: &mut Env<'a>) -> (usize, &'a B, Env<'a>) {
     let subject = &env[&match_.subject];
-    let (arm, bound) = match_
+    let (index, arm, bound) = match_
         .arms
         .iter()
-        .find_map(|arm| {
+        .enumerate()
+        .find_map(|(index, arm)| {
             let mut bound = Vec::new();
             subject
                 .matches(&arm.pattern, &mut bound)
-                .then_some((arm, bound))
+                .then_some((index, arm, bound))
         })
         .unwrap();
     let env = Env {
         parent: env.freeze(),
         bindings: bound,
     };
-    (&arm.body, env)
+    (index, &arm.body, env)
 }
 
 fn evaluate_html_op<'a>(
     op: &'a FlatHtmlOp,
+    var: ValueId,
     env: &mut Env<'a>,
     functions: &'a [FlatFunction],
     render: &mut RenderTransaction<'a>,
@@ -454,7 +460,7 @@ fn evaluate_html_op<'a>(
                 None => Html::new(HtmlNode::Concat(Vec::new()))?,
             };
             let on_click = on_click.map(|handler| env[&handler].as_closure().clone());
-            let identity = render.allocate_element();
+            let identity = render.bind_element(var);
             Value::Html(Html::new(HtmlNode::Element {
                 element: element.clone(),
                 attributes: rendered,
@@ -466,16 +472,23 @@ fn evaluate_html_op<'a>(
 
         FlatHtmlOp::Call(function, args) => {
             let values = args.iter().map(|arg| env[arg].clone()).collect();
-            evaluate_html_function(functions, function, values, render, depth, op_count)?
+            render.enter(Step::Call(var));
+            let value =
+                evaluate_html_function(functions, function, values, render, depth, op_count)?;
+            render.exit();
+            value
         }
 
         FlatHtmlOp::Match(match_) => {
-            let (body, env) = enter_arm(match_, env);
-            evaluate_html_block(body, env, functions, render, depth, op_count)?
+            let (index, body, env) = enter_arm(match_, env);
+            render.enter(Step::Arm(var, index));
+            let value = evaluate_html_block(body, env, functions, render, depth, op_count)?;
+            render.exit();
+            value
         }
 
         FlatHtmlOp::For(FlatFor {
-            var,
+            var: loop_var,
             array,
             key,
             body,
@@ -487,7 +500,7 @@ fn evaluate_html_op<'a>(
             for (index, item) in items.as_array().iter().enumerate() {
                 let mut env = Env {
                     parent: parent.clone(),
-                    bindings: var
+                    bindings: loop_var
                         .iter()
                         .map(|binder| (binder.var, item.clone()))
                         .collect(),
@@ -505,7 +518,7 @@ fn evaluate_html_op<'a>(
                     None => IterationKey::Int(index as i32),
                 };
                 let occurrence = occurrences.entry(key.clone()).or_default();
-                render.enter(Step::Iteration(key, *occurrence));
+                render.enter(Step::Iteration(var, key, *occurrence));
                 *occurrence += 1;
                 let part = evaluate_html_block(body, env, functions, render, depth, op_count)?;
                 render.exit();
@@ -521,14 +534,17 @@ fn evaluate_html_op<'a>(
 
         FlatHtmlOp::Apply(closure, args) => {
             let args = args.iter().map(|arg| env[arg].clone()).collect();
-            evaluate_html_apply(
+            render.enter(Step::Apply(var));
+            let value = evaluate_html_apply(
                 env[closure].as_closure(),
                 args,
                 functions,
                 render,
                 depth,
                 op_count,
-            )?
+            )?;
+            render.exit();
+            value
         }
     })
 }
@@ -720,7 +736,7 @@ mod tests {
         }
         expect![[r#"
             program generation: 1387867 allocations
-            program evaluation: 29319 allocations
+            program evaluation: 28395 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -1650,8 +1666,8 @@ mod tests {
         changing: usize,
         /// Programs with a click after which the page renders differently.
         rerendering: usize,
-        /// Programs with a click after which an element is evaluated or no
-        /// longer evaluated although each iteration it is in is evaluated
+        /// Programs with a click after which a scope is entered or no
+        /// longer entered although each iteration it is in is evaluated
         /// both before and after, as a match took another arm.
         switching_arms: usize,
         /// Programs with a click after which a cell is bound or no longer
@@ -1680,18 +1696,12 @@ mod tests {
         changing_arrays: bool,
     }
 
-    /// The iterations of the paths, each as the steps up to and including
-    /// it.
-    fn iterations<'p>(paths: impl Iterator<Item = &'p [Step]>) -> BTreeSet<Vec<Step>> {
-        let mut iterations = BTreeSet::new();
-        for path in paths {
-            for (index, step) in path.iter().enumerate() {
-                if matches!(step, Step::Iteration(..)) {
-                    iterations.insert(path[..=index].to_vec());
-                }
-            }
-        }
-        iterations
+    /// The iterations among the scopes, each by its path.
+    fn iterations(scopes: &BTreeSet<Vec<Step>>) -> BTreeSet<Vec<Step>> {
+        (scopes.iter())
+            .filter(|path| matches!(path.last(), Some(Step::Iteration(..))))
+            .cloned()
+            .collect()
     }
 
     /// Whether each iteration of the path is in `both`, the iterations two
@@ -1740,7 +1750,7 @@ mod tests {
             html: &Html<'a>,
             state: &State<'a>,
         ) {
-            self.cells_bound += state.entries().filter(|(_, value)| value.is_some()).count();
+            self.cells_bound += state.cell_values().count();
             let mut markup = String::new();
             html.write(&mut markup);
             for (_, target) in clicks(&program.functions, html) {
@@ -1754,12 +1764,10 @@ mod tests {
                     continue;
                 }
                 let next = effects.commit();
-                // The effects leave each path where it was, so the entries
-                // of the two states line up.
-                let changed: Vec<&Value<'_>> = (next.entries())
-                    .zip(state.entries())
-                    .filter_map(|((_, value), (_, before))| {
-                        value.filter(|value| !value.total_eq(before.unwrap()))
+                let changed: Vec<&Value<'_>> = (next.cell_values())
+                    .zip(state.cell_values())
+                    .filter_map(|((_, _, value), (_, _, before))| {
+                        (!value.total_eq(before)).then_some(value)
                     })
                     .collect();
                 if changed.is_empty() {
@@ -1774,26 +1782,20 @@ mod tests {
                     let mut next_markup = String::new();
                     value.unwrap_html().write(&mut next_markup);
                     self.program.rerendering |= markup != next_markup;
-                    let paths: BTreeMap<&[Step], Option<&Value<'_>>> = state.entries().collect();
-                    let next_paths: BTreeMap<&[Step], Option<&Value<'_>>> =
-                        next_state.entries().collect();
-                    // A loop iteration can hold cells and no elements, so
-                    // the iterations come from the paths of both.
-                    let before = iterations(paths.keys().copied());
-                    let after = iterations(next_paths.keys().copied());
+                    let scopes: BTreeSet<Vec<Step>> = state.scopes().collect();
+                    let next_scopes: BTreeSet<Vec<Step>> = next_state.scopes().collect();
+                    let before = iterations(&scopes);
+                    let after = iterations(&next_scopes);
                     let both = before.intersection(&after).cloned().collect();
                     self.program.changing_loops |= before != after;
-                    // The paths one state binds and the other does not,
-                    // each with whether it binds a cell.
-                    let dropped =
-                        (paths.iter()).filter(|(path, _)| !next_paths.contains_key(*path));
-                    let added = (next_paths.iter()).filter(|(path, _)| !paths.contains_key(*path));
-                    for (path, value) in dropped.chain(added) {
-                        if in_both_iterations(path, &both) {
-                            self.program.switching_cells |= value.is_some();
-                            self.program.switching_arms |= value.is_none();
-                        }
-                    }
+                    self.program.switching_arms |= (scopes.symmetric_difference(&next_scopes))
+                        .any(|path| in_both_iterations(path, &both));
+                    let cells: BTreeSet<(Vec<Step>, ValueId)> =
+                        (state.cell_values().map(|(path, var, _)| (path, var))).collect();
+                    let next_cells: BTreeSet<(Vec<Step>, ValueId)> =
+                        (next_state.cell_values().map(|(path, var, _)| (path, var))).collect();
+                    self.program.switching_cells |= (cells.symmetric_difference(&next_cells))
+                        .any(|(path, _)| in_both_iterations(path, &both));
                 }
             }
         }
@@ -1973,9 +1975,9 @@ mod tests {
             60 programs have a click
             27 programs have a click that changes a cell
             21 programs have a click that changes the page
-            3 programs have a click that switches an arm of a match
+            4 programs have a click that switches an arm of a match
             3 programs have a click that switches an arm of a match that binds cells
-            5 programs have a click that changes the iterations of a loop
+            7 programs have a click that changes the iterations of a loop
             5 programs have a click that changes an array cell
         "#]].assert_eq(&format!(
             "{invocations} invocations\n\
