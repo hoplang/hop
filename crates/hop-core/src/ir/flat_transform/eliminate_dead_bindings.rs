@@ -20,7 +20,7 @@ use crate::ir::value_id::ValueId;
 /// the blocks nested in it. A cell nothing reads or writes has a value
 /// nobody sees, and an element whose Html nothing reads is never shown, so
 /// the state of its node is never seen. A click reads its handler, a cell
-/// write the cell and the value it writes, and an effect or a handler
+/// write the cell and the value it writes, and a mutation or a handler
 /// nothing performs goes away. A loop variable or binding of a
 /// pattern that nothing reads any more goes away too, and becomes `_`.
 pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
@@ -269,9 +269,9 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v4: () -> Effect[Tuple[]] = fn() {
+                  let v4: () -> Mutation[Tuple[]] = fn() {
                     let v2: Int = 1
-                    let v3: Effect[Tuple[]] = v1 := v2
+                    let v3: Mutation[Tuple[]] = v1 := v2
                     v3
                   }
                   let v5: Html = text("x")
@@ -285,9 +285,9 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v4: () -> Effect[Tuple[]] = fn() {
+                  let v4: () -> Mutation[Tuple[]] = fn() {
                     let v2: Int = 1
-                    let v3: Effect[Tuple[]] = v1 := v2
+                    let v3: Mutation[Tuple[]] = v1 := v2
                     v3
                   }
                   let v5: Html = text("x")
@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn should_drop_an_effect_nothing_performs_and_keep_the_cell_a_click_writes() {
+    fn should_drop_an_mutation_nothing_performs_and_keep_the_cell_a_click_writes() {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
@@ -324,12 +324,12 @@ mod tests {
                     v2
                   }
                   let v4: Int = 1
-                  let v5: Effect[Tuple[]] = v3 := v4
+                  let v5: Mutation[Tuple[]] = v3 := v4
                   let v6: Int = track(v1)
                   let v7: Int = 1
                   let v8: Int = add[Int](v6, v7)
-                  let v9: Effect[Tuple[]] = v1 := v8
-                  let v10: () -> Effect[Tuple[]] = fn() {
+                  let v9: Mutation[Tuple[]] = v1 := v8
+                  let v10: () -> Mutation[Tuple[]] = fn() {
                     v9
                   }
                   let v11: Html = text("x")
@@ -346,8 +346,8 @@ mod tests {
                   let v6: Int = track(v1)
                   let v7: Int = 1
                   let v8: Int = add[Int](v6, v7)
-                  let v9: Effect[Tuple[]] = v1 := v8
-                  let v10: () -> Effect[Tuple[]] = fn() {
+                  let v9: Mutation[Tuple[]] = v1 := v8
+                  let v10: () -> Mutation[Tuple[]] = fn() {
                     v9
                   }
                   let v11: Html = text("x")

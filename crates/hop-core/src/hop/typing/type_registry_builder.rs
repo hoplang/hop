@@ -27,7 +27,7 @@ pub enum Ty {
     Bool,
     Float,
     Html,
-    Effect(Box<Ty>),
+    Mutation(Box<Ty>),
     Cell(Box<Ty>),
     Named(String),
     Array(Box<Ty>),
@@ -52,8 +52,8 @@ impl Ty {
         Ty::Option(Box::new(element))
     }
 
-    pub fn effect(payload: Ty) -> Ty {
-        Ty::Effect(Box::new(payload))
+    pub fn mutation(payload: Ty) -> Ty {
+        Ty::Mutation(Box::new(payload))
     }
 
     pub fn cell(payload: Ty) -> Ty {
@@ -76,7 +76,7 @@ impl From<Ty> for Type {
     fn from(ty: Ty) -> Type {
         match ty {
             Ty::Html => Type::HTML,
-            Ty::Effect(payload) => Type::Effect((*payload).into()),
+            Ty::Mutation(payload) => Type::Mutation((*payload).into()),
             Ty::Cell(_) => panic!("the surface language has no cell type"),
             Ty::Function { parameters, result } => {
                 let function = FunctionType {
@@ -101,7 +101,7 @@ impl From<Ty> for DataType {
             Ty::Bool => DataType::Bool,
             Ty::Float => DataType::Float,
             Ty::Html => panic!("Html is not a data type"),
-            Ty::Effect(_) => panic!("Effect is not a data type"),
+            Ty::Mutation(_) => panic!("Mutation is not a data type"),
             Ty::Cell(_) => panic!("a cell is not a data type"),
             Ty::Function { .. } => panic!("a function type is not a data type"),
             Ty::Named(name) => DataType::Named {

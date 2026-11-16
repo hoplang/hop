@@ -12,7 +12,7 @@ pub enum IrType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrFunctionDataType {
     Data(IrDataType),
-    Effect(IrDataType),
+    Mutation(IrDataType),
     Cell(IrDataType),
     Function(IrSignature<IrFunctionDataType, IrResultType>),
 }
@@ -20,7 +20,7 @@ pub enum IrFunctionDataType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrResultType {
     Data(IrDataType),
-    Effect(IrDataType),
+    Mutation(IrDataType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +54,7 @@ pub struct IrSignature<Param, Result> {
 
 #[cfg(test)]
 impl IrType {
-    pub const EFFECT: IrType = IrType::Data(IrFunctionDataType::Effect(IrDataType::UNIT));
+    pub const MUTATION: IrType = IrType::Data(IrFunctionDataType::Mutation(IrDataType::UNIT));
 
     pub fn cell(data: IrDataType) -> IrType {
         IrType::Data(IrFunctionDataType::Cell(data))
@@ -119,7 +119,7 @@ impl IrType {
         match self {
             IrType::Data(IrFunctionDataType::Data(data)) => Some(data),
             IrType::Data(
-                IrFunctionDataType::Effect(_)
+                IrFunctionDataType::Mutation(_)
                 | IrFunctionDataType::Cell(_)
                 | IrFunctionDataType::Function(_),
             )
@@ -133,14 +133,14 @@ impl IrFunctionDataType {
     pub fn result(result: &IrResultType) -> IrFunctionDataType {
         match result {
             IrResultType::Data(data) => IrFunctionDataType::Data(data.clone()),
-            IrResultType::Effect(data) => IrFunctionDataType::Effect(data.clone()),
+            IrResultType::Mutation(data) => IrFunctionDataType::Mutation(data.clone()),
         }
     }
 
     pub fn as_result(&self) -> Option<IrResultType> {
         match self {
             IrFunctionDataType::Data(data) => Some(IrResultType::Data(data.clone())),
-            IrFunctionDataType::Effect(data) => Some(IrResultType::Effect(data.clone())),
+            IrFunctionDataType::Mutation(data) => Some(IrResultType::Mutation(data.clone())),
             IrFunctionDataType::Cell(_) | IrFunctionDataType::Function(_) => None,
         }
     }
@@ -163,7 +163,7 @@ impl fmt::Display for IrFunctionDataType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             IrFunctionDataType::Data(data) => data.fmt(f),
-            IrFunctionDataType::Effect(data) => write!(f, "Effect[{data}]"),
+            IrFunctionDataType::Mutation(data) => write!(f, "Mutation[{data}]"),
             IrFunctionDataType::Cell(data) => write!(f, "Cell[{data}]"),
             IrFunctionDataType::Function(signature) => signature.fmt(f),
         }
@@ -183,7 +183,7 @@ impl fmt::Display for IrResultType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             IrResultType::Data(data) => data.fmt(f),
-            IrResultType::Effect(data) => write!(f, "Effect[{data}]"),
+            IrResultType::Mutation(data) => write!(f, "Mutation[{data}]"),
         }
     }
 }

@@ -67,7 +67,7 @@ pub enum HoverAnnotation {
     CellSet {
         range: DocumentRange,
     },
-    EffectAndThen {
+    MutationAndThen {
         range: DocumentRange,
     },
 }
@@ -94,7 +94,7 @@ impl HoverAnnotation {
             HoverAnnotation::Pure { range } => range,
             HoverAnnotation::CellGet { range } => range,
             HoverAnnotation::CellSet { range } => range,
-            HoverAnnotation::EffectAndThen { range } => range,
+            HoverAnnotation::MutationAndThen { range } => range,
         }
     }
 }
@@ -190,23 +190,23 @@ impl Display for HoverAnnotation {
             ),
             HoverAnnotation::Pure { .. } => format_builtin(
                 f,
-                "pure!(value: T) -> Effect[T]",
+                "pure!(value: T) -> Mutation[T]",
                 "Performs nothing and gives the value.",
             ),
             HoverAnnotation::CellGet { .. } => format_builtin(
                 f,
-                "Cell::get() -> Effect[T]",
-                "Gives the value the cell holds when the effect runs.",
+                "Cell::get() -> Mutation[T]",
+                "Gives the value the cell holds when the mutation runs.",
             ),
             HoverAnnotation::CellSet { .. } => format_builtin(
                 f,
-                "Cell::set(value: T) -> Effect[Tuple[]]",
-                "Writes the value to the cell when the effect runs.",
+                "Cell::set(value: T) -> Mutation[Tuple[]]",
+                "Writes the value to the cell when the mutation runs.",
             ),
-            HoverAnnotation::EffectAndThen { .. } => format_builtin(
+            HoverAnnotation::MutationAndThen { .. } => format_builtin(
                 f,
-                "Effect[A]::and_then(continuation: fn(A) -> Effect[B]) -> Effect[B]",
-                "Performs the effect, then the effect the continuation gives for its result.",
+                "Mutation[A]::and_then(continuation: fn(A) -> Mutation[B]) -> Mutation[B]",
+                "Performs the mutation, then the mutation the continuation gives for its result.",
             ),
         }
     }

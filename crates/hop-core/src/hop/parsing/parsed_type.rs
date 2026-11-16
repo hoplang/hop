@@ -21,7 +21,7 @@ pub enum ParsedType {
     Html {
         range: DocumentRange,
     },
-    Effect {
+    Mutation {
         element: Box<ParsedType>,
         range: DocumentRange,
     },
@@ -56,7 +56,7 @@ impl ParsedType {
             | ParsedType::Int { range }
             | ParsedType::Float { range }
             | ParsedType::Html { range }
-            | ParsedType::Effect { range, .. }
+            | ParsedType::Mutation { range, .. }
             | ParsedType::Array { range, .. }
             | ParsedType::Option { range, .. }
             | ParsedType::Tuple { range, .. }
@@ -74,7 +74,7 @@ impl Display for ParsedType {
             ParsedType::Int { .. } => f.write_str("Int"),
             ParsedType::Float { .. } => f.write_str("Float"),
             ParsedType::Html { .. } => f.write_str("Html"),
-            ParsedType::Effect { element, .. } => write!(f, "Effect[{element}]"),
+            ParsedType::Mutation { element, .. } => write!(f, "Mutation[{element}]"),
             ParsedType::Option { element, .. } => write!(f, "Option[{element}]"),
             ParsedType::Array { element, .. } => write!(f, "Array[{element}]"),
             ParsedType::Tuple { elements, .. } => write!(f, "Tuple[{}]", join(elements, ", ")),

@@ -30,7 +30,7 @@ fn typecheck_on_click(
 ) -> Option<TypedExpr> {
     let handler_type = Type::Function(FunctionType {
         parameters: Vec::new(),
-        result: Box::new(Type::UNIT_EFFECT),
+        result: Box::new(Type::UNIT_MUTATION),
     });
     let value = match attribute {
         ParsedAttribute::Expression { value, .. } => value,

@@ -8,7 +8,7 @@ use crate::symbols::type_name::TypeName;
 pub enum Type {
     Data(DataType),
     Html(HtmlType),
-    Effect(DataType),
+    Mutation(DataType),
     Function(FunctionType),
 }
 
@@ -62,7 +62,7 @@ impl Type {
     pub const INT: Type = Type::Data(DataType::Int);
     pub const FLOAT: Type = Type::Data(DataType::Float);
     pub const HTML: Type = Type::Html(HtmlType);
-    pub const UNIT_EFFECT: Type = Type::Effect(DataType::Tuple(Vec::new()));
+    pub const UNIT_MUTATION: Type = Type::Mutation(DataType::Tuple(Vec::new()));
 
     pub fn array(element: DataType) -> Type {
         Type::Data(DataType::Array(Box::new(element)))
@@ -75,13 +75,13 @@ impl Type {
     pub fn as_data(&self) -> Option<&DataType> {
         match self {
             Type::Data(data) => Some(data),
-            Type::Html(_) | Type::Effect(_) | Type::Function(_) => None,
+            Type::Html(_) | Type::Mutation(_) | Type::Function(_) => None,
         }
     }
 
     pub fn renders_html(&self) -> bool {
         match self {
-            Type::Data(_) | Type::Effect(_) => false,
+            Type::Data(_) | Type::Mutation(_) => false,
             Type::Html(_) => true,
             Type::Function(function) => function.result.renders_html(),
         }
@@ -106,7 +106,7 @@ impl Type {
             ) => true,
             Type::Data(DataType::String | DataType::Int | DataType::Float | DataType::Array(_))
             | Type::Html(_)
-            | Type::Effect(_)
+            | Type::Mutation(_)
             | Type::Function(_) => false,
         }
     }
@@ -158,7 +158,7 @@ impl fmt::Display for Type {
         match self {
             Type::Data(data) => write!(f, "{data}"),
             Type::Html(html) => write!(f, "{html}"),
-            Type::Effect(data) => write!(f, "Effect[{data}]"),
+            Type::Mutation(data) => write!(f, "Mutation[{data}]"),
             Type::Function(function) => write!(
                 f,
                 "fn({}) -> {}",

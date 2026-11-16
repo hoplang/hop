@@ -17,10 +17,12 @@ use crate::ir::ir_page::IrPage;
 use crate::ir::ir_type::IrFunctionDataType;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
-use crate::ir::runtime::state::{EffectTransaction, IterationKey, RenderTransaction, State, Step};
+use crate::ir::runtime::state::{
+    IterationKey, MutationTransaction, RenderTransaction, State, Step,
+};
 use crate::ir::runtime::value::{
-    Closure, Effect, Env, Html, HtmlAttribute, HtmlNode, Lambda, MAX_ARRAY_LENGTH,
-    MAX_STRING_LENGTH, Value,
+    Closure, Env, Html, HtmlAttribute, HtmlNode, Lambda, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH,
+    Mutation, Value,
 };
 use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
@@ -272,16 +274,20 @@ fn evaluate_pure_binding<'a>(
             let (_, body, env) = enter_arm(match_, env);
             evaluate_pure_block(body, env, functions, depth, op_count)?
         }
-        FlatPureOp::CellWrite(cell, value) => Value::Effect(Rc::new(Effect::Write(
+        FlatPureOp::CellWrite(cell, value) => Value::Mutation(Rc::new(Mutation::Write(
             env[cell].as_cell(),
             env[value].clone(),
         ))),
-        FlatPureOp::CellRead(cell) => Value::Effect(Rc::new(Effect::Read(env[cell].as_cell()))),
-        FlatPureOp::EffectPure(value) => Value::Effect(Rc::new(Effect::Pure(env[value].clone()))),
-        FlatPureOp::EffectBind(effect, continuation) => Value::Effect(Rc::new(Effect::Bind(
-            env[effect].as_effect().clone(),
-            env[continuation].as_closure().clone(),
-        ))),
+        FlatPureOp::CellRead(cell) => Value::Mutation(Rc::new(Mutation::Read(env[cell].as_cell()))),
+        FlatPureOp::MutationPure(value) => {
+            Value::Mutation(Rc::new(Mutation::Pure(env[value].clone())))
+        }
+        FlatPureOp::MutationBind(mutation, continuation) => {
+            Value::Mutation(Rc::new(Mutation::Bind(
+                env[mutation].as_mutation().clone(),
+                env[continuation].as_closure().clone(),
+            )))
+        }
         FlatPureOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
             lambda: Lambda::Pure(lambda),
             env: env.freeze(),
@@ -323,35 +329,35 @@ pub fn evaluate_pure_apply<'a>(
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub(super) fn run_effect<'a>(
-    effect: &Effect<'a>,
-    effects: &mut EffectTransaction<'a>,
+pub(super) fn run_mutation<'a>(
+    mutation: &Mutation<'a>,
+    mutations: &mut MutationTransaction<'a>,
     functions: &'a [FlatFunction],
 ) -> Result<Value<'a>, EvalError> {
-    perform_effect(effect, effects, functions, &mut 0)
+    perform_mutation(mutation, mutations, functions, &mut 0)
 }
 
-fn perform_effect<'a>(
-    effect: &Effect<'a>,
-    effects: &mut EffectTransaction<'a>,
+fn perform_mutation<'a>(
+    mutation: &Mutation<'a>,
+    mutations: &mut MutationTransaction<'a>,
     functions: &'a [FlatFunction],
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
-    match effect {
-        Effect::Pure(value) => Ok(value.clone()),
-        Effect::Write(cell, value) => {
-            effects.write(*cell, value.clone());
+    match mutation {
+        Mutation::Pure(value) => Ok(value.clone()),
+        Mutation::Write(cell, value) => {
+            mutations.write(*cell, value.clone());
             Ok(Value::Tuple(Rc::new([])))
         }
-        Effect::Read(cell) => Ok(effects.read(*cell).clone()),
-        Effect::Then(first, second) => {
-            perform_effect(first, effects, functions, op_count)?;
-            perform_effect(second, effects, functions, op_count)
+        Mutation::Read(cell) => Ok(mutations.read(*cell).clone()),
+        Mutation::Then(first, second) => {
+            perform_mutation(first, mutations, functions, op_count)?;
+            perform_mutation(second, mutations, functions, op_count)
         }
-        Effect::Bind(effect, continuation) => {
-            let value = perform_effect(effect, effects, functions, op_count)?;
+        Mutation::Bind(mutation, continuation) => {
+            let value = perform_mutation(mutation, mutations, functions, op_count)?;
             let next = evaluate_pure_apply(continuation, vec![value], functions, 0, op_count)?;
-            perform_effect(next.as_effect(), effects, functions, op_count)
+            perform_mutation(next.as_mutation(), mutations, functions, op_count)
         }
     }
 }
@@ -1612,18 +1618,18 @@ mod tests {
         );
     }
 
-    fn effects_are_equal<'a>(
+    fn mutations_are_equal<'a>(
         functions: &'a [FlatFunction],
         state: &State<'a>,
-        a: &Effect<'a>,
-        b: &Effect<'a>,
+        a: &Mutation<'a>,
+        b: &Mutation<'a>,
     ) -> bool {
-        let (mut a_effects, mut b_effects) = (state.begin_effects(), state.begin_effects());
+        let (mut a_mutations, mut b_mutations) = (state.begin_mutations(), state.begin_mutations());
         match (
-            run_effect(a, &mut a_effects, functions),
-            run_effect(b, &mut b_effects, functions),
+            run_mutation(a, &mut a_mutations, functions),
+            run_mutation(b, &mut b_mutations, functions),
         ) {
-            (Ok(_), Ok(_)) => a_effects.commit() == b_effects.commit(),
+            (Ok(_), Ok(_)) => a_mutations.commit() == b_mutations.commit(),
             (Err(a), Err(b)) => a == b,
             _ => false,
         }
@@ -1644,7 +1650,7 @@ mod tests {
             && (a_clicks.iter().zip(&b_clicks)).all(|((a_node, a), (b_node, b))| {
                 a_node == b_node
                     && match (a, b) {
-                        (Ok(a), Ok(b)) => effects_are_equal(functions, state, a, b),
+                        (Ok(a), Ok(b)) => mutations_are_equal(functions, state, a, b),
                         (Err(a), Err(b)) => a == b,
                         _ => false,
                     }
@@ -1762,14 +1768,14 @@ mod tests {
             for (_, target) in clicks(&program.functions, html) {
                 self.clicks += 1;
                 self.program.any = true;
-                let Ok(effect) = target else {
+                let Ok(mutation) = target else {
                     continue;
                 };
-                let mut effects = state.begin_effects();
-                if run_effect(&effect, &mut effects, &program.functions).is_err() {
+                let mut mutations = state.begin_mutations();
+                if run_mutation(&mutation, &mut mutations, &program.functions).is_err() {
                     continue;
                 }
-                let next = effects.commit();
+                let next = mutations.commit();
                 let changed: Vec<&Value<'_>> = (next.cell_values())
                     .zip(state.cell_values())
                     .filter_map(|((_, _, value), (_, _, before))| {
@@ -1833,7 +1839,7 @@ mod tests {
     ) -> arbitrary::Result<()> {
         // The state of each entrypoint, in the order the program declares
         // them, which each invocation takes from the one before it and the
-        // effects of the click after it.
+        // mutations of the click after it.
         let mut states = Vec::new();
         for _ in 0..ARGUMENT_SETS {
             let invocations = random_entrypoint_args(program, u)?;
@@ -1903,10 +1909,10 @@ mod tests {
                     // A click whose handler reaches a limit of the evaluator
                     // performs nothing to compare.
                     let ran = match &u.choose(&targets)?.1 {
-                        Ok(effect) => {
-                            let mut effects = state.begin_effects();
-                            run_effect(effect, &mut effects, &program.functions)
-                                .map(|_| effects.commit())
+                        Ok(mutation) => {
+                            let mut mutations = state.begin_mutations();
+                            run_mutation(mutation, &mut mutations, &program.functions)
+                                .map(|_| mutations.commit())
                         }
                         Err(error) => Err(error.clone()),
                     };

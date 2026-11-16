@@ -69,15 +69,15 @@ pub enum FlatPureOp {
     Call(IrFunction, Vec<ValueId>),
     /// Match exhaustively.
     Match(IrMatch<FlatPureBlock>),
-    /// Write a cell. `(Cell[T], T) -> Effect[Tuple[]]`.
+    /// Write a cell. `(Cell[T], T) -> Mutation[Tuple[]]`.
     CellWrite(ValueId, ValueId),
-    /// Read a cell. `Cell[T] -> Effect[T]`.
+    /// Read a cell. `Cell[T] -> Mutation[T]`.
     CellRead(ValueId),
-    /// Lift a value to an effect. `T -> Effect[T]`.
-    EffectPure(ValueId),
-    /// Run the first effect, then return the effect the second closure
-    /// gives for its result. `(Effect[A], (A) -> Effect[B]) -> Effect[B]`.
-    EffectBind(ValueId, ValueId),
+    /// Lift a value to a mutation. `T -> Mutation[T]`.
+    MutationPure(ValueId),
+    /// Run the first mutation, then return the mutation the second closure
+    /// gives for its result. `(Mutation[A], (A) -> Mutation[B]) -> Mutation[B]`.
+    MutationBind(ValueId, ValueId),
     /// Bind a closure.
     Lambda(FlatPureLambda),
     /// Invoke a closure.
@@ -153,9 +153,9 @@ impl FlatPureOp {
                 f(*value);
             }
             FlatPureOp::CellRead(cell) => f(*cell),
-            FlatPureOp::EffectPure(value) => f(*value),
-            FlatPureOp::EffectBind(effect, continuation) => {
-                f(*effect);
+            FlatPureOp::MutationPure(value) => f(*value),
+            FlatPureOp::MutationBind(mutation, continuation) => {
+                f(*mutation);
                 f(*continuation);
             }
             FlatPureOp::Lambda(_) => {}
@@ -182,9 +182,9 @@ impl FlatPureOp {
                 f(value);
             }
             FlatPureOp::CellRead(cell) => f(cell),
-            FlatPureOp::EffectPure(value) => f(value),
-            FlatPureOp::EffectBind(effect, continuation) => {
-                f(effect);
+            FlatPureOp::MutationPure(value) => f(value),
+            FlatPureOp::MutationBind(mutation, continuation) => {
+                f(mutation);
                 f(continuation);
             }
             FlatPureOp::Lambda(_) => {}
@@ -297,9 +297,9 @@ impl fmt::Display for FlatPureOp {
             FlatPureOp::Match(match_) => match_.write(f, write_block),
             FlatPureOp::CellWrite(cell, value) => write!(f, "{cell} := {value}"),
             FlatPureOp::CellRead(cell) => write!(f, "read({cell})"),
-            FlatPureOp::EffectPure(value) => write!(f, "pure({value})"),
-            FlatPureOp::EffectBind(effect, continuation) => {
-                write!(f, "bind({effect}, {continuation})")
+            FlatPureOp::MutationPure(value) => write!(f, "pure({value})"),
+            FlatPureOp::MutationBind(mutation, continuation) => {
+                write!(f, "bind({mutation}, {continuation})")
             }
             FlatPureOp::Lambda(lambda) => lambda.write(f, write_block),
             FlatPureOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),

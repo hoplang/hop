@@ -273,20 +273,20 @@ impl<'a> Compiler<'a> {
                 return_type: IrResultType::Data(lower_data_type(self.registry, return_type)),
                 body: self.compile_pure_block(&decl.body),
             }),
-            Type::Effect(payload) => FlatFunction::Pure(IrFunctionDeclaration {
+            Type::Mutation(payload) => FlatFunction::Pure(IrFunctionDeclaration {
                 function,
                 parameters: parameters
                     .into_iter()
                     .map(|param| {
                         param
                             .into_function_data()
-                            .expect("a function that gives an effect takes values only")
+                            .expect("a function that gives a mutation takes values only")
                     })
                     .collect(),
-                return_type: IrResultType::Effect(lower_data_type(self.registry, payload)),
+                return_type: IrResultType::Mutation(lower_data_type(self.registry, payload)),
                 body: self.compile_pure_block(&decl.body),
             }),
-            Type::Function(_) => unreachable!("a function returns data, Html or an effect"),
+            Type::Function(_) => unreachable!("a function returns data, Html or a mutation"),
         };
         self.pop_scope();
         self.params.clear();
@@ -910,14 +910,16 @@ impl<'a> Compiler<'a> {
                 FlatPureOp::CellWrite(cell, self.compile_expr(value))
             }
             TypedExpr::CellRead { cell, .. } => FlatPureOp::CellRead(self.cell(cell)),
-            TypedExpr::EffectPure { value, .. } => FlatPureOp::EffectPure(self.compile_expr(value)),
-            TypedExpr::EffectBind {
-                effect,
+            TypedExpr::MutationPure { value, .. } => {
+                FlatPureOp::MutationPure(self.compile_expr(value))
+            }
+            TypedExpr::MutationBind {
+                mutation,
                 continuation,
                 ..
             } => {
-                let effect = self.compile_expr(effect);
-                FlatPureOp::EffectBind(effect, self.compile_expr(continuation))
+                let mutation = self.compile_expr(mutation);
+                FlatPureOp::MutationBind(mutation, self.compile_expr(continuation))
             }
             TypedExpr::For {
                 var_name,
@@ -1121,7 +1123,7 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
     match typ {
         Type::Data(data) => IrType::Data(IrFunctionDataType::Data(lower_data_type(registry, data))),
         Type::Html(_) => IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
-        Type::Effect(payload) => IrType::Data(IrFunctionDataType::Effect(lower_data_type(
+        Type::Mutation(payload) => IrType::Data(IrFunctionDataType::Mutation(lower_data_type(
             registry, payload,
         ))),
         Type::Function(function) => match function.result.as_ref() {
@@ -1133,7 +1135,7 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
                     .collect(),
                 result: IrHtmlType,
             })),
-            result @ (Type::Data(_) | Type::Effect(_)) => {
+            result @ (Type::Data(_) | Type::Mutation(_)) => {
                 IrType::Data(IrFunctionDataType::Function(IrSignature {
                     parameters: function
                         .parameters
@@ -1147,14 +1149,14 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
                         .collect(),
                     result: match result {
                         Type::Data(result) => IrResultType::Data(lower_data_type(registry, result)),
-                        Type::Effect(payload) => {
-                            IrResultType::Effect(lower_data_type(registry, payload))
+                        Type::Mutation(payload) => {
+                            IrResultType::Mutation(lower_data_type(registry, payload))
                         }
                         Type::Html(_) | Type::Function(_) => unreachable!(),
                     },
                 }))
             }
-            Type::Function(_) => unreachable!("a function returns data, Html or an effect"),
+            Type::Function(_) => unreachable!("a function returns data, Html or a mutation"),
         },
     }
 }
@@ -2187,7 +2189,7 @@ mod tests {
     }
 
     #[test]
-    fn should_compile_cells_clicks_keys_and_effects() {
+    fn should_compile_cells_clicks_keys_and_mutations() {
         check(
             indoc! {r#"
                 record Item {
@@ -2224,16 +2226,16 @@ mod tests {
                     v20
                   }
                   let v22: Bool = track(v21)
-                  let v31: () -> Effect[Tuple[]] = fn() {
+                  let v31: () -> Mutation[Tuple[]] = fn() {
                     let v23: Int = 1
                     let v24: Int = add[Int](v19, v23)
-                    let v25: Effect[Tuple[]] = v18 := v24
-                    let v29: (Tuple[]) -> Effect[Tuple[]] = fn(v26: Tuple[]) {
+                    let v25: Mutation[Tuple[]] = v18 := v24
+                    let v29: (Tuple[]) -> Mutation[Tuple[]] = fn(v26: Tuple[]) {
                       let v27: Bool = true
-                      let v28: Effect[Tuple[]] = v21 := v27
+                      let v28: Mutation[Tuple[]] = v21 := v27
                       v28
                     }
-                    let v30: Effect[Tuple[]] = bind(v25, v29)
+                    let v30: Mutation[Tuple[]] = bind(v25, v29)
                     v30
                   }
                   let v32: Html = escape(v16)
@@ -2275,7 +2277,7 @@ mod tests {
     fn should_pass_a_handler_to_an_element_through_a_parameter() {
         check(
             indoc! {r#"
-                fn Button(on_press: fn() -> Effect[Tuple[]], children: Html) -> Html {
+                fn Button(on_press: fn() -> Mutation[Tuple[]], children: Html) -> Html {
                   <button on:click={on_press}>{children}</button>
                 }
                 page Test() {
@@ -2288,7 +2290,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Button@f0(on_press@v12: () -> Effect[Tuple[]], children@v13: Html) -> Html {
+                fn Button@f0(on_press@v12: () -> Mutation[Tuple[]], children@v13: Html) -> Html {
                   let v14: Html = concat(v13)
                   let v15: Html = element("button", {}, v14) on_click v12
                   v15
@@ -2299,9 +2301,9 @@ mod tests {
                     v0
                   }
                   let v2: Bool = track(v1)
-                  let v5: () -> Effect[Tuple[]] = fn() {
+                  let v5: () -> Mutation[Tuple[]] = fn() {
                     let v3: Bool = not(v2)
-                    let v4: Effect[Tuple[]] = v1 := v3
+                    let v4: Mutation[Tuple[]] = v1 := v3
                     v4
                   }
                   let v8: String = match v2 {
@@ -2325,10 +2327,10 @@ mod tests {
     }
 
     #[test]
-    fn should_compile_cell_reads_binds_and_pure_effects() {
+    fn should_compile_cell_reads_binds_and_pure_mutations() {
         check(
             indoc! {r#"
-                fn bump(n: Int) -> Effect[Int] {
+                fn bump(n: Int) -> Mutation[Int] {
                   pure!(n + 1)
                 }
                 page Test() {
@@ -2343,10 +2345,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn bump@f0(n@v17: Int) -> Effect[Int] {
+                fn bump@f0(n@v17: Int) -> Mutation[Int] {
                   let v18: Int = 1
                   let v19: Int = add[Int](v17, v18)
-                  let v20: Effect[Int] = pure(v19)
+                  let v20: Mutation[Int] = pure(v19)
                   v20
                 }
                 entrypoint body@e0() -> Html {
@@ -2355,18 +2357,18 @@ mod tests {
                     v0
                   }
                   let v2: Int = track(v1)
-                  let v12: () -> Effect[Tuple[]] = fn() {
-                    let v3: Effect[Int] = read(v1)
-                    let v10: (Int) -> Effect[Tuple[]] = fn(v4: Int) {
-                      let v5: Effect[Int] = bump@f0(v4)
-                      let v8: (Int) -> Effect[Tuple[]] = fn(v6: Int) {
-                        let v7: Effect[Tuple[]] = v1 := v4
+                  let v12: () -> Mutation[Tuple[]] = fn() {
+                    let v3: Mutation[Int] = read(v1)
+                    let v10: (Int) -> Mutation[Tuple[]] = fn(v4: Int) {
+                      let v5: Mutation[Int] = bump@f0(v4)
+                      let v8: (Int) -> Mutation[Tuple[]] = fn(v6: Int) {
+                        let v7: Mutation[Tuple[]] = v1 := v4
                         v7
                       }
-                      let v9: Effect[Tuple[]] = bind(v5, v8)
+                      let v9: Mutation[Tuple[]] = bind(v5, v8)
                       v9
                     }
-                    let v11: Effect[Tuple[]] = bind(v3, v10)
+                    let v11: Mutation[Tuple[]] = bind(v3, v10)
                     v11
                   }
                   let v13: String = v2.to_string()

@@ -184,7 +184,7 @@ impl FlatProgramBuilder {
                         body: declared.body.unwrap().into_html(),
                     })
                 }
-                IrType::Data(IrFunctionDataType::Data(_) | IrFunctionDataType::Effect(_)) => {
+                IrType::Data(IrFunctionDataType::Data(_) | IrFunctionDataType::Mutation(_)) => {
                     let return_type = declared.return_type.as_result().unwrap();
                     let parameters = declared
                         .parameters
@@ -836,11 +836,11 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn cell_write(&self, cell: ValueId, value: ValueId) -> ValueId {
-        self.push(IrType::EFFECT, FlatPureOp::CellWrite(cell, value))
+        self.push(IrType::MUTATION, FlatPureOp::CellWrite(cell, value))
     }
 
     pub fn cell_read(&self, cell: ValueId) -> ValueId {
-        let typ = IrType::Data(IrFunctionDataType::Effect(self.cell_of(cell)));
+        let typ = IrType::Data(IrFunctionDataType::Mutation(self.cell_of(cell)));
         self.push(typ, FlatPureOp::CellRead(cell))
     }
 
@@ -851,25 +851,25 @@ impl<'a> FlatBlockBuilder<'a> {
         typ
     }
 
-    pub fn effect_pure(&self, value: ValueId) -> ValueId {
-        self.push(self.effect_of(value), FlatPureOp::EffectPure(value))
+    pub fn mutation_pure(&self, value: ValueId) -> ValueId {
+        self.push(self.mutation_of(value), FlatPureOp::MutationPure(value))
     }
 
-    pub fn effect_bind(&self, effect: ValueId, continuation: ValueId) -> ValueId {
+    pub fn mutation_bind(&self, mutation: ValueId, continuation: ValueId) -> ValueId {
         let IrType::Data(IrFunctionDataType::Function(signature)) = self.typ(continuation) else {
             panic!("a bind continues with a closure");
         };
         self.push(
             IrType::result(&signature.result),
-            FlatPureOp::EffectBind(effect, continuation),
+            FlatPureOp::MutationBind(mutation, continuation),
         )
     }
 
-    fn effect_of(&self, value: ValueId) -> IrType {
+    fn mutation_of(&self, value: ValueId) -> IrType {
         let IrType::Data(IrFunctionDataType::Data(typ)) = self.typ(value) else {
-            panic!("an effect gives data");
+            panic!("a mutation gives data");
         };
-        IrType::Data(IrFunctionDataType::Effect(typ))
+        IrType::Data(IrFunctionDataType::Mutation(typ))
     }
 
     pub fn attr_value(&self, name: &str, value: ValueId) -> (AttributeName, IrAttribute) {

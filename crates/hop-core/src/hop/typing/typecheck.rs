@@ -957,7 +957,7 @@ fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString
         }
         ParsedType::String { .. }
         | ParsedType::Bool { .. }
-        | ParsedType::Effect { .. }
+        | ParsedType::Mutation { .. }
         | ParsedType::Int { .. }
         | ParsedType::Float { .. }
         | ParsedType::Html { .. } => {}
@@ -14878,18 +14878,18 @@ mod tests {
     }
 
     #[test]
-    fn accepts_cells_clicks_keys_and_effects() {
+    fn accepts_cells_clicks_keys_and_mutations() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn both(first: fn() -> Effect[Tuple[]], second: fn() -> Effect[Tuple[]]) -> Effect[Tuple[]] {
+                fn both(first: fn() -> Mutation[Tuple[]], second: fn() -> Mutation[Tuple[]]) -> Mutation[Tuple[]] {
                   first().and_then(fn(_: Tuple[]) { second() })
                 }
                 fn Main(ids: Array[Int]) -> Html {
                   let mut count = 0;
                   let mut on = false;
                   let bump = fn() { count.set(count + 1) };
-                  let flip = fn() -> Effect[Tuple[]] { on.set(!on) };
+                  let flip = fn() -> Mutation[Tuple[]] { on.set(!on) };
                   <>
                     <button on:click={fn() { both(bump, flip) }}>
                       {count.to_string()}
@@ -14903,9 +14903,9 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(ids: Array[Int]) -> Html {
-                  let mut count = 0 in let mut on = false in let bump = fn() -> Effect[Tuple[]] {
+                  let mut count = 0 in let mut on = false in let bump = fn() -> Mutation[Tuple[]] {
                     write(count, add(count, 1))
-                  } in let flip = fn() -> Effect[Tuple[]] {
+                  } in let flip = fn() -> Mutation[Tuple[]] {
                     write(on, not(on))
                   } in concat(
                     element(
@@ -14914,7 +14914,7 @@ mod tests {
                       children: concat(
                         escape(count.to_string()),
                       ),
-                      on_click: fn() -> Effect[Tuple[]] {
+                      on_click: fn() -> Mutation[Tuple[]] {
                         both(first: bump, second: flip)
                       },
                     ),
@@ -14930,8 +14930,8 @@ mod tests {
                   )
                 }
 
-                fn both(first: fn() -> Effect[Tuple[]], second: fn() -> Effect[Tuple[]]) -> Effect[Tuple[]] {
-                  first().and_then(fn(_: Tuple[]) -> Effect[Tuple[]] {
+                fn both(first: fn() -> Mutation[Tuple[]], second: fn() -> Mutation[Tuple[]]) -> Mutation[Tuple[]] {
+                  first().and_then(fn(_: Tuple[]) -> Mutation[Tuple[]] {
                     second()
                   })
                 }
@@ -15086,7 +15086,7 @@ mod tests {
                       children: concat(
                         escape(count.to_string()),
                       ),
-                      on_click: fn() -> Effect[Tuple[]] {
+                      on_click: fn() -> Mutation[Tuple[]] {
                         write(count, add(count, 1))
                       },
                     ),
@@ -15126,7 +15126,7 @@ mod tests {
                       children: concat(
                         escape(label),
                       ),
-                      on_click: fn() -> Effect[Tuple[]] {
+                      on_click: fn() -> Mutation[Tuple[]] {
                         write(open, not(open))
                       },
                     )
@@ -15213,13 +15213,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected fn() -> Effect[Tuple[]] got Effect[Tuple[]]
+                error: Expected fn() -> Mutation[Tuple[]] got Mutation[Tuple[]]
                   --> main.hop (line 4, col 23)
                 3 |   <>
                 4 |     <button on:click={count.set(count + 1)}>{count.to_string()}</button>
                   |                       ^^^^^^^^^^^^^^^^^^^^
 
-                error: Expected fn() -> Effect[Tuple[]] got String
+                error: Expected fn() -> Mutation[Tuple[]] got String
                   --> main.hop (line 5, col 22)
                 4 |     <button on:click={count.set(count + 1)}>{count.to_string()}</button>
                 5 |     <button on:click="go()">x</button>
@@ -15270,7 +15270,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_value_as_an_effect_and_an_effect_inside_another_type() {
+    fn rejects_a_value_as_an_mutation_and_an_mutation_inside_another_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -15285,13 +15285,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected a function from Tuple[] to an effect, got Int
+                error: Expected a function from Tuple[] to a mutation, got Int
                   --> main.hop (line 3, col 50)
                 2 |   let mut count = 0;
                 3 |   <button on:click={fn() { count.set(1).and_then(2) }}>{count.to_string()}</button>
                   |                                                  ^
 
-                error: Effect[Tuple[]] is not allowed inside another type
+                error: Mutation[Tuple[]] is not allowed inside another type
                   --> main.hop (line 7, col 17)
                 6 |   let mut count = 0;
                 7 |   let writes = [count.set(1)];
@@ -15301,11 +15301,11 @@ mod tests {
     }
 
     #[test]
-    fn accepts_cell_reads_binds_and_pure_effects() {
+    fn accepts_cell_reads_binds_and_pure_mutations() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn bump(n: Int) -> Effect[Int] {
+                fn bump(n: Int) -> Mutation[Int] {
                   pure!(n + 1)
                 }
                 fn Main() -> Html {
@@ -15326,9 +15326,9 @@ mod tests {
                     children: concat(
                       escape(count.to_string()),
                     ),
-                    on_click: fn() -> Effect[Tuple[]] {
-                      count.get().and_then(fn(n: Int) -> Effect[Tuple[]] {
-                        bump(n: n).and_then(fn(_: Int) -> Effect[Tuple[]] {
+                    on_click: fn() -> Mutation[Tuple[]] {
+                      count.get().and_then(fn(n: Int) -> Mutation[Tuple[]] {
+                        bump(n: n).and_then(fn(_: Int) -> Mutation[Tuple[]] {
                           write(count, n)
                         })
                       })
@@ -15336,7 +15336,7 @@ mod tests {
                   )
                 }
 
-                fn bump(n: Int) -> Effect[Int] {
+                fn bump(n: Int) -> Mutation[Int] {
                   pure!(add(n, 1))
                 }
             "#]],
@@ -15344,7 +15344,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_ill_typed_effect_methods_and_handlers() {
+    fn rejects_ill_typed_mutation_methods_and_handlers() {
         reject(
             indoc! {r#"
                 -- main.hop --
@@ -15362,13 +15362,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected fn() -> Effect[Tuple[]] got fn() -> Effect[Int]
+                error: Expected fn() -> Mutation[Tuple[]] got fn() -> Mutation[Int]
                   --> main.hop (line 5, col 23)
                  4 |   <>
                  5 |     <button on:click={fn() { count.get() }}>a</button>
                    |                       ^^^^^^^^^^^^^^^^^^^^
 
-                error: Expected a function from Int to an effect, got fn(String) -> Effect[String]
+                error: Expected a function from Int to a mutation, got fn(String) -> Mutation[String]
                   --> main.hop (line 6, col 51)
                  5 |     <button on:click={fn() { count.get() }}>a</button>
                  6 |     <button on:click={fn() { count.get().and_then(fn(s: String) { pure!(s) }) }}>b</button>

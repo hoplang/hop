@@ -40,7 +40,7 @@ pub struct ElementId {
     var: ValueId,
 }
 
-pub struct EffectTransaction<'a> {
+pub struct MutationTransaction<'a> {
     old: State<'a>,
     writes: BTreeMap<CellId, Value<'a>>,
 }
@@ -59,8 +59,8 @@ impl ScopeId {
 
 impl<'a> State<'a> {
     #[cfg_attr(not(test), allow(dead_code))]
-    pub fn begin_effects(&self) -> EffectTransaction<'a> {
-        EffectTransaction {
+    pub fn begin_mutations(&self) -> MutationTransaction<'a> {
+        MutationTransaction {
             old: self.clone(),
             writes: BTreeMap::new(),
         }
@@ -87,7 +87,7 @@ impl<'a> Default for State<'a> {
     }
 }
 
-impl<'a> EffectTransaction<'a> {
+impl<'a> MutationTransaction<'a> {
     pub fn read(&self, cell: CellId) -> &Value<'a> {
         match self.writes.get(&cell) {
             Some(value) => value,
@@ -385,19 +385,19 @@ mod tests {
                 state = render.commit();
                 (values, cells, elements) = (next_values, next_cells, next_elements);
 
-                let mut effects = state.begin_effects();
+                let mut mutations = state.begin_mutations();
                 for (path, cell) in &cells {
                     if u.arbitrary()? {
                         let value = u.int_in_range(10..=19)?;
-                        effects.write(*cell, Value::Int(value));
+                        mutations.write(*cell, Value::Int(value));
                         values.insert(path.clone(), value);
                     }
                 }
                 for (path, cell) in &cells {
                     let value = values[path];
-                    assert!(matches!(effects.read(*cell), Value::Int(read) if *read == value));
+                    assert!(matches!(mutations.read(*cell), Value::Int(read) if *read == value));
                 }
-                state = effects.commit();
+                state = mutations.commit();
             }
             Ok(())
         });

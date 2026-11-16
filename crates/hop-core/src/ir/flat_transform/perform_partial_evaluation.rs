@@ -32,7 +32,7 @@ use crate::symbols::field_name::FieldName;
 ///   name binds.
 /// - A string concat takes the parts of a nested concat as its own, drops
 ///   empty constants and merges adjacent constants. An html concat or an
-///   effect concat takes the parts of a nested concat as its own, so an
+///   mutation concat takes the parts of a nested concat as its own, so an
 ///   empty part goes. A concat of one part is that part.
 /// - An html concat is bound just before each reader that is not a concat,
 ///   not where it stands. A path reads Html at most once, so a path that
@@ -451,8 +451,8 @@ impl<'a> Evaluator<'a> {
             op @ (FlatPureOp::Call(..)
             | FlatPureOp::CellWrite(..)
             | FlatPureOp::CellRead(_)
-            | FlatPureOp::EffectPure(_)
-            | FlatPureOp::EffectBind(..)) => {
+            | FlatPureOp::MutationPure(_)
+            | FlatPureOp::MutationBind(..)) => {
                 out.push(IrBinding { binder, op });
             }
         }

@@ -2412,7 +2412,7 @@ mod tests {
 
     #[test]
     fn accepts_record_with_binding_and_nested_wildcard_record() {
-        // User has a binding for `name` but `address` is an effectively-wildcard record
+        // User has a binding for `name` but `address` is a mutationively-wildcard record
         accept(
             TypeRegistryBuilder::new()
                 .record("Address", [("street", Ty::String), ("city", Ty::String)])
@@ -2436,7 +2436,7 @@ mod tests {
 
     #[test]
     fn accepts_enum_variant_with_binding_and_nested_wildcard_record() {
-        // Outcome::Success has a binding for `value` but `metadata` is an effectively-wildcard record
+        // Outcome::Success has a binding for `value` but `metadata` is a mutationively-wildcard record
         accept(
             TypeRegistryBuilder::new()
                 .record("Metadata", [("created", Ty::Int), ("updated", Ty::Int)])

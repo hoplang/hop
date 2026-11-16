@@ -419,7 +419,7 @@ fn f() -> Html {
 effects: cell methods, and_then with a wildcard parameter, pure
 ================================================================================
 
-fn f() -> Effect[Tuple[]] {
+fn f() -> Mutation[Tuple[]] {
   count.set(count + 1).and_then(fn(_) { count.get() }).and_then(fn(n: Int) { pure!(()) })
 }
 

@@ -135,7 +135,7 @@ impl IrTypeDeclarations {
 fn ir_type(ty: Ty, records: &[String], enums: &[String]) -> IrType {
     match ty {
         Ty::Html => IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
-        Ty::Effect(payload) => IrType::Data(IrFunctionDataType::Effect(data_type(
+        Ty::Mutation(payload) => IrType::Data(IrFunctionDataType::Mutation(data_type(
             *payload, records, enums,
         ))),
         Ty::Cell(payload) => IrType::Data(IrFunctionDataType::Cell(data_type(
@@ -162,7 +162,7 @@ fn data_type(ty: Ty, records: &[String], enums: &[String]) -> IrDataType {
         Ty::Bool => IrDataType::Bool,
         Ty::Float => IrDataType::Float,
         Ty::Html => panic!("Html is not a data type"),
-        Ty::Effect(_) => panic!("Effect is not a data type"),
+        Ty::Mutation(_) => panic!("Mutation is not a data type"),
         Ty::Cell(_) => panic!("a cell is not a data type"),
         Ty::Function { .. } => panic!("a function type is not a data type"),
         Ty::Array(ty) => IrDataType::Array(element(ty)),

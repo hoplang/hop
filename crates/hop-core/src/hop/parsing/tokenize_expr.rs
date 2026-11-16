@@ -151,7 +151,7 @@ pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
                 "Array" => LangToken::TypeArray,
                 "Bool" => LangToken::TypeBool,
                 "Float" => LangToken::TypeFloat,
-                "Effect" => LangToken::TypeEffect,
+                "Mutation" => LangToken::TypeMutation,
                 "Html" => LangToken::TypeHtml,
                 "Int" => LangToken::TypeInt,
                 "Option" => LangToken::TypeOption,

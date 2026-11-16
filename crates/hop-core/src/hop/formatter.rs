@@ -884,8 +884,8 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
         ParsedType::Int { .. } => arena.text("Int"),
         ParsedType::Float { .. } => arena.text("Float"),
         ParsedType::Html { .. } => arena.text("Html"),
-        ParsedType::Effect { element, .. } => arena
-            .text("Effect[")
+        ParsedType::Mutation { element, .. } => arena
+            .text("Mutation[")
             .append(format_type(arena, element))
             .append(arena.text("]")),
         ParsedType::Option { element, .. } => arena
@@ -6037,13 +6037,13 @@ mod tests {
     }
 
     #[test]
-    fn should_format_cells_clicks_keys_and_effects() {
+    fn should_format_cells_clicks_keys_and_mutations() {
         check(
             indoc! {r#"
                 fn Counter(ids: Array[Int]) -> Html {
                   let   mut count:Int = 0;
                   let mut on = false;
-                  <ul on:click={fn()->Effect[Tuple[]]{count.set(count+1).and_then(fn(_:Tuple[]){on.set(!on)})}}>
+                  <ul on:click={fn()->Mutation[Tuple[]]{count.set(count+1).and_then(fn(_:Tuple[]){on.set(!on)})}}>
                     {for id in ids key id*2 {
                       <li>{id.to_string()}</li>
                     }}
@@ -6057,7 +6057,7 @@ mod tests {
                 fn Counter(ids: Array[Int]) -> Html {
                   let mut count: Int = 0;
                   let mut on = false;
-                  <ul on:click={fn() -> Effect[Tuple[]] {
+                  <ul on:click={fn() -> Mutation[Tuple[]] {
                     count.set(count + 1).and_then(fn(_: Tuple[]) {
                       on.set(!on)
                     })
@@ -6079,15 +6079,15 @@ mod tests {
     }
 
     #[test]
-    fn should_format_effect_types_and_wildcard_parameters() {
+    fn should_format_mutation_types_and_wildcard_parameters() {
         check(
             indoc! {r#"
-                fn load(n:Int)->Effect[Option[Int]]{
+                fn load(n:Int)->Mutation[Option[Int]]{
                   pure!(Some(n)).and_then(fn(_:Option[Int]){pure!(None)})
                 }
             "#},
             expect![[r#"
-                fn load(n: Int) -> Effect[Option[Int]] {
+                fn load(n: Int) -> Mutation[Option[Int]] {
                   pure!(Some(n)).and_then(fn(_: Option[Int]) {
                     pure!(None)
                   })
@@ -6097,7 +6097,7 @@ mod tests {
     }
 
     #[test]
-    fn should_format_a_chain_of_effects() {
+    fn should_format_a_chain_of_mutations() {
         check(
             indoc! {r#"
                 fn Counter() -> Html {
@@ -6131,7 +6131,7 @@ mod tests {
     }
 
     #[test]
-    fn should_format_nested_effects() {
+    fn should_format_nested_mutations() {
         check(
             indoc! {r#"
                 fn Counter() -> Html {

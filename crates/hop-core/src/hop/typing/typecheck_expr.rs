@@ -544,7 +544,7 @@ pub fn typecheck_expr(
                 }
                 let elem_type = match first_type? {
                     Type::Data(elem_type) => elem_type,
-                    typ @ (Type::Html(_) | Type::Effect(_) | Type::Function(_)) => {
+                    typ @ (Type::Html(_) | Type::Mutation(_) | Type::Function(_)) => {
                         errors.push(TypeError::new(
                             TypeErrorKind::NotData { typ },
                             elements[0].range().clone(),
@@ -592,7 +592,7 @@ pub fn typecheck_expr(
             for (typed_element, element) in typed_elements.iter().zip(elements) {
                 match typed_element.typ() {
                     Type::Data(element_type) => element_types.push(element_type),
-                    typ @ (Type::Html(_) | Type::Effect(_) | Type::Function(_)) => errors.push(
+                    typ @ (Type::Html(_) | Type::Mutation(_) | Type::Function(_)) => errors.push(
                         TypeError::new(TypeErrorKind::NotData { typ }, element.range().clone()),
                     ),
                 }
@@ -985,7 +985,7 @@ pub fn typecheck_expr(
                 )?;
                 let inner_type = match typed_inner.typ() {
                     Type::Data(inner_type) => inner_type,
-                    typ @ (Type::Html(_) | Type::Effect(_) | Type::Function(_)) => {
+                    typ @ (Type::Html(_) | Type::Mutation(_) | Type::Function(_)) => {
                         errors.push(TypeError::new(
                             TypeErrorKind::NotData { typ },
                             inner_expr.range().clone(),
@@ -1456,7 +1456,7 @@ pub fn typecheck_expr(
                     });
                     return Some(TypedExpr::CellRead {
                         cell,
-                        typ: Type::Effect(data),
+                        typ: Type::Mutation(data),
                     });
                 }
                 annotations.push(HoverAnnotation::CellSet {
@@ -1496,14 +1496,14 @@ pub fn typecheck_expr(
                     (1, Some(Type::Data(inner.as_ref().clone())))
                 }
                 (Type::Data(DataType::Array(_)), "get") => (1, Some(Type::INT)),
-                (Type::Effect(_), "and_then") => (1, None),
+                (Type::Mutation(_), "and_then") => (1, None),
                 _ => (0, None),
             };
             let mut typed_args = Vec::with_capacity(args.len());
             for arg in args {
                 let typed = match (&receiver_type, method.as_str(), arg) {
                     (
-                        Type::Effect(payload),
+                        Type::Mutation(payload),
                         "and_then",
                         ParsedExpr::Lambda {
                             params,
@@ -1678,7 +1678,7 @@ pub fn typecheck_expr(
                         typed,
                     )
                 }
-                (Type::Effect(payload), "and_then") => {
+                (Type::Mutation(payload), "and_then") => {
                     let typed = match (args.as_slice(), typed_args.pop().flatten()) {
                         ([continuation], Some(typed_continuation)) => {
                             match typed_continuation.typ() {
@@ -1686,10 +1686,10 @@ pub fn typecheck_expr(
                                     if function.parameters.len() == 1
                                         && function.parameters[0]
                                             == Type::Data(payload.clone())
-                                        && matches!(*function.result, Type::Effect(_)) =>
+                                        && matches!(*function.result, Type::Mutation(_)) =>
                                 {
-                                    Some(TypedExpr::EffectBind {
-                                        effect: Box::new(typed_receiver),
+                                    Some(TypedExpr::MutationBind {
+                                        mutation: Box::new(typed_receiver),
                                         continuation: Box::new(typed_continuation),
                                         typ: *function.result,
                                     })
@@ -1709,7 +1709,7 @@ pub fn typecheck_expr(
                         _ => None,
                     };
                     (
-                        HoverAnnotation::EffectAndThen {
+                        HoverAnnotation::MutationAndThen {
                             range: method_range.clone(),
                         },
                         typed,

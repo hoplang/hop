@@ -159,7 +159,7 @@ fn write(out: &mut Vec<WriterStmt>, content: &str) {
 
 /// The Writer type of a parameter, where Html is a closure without
 /// parameters that writes it, in the signatures of closures as well, an
-/// effect is the unit tuple and a cell is its value.
+/// mutation is the unit tuple and a cell is its value.
 fn parameter_type(typ: &IrType) -> IrType {
     match typ {
         IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => IrType::html_function([]),
@@ -173,7 +173,7 @@ fn parameter_type(typ: &IrType) -> IrType {
 fn value_type(typ: &IrFunctionDataType) -> IrFunctionDataType {
     match typ {
         IrFunctionDataType::Data(_) => typ.clone(),
-        IrFunctionDataType::Effect(_) => IrFunctionDataType::Data(IrDataType::UNIT),
+        IrFunctionDataType::Mutation(_) => IrFunctionDataType::Data(IrDataType::UNIT),
         IrFunctionDataType::Cell(data) => IrFunctionDataType::Data(data.clone()),
         IrFunctionDataType::Function(signature) => IrFunctionDataType::Function(IrSignature {
             parameters: signature.parameters.iter().map(value_type).collect(),
@@ -185,7 +185,7 @@ fn value_type(typ: &IrFunctionDataType) -> IrFunctionDataType {
 fn result_type(typ: &IrResultType) -> IrDataType {
     match typ {
         IrResultType::Data(data) => data.clone(),
-        IrResultType::Effect(_) => IrDataType::UNIT,
+        IrResultType::Mutation(_) => IrDataType::UNIT,
     }
 }
 
@@ -254,13 +254,13 @@ impl<'a> Lowerer<'a> {
     }
 
     // An Html parameter takes a closure, and the type of a parameter of data
-    // is what a match on it needs. An effect is the unit tuple.
+    // is what a match on it needs. A mutation is the unit tuple.
     fn analyze_parameter(&mut self, binder: &IrBinder<IrType>) {
         match &binder.typ {
             IrType::Data(IrFunctionDataType::Data(typ)) => {
                 self.binder_types.insert(binder.var, typ.clone());
             }
-            IrType::Data(IrFunctionDataType::Effect(_)) => {
+            IrType::Data(IrFunctionDataType::Mutation(_)) => {
                 self.binder_types.insert(binder.var, IrDataType::UNIT);
             }
             IrType::Data(IrFunctionDataType::Cell(typ)) => {
@@ -327,12 +327,12 @@ impl<'a> Lowerer<'a> {
                     self.analyze_pure_block(&arm.body);
                 }
             }
-            // Rendered on the empty state, an effect performs nothing, so
+            // Rendered on the empty state, a mutation performs nothing, so
             // it reads nothing.
             FlatPureOp::CellWrite(..)
             | FlatPureOp::CellRead(_)
-            | FlatPureOp::EffectPure(_)
-            | FlatPureOp::EffectBind(..) => {}
+            | FlatPureOp::MutationPure(_)
+            | FlatPureOp::MutationBind(..) => {}
             FlatPureOp::Lambda(lambda) => {
                 for param in &lambda.parameters {
                     self.analyze_parameter(&IrBinder {
@@ -602,8 +602,8 @@ impl<'a> Lowerer<'a> {
             }
             FlatPureOp::CellWrite(..)
             | FlatPureOp::CellRead(_)
-            | FlatPureOp::EffectPure(_)
-            | FlatPureOp::EffectBind(..) => WriterOp::Data(IrDataOp::Tuple(Vec::new())),
+            | FlatPureOp::MutationPure(_)
+            | FlatPureOp::MutationBind(..) => WriterOp::Data(IrDataOp::Tuple(Vec::new())),
             FlatPureOp::Call(function, args) => WriterOp::Call(
                 function.clone(),
                 args.iter().map(|arg| self.name(*arg)).collect(),
@@ -1350,7 +1350,7 @@ mod tests {
                     "Buttons",
                     [
                         ("n", Ty::Int),
-                        ("on_press", Ty::function([], Ty::effect(Ty::tuple([])))),
+                        ("on_press", Ty::function([], Ty::mutation(Ty::tuple([])))),
                     ],
                     Ty::Html,
                     |t| {
@@ -1385,7 +1385,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- flat --
-                fn Buttons@f0(n@v0: Int, on_press@v1: () -> Effect[Tuple[]]) -> Html {
+                fn Buttons@f0(n@v0: Int, on_press@v1: () -> Mutation[Tuple[]]) -> Html {
                   let v2: Int = 0
                   let v3: Bool = lt_eq[Int](v0, v2)
                   let v12: Html = match v3 {
@@ -1412,10 +1412,10 @@ mod tests {
                     v13
                   }
                   let v15: Int = track(v14)
-                  let v19: () -> Effect[Tuple[]] = fn() {
+                  let v19: () -> Mutation[Tuple[]] = fn() {
                     let v16: Int = 1
                     let v17: Int = add[Int](v15, v16)
-                    let v18: Effect[Tuple[]] = v14 := v17
+                    let v18: Mutation[Tuple[]] = v14 := v17
                     v18
                   }
                   let v20: Int = 2
@@ -2747,10 +2747,10 @@ mod tests {
                     v9
                   }
                   let v12: Int = track(v10)
-                  let v16: () -> Effect[Tuple[]] = fn() {
+                  let v16: () -> Mutation[Tuple[]] = fn() {
                     let v13: Int = 1
                     let v14: Int = add[Int](v12, v13)
-                    let v15: Effect[Tuple[]] = v10 := v14
+                    let v15: Mutation[Tuple[]] = v10 := v14
                     v15
                   }
                   let v17: String = v12.to_string()

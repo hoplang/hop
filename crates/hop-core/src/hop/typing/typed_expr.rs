@@ -233,13 +233,13 @@ pub enum TypedExpr {
         typ: Type,
     },
 
-    EffectPure {
+    MutationPure {
         value: Box<Self>,
         typ: Type,
     },
 
-    EffectBind {
-        effect: Box<Self>,
+    MutationBind {
+        mutation: Box<Self>,
         continuation: Box<Self>,
         typ: Type,
     },
@@ -326,7 +326,7 @@ pub enum TypedExpr {
         element: HtmlElementKind,
         attrs: TypedAttrs,
         children: Box<Self>,
-        /// The handler of a click on the element, of type `fn() -> Effect[Tuple[]]`.
+        /// The handler of a click on the element, of type `fn() -> Mutation[Tuple[]]`.
         on_click: Option<Box<Self>>,
     },
 
@@ -419,8 +419,8 @@ impl TypedExpr {
             | TypedExpr::Lambda { typ, .. }
             | TypedExpr::Apply { typ, .. }
             | TypedExpr::CellRead { typ, .. }
-            | TypedExpr::EffectPure { typ, .. }
-            | TypedExpr::EffectBind { typ, .. }
+            | TypedExpr::MutationPure { typ, .. }
+            | TypedExpr::MutationBind { typ, .. }
             | TypedExpr::Call { typ, .. } => typ.clone(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Type::FLOAT,
@@ -459,7 +459,7 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Type::INT,
 
-            TypedExpr::CellWrite { .. } => Type::UNIT_EFFECT,
+            TypedExpr::CellWrite { .. } => Type::UNIT_MUTATION,
 
             TypedExpr::HtmlConcat { .. }
             | TypedExpr::HtmlText { .. }
@@ -592,12 +592,12 @@ impl Display for TypedExpr {
             }
             TypedExpr::CellWrite { cell, value } => write!(f, "write({}, {value})", cell.as_str()),
             TypedExpr::CellRead { cell, .. } => write!(f, "{}.get()", cell.as_str()),
-            TypedExpr::EffectPure { value, .. } => write!(f, "pure!({value})"),
-            TypedExpr::EffectBind {
-                effect,
+            TypedExpr::MutationPure { value, .. } => write!(f, "pure!({value})"),
+            TypedExpr::MutationBind {
+                mutation,
                 continuation,
                 ..
-            } => write!(f, "{effect}.and_then({continuation})"),
+            } => write!(f, "{mutation}.and_then({continuation})"),
             TypedExpr::ArrayLength { array } => write!(f, "{array}.len()"),
             TypedExpr::ArrayIsEmpty { array } => write!(f, "{array}.is_empty()"),
             TypedExpr::ArrayGet { array, index, .. } => write!(f, "{array}.get({index})"),

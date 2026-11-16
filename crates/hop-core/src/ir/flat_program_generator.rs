@@ -351,7 +351,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
                 let typ = if g.index(4) == 0 {
                     g.random_closure_type(html, 1)
                 } else if g.index(8) == 0 {
-                    IrType::EFFECT
+                    IrType::MUTATION
                 } else if g.index(8) == 0 {
                     IrType::cell(g.random_data_type(1))
                 } else {
@@ -620,7 +620,7 @@ impl FlatGenerator<'_, '_> {
                 if depth > 0 && self.index(4) == 0 {
                     IrFunctionDataType::Function(self.random_value_signature(depth - 1, None, true))
                 } else if self.index(8) == 0 {
-                    IrFunctionDataType::Effect(IrDataType::UNIT)
+                    IrFunctionDataType::Mutation(IrDataType::UNIT)
                 } else if cells && self.index(8) == 0 {
                     IrFunctionDataType::Cell(self.random_data_type(1))
                 } else {
@@ -634,7 +634,7 @@ impl FlatGenerator<'_, '_> {
 
     fn random_result_type(&mut self) -> IrResultType {
         if self.index(4) == 0 {
-            IrResultType::Effect(IrDataType::UNIT)
+            IrResultType::Mutation(IrDataType::UNIT)
         } else {
             IrResultType::Data(self.random_data_type(1))
         }
@@ -818,7 +818,7 @@ impl FlatGenerator<'_, '_> {
                 self.data_block(b, scope, target, depth)
             }
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => self.html_block(b, scope, depth),
-            IrType::Data(IrFunctionDataType::Effect(_)) => self.effect_block(b, scope, depth),
+            IrType::Data(IrFunctionDataType::Mutation(_)) => self.mutation_block(b, scope, depth),
             IrType::Data(IrFunctionDataType::Cell(_)) => unreachable!("a block produces no cell"),
             IrType::Data(IrFunctionDataType::Function(_))
             | IrType::Html(IrFunctionHtmlType::Function(_)) => {
@@ -842,7 +842,9 @@ impl FlatGenerator<'_, '_> {
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 self.html_op(b, scope, depth, nesting)
             }
-            IrType::Data(IrFunctionDataType::Effect(_)) => self.effect_op(b, scope, depth, nesting),
+            IrType::Data(IrFunctionDataType::Mutation(_)) => {
+                self.mutation_op(b, scope, depth, nesting)
+            }
             IrType::Data(IrFunctionDataType::Cell(target)) => {
                 self.cell_op(b, scope, target, depth, nesting)
             }
@@ -910,7 +912,7 @@ impl FlatGenerator<'_, '_> {
                     IrResultType::Data(result) => {
                         self.data_op(b, &mut inner, result, depth, nesting)
                     }
-                    IrResultType::Effect(_) => self.effect_op(b, &mut inner, depth, nesting),
+                    IrResultType::Mutation(_) => self.mutation_op(b, &mut inner, depth, nesting),
                 },
                 _ => self.html_op(b, &mut inner, depth, nesting),
             }
@@ -933,8 +935,8 @@ impl FlatGenerator<'_, '_> {
             ) => signature.result == IrResultType::Data(result.clone()),
             (
                 IrType::Data(IrFunctionDataType::Function(signature)),
-                IrType::Data(IrFunctionDataType::Effect(payload)),
-            ) => signature.result == IrResultType::Effect(payload.clone()),
+                IrType::Data(IrFunctionDataType::Mutation(payload)),
+            ) => signature.result == IrResultType::Mutation(payload.clone()),
             (
                 IrType::Html(IrFunctionHtmlType::Function(_)),
                 IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
@@ -960,10 +962,10 @@ impl FlatGenerator<'_, '_> {
                         scope.html,
                     )))
                 }
-                IrType::Data(IrFunctionDataType::Effect(payload)) => {
+                IrType::Data(IrFunctionDataType::Mutation(payload)) => {
                     IrType::Data(IrFunctionDataType::Function(self.random_value_signature(
                         1,
-                        Some(IrResultType::Effect(payload.clone())),
+                        Some(IrResultType::Mutation(payload.clone())),
                         scope.html,
                     )))
                 }
@@ -1035,7 +1037,7 @@ impl FlatGenerator<'_, '_> {
         if !self.chance(CLICK_ODDS) {
             return b.element(tag, attributes, children);
         }
-        let handler_type = IrType::data_function([], IrType::EFFECT);
+        let handler_type = IrType::data_function([], IrType::MUTATION);
         let handler = self.op_of_type(b, scope, &handler_type, depth, nesting);
         b.element_on_click(tag, attributes, handler, children)
     }
@@ -1734,19 +1736,19 @@ impl FlatGenerator<'_, '_> {
         scope.push(b.track(cell))
     }
 
-    fn effect_block(
+    fn mutation_block(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
         depth: usize,
     ) -> ValueId {
         scope.html = false;
-        self.effect_op(b, scope, depth, MAX_EXPRESSION_DEPTH)
+        self.mutation_op(b, scope, depth, MAX_EXPRESSION_DEPTH)
     }
 
-    fn effect_leaf(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope) -> ValueId {
+    fn mutation_leaf(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope) -> ValueId {
         if self.coin()
-            && let Some(name) = self.name_in_scope(b, scope, &IrType::EFFECT)
+            && let Some(name) = self.name_in_scope(b, scope, &IrType::MUTATION)
         {
             return name;
         }
@@ -1757,12 +1759,12 @@ impl FlatGenerator<'_, '_> {
             let value = self.literal(b, scope, &typ, MAX_LITERAL_DEPTH);
             b.cell_write(cell, value)
         } else {
-            b.effect_pure(b.tuple([]))
+            b.mutation_pure(b.tuple([]))
         };
         scope.push(leaf)
     }
 
-    fn effect_op(
+    fn mutation_op(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
@@ -1770,7 +1772,7 @@ impl FlatGenerator<'_, '_> {
         nesting: usize,
     ) -> ValueId {
         if nesting == 0 || self.index(3) == 0 {
-            return self.effect_leaf(b, scope);
+            return self.mutation_leaf(b, scope);
         }
         enum P {
             CellWrite,
@@ -1785,7 +1787,7 @@ impl FlatGenerator<'_, '_> {
         if !cells.is_empty() {
             productions.extend([P::CellWrite, P::CellRead]);
         }
-        if !Self::callees(b, scope, &IrType::EFFECT).is_empty() {
+        if !Self::callees(b, scope, &IrType::MUTATION).is_empty() {
             productions.push(P::Call);
         }
         if depth > 0 {
@@ -1803,25 +1805,25 @@ impl FlatGenerator<'_, '_> {
                 let typ = subst[&0].clone();
                 let read = b.cell_read(cell);
                 let parameter = IrType::Data(IrFunctionDataType::Data(typ));
-                self.effect_bind(b, scope, read, parameter, depth, nesting)
+                self.mutation_bind(b, scope, read, parameter, depth, nesting)
             }
             P::Bind => {
-                let first = self.effect_op(b, scope, depth, nesting - 1);
+                let first = self.mutation_op(b, scope, depth, nesting - 1);
                 let unit = IrType::Data(IrFunctionDataType::Data(IrDataType::UNIT));
-                self.effect_bind(b, scope, first, unit, depth, nesting)
+                self.mutation_bind(b, scope, first, unit, depth, nesting)
             }
-            P::Call => self.call(b, scope, &IrType::EFFECT, depth, nesting),
-            P::Match => self.match_(b, scope, &IrType::EFFECT, depth, nesting),
-            P::Apply => self.apply(b, scope, &IrType::EFFECT, depth, nesting),
+            P::Call => self.call(b, scope, &IrType::MUTATION, depth, nesting),
+            P::Match => self.match_(b, scope, &IrType::MUTATION, depth, nesting),
+            P::Apply => self.apply(b, scope, &IrType::MUTATION, depth, nesting),
         };
         scope.push(value)
     }
 
-    fn effect_bind(
+    fn mutation_bind(
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        effect: ValueId,
+        mutation: ValueId,
         parameter: IrType,
         depth: usize,
         nesting: usize,
@@ -1829,9 +1831,9 @@ impl FlatGenerator<'_, '_> {
         let mut inner = scope.inner(&b.value_types(), false);
         let continuation = b.lambda([parameter], |b, params| {
             inner.push(params[0]);
-            self.effect_op(b, &mut inner, depth, nesting - 1)
+            self.mutation_op(b, &mut inner, depth, nesting - 1)
         });
-        b.effect_bind(effect, continuation)
+        b.mutation_bind(mutation, continuation)
     }
 
     fn call(
@@ -2008,13 +2010,13 @@ mod tests {
                     format!("Html{kind}")
                 }
                 Binding::Pure(binding)
-                    if matches!(binding.binder.typ, IrFunctionDataType::Effect(_))
+                    if matches!(binding.binder.typ, IrFunctionDataType::Mutation(_))
                         && matches!(
                             binding.op,
                             FlatPureOp::Call(..) | FlatPureOp::Match(_) | FlatPureOp::Apply(..)
                         ) =>
                 {
-                    format!("Effect{kind}")
+                    format!("Mutation{kind}")
                 }
                 _ => kind.to_string(),
             }
@@ -2499,11 +2501,6 @@ mod tests {
             Cell                       104.1    85.0    92.3    45.8
             CellRead                    20.8    75.0    86.1    47.9
             CellWrite                   50.4    87.0    88.0    57.4
-            EffectApply                 16.8    84.0    93.5    69.4
-            EffectBind                 589.9    86.0    94.5    29.9
-            EffectCall                   9.8    12.0    81.4    50.7
-            EffectMatch                 17.0    81.0    93.6    86.2
-            EffectPure                 344.1    91.0    94.9     0.0
             Enum                       184.5    73.0    84.3    23.5
             Equals                       5.1    68.0    86.2    61.9
             FieldAccess                 11.6    49.0    81.0    69.3
@@ -2523,6 +2520,11 @@ mod tests {
             LessThan                     4.8    67.0    84.1    59.4
             LessThanOrEqual              5.2    73.0    85.2    57.9
             Match                      256.3    93.0    87.8    79.5
+            MutationApply               16.8    84.0    93.5    69.4
+            MutationBind               589.9    86.0    94.5    29.9
+            MutationCall                 9.8    12.0    81.4    50.7
+            MutationMatch               17.0    81.0    93.6    86.2
+            MutationPure               344.1    91.0    94.9     0.0
             NumericAdd                 344.6    90.0    86.9    64.8
             NumericMultiply            340.3    90.0    86.5    64.3
             NumericNegation            348.2    90.0    86.5    51.1
@@ -2597,7 +2599,7 @@ mod tests {
                   let v11: Html = concat()
                   v11
                 }
-                fn C1@f1(p0@v6: Html, p1@v7: Effect[Tuple[]]) -> Html {
+                fn C1@f1(p0@v6: Html, p1@v7: Mutation[Tuple[]]) -> Html {
                   let v12: Int = -2147483648
                   let v13: Cell[Int] = cell {
                     v12
@@ -2640,9 +2642,9 @@ mod tests {
                 }
                 entrypoint V1@e1() -> Html {
                   let v3: Html = concat()
-                  let v6: () -> Effect[Tuple[]] = fn() {
+                  let v6: () -> Mutation[Tuple[]] = fn() {
                     let v4: Tuple[] = ()
-                    let v5: Effect[Tuple[]] = pure(v4)
+                    let v5: Mutation[Tuple[]] = pure(v4)
                     v5
                   }
                   let v7: Html = element("section", {}, v3) on_click v6

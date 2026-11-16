@@ -323,7 +323,7 @@ fn a_click_runs_the_handlers_of_the_elements_around_it_innermost_first() {
 fn a_handler_reaches_an_element_through_a_parameter() {
     check(
         indoc! {r#"
-            fn Button(on_press: fn() -> Effect[Tuple[]], children: Html) -> Html {
+            fn Button(on_press: fn() -> Mutation[Tuple[]], children: Html) -> Html {
               <button on:click={on_press}>{children}</button>
             }
             page Test {
@@ -489,7 +489,7 @@ fn a_click_fails_and_changes_nothing_when_a_handler_around_the_element_fails() {
 }
 
 #[test]
-fn a_handler_whose_effect_is_empty_writes_nothing() {
+fn a_handler_whose_mutation_is_empty_writes_nothing() {
     check(
         indoc! {r#"
             page Test {
@@ -941,10 +941,10 @@ fn each_level_of_a_recursive_call_has_cells_of_its_own() {
 }
 
 #[test]
-fn a_handler_performs_the_effect_a_function_gives() {
+fn a_handler_performs_the_mutation_a_function_gives() {
     check(
         indoc! {r#"
-            fn both(first: fn() -> Effect[Tuple[]], second: fn() -> Effect[Tuple[]]) -> Effect[Tuple[]] {
+            fn both(first: fn() -> Mutation[Tuple[]], second: fn() -> Mutation[Tuple[]]) -> Mutation[Tuple[]] {
               first().and_then(fn(_) { second() })
             }
             page Test {
@@ -970,10 +970,10 @@ fn a_handler_performs_the_effect_a_function_gives() {
 }
 
 #[test]
-fn a_handler_performs_an_effect_passed_as_a_parameter() {
+fn a_handler_performs_an_mutation_passed_as_a_parameter() {
     check(
         indoc! {r#"
-            fn Button(press: Effect[Tuple[]], children: Html) -> Html {
+            fn Button(press: Mutation[Tuple[]], children: Html) -> Html {
               <button on:click={fn() { press }}>{children}</button>
             }
             page Test {
@@ -1044,7 +1044,7 @@ fn a_handler_updates_a_field_of_a_record_in_a_cell_and_keeps_the_others() {
 }
 
 #[test]
-fn a_continuation_reads_the_cell_as_the_effect_before_it_wrote_it() {
+fn a_continuation_reads_the_cell_as_the_mutation_before_it_wrote_it() {
     check(
         indoc! {r#"
             page Test {
@@ -1071,7 +1071,7 @@ fn a_continuation_reads_the_cell_as_the_effect_before_it_wrote_it() {
 }
 
 #[test]
-fn a_handler_gives_the_empty_effect_with_pure() {
+fn a_handler_gives_the_empty_mutation_with_pure() {
     check(
         indoc! {r#"
             page Test {
@@ -1104,7 +1104,7 @@ fn a_handler_gives_the_empty_effect_with_pure() {
 fn a_continuation_takes_the_value_a_function_gives_with_pure() {
     check(
         indoc! {r#"
-            fn bump(n: Int) -> Effect[Int] {
+            fn bump(n: Int) -> Mutation[Int] {
               pure!(n + 1)
             }
             page Test {
@@ -1155,7 +1155,7 @@ fn a_click_whose_continuation_fails_changes_nothing() {
 }
 
 #[test]
-fn a_continuation_takes_its_parameter_type_from_the_effect_before_it() {
+fn a_continuation_takes_its_parameter_type_from_the_mutation_before_it() {
     check(
         indoc! {r#"
             page Test {

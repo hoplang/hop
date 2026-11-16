@@ -594,10 +594,10 @@ mod tests {
                     v0
                   }
                   let v2: Int = track(v1)
-                  let v6: () -> Effect[Tuple[]] = fn() {
+                  let v6: () -> Mutation[Tuple[]] = fn() {
                     let v3: Int = 1
                     let v4: Int = add[Int](v2, v3)
-                    let v5: Effect[Tuple[]] = v1 := v4
+                    let v5: Mutation[Tuple[]] = v1 := v4
                     v5
                   }
                   let v7: String = v2.to_string()
@@ -619,10 +619,10 @@ mod tests {
                     v13
                   }
                   let v15: Int = track(v14)
-                  let v19: () -> Effect[Tuple[]] = fn() {
+                  let v19: () -> Mutation[Tuple[]] = fn() {
                     let v16: Int = 1
                     let v17: Int = add[Int](v15, v16)
-                    let v18: Effect[Tuple[]] = v14 := v17
+                    let v18: Mutation[Tuple[]] = v14 := v17
                     v18
                   }
                   let v20: String = v15.to_string()
@@ -633,10 +633,10 @@ mod tests {
                     v23
                   }
                   let v25: Int = track(v24)
-                  let v29: () -> Effect[Tuple[]] = fn() {
+                  let v29: () -> Mutation[Tuple[]] = fn() {
                     let v26: Int = 1
                     let v27: Int = add[Int](v25, v26)
-                    let v28: Effect[Tuple[]] = v24 := v27
+                    let v28: Mutation[Tuple[]] = v24 := v27
                     v28
                   }
                   let v30: String = v25.to_string()
@@ -650,20 +650,20 @@ mod tests {
     }
 
     #[test]
-    fn should_inline_a_function_that_gives_an_effect_into_a_handler() {
+    fn should_inline_a_function_that_gives_an_mutation_into_a_handler() {
         check(
             FlatProgramBuilder::new()
                 .function(
                     "both",
                     [
-                        ("first", Ty::effect(Ty::tuple([]))),
-                        ("second", Ty::effect(Ty::tuple([]))),
+                        ("first", Ty::mutation(Ty::tuple([]))),
+                        ("second", Ty::mutation(Ty::tuple([]))),
                     ],
-                    Ty::effect(Ty::tuple([])),
+                    Ty::mutation(Ty::tuple([])),
                     |t| {
                         let unit = IrType::Data(IrFunctionDataType::Data(IrDataType::UNIT));
                         let second = t.lambda([unit], |t, _| t.param("second"));
-                        t.effect_bind(t.param("first"), second)
+                        t.mutation_bind(t.param("first"), second)
                     },
                 )
                 .entrypoint("Test", [], |t| {
@@ -682,11 +682,11 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn both@f0(first@v0: Effect[Tuple[]], second@v1: Effect[Tuple[]]) -> Effect[Tuple[]] {
-                  let v3: (Tuple[]) -> Effect[Tuple[]] = fn(v2: Tuple[]) {
+                fn both@f0(first@v0: Mutation[Tuple[]], second@v1: Mutation[Tuple[]]) -> Mutation[Tuple[]] {
+                  let v3: (Tuple[]) -> Mutation[Tuple[]] = fn(v2: Tuple[]) {
                     v1
                   }
-                  let v4: Effect[Tuple[]] = bind(v0, v3)
+                  let v4: Mutation[Tuple[]] = bind(v0, v3)
                   v4
                 }
                 entrypoint Test@e0() -> Html {
@@ -700,13 +700,13 @@ mod tests {
                   }
                   let v9: Int = track(v6)
                   let v10: Bool = track(v8)
-                  let v17: () -> Effect[Tuple[]] = fn() {
+                  let v17: () -> Mutation[Tuple[]] = fn() {
                     let v11: Int = 1
                     let v12: Int = add[Int](v9, v11)
-                    let v13: Effect[Tuple[]] = v6 := v12
+                    let v13: Mutation[Tuple[]] = v6 := v12
                     let v14: Bool = not(v10)
-                    let v15: Effect[Tuple[]] = v8 := v14
-                    let v16: Effect[Tuple[]] = both@f0(v13, v15)
+                    let v15: Mutation[Tuple[]] = v8 := v14
+                    let v16: Mutation[Tuple[]] = both@f0(v13, v15)
                     v16
                   }
                   let v18: String = v9.to_string()
@@ -727,16 +727,16 @@ mod tests {
                   }
                   let v9: Int = track(v6)
                   let v10: Bool = track(v8)
-                  let v17: () -> Effect[Tuple[]] = fn() {
+                  let v17: () -> Mutation[Tuple[]] = fn() {
                     let v11: Int = 1
                     let v12: Int = add[Int](v9, v11)
-                    let v13: Effect[Tuple[]] = v6 := v12
+                    let v13: Mutation[Tuple[]] = v6 := v12
                     let v14: Bool = not(v10)
-                    let v15: Effect[Tuple[]] = v8 := v14
-                    let v22: (Tuple[]) -> Effect[Tuple[]] = fn(v21: Tuple[]) {
+                    let v15: Mutation[Tuple[]] = v8 := v14
+                    let v22: (Tuple[]) -> Mutation[Tuple[]] = fn(v21: Tuple[]) {
                       v15
                     }
-                    let v23: Effect[Tuple[]] = bind(v13, v22)
+                    let v23: Mutation[Tuple[]] = bind(v13, v22)
                     v23
                   }
                   let v18: String = v9.to_string()
@@ -914,10 +914,10 @@ mod tests {
                 -- before --
                 fn Bump@f0(count@v0: Cell[Int]) -> Html {
                   let v1: Int = track(v0)
-                  let v5: () -> Effect[Tuple[]] = fn() {
+                  let v5: () -> Mutation[Tuple[]] = fn() {
                     let v2: Int = 1
                     let v3: Int = add[Int](v1, v2)
-                    let v4: Effect[Tuple[]] = v0 := v3
+                    let v4: Mutation[Tuple[]] = v0 := v3
                     v4
                   }
                   let v6: String = v1.to_string()
@@ -941,10 +941,10 @@ mod tests {
                     v9
                   }
                   let v12: Int = track(v10)
-                  let v16: () -> Effect[Tuple[]] = fn() {
+                  let v16: () -> Mutation[Tuple[]] = fn() {
                     let v13: Int = 1
                     let v14: Int = add[Int](v12, v13)
-                    let v15: Effect[Tuple[]] = v10 := v14
+                    let v15: Mutation[Tuple[]] = v10 := v14
                     v15
                   }
                   let v17: String = v12.to_string()

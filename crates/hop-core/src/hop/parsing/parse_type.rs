@@ -28,7 +28,7 @@ pub fn parse_type(
     if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeHtml) {
         return Ok(ParsedType::Html { range: type_range });
     }
-    if let Some(type_effect) = next_if_eq(iter, comments, errors, LangToken::TypeEffect) {
+    if let Some(type_mutation) = next_if_eq(iter, comments, errors, LangToken::TypeMutation) {
         let left_bracket = expect_token(iter, comments, errors, &LangToken::LeftBracket)?;
         let (element, brackets) = parse_delimited(
             iter,
@@ -38,9 +38,9 @@ pub fn parse_type(
             &left_bracket,
             parse_type,
         )?;
-        return Ok(ParsedType::Effect {
+        return Ok(ParsedType::Mutation {
             element: Box::new(element),
-            range: type_effect.to(brackets),
+            range: type_mutation.to(brackets),
         });
     }
     if let Some(type_array) = next_if_eq(iter, comments, errors, LangToken::TypeArray) {

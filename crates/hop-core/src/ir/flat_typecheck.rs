@@ -52,7 +52,7 @@ pub enum FlatTypeError {
     /// A loop has a key that is neither an Int nor a String.
     KeyNotIntOrString,
     /// A click names a value that is not a closure from no parameters to
-    /// an Effect.
+    /// a Mutation.
     ClickNotHandler,
     /// A void element has children.
     VoidElementWithChildren,
@@ -134,7 +134,7 @@ struct Name<'a> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BoundType<'a> {
     Data(&'a IrDataType),
-    Effect(&'a IrDataType),
+    Mutation(&'a IrDataType),
     Cell(&'a IrDataType),
     DataFunction(&'a IrSignature<IrFunctionDataType, IrResultType>),
     Html,
@@ -152,7 +152,7 @@ impl<'a> BoundType<'a> {
     fn of_function_data(typ: &'a IrFunctionDataType) -> Self {
         match typ {
             IrFunctionDataType::Data(data) => BoundType::Data(data),
-            IrFunctionDataType::Effect(data) => BoundType::Effect(data),
+            IrFunctionDataType::Mutation(data) => BoundType::Mutation(data),
             IrFunctionDataType::Cell(data) => BoundType::Cell(data),
             IrFunctionDataType::Function(signature) => BoundType::DataFunction(signature),
         }
@@ -161,12 +161,12 @@ impl<'a> BoundType<'a> {
     fn of_result(typ: &'a IrResultType) -> Self {
         match typ {
             IrResultType::Data(data) => BoundType::Data(data),
-            IrResultType::Effect(data) => BoundType::Effect(data),
+            IrResultType::Mutation(data) => BoundType::Mutation(data),
         }
     }
 
     fn is_result(self) -> bool {
-        matches!(self, BoundType::Data(_) | BoundType::Effect(_))
+        matches!(self, BoundType::Data(_) | BoundType::Mutation(_))
     }
 
     fn of_function_html(typ: &'a IrFunctionHtmlType) -> Self {
@@ -229,7 +229,7 @@ impl<'a> Checker<'a> {
     fn data(&mut self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatTypeError> {
         Ok(match self.read(name)? {
             BoundType::Data(data) => Some(data),
-            BoundType::Effect(_)
+            BoundType::Mutation(_)
             | BoundType::Cell(_)
             | BoundType::DataFunction(_)
             | BoundType::Html
@@ -334,7 +334,7 @@ impl<'a> Checker<'a> {
                         return Err(FlatTypeError::ClickNotHandler);
                     };
                     if !signature.parameters.is_empty()
-                        || signature.result != IrResultType::Effect(IrDataType::UNIT)
+                        || signature.result != IrResultType::Mutation(IrDataType::UNIT)
                     {
                         return Err(FlatTypeError::ClickNotHandler);
                     }
@@ -462,25 +462,25 @@ impl<'a> Checker<'a> {
             }
             FlatPureOp::CellWrite(cell, value) => match self.read(*cell)? {
                 BoundType::Cell(data) => {
-                    declared == BoundType::Effect(&IrDataType::UNIT)
+                    declared == BoundType::Mutation(&IrDataType::UNIT)
                         && self.read(*value)? == BoundType::Data(data)
                 }
                 _ => false,
             },
             FlatPureOp::CellRead(cell) => match self.read(*cell)? {
-                BoundType::Cell(data) => declared == BoundType::Effect(data),
+                BoundType::Cell(data) => declared == BoundType::Mutation(data),
                 _ => false,
             },
-            FlatPureOp::EffectPure(value) => match self.read(*value)? {
-                BoundType::Data(data) => declared == BoundType::Effect(data),
+            FlatPureOp::MutationPure(value) => match self.read(*value)? {
+                BoundType::Data(data) => declared == BoundType::Mutation(data),
                 _ => false,
             },
-            FlatPureOp::EffectBind(effect, continuation) => {
-                match (self.read(*effect)?, self.read(*continuation)?) {
-                    (BoundType::Effect(payload), BoundType::DataFunction(signature)) => {
+            FlatPureOp::MutationBind(mutation, continuation) => {
+                match (self.read(*mutation)?, self.read(*continuation)?) {
+                    (BoundType::Mutation(payload), BoundType::DataFunction(signature)) => {
                         signature.parameters.len() == 1
                             && signature.parameters[0] == IrFunctionDataType::Data(payload.clone())
-                            && matches!(signature.result, IrResultType::Effect(_))
+                            && matches!(signature.result, IrResultType::Mutation(_))
                             && declared == BoundType::of_result(&signature.result)
                     }
                     _ => false,
@@ -1248,8 +1248,8 @@ mod tests {
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
                 let read = t.cell_read(count);
-                let continuation = t.lambda([IrType::STRING], |t, _| t.effect_pure(t.int(1)));
-                let handler = t.event_handler(|t| t.effect_bind(read, continuation));
+                let continuation = t.lambda([IrType::STRING], |t, _| t.mutation_pure(t.int(1)));
+                let handler = t.event_handler(|t| t.mutation_bind(read, continuation));
                 t.element_on_click("button", vec![], handler, Some(t.text("x")))
             })
             .build()
@@ -1269,7 +1269,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_click_whose_handler_is_an_effect() {
+    fn should_reject_a_click_whose_handler_is_an_mutation() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));

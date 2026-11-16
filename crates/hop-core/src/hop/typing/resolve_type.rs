@@ -20,8 +20,8 @@ pub fn resolve_type(
         ParsedType::Int { .. } => DataType::Int,
         ParsedType::Float { .. } => DataType::Float,
         ParsedType::Html { .. } => return Some(Type::HTML),
-        ParsedType::Effect { element, .. } => {
-            return Some(Type::Effect(resolve_data_type(
+        ParsedType::Mutation { element, .. } => {
+            return Some(Type::Mutation(resolve_data_type(
                 element,
                 names,
                 definition_links,
@@ -138,7 +138,7 @@ pub fn resolve_data_type(
 ) -> Option<DataType> {
     match resolve_type(parsed_type, names, definition_links, errors)? {
         Type::Data(data) => Some(data),
-        typ @ (Type::Html(_) | Type::Effect(_) | Type::Function(_)) => {
+        typ @ (Type::Html(_) | Type::Mutation(_) | Type::Function(_)) => {
             errors.push(TypeError::new(
                 TypeErrorKind::NotData { typ },
                 parsed_type.range().clone(),

@@ -301,7 +301,7 @@ pub enum TypeErrorKind {
     #[error("Method '{method}' is not available on type {typ}")]
     MethodNotAvailable { method: FieldName, typ: Type },
 
-    #[error("Expected a function from {payload} to an effect, got {found}")]
+    #[error("Expected a function from {payload} to a mutation, got {found}")]
     NotAContinuation { payload: Type, found: Type },
 
     #[error("pure! expects 1 argument, got {actual}")]

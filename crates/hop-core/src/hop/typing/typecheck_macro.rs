@@ -34,7 +34,7 @@ pub fn typecheck_pure(
         return None;
     };
     let expected = match expected_type {
-        Some(Type::Effect(payload)) => Some(Type::Data(payload.clone())),
+        Some(Type::Mutation(payload)) => Some(Type::Data(payload.clone())),
         _ => None,
     };
     let typed = typecheck_expr(
@@ -56,9 +56,9 @@ pub fn typecheck_pure(
         ));
         return None;
     };
-    Some(TypedExpr::EffectPure {
+    Some(TypedExpr::MutationPure {
         value: Box::new(typed),
-        typ: Type::Effect(payload),
+        typ: Type::Mutation(payload),
     })
 }
 

@@ -272,13 +272,13 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
         Named,
         Array,
         Option,
-        Effect,
+        Mutation,
         Tuple,
         Function,
     }
     let mut kinds = vec![P::Scalar, P::Named];
     if depth > 0 {
-        kinds.extend([P::Array, P::Option, P::Effect, P::Tuple, P::Function]);
+        kinds.extend([P::Array, P::Option, P::Mutation, P::Tuple, P::Function]);
     }
     match u.choose(&kinds)? {
         P::Scalar => out.push_str(u.choose(&["Int", "String", "Bool", "Float", "Html"])?),
@@ -293,8 +293,8 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
             type_(u, depth - 1, out)?;
             out.push(']');
         }
-        P::Effect => {
-            out.push_str("Effect[");
+        P::Mutation => {
+            out.push_str("Mutation[");
             type_(u, depth - 1, out)?;
             out.push(']');
         }
