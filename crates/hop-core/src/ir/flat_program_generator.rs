@@ -875,8 +875,10 @@ impl FlatGenerator<'_, '_> {
             );
             return cells[self.index(cells.len())];
         }
-        let initial = self.data_op(b, scope, target, depth, nesting.saturating_sub(1));
-        let cell = scope.push(b.cell(initial));
+        let mut initial = scope.inner(&b.value_types(), false);
+        let cell = scope.push(
+            b.cell(|b| self.data_op(b, &mut initial, target, depth, nesting.saturating_sub(1))),
+        );
         scope.push(b.track(cell));
         cell
     }
@@ -1407,8 +1409,9 @@ impl FlatGenerator<'_, '_> {
     // far fewer clicks switch an arm.
     fn toggle(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
         let subject_ty = self.branching_type(b.types());
-        let initial = self.literal(b, scope, &subject_ty, MAX_LITERAL_DEPTH);
-        let cell = scope.push(b.cell(initial));
+        let mut initial = scope.inner(&b.value_types(), false);
+        let cell =
+            scope.push(b.cell(|b| self.literal(b, &mut initial, &subject_ty, MAX_LITERAL_DEPTH)));
         let value = scope.push(b.track(cell));
         let mut inner = scope.inner(&b.value_types(), false);
         let handler = b.lambda(Vec::new(), |b, _| {
@@ -1727,7 +1730,7 @@ impl FlatGenerator<'_, '_> {
         if !scope.html || !self.chance(CELL_ODDS) {
             return value;
         }
-        let cell = scope.push(b.cell(value));
+        let cell = scope.push(b.cell(|_| value));
         scope.push(b.track(cell))
     }
 
@@ -1931,7 +1934,7 @@ mod tests {
     #[derive(Clone, Copy)]
     enum Binding<'a> {
         Pure(&'a IrBinding<IrFunctionDataType, FlatPureOp>),
-        Cell(&'a IrBinder<IrFunctionDataType>, ValueId),
+        Cell(&'a IrBinder<IrFunctionDataType>, &'a FlatPureBlock),
         Track(&'a IrBinder<IrDataType>, ValueId),
         Html(&'a IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
     }
@@ -1957,7 +1960,7 @@ mod tests {
                 Block::Html(block) => (block.bindings.iter())
                     .map(|binding| match binding {
                         FlatHtmlBinding::Pure(binding) => Binding::Pure(binding),
-                        FlatHtmlBinding::Cell(binder, initial) => Binding::Cell(binder, *initial),
+                        FlatHtmlBinding::Cell(binder, initial) => Binding::Cell(binder, initial),
                         FlatHtmlBinding::Track(binder, cell) => Binding::Track(binder, *cell),
                         FlatHtmlBinding::Html(binding) => Binding::Html(binding),
                     })
@@ -1979,7 +1982,7 @@ mod tests {
         fn for_each_operand(self, f: &mut impl FnMut(ValueId)) {
             match self {
                 Binding::Pure(binding) => binding.op.for_each_operand(f),
-                Binding::Cell(_, initial) => f(initial),
+                Binding::Cell(..) => {}
                 Binding::Track(_, cell) => f(cell),
                 Binding::Html(binding) => binding.op.for_each_operand(f),
             }
@@ -2059,6 +2062,7 @@ mod tests {
                     let params = lambda.parameters.iter().map(|param| param.var).collect();
                     vec![(params, Block::Pure(&lambda.body))]
                 }
+                Binding::Cell(_, initial) => vec![(Vec::new(), Block::Pure(initial))],
                 Binding::Html(IrBinding {
                     op: FlatHtmlOp::Lambda(lambda),
                     ..
@@ -2458,81 +2462,81 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            16625 of 65536 input bytes consumed per program on average, at most 65536
-            7 of 100 programs exhaust the input
+            18764 of 65536 input bytes consumed per program on average, at most 65536
+            9 of 100 programs exhaust the input
 
             -- sizes --
-            under 256    11  ###########
-            under 1K      2  ##
-            under 4K     14  ###############
-            under 16K    37  ########################################
-            under 64K    29  ###############################
-            at 64K        7  #######
+            under 256    11  #############
+            under 1K      1  #
+            under 4K     15  ##################
+            under 16K    33  ########################################
+            under 64K    31  #####################################
+            at 64K        9  ##########
 
             -- programs --
-            93 of 9822 Html bindings have more than one reference
-            2.6 arms per match on average, at least 2 and at most 18
-            25916 of 64960 match arms bind names
-            6839 cells
-            901 parameters take a cell, and 535 arguments pass one
-            457 of 765 loops have a key
-            1757 of 2172 elements have a click
-            303 handlers have more than one click
-            474 clicks apply a handler bound outside their block, 34 of them a parameter
+            126 of 13707 Html bindings have more than one reference
+            2.7 arms per match on average, at least 2 and at most 27
+            29620 of 72518 match arms bind names
+            10414 cells
+            951 parameters take a cell, and 615 arguments pass one
+            537 of 916 loops have a key
+            2489 of 3112 elements have a click
+            413 handlers have more than one click
+            741 clicks apply a handler bound outside their block, 7 of them a parameter
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      223.5    93.0    87.1    65.8
-            Array                      295.2    91.0    83.1    23.6
-            ArrayEnumerate               1.1    51.0    98.1    48.1
-            ArrayFromRange              15.2    89.0    85.4     0.0
-            ArrayGet                    71.7    89.0    80.5    43.4
-            ArrayIsEmpty                 4.4    71.0    84.7    48.7
-            ArrayLength                135.3    90.0    86.7    49.2
-            BoolLiteral                 80.8    90.0    80.4     0.0
-            BoolNegation                 4.6    68.0    84.4    42.3
-            Call                        42.4    50.0    84.6    79.0
-            Cell                        68.4    85.0    94.8    42.9
-            CellRead                    17.6    75.0    84.6    44.7
-            CellWrite                   41.4    87.0    86.4    53.9
-            EffectApply                 16.2    83.0    93.7    72.4
-            EffectBind                 563.8    86.0    93.3    31.6
-            EffectCall                   9.9    12.0    81.3    50.9
-            EffectMatch                 16.1    82.0    92.5    85.9
-            EffectPure                 329.2    91.0    93.7     0.0
-            Enum                       154.6    74.0    82.7    22.1
-            Equals                       4.8    65.0    86.5    59.8
-            FieldAccess                 11.0    43.0    80.7    73.0
-            FloatLiteral               133.2    88.0    83.9     0.0
-            FloatToInt                 129.5    88.0    86.8    46.5
-            HtmlApply                    4.1    64.0    99.0    87.7
-            HtmlConcat                  28.2    85.0    95.6    43.9
-            HtmlElement                 21.7    81.0    96.0    65.4
-            HtmlEscape                  13.6    81.0    95.6    48.3
-            HtmlFor                      7.7    77.0    98.4    75.8
-            HtmlLambda                   4.6    65.0    98.0    65.6
-            HtmlText                     7.7    76.0    95.4     0.0
-            IntLiteral                 178.5    93.0    81.2     0.0
-            IntToFloat                 170.9    87.0    86.9    48.5
-            IntToString                 50.0    89.0    91.3    48.0
-            Lambda                     846.6    97.0    91.4    31.0
-            LessThan                     4.3    66.0    83.7    56.6
-            LessThanOrEqual              4.5    76.0    84.7    56.4
-            Match                      231.2    93.0    87.1    77.9
-            NumericAdd                 305.4    90.0    87.2    62.8
-            NumericMultiply            302.2    89.0    86.8    62.1
-            NumericNegation            309.6    90.0    86.9    49.6
-            NumericSubtract            305.9    89.0    86.8    62.3
-            OptionIsNone                 4.2    71.0    84.5    47.1
-            OptionIsSome                 4.1    68.0    85.0    48.5
-            OptionNone                  83.0    90.0    86.9     0.0
-            OptionSome                  73.8    90.0    86.6    27.5
-            Record                     105.0    68.0    78.5    28.8
-            StringConcat                50.0    91.0    91.3    46.2
-            StringIsEmpty                4.5    74.0    84.1    39.6
-            StringLiteral               68.8    94.0    88.1     0.0
-            Track                       68.4    85.0    92.8    41.7
-            Tuple                      557.7    94.0    90.1    14.2
+            Apply                      249.8    93.0    88.1    67.1
+            Array                      328.0    91.0    84.4    24.2
+            ArrayEnumerate               1.1    51.0    98.1    58.3
+            ArrayFromRange              17.8    89.0    86.8     0.0
+            ArrayGet                    80.2    89.0    82.3    45.1
+            ArrayIsEmpty                 4.7    75.0    86.9    50.2
+            ArrayLength                154.5    90.0    86.4    53.3
+            BoolLiteral                 92.3    91.0    82.7     0.0
+            BoolNegation                 5.0    65.0    85.6    46.9
+            Call                        44.1    52.0    85.9    81.5
+            Cell                       104.1    85.0    92.3    45.8
+            CellRead                    20.8    75.0    86.1    47.9
+            CellWrite                   50.4    87.0    88.0    57.4
+            EffectApply                 16.8    84.0    93.5    69.4
+            EffectBind                 589.9    86.0    94.5    29.9
+            EffectCall                   9.8    12.0    81.4    50.7
+            EffectMatch                 17.0    81.0    93.6    86.2
+            EffectPure                 344.1    91.0    94.9     0.0
+            Enum                       184.5    73.0    84.3    23.5
+            Equals                       5.1    68.0    86.2    61.9
+            FieldAccess                 11.6    49.0    81.0    69.3
+            FloatLiteral               151.7    89.0    84.6     0.0
+            FloatToInt                 148.8    89.0    86.9    48.4
+            HtmlApply                    4.6    64.0    97.8    84.7
+            HtmlConcat                  42.5    84.0    92.0    44.8
+            HtmlElement                 31.1    84.0    92.3    66.3
+            HtmlEscape                  19.7    80.0    92.2    52.4
+            HtmlFor                      9.2    81.0    96.6    74.1
+            HtmlLambda                   5.7    65.0    97.2    62.0
+            HtmlText                    10.0    77.0    92.9     0.0
+            IntLiteral                 206.0    93.0    82.6     0.0
+            IntToFloat                 191.0    88.0    86.8    50.0
+            IntToString                 63.0    90.0    90.2    51.3
+            Lambda                     908.2    97.0    92.4    31.0
+            LessThan                     4.8    67.0    84.1    59.4
+            LessThanOrEqual              5.2    73.0    85.2    57.9
+            Match                      256.3    93.0    87.8    79.5
+            NumericAdd                 344.6    90.0    86.9    64.8
+            NumericMultiply            340.3    90.0    86.5    64.3
+            NumericNegation            348.2    90.0    86.5    51.1
+            NumericSubtract            346.8    90.0    86.6    64.5
+            OptionIsNone                 4.3    68.0    82.3    47.9
+            OptionIsSome                 4.6    70.0    86.1    52.9
+            OptionNone                  98.8    89.0    87.4     0.0
+            OptionSome                  89.1    90.0    87.2    28.2
+            Record                     114.3    69.0    79.7    28.8
+            StringConcat                62.7    91.0    90.0    47.8
+            StringIsEmpty                5.1    72.0    85.3    38.7
+            StringLiteral               77.7    94.0    88.0     0.0
+            Track                      104.1    85.0    90.8    44.9
+            Tuple                      596.5    94.0    90.9    14.3
         "#]]
         .assert_eq(&report);
     }
@@ -2546,7 +2550,9 @@ mod tests {
 
                 entrypoint V0@e0() -> Html {
                   let v0: Int = -2147483648
-                  let v1: Cell[Int] = cell(v0)
+                  let v1: Cell[Int] = cell {
+                    v0
+                  }
                   let v2: Int = track(v1)
                   let v3: Html = concat()
                   v3
@@ -2584,20 +2590,26 @@ mod tests {
 
                 fn C0@f0(p0@v0: (Tuple[Float, R0], Cell[String]) -> Tuple[Float, E1, Bool], p1@v1: Option[Array[R1]], p2@v2: E0, p3@v3: (() -> R0, () -> Array[Bool]) -> Html, p4@v4: Option[String], p5@v5: Option[Float]) -> Html {
                   let v8: Int = -2147483648
-                  let v9: Cell[Int] = cell(v8)
+                  let v9: Cell[Int] = cell {
+                    v8
+                  }
                   let v10: Int = track(v9)
                   let v11: Html = concat()
                   v11
                 }
                 fn C1@f1(p0@v6: Html, p1@v7: Effect[Tuple[]]) -> Html {
                   let v12: Int = -2147483648
-                  let v13: Cell[Int] = cell(v12)
+                  let v13: Cell[Int] = cell {
+                    v12
+                  }
                   let v14: Int = track(v13)
                   v6
                 }
                 entrypoint V0@e0() -> Html {
                   let v15: Int = -2147483648
-                  let v16: Cell[Int] = cell(v15)
+                  let v16: Cell[Int] = cell {
+                    v15
+                  }
                   let v17: Int = track(v16)
                   let v18: Html = concat()
                   v18

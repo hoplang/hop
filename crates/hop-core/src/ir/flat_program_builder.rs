@@ -810,12 +810,13 @@ impl<'a> FlatBlockBuilder<'a> {
         }))
     }
 
-    pub fn cell(&self, initial: ValueId) -> ValueId {
-        let typ = self.typ(initial);
-        let IrType::Data(IrFunctionDataType::Data(typ)) = typ else {
-            panic!("a cell holds data, not {typ}");
+    pub fn cell(&self, initial_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) -> ValueId {
+        let initial = self.block(initial_fn);
+        let IrType::Data(IrFunctionDataType::Data(typ)) = &initial.typ else {
+            panic!("a cell holds data, not {}", initial.typ);
         };
-        let typ = IrFunctionDataType::Cell(typ);
+        let typ = IrFunctionDataType::Cell(typ.clone());
+        let initial = initial.into_pure();
         let name = self.program.binder(IrType::Data(typ.clone()));
         self.bindings
             .borrow_mut()

@@ -260,9 +260,7 @@ impl<'a> Checker<'a> {
                     let IrFunctionDataType::Cell(data) = &binder.typ else {
                         return Err(FlatTypeError::IllTypedBinding);
                     };
-                    if self.read(*initial)? != BoundType::Data(data) {
-                        return Err(FlatTypeError::IllTypedBinding);
-                    }
+                    self.scoped(|checker| checker.pure_block(initial, BoundType::Data(data)))?;
                     self.bind(binder.var, BoundType::Cell(data))?;
                 }
                 FlatHtmlBinding::Track(binder, cell) => {
@@ -912,8 +910,8 @@ mod tests {
     fn should_reject_a_match_that_produces_a_cell() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [("first", Ty::Bool)], |t| {
-                let one = t.cell(t.int(1));
-                let two = t.cell(t.int(2));
+                let one = t.cell(|t| t.int(1));
+                let two = t.cell(|t| t.int(2));
                 let picked = t.match_(t.param("first"), |m| {
                     m.arm(Pat::True, |_, _| one);
                     m.arm(Pat::False, |_, _| two);
@@ -1058,7 +1056,7 @@ mod tests {
     fn should_reject_a_match_on_a_cell() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let count = t.cell(t.int(0));
+                let count = t.cell(|t| t.int(0));
                 t.match_(count, |m| {
                     m.arm(Pat::Wildcard, |t, _| t.text("any"));
                 })
@@ -1203,7 +1201,7 @@ mod tests {
             .entrypoint("Test", [("on", Ty::Bool)], |t| {
                 let picked = t.match_(t.param("on"), |m| {
                     m.arm(Pat::True, |t, _| {
-                        let cell = t.cell(t.int(1));
+                        let cell = t.cell(|t| t.int(1));
                         inner.set(Some(cell));
                         t.text("on")
                     });
@@ -1235,7 +1233,7 @@ mod tests {
     fn should_reject_a_cell_write_of_a_value_of_another_type() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let count = t.cell(t.int(0));
+                let count = t.cell(|t| t.int(0));
                 let flip = t.event_handler(|t| t.cell_write(count, t.bool(true)));
                 t.element_on_click("button", vec![], flip, Some(t.text("x")))
             })
@@ -1248,7 +1246,7 @@ mod tests {
     fn should_reject_a_bind_whose_continuation_takes_another_type() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let count = t.cell(t.int(0));
+                let count = t.cell(|t| t.int(0));
                 let read = t.cell_read(count);
                 let continuation = t.lambda([IrType::STRING], |t, _| t.effect_pure(t.int(1)));
                 let handler = t.event_handler(|t| t.effect_bind(read, continuation));
@@ -1274,7 +1272,7 @@ mod tests {
     fn should_reject_a_click_whose_handler_is_an_effect() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let count = t.cell(t.int(0));
+                let count = t.cell(|t| t.int(0));
                 let reset = t.cell_write(count, t.int(0));
                 t.element_on_click("button", vec![], reset, Some(t.text("x")))
             })
@@ -1287,7 +1285,7 @@ mod tests {
     fn should_reject_a_click_whose_handler_takes_a_parameter() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let count = t.cell(t.int(0));
+                let count = t.cell(|t| t.int(0));
                 let set = t.lambda([IrType::INT], |t, params| t.cell_write(count, params[0]));
                 t.element_on_click("button", vec![], set, Some(t.text("x")))
             })
@@ -1300,7 +1298,7 @@ mod tests {
     fn should_reject_a_click_whose_handler_gives_a_value() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let count = t.track(t.cell(t.int(0)));
+                let count = t.track(t.cell(|t| t.int(0)));
                 let next = t.lambda([], |t, _| t.add(NumericType::Int, count, t.int(1)));
                 t.element_on_click("button", vec![], next, Some(t.text("x")))
             })
@@ -1325,7 +1323,7 @@ mod tests {
                 )
             })
             .entrypoint("Test", [], |t| {
-                let count = t.cell(t.int(0));
+                let count = t.cell(|t| t.int(0));
                 t.call("Bump", [count])
             })
             .build()

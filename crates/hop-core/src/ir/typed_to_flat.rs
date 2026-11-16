@@ -868,9 +868,9 @@ impl<'a> Compiler<'a> {
             }
             // A let binds nothing. Its variable is the name of its value,
             // in a scope of its own that holds the body. A let mut binds a
-            // cell, whose initial value is the value, and its variable is the
-            // name that tracks the cell, from which a write or a read of the
-            // variable finds the cell.
+            // cell, whose initial value is the value, compiled as a block of
+            // its own, and its variable is the name that tracks the cell, from
+            // which a write or a read of the variable finds the cell.
             TypedExpr::Let {
                 var,
                 cell,
@@ -878,12 +878,12 @@ impl<'a> Compiler<'a> {
                 body,
                 ..
             } => {
-                let initial = self.compile_expr(value);
                 let value = if *cell {
                     let Type::Data(typ) = value.typ() else {
                         unreachable!("a cell holds data");
                     };
                     let typ = lower_data_type(self.registry, &typ);
+                    let initial = self.compile_pure_block(value);
                     let cell = self.value_id_counter.next();
                     self.bindings.push(FlatHtmlBinding::Cell(
                         IrBinder {
@@ -898,7 +898,7 @@ impl<'a> Compiler<'a> {
                     self.cells.insert(name, cell);
                     name
                 } else {
-                    initial
+                    self.compile_expr(value)
                 };
                 self.scopes.push(vec![(var.clone(), value)]);
                 let body = self.compile_expr(body);
@@ -2214,11 +2214,15 @@ mod tests {
             "#},
             expect![[r#"
                 fn Counter@f0(label@v16: String) -> Html {
-                  let v17: Int = 0
-                  let v18: Cell[Int] = cell(v17)
+                  let v18: Cell[Int] = cell {
+                    let v17: Int = 0
+                    v17
+                  }
                   let v19: Int = track(v18)
-                  let v20: Bool = false
-                  let v21: Cell[Bool] = cell(v20)
+                  let v21: Cell[Bool] = cell {
+                    let v20: Bool = false
+                    v20
+                  }
                   let v22: Bool = track(v21)
                   let v31: () -> Effect[Tuple[]] = fn() {
                     let v23: Int = 1
@@ -2290,8 +2294,10 @@ mod tests {
                   v15
                 }
                 entrypoint body@e0() -> Html {
-                  let v0: Bool = false
-                  let v1: Cell[Bool] = cell(v0)
+                  let v1: Cell[Bool] = cell {
+                    let v0: Bool = false
+                    v0
+                  }
                   let v2: Bool = track(v1)
                   let v5: () -> Effect[Tuple[]] = fn() {
                     let v3: Bool = not(v2)
@@ -2344,8 +2350,10 @@ mod tests {
                   v20
                 }
                 entrypoint body@e0() -> Html {
-                  let v0: Int = 0
-                  let v1: Cell[Int] = cell(v0)
+                  let v1: Cell[Int] = cell {
+                    let v0: Int = 0
+                    v0
+                  }
                   let v2: Int = track(v1)
                   let v12: () -> Effect[Tuple[]] = fn() {
                     let v3: Effect[Int] = read(v1)

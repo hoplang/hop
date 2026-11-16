@@ -191,7 +191,7 @@ impl<'a> Inliner<'a> {
                     bindings.extend(pure.drain(..).map(FlatHtmlBinding::Pure));
                 }
                 FlatHtmlBinding::Cell(binder, initial) => {
-                    bindings.push(FlatHtmlBinding::Cell(binder, self.rename(initial)));
+                    bindings.push(FlatHtmlBinding::Cell(binder, self.pure_block(initial)));
                 }
                 FlatHtmlBinding::Track(binder, cell) => {
                     bindings.push(FlatHtmlBinding::Track(binder, self.rename(cell)));
@@ -574,7 +574,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .function("counter", [], Ty::Html, |t| {
-                    let n = t.cell(t.int(0));
+                    let n = t.cell(|t| t.int(0));
                     let count = t.track(n);
                     let bump = t.event_handler(|t| {
                         t.cell_write(n, t.add(NumericType::Int, count, t.int(1)))
@@ -589,8 +589,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn counter@f0() -> Html {
-                  let v0: Int = 0
-                  let v1: Cell[Int] = cell(v0)
+                  let v1: Cell[Int] = cell {
+                    let v0: Int = 0
+                    v0
+                  }
                   let v2: Int = track(v1)
                   let v6: () -> Effect[Tuple[]] = fn() {
                     let v3: Int = 1
@@ -612,8 +614,10 @@ mod tests {
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v13: Int = 0
-                  let v14: Cell[Int] = cell(v13)
+                  let v14: Cell[Int] = cell {
+                    let v13: Int = 0
+                    v13
+                  }
                   let v15: Int = track(v14)
                   let v19: () -> Effect[Tuple[]] = fn() {
                     let v16: Int = 1
@@ -624,8 +628,10 @@ mod tests {
                   let v20: String = v15.to_string()
                   let v21: Html = escape(v20)
                   let v22: Html = element("button", {}, v21) on_click v19
-                  let v23: Int = 0
-                  let v24: Cell[Int] = cell(v23)
+                  let v24: Cell[Int] = cell {
+                    let v23: Int = 0
+                    v23
+                  }
                   let v25: Int = track(v24)
                   let v29: () -> Effect[Tuple[]] = fn() {
                     let v26: Int = 1
@@ -661,8 +667,8 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [], |t| {
-                    let count = t.cell(t.int(0));
-                    let on = t.cell(t.bool(false));
+                    let count = t.cell(|t| t.int(0));
+                    let on = t.cell(|t| t.bool(false));
                     let n = t.track(count);
                     let is_on = t.track(on);
                     let both = t.event_handler(|t| {
@@ -684,10 +690,14 @@ mod tests {
                   v4
                 }
                 entrypoint Test@e0() -> Html {
-                  let v5: Int = 0
-                  let v6: Cell[Int] = cell(v5)
-                  let v7: Bool = false
-                  let v8: Cell[Bool] = cell(v7)
+                  let v6: Cell[Int] = cell {
+                    let v5: Int = 0
+                    v5
+                  }
+                  let v8: Cell[Bool] = cell {
+                    let v7: Bool = false
+                    v7
+                  }
                   let v9: Int = track(v6)
                   let v10: Bool = track(v8)
                   let v17: () -> Effect[Tuple[]] = fn() {
@@ -707,10 +717,14 @@ mod tests {
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v5: Int = 0
-                  let v6: Cell[Int] = cell(v5)
-                  let v7: Bool = false
-                  let v8: Cell[Bool] = cell(v7)
+                  let v6: Cell[Int] = cell {
+                    let v5: Int = 0
+                    v5
+                  }
+                  let v8: Cell[Bool] = cell {
+                    let v7: Bool = false
+                    v7
+                  }
                   let v9: Int = track(v6)
                   let v10: Bool = track(v8)
                   let v17: () -> Effect[Tuple[]] = fn() {
@@ -891,7 +905,7 @@ mod tests {
                     t.element_on_click("button", [], bump, Some(t.escape(t.int_to_string(shown))))
                 })
                 .entrypoint("Test", [], |t| {
-                    let count = t.cell(t.int(0));
+                    let count = t.cell(|t| t.int(0));
                     t.call("Bump", [count])
                 })
                 .build()
@@ -912,16 +926,20 @@ mod tests {
                   v8
                 }
                 entrypoint Test@e0() -> Html {
-                  let v9: Int = 0
-                  let v10: Cell[Int] = cell(v9)
+                  let v10: Cell[Int] = cell {
+                    let v9: Int = 0
+                    v9
+                  }
                   let v11: Html = Bump@f0(v10)
                   v11
                 }
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v9: Int = 0
-                  let v10: Cell[Int] = cell(v9)
+                  let v10: Cell[Int] = cell {
+                    let v9: Int = 0
+                    v9
+                  }
                   let v12: Int = track(v10)
                   let v16: () -> Effect[Tuple[]] = fn() {
                     let v13: Int = 1

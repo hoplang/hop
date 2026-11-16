@@ -225,7 +225,13 @@ fn evaluate_html_block<'a>(
                 evaluate_pure_binding(binding, &mut env, functions, depth, op_count)?;
             }
             FlatHtmlBinding::Cell(binder, initial) => {
-                let cell = render.bind_cell(binder.var, &env[initial]);
+                let cell = render.bind_cell(binder.var, || {
+                    let env = Env {
+                        parent: env.freeze(),
+                        bindings: Vec::new(),
+                    };
+                    evaluate_pure_block(initial, env, functions, depth, op_count)
+                })?;
                 env.bindings.push((binder.var, Value::Cell(cell)));
             }
             FlatHtmlBinding::Track(binder, cell) => {
@@ -735,8 +741,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 1387867 allocations
-            program evaluation: 28395 allocations
+            program generation: 1564790 allocations
+            program evaluation: 41571 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -1963,22 +1969,22 @@ mod tests {
             program: _,
         } = stats;
         expect![[r#"
-            3064 invocations
-            25 invocations hit the call depth limit
+            3344 invocations
+            26 invocations hit the call depth limit
             0 invocations hit the array length limit
             0 invocations hit the string length limit
             0 invocations hit the Html size limit
-            19 invocations hit the op count limit
-            37740 cells bound
+            12 invocations hit the op count limit
+            55727 cells bound
 
-            8321 clicks
-            60 programs have a click
-            27 programs have a click that changes a cell
-            21 programs have a click that changes the page
-            4 programs have a click that switches an arm of a match
-            3 programs have a click that switches an arm of a match that binds cells
-            7 programs have a click that changes the iterations of a loop
-            5 programs have a click that changes an array cell
+            16105 clicks
+            62 programs have a click
+            33 programs have a click that changes a cell
+            28 programs have a click that changes the page
+            9 programs have a click that switches an arm of a match
+            9 programs have a click that switches an arm of a match that binds cells
+            9 programs have a click that changes the iterations of a loop
+            4 programs have a click that changes an array cell
         "#]].assert_eq(&format!(
             "{invocations} invocations\n\
              {call_depth_limit} invocations hit the call depth limit\n\

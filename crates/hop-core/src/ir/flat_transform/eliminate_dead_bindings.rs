@@ -78,8 +78,7 @@ fn eliminate_html(block: FlatHtmlBlock, live: &mut HashSet<ValueId>) -> FlatHtml
                 if !live.contains(&binder.var) {
                     continue;
                 }
-                live.insert(initial);
-                Some(FlatHtmlBinding::Cell(binder, initial))
+                Some(FlatHtmlBinding::Cell(binder, eliminate_pure(initial, live)))
             }
             FlatHtmlBinding::Track(binder, cell) => {
                 if !live.contains(&binder.var) {
@@ -257,7 +256,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
-                    let n = t.cell(t.int(0));
+                    let n = t.cell(|t| t.int(0));
                     let set = t.event_handler(|t| t.cell_write(n, t.int(1)));
                     t.element_on_click("button", [], set, Some(t.text("x")))
                 })
@@ -266,8 +265,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 entrypoint Test@e0() -> Html {
-                  let v0: Int = 0
-                  let v1: Cell[Int] = cell(v0)
+                  let v1: Cell[Int] = cell {
+                    let v0: Int = 0
+                    v0
+                  }
                   let v4: () -> Effect[Tuple[]] = fn() {
                     let v2: Int = 1
                     let v3: Effect[Tuple[]] = v1 := v2
@@ -280,8 +281,10 @@ mod tests {
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v0: Int = 0
-                  let v1: Cell[Int] = cell(v0)
+                  let v1: Cell[Int] = cell {
+                    let v0: Int = 0
+                    v0
+                  }
                   let v4: () -> Effect[Tuple[]] = fn() {
                     let v2: Int = 1
                     let v3: Effect[Tuple[]] = v1 := v2
@@ -300,8 +303,8 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
-                    let n = t.cell(t.int(0));
-                    let unseen = t.cell(t.int(0));
+                    let n = t.cell(|t| t.int(0));
+                    let unseen = t.cell(|t| t.int(0));
                     let _idle = t.cell_write(unseen, t.int(1));
                     let bump = t.cell_write(n, t.add(NumericType::Int, t.track(n), t.int(1)));
                     let bump = t.event_handler(|_| bump);
@@ -312,10 +315,14 @@ mod tests {
             expect![[r#"
                 -- before --
                 entrypoint Test@e0() -> Html {
-                  let v0: Int = 0
-                  let v1: Cell[Int] = cell(v0)
-                  let v2: Int = 0
-                  let v3: Cell[Int] = cell(v2)
+                  let v1: Cell[Int] = cell {
+                    let v0: Int = 0
+                    v0
+                  }
+                  let v3: Cell[Int] = cell {
+                    let v2: Int = 0
+                    v2
+                  }
                   let v4: Int = 1
                   let v5: Effect[Tuple[]] = v3 := v4
                   let v6: Int = track(v1)
@@ -332,8 +339,10 @@ mod tests {
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v0: Int = 0
-                  let v1: Cell[Int] = cell(v0)
+                  let v1: Cell[Int] = cell {
+                    let v0: Int = 0
+                    v0
+                  }
                   let v6: Int = track(v1)
                   let v7: Int = 1
                   let v8: Int = add[Int](v6, v7)

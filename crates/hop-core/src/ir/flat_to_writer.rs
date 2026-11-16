@@ -370,7 +370,7 @@ impl<'a> Lowerer<'a> {
                         unreachable!("a cell binding binds a cell");
                     };
                     self.binder_types.insert(binder.var, typ.clone());
-                    self.read(*initial, Reader::Value);
+                    self.analyze_pure_block(initial);
                 }
                 FlatHtmlBinding::Track(binder, cell) => {
                     self.binder_types.insert(binder.var, binder.typ.clone());
@@ -1014,7 +1014,8 @@ impl<'a> Lowerer<'a> {
                     self.lower_pure_binding(binding, &mut lets);
                 }
                 FlatHtmlBinding::Cell(binder, initial) => {
-                    let initial = self.name(*initial);
+                    self.lower_pure_bindings(&initial.bindings, &mut lets);
+                    let initial = self.name(initial.result);
                     self.aliases.insert(binder.var, initial);
                 }
                 FlatHtmlBinding::Track(binder, cell) => {
@@ -1371,7 +1372,7 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [], |t| {
-                    let count = t.cell(t.int(0));
+                    let count = t.cell(|t| t.int(0));
                     let n = t.track(count);
                     let bump = t.event_handler(|t| {
                         t.cell_write(count, t.add(NumericType::Int, n, t.int(1)))
@@ -1406,8 +1407,10 @@ mod tests {
                   v12
                 }
                 entrypoint Test@e0() -> Html {
-                  let v13: Int = 0
-                  let v14: Cell[Int] = cell(v13)
+                  let v14: Cell[Int] = cell {
+                    let v13: Int = 0
+                    v13
+                  }
                   let v15: Int = track(v14)
                   let v19: () -> Effect[Tuple[]] = fn() {
                     let v16: Int = 1
@@ -2731,7 +2734,7 @@ mod tests {
                     t.element_on_click("button", [], bump, Some(t.escape(t.int_to_string(shown))))
                 })
                 .entrypoint("Test", [], |t| {
-                    let count = t.cell(t.int(7));
+                    let count = t.cell(|t| t.int(7));
                     t.call("Show", [count])
                 })
                 .build()
@@ -2739,8 +2742,10 @@ mod tests {
             expect![[r#"
                 -- flat --
                 entrypoint Test@e0() -> Html {
-                  let v9: Int = 7
-                  let v10: Cell[Int] = cell(v9)
+                  let v10: Cell[Int] = cell {
+                    let v9: Int = 7
+                    v9
+                  }
                   let v12: Int = track(v10)
                   let v16: () -> Effect[Tuple[]] = fn() {
                     let v13: Int = 1

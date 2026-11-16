@@ -117,7 +117,8 @@ fn html_fits(block: &FlatHtmlBlock, budget: &mut usize) -> bool {
         *budget = rest;
         match binding {
             FlatHtmlBinding::Pure(binding) => pure_op_fits(&binding.op, budget),
-            FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Track(..) => true,
+            FlatHtmlBinding::Cell(_, initial) => pure_fits(initial, budget),
+            FlatHtmlBinding::Track(..) => true,
             FlatHtmlBinding::Html(binding) => match &binding.op {
                 FlatHtmlOp::Match(match_) => {
                     (match_.arms.iter()).all(|arm| html_fits(&arm.body, budget))
@@ -467,7 +468,7 @@ impl<'a> Evaluator<'a> {
                 }
                 // A cell is never constant, as a click may have set it.
                 FlatHtmlBinding::Cell(binder, initial) => {
-                    out.push(FlatHtmlBinding::Cell(binder, self.resolve(initial)));
+                    out.push(FlatHtmlBinding::Cell(binder, self.pure_block(initial)));
                 }
                 FlatHtmlBinding::Track(binder, cell) => {
                     out.push(FlatHtmlBinding::Track(binder, self.resolve(cell)));

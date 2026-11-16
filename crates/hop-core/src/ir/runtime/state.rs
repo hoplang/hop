@@ -138,15 +138,22 @@ impl<'a> RenderTransaction<'a> {
         assert!(!self.stack.is_empty(), "an exit of the root");
     }
 
-    pub fn bind_cell(&mut self, var: ValueId, initial: &Value<'a>) -> CellId {
+    pub fn bind_cell<E>(
+        &mut self,
+        var: ValueId,
+        initial: impl FnOnce() -> Result<Value<'a>, E>,
+    ) -> Result<CellId, E> {
         let cell = CellId {
             scope: self.current(),
             var,
         };
-        let value = self.old.cells.get(&cell).unwrap_or(initial).clone();
+        let value = match self.old.cells.get(&cell) {
+            Some(value) => value.clone(),
+            None => initial()?,
+        };
         let previous = self.cells.insert(cell, value);
         assert!(previous.is_none(), "two cells of the same binding");
-        cell
+        Ok(cell)
     }
 
     pub fn bind_element(&self, var: ValueId) -> ElementId {
@@ -228,6 +235,7 @@ mod test_support {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+    use std::convert::Infallible;
 
     use arbitrary::Unstructured;
 
@@ -301,7 +309,7 @@ mod tests {
     ) -> arbitrary::Result<()> {
         for var in &block.cells {
             let initial = u.int_in_range(0..=9)?;
-            let cell = render.bind_cell(*var, &Value::Int(initial));
+            let Ok(cell) = render.bind_cell(*var, || Ok::<_, Infallible>(Value::Int(initial)));
             bound.cells.push(((path.clone(), *var), cell, initial));
         }
         for var in &block.elements {
