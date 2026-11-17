@@ -892,7 +892,7 @@ impl<'a> Compiler<'a> {
                         self.bindings.push(FlatHtmlBinding::Cell(
                             IrBinder {
                                 var: cell,
-                                typ: IrFunctionDataType::Cell(typ.clone()),
+                                typ: typ.clone(),
                             },
                             initial,
                         ));
@@ -1150,7 +1150,7 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
                         .iter()
                         .map(|parameter| match lower_type(registry, parameter) {
                             IrType::Data(parameter) => parameter,
-                            IrType::Html(_) | IrType::Id(_) => {
+                            IrType::Html(_) | IrType::Cell(_) | IrType::Id(_) => {
                                 unreachable!("a function that returns a value takes no Html")
                             }
                         })

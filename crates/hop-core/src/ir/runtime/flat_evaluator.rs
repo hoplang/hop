@@ -751,8 +751,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 1680090 allocations
-            program evaluation: 31060 allocations
+            program generation: 2388639 allocations
+            program evaluation: 35540 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -2023,21 +2023,21 @@ mod tests {
             program: _,
         } = stats;
         expect![[r#"
-            3517 invocations
-            40 invocations hit the call depth limit
+            3392 invocations
+            41 invocations hit the call depth limit
             0 invocations hit the array length limit
             0 invocations hit the string length limit
             0 invocations hit the Html size limit
-            16 invocations hit the op count limit
-            30189 cells bound
+            9 invocations hit the op count limit
+            33211 cells bound
 
-            14443 clicks
-            65 programs have a click
-            38 programs have a click that changes a cell
-            21 programs have a click that changes the page
-            12 programs have a click that switches an arm of a match
+            9993 clicks
+            61 programs have a click
+            34 programs have a click that changes a cell
+            24 programs have a click that changes the page
+            13 programs have a click that switches an arm of a match
             10 programs have a click that switches an arm of a match that binds cells
-            13 programs have a click that changes the iterations of a loop
+            12 programs have a click that changes the iterations of a loop
             6 programs have a click that changes an array cell
         "#]].assert_eq(&format!(
             "{invocations} invocations\n\

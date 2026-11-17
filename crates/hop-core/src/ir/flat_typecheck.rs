@@ -62,8 +62,9 @@ pub enum FlatTypeError {
     /// already taken it, or in a loop or lambda body that it is minted
     /// outside of, which would take it on every run of the body.
     IdTakenMoreThanOnce,
-    /// A function or a lambda takes an identity, which only a mint binds.
-    IdParameter,
+    /// A function or a lambda takes a cell or an identity, which only a
+    /// cell binding or a mint binds.
+    CellOrIdParameter,
 }
 
 pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
@@ -90,8 +91,8 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
             FlatFunction::Html(html) => {
                 for param in &html.parameters {
                     let typ = BoundType::of(&param.binder.typ);
-                    if typ == BoundType::Id {
-                        return Err(FlatTypeError::IdParameter);
+                    if matches!(typ, BoundType::Cell(_) | BoundType::Id) {
+                        return Err(FlatTypeError::CellOrIdParameter);
                     }
                     checker.bind(param.binder.var, typ)?;
                 }
@@ -157,6 +158,7 @@ impl<'a> BoundType<'a> {
         match typ {
             IrType::Data(data) => BoundType::of_function_data(data),
             IrType::Html(html) => BoundType::of_function_html(html),
+            IrType::Cell(data) => BoundType::Cell(data),
             IrType::Id(IrIdType) => BoundType::Id,
         }
     }
@@ -165,7 +167,6 @@ impl<'a> BoundType<'a> {
         match typ {
             IrFunctionDataType::Data(data) => BoundType::Data(data),
             IrFunctionDataType::Mutation(data) => BoundType::Mutation(data),
-            IrFunctionDataType::Cell(data) => BoundType::Cell(data),
             IrFunctionDataType::Function(signature) => BoundType::DataFunction(signature),
         }
     }
@@ -274,9 +275,7 @@ impl<'a> Checker<'a> {
                 FlatHtmlBinding::Pure(binding) => self.pure_binding(binding)?,
                 FlatHtmlBinding::Mint(binder) => self.bind(binder.var, BoundType::Id)?,
                 FlatHtmlBinding::Cell(binder, initial) => {
-                    let IrFunctionDataType::Cell(data) = &binder.typ else {
-                        return Err(FlatTypeError::IllTypedBinding);
-                    };
+                    let data = &binder.typ;
                     self.scoped(|checker| checker.pure_block(initial, BoundType::Data(data)))?;
                     self.bind(binder.var, BoundType::Cell(data))?;
                 }
@@ -570,8 +569,8 @@ impl<'a> Checker<'a> {
         }
         for param in parameters {
             let typ = of(&param.typ);
-            if typ == BoundType::Id {
-                return Err(FlatTypeError::IdParameter);
+            if matches!(typ, BoundType::Cell(_) | BoundType::Id) {
+                return Err(FlatTypeError::CellOrIdParameter);
             }
             self.bind(param.var, typ)?;
         }
@@ -924,23 +923,6 @@ mod tests {
                 });
                 let scaled = t.apply(scale, [t.int(1)]);
                 t.escape(t.int_to_string(scaled))
-            })
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::IllTypedBinding);
-    }
-
-    #[test]
-    fn should_reject_a_match_that_produces_a_cell() {
-        let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [("first", Ty::Bool)], |t| {
-                let one = t.cell(|t| t.int(1));
-                let two = t.cell(|t| t.int(2));
-                let picked = t.match_(t.param("first"), |m| {
-                    m.arm(Pat::True, |_, _| one);
-                    m.arm(Pat::False, |_, _| two);
-                });
-                t.escape(t.int_to_string(t.track(picked)))
             })
             .build()
             .unwrap_err();
@@ -1333,27 +1315,18 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_a_cell_a_function_takes_and_writes() {
-        FlatProgramBuilder::new()
-            .function("Bump", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
-                let shown = t.track(t.param("count"));
-                let bump = t.event_handler(|t| {
-                    t.cell_write(t.param("count"), t.add(NumericType::Int, shown, t.int(1)))
-                });
-                t.element_on_click(
-                    t.mint(),
-                    "button",
-                    vec![],
-                    bump,
-                    Some(t.escape(t.int_to_string(shown))),
-                )
+    fn should_reject_a_function_that_takes_a_cell() {
+        let error = FlatProgramBuilder::new()
+            .function("Show", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
+                t.escape(t.int_to_string(t.track(t.param("count"))))
             })
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
-                t.call("Bump", [count])
+                t.call("Show", [count])
             })
             .build()
-            .unwrap();
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::CellOrIdParameter);
     }
 
     #[test]
@@ -1374,18 +1347,6 @@ mod tests {
             .build()
             .unwrap_err();
         assert_eq!(error, FlatTypeError::ElementWithoutChildren);
-    }
-
-    #[test]
-    fn should_reject_a_call_that_passes_a_value_for_a_cell() {
-        let error = FlatProgramBuilder::new()
-            .function("Show", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
-                t.escape(t.int_to_string(t.track(t.param("count"))))
-            })
-            .entrypoint("Test", [], |t| t.call("Show", [t.int(0)]))
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::IllTypedBinding);
     }
 
     #[test]
@@ -1477,6 +1438,6 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::IdParameter);
+        assert_eq!(error, FlatTypeError::CellOrIdParameter);
     }
 }

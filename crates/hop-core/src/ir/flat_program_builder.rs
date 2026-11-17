@@ -209,9 +209,7 @@ impl FlatProgramBuilder {
                     panic!("{} returns a closure", declared.function)
                 }
                 IrType::Id(_) => panic!("{} returns an identity", declared.function),
-                IrType::Data(IrFunctionDataType::Cell(_)) => {
-                    panic!("{} returns a cell", declared.function)
-                }
+                IrType::Cell(_) => panic!("{} returns a cell", declared.function),
             })
             .collect();
         let program = FlatProgram {
@@ -834,9 +832,9 @@ impl<'a> FlatBlockBuilder<'a> {
         let IrType::Data(IrFunctionDataType::Data(typ)) = &initial.typ else {
             panic!("a cell holds data, not {}", initial.typ);
         };
-        let typ = IrFunctionDataType::Cell(typ.clone());
+        let typ = typ.clone();
         let initial = initial.into_pure();
-        let name = self.program.binder(IrType::Data(typ.clone()));
+        let name = self.program.binder(IrType::Cell(typ.clone()));
         self.bindings
             .borrow_mut()
             .push(FlatHtmlBinding::Cell(IrBinder { var: name, typ }, initial));
@@ -864,7 +862,7 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     fn cell_of(&self, cell: ValueId) -> IrDataType {
-        let IrType::Data(IrFunctionDataType::Cell(typ)) = self.typ(cell) else {
+        let IrType::Cell(typ) = self.typ(cell) else {
             panic!("{cell} is not a cell");
         };
         typ
@@ -1020,7 +1018,7 @@ impl<'a> FlatBlockBuilder<'a> {
                             var: param.var,
                             typ,
                         },
-                        IrType::Html(_) | IrType::Id(_) => {
+                        IrType::Html(_) | IrType::Cell(_) | IrType::Id(_) => {
                             unreachable!("data_function takes values")
                         }
                     })

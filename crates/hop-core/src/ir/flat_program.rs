@@ -54,7 +54,7 @@ pub enum FlatHtmlBinding {
     Html(IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
     /// Bind a cell. Only when its path is new does the block run, and the
     /// cell takes the value it gives.
-    Cell(IrBinder<IrFunctionDataType>, FlatPureBlock),
+    Cell(IrBinder<IrDataType>, FlatPureBlock),
     /// Bind the value a cell has at this render. `Cell[T] -> T`.
     Track(IrBinder<IrDataType>, ValueId),
     /// Bind an identity, which the node of the element that takes it keeps
@@ -280,7 +280,7 @@ impl fmt::Display for FlatHtmlBinding {
         match self {
             FlatHtmlBinding::Pure(binding) => binding.fmt(f),
             FlatHtmlBinding::Cell(binder, initial) => {
-                write!(f, "let {binder} = cell {{")?;
+                write!(f, "let {}: Cell[{}] = cell {{", binder.var, binder.typ)?;
                 write!(Indent::new(f), "\n{initial}")?;
                 f.write_str("\n}")
             }

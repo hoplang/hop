@@ -138,9 +138,7 @@ fn ir_type(ty: Ty, records: &[String], enums: &[String]) -> IrType {
         Ty::Mutation(payload) => IrType::Data(IrFunctionDataType::Mutation(data_type(
             *payload, records, enums,
         ))),
-        Ty::Cell(payload) => IrType::Data(IrFunctionDataType::Cell(data_type(
-            *payload, records, enums,
-        ))),
+        Ty::Cell(payload) => IrType::Cell(data_type(*payload, records, enums)),
         Ty::Function { parameters, result } => {
             let parameters = parameters
                 .into_iter()

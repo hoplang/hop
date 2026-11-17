@@ -158,8 +158,8 @@ fn write(out: &mut Vec<WriterStmt>, content: &str) {
 }
 
 /// The Writer type of a parameter, where Html is a closure without
-/// parameters that writes it, in the signatures of closures as well, an
-/// mutation is the unit tuple and a cell is its value.
+/// parameters that writes it, in the signatures of closures as well, and an
+/// mutation is the unit tuple.
 fn parameter_type(typ: &IrType) -> IrType {
     match typ {
         IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => IrType::html_function([]),
@@ -167,7 +167,9 @@ fn parameter_type(typ: &IrType) -> IrType {
             IrType::html_function(signature.parameters.iter().map(parameter_type))
         }
         IrType::Data(data) => IrType::Data(value_type(data)),
-        IrType::Id(_) => unreachable!("the typechecker rejects a parameter of an identity"),
+        IrType::Cell(_) | IrType::Id(_) => {
+            unreachable!("the typechecker rejects a parameter of a cell or an identity")
+        }
     }
 }
 
@@ -175,7 +177,6 @@ fn value_type(typ: &IrFunctionDataType) -> IrFunctionDataType {
     match typ {
         IrFunctionDataType::Data(_) => typ.clone(),
         IrFunctionDataType::Mutation(_) => IrFunctionDataType::Data(IrDataType::UNIT),
-        IrFunctionDataType::Cell(data) => IrFunctionDataType::Data(data.clone()),
         IrFunctionDataType::Function(signature) => IrFunctionDataType::Function(IrSignature {
             parameters: signature.parameters.iter().map(value_type).collect(),
             result: IrResultType::Data(result_type(&signature.result)),
@@ -267,13 +268,12 @@ impl<'a> Lowerer<'a> {
             IrType::Data(IrFunctionDataType::Mutation(_)) => {
                 self.binder_types.insert(binder.var, IrDataType::UNIT);
             }
-            IrType::Data(IrFunctionDataType::Cell(typ)) => {
-                self.binder_types.insert(binder.var, typ.clone());
-            }
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
                 self.html_parameters.insert(binder.var);
             }
-            IrType::Id(_) => unreachable!("the typechecker rejects a parameter of an identity"),
+            IrType::Cell(_) | IrType::Id(_) => {
+                unreachable!("the typechecker rejects a parameter of a cell or an identity")
+            }
             IrType::Data(IrFunctionDataType::Function(_))
             | IrType::Html(IrFunctionHtmlType::Function(_)) => {}
         }
@@ -371,10 +371,7 @@ impl<'a> Lowerer<'a> {
             match binding {
                 FlatHtmlBinding::Pure(binding) => self.analyze_pure_binding(binding),
                 FlatHtmlBinding::Cell(binder, initial) => {
-                    let IrFunctionDataType::Cell(typ) = &binder.typ else {
-                        unreachable!("a cell binding binds a cell");
-                    };
-                    self.binder_types.insert(binder.var, typ.clone());
+                    self.binder_types.insert(binder.var, binder.typ.clone());
                     self.analyze_pure_block(initial);
                 }
                 FlatHtmlBinding::Track(binder, cell) => {
@@ -2854,68 +2851,6 @@ mod tests {
                   write("<div><span>")
                   write_string(v7)
                   write("</span><b></b></div>")
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn renders_a_cell_a_function_takes_as_its_initial_value() {
-        check_program(
-            FlatProgramBuilder::new()
-                .function("Show", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
-                    let shown = t.track(t.param("count"));
-                    let bump = t.event_handler(|t| {
-                        t.cell_write(t.param("count"), t.add(NumericType::Int, shown, t.int(1)))
-                    });
-                    t.element_on_click(
-                        t.mint(),
-                        "button",
-                        [],
-                        bump,
-                        Some(t.escape(t.int_to_string(shown))),
-                    )
-                })
-                .entrypoint("Test", [], |t| {
-                    let count = t.cell(|t| t.int(7));
-                    t.call("Show", [count])
-                })
-                .build()
-                .unwrap(),
-            expect![[r#"
-                -- flat --
-                entrypoint Test@e0() -> Html {
-                  let v11: Cell[Int] = cell {
-                    let v10: Int = 7
-                    v10
-                  }
-                  let v13: Int = track(v11)
-                  let v17: () -> Mutation[Tuple[]] = fn() {
-                    let v14: Int = 1
-                    let v15: Int = int_add(v13, v14)
-                    let v16: Mutation[Tuple[]] = v11 := v15
-                    v16
-                  }
-                  let v18: Id = mint()
-                  let v19: String = int_to_string(v13)
-                  let v20: Html = escape(v19)
-                  let v21: Html = element(v18, "button", {}, v20) on_click v17
-                  v21
-                }
-
-                -- writer --
-                page Test() {
-                  let v10: Int = 7
-                  let v17: () -> Tuple[] = fn() {
-                    let v14: Int = 1
-                    let v15: Int = int_add(v10, v14)
-                    let v16: Tuple[] = ()
-                    v16
-                  }
-                  let v19: String = int_to_string(v10)
-                  write("<button>")
-                  write_string(v19)
-                  write("</button>")
                 }
             "#]],
         );

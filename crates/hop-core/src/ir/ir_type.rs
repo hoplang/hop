@@ -7,6 +7,10 @@ use crate::symbols::type_name::TypeName;
 pub enum IrType {
     Data(IrFunctionDataType),
     Html(IrFunctionHtmlType),
+    /// A cell of the payload. Only a cell binding binds one.
+    #[cfg_attr(not(test), allow(dead_code))]
+    Cell(IrDataType),
+    /// Only a mint binds one.
     #[cfg_attr(not(test), allow(dead_code))]
     Id(IrIdType),
 }
@@ -15,7 +19,6 @@ pub enum IrType {
 pub enum IrFunctionDataType {
     Data(IrDataType),
     Mutation(IrDataType),
-    Cell(IrDataType),
     Function(IrSignature<IrFunctionDataType, IrResultType>),
 }
 
@@ -63,10 +66,6 @@ impl IrType {
     pub const MUTATION: IrType = IrType::Data(IrFunctionDataType::Mutation(IrDataType::UNIT));
     pub const ID: IrType = IrType::Id(IrIdType);
 
-    pub fn cell(data: IrDataType) -> IrType {
-        IrType::Data(IrFunctionDataType::Cell(data))
-    }
-
     pub fn result(result: &IrResultType) -> IrType {
         IrType::Data(IrFunctionDataType::result(result))
     }
@@ -74,7 +73,7 @@ impl IrType {
     pub fn as_result(&self) -> Option<IrResultType> {
         match self {
             IrType::Data(data) => data.as_result(),
-            IrType::Html(_) | IrType::Id(_) => None,
+            IrType::Html(_) | IrType::Cell(_) | IrType::Id(_) => None,
         }
     }
 
@@ -95,7 +94,7 @@ impl IrType {
             .into_iter()
             .map(|parameter| match parameter {
                 IrType::Data(data) => data,
-                IrType::Html(_) | IrType::Id(_) => {
+                IrType::Html(_) | IrType::Cell(_) | IrType::Id(_) => {
                     panic!("a closure that computes a value takes {parameter}")
                 }
             })
@@ -127,12 +126,9 @@ impl IrType {
     pub fn as_data(&self) -> Option<&IrDataType> {
         match self {
             IrType::Data(IrFunctionDataType::Data(data)) => Some(data),
-            IrType::Data(
-                IrFunctionDataType::Mutation(_)
-                | IrFunctionDataType::Cell(_)
-                | IrFunctionDataType::Function(_),
-            )
+            IrType::Data(IrFunctionDataType::Mutation(_) | IrFunctionDataType::Function(_))
             | IrType::Html(_)
+            | IrType::Cell(_)
             | IrType::Id(_) => None,
         }
     }
@@ -151,7 +147,7 @@ impl IrFunctionDataType {
         match self {
             IrFunctionDataType::Data(data) => Some(IrResultType::Data(data.clone())),
             IrFunctionDataType::Mutation(data) => Some(IrResultType::Mutation(data.clone())),
-            IrFunctionDataType::Cell(_) | IrFunctionDataType::Function(_) => None,
+            IrFunctionDataType::Function(_) => None,
         }
     }
 }
@@ -165,6 +161,7 @@ impl fmt::Display for IrType {
         match self {
             IrType::Data(data) => data.fmt(f),
             IrType::Html(html) => html.fmt(f),
+            IrType::Cell(data) => write!(f, "Cell[{data}]"),
             IrType::Id(id) => id.fmt(f),
         }
     }
@@ -175,7 +172,6 @@ impl fmt::Display for IrFunctionDataType {
         match self {
             IrFunctionDataType::Data(data) => data.fmt(f),
             IrFunctionDataType::Mutation(data) => write!(f, "Mutation[{data}]"),
-            IrFunctionDataType::Cell(data) => write!(f, "Cell[{data}]"),
             IrFunctionDataType::Function(signature) => signature.fmt(f),
         }
     }
