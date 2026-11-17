@@ -4,7 +4,7 @@ use crate::hop::parsing::{
     ParsedEnumDeclarationVariant, ParsedExpr, ParsedFieldDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedLetBinding, ParsedLoopSource, ParsedMarkup, ParsedMatchArm,
     ParsedModule, ParsedNamedArgument, ParsedPageDeclaration, ParsedParameter, ParsedPattern,
-    ParsedRecordDeclaration, ParsedType, Precedence,
+    ParsedRecordDeclaration, ParsedStatement, ParsedType, Precedence,
 };
 use crate::html::HtmlElementKind;
 use crate::symbols::var_name::VarName;
@@ -432,8 +432,14 @@ fn format_function_declaration<'a>(
     } else {
         arena.nil()
     };
+    let mut_prefix = if function.mut_range.is_some() {
+        arena.text("mut ")
+    } else {
+        arena.nil()
+    };
     leading_comments
         .append(pub_prefix)
+        .append(mut_prefix)
         .append(arena.text("fn"))
         .append(arena.text(" "))
         .append(arena.text(function.name.as_str()))
@@ -881,10 +887,6 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
         ParsedType::Int { .. } => arena.text("Int"),
         ParsedType::Float { .. } => arena.text("Float"),
         ParsedType::Html { .. } => arena.text("Html"),
-        ParsedType::Mutation { element, .. } => arena
-            .text("Mutation[")
-            .append(format_type(arena, element))
-            .append(arena.text("]")),
         ParsedType::Option { element, .. } => arena
             .text("Option[")
             .append(format_type(arena, element))
@@ -902,9 +904,16 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
             .append(arena.text("]")),
         ParsedType::Named { name, .. } => arena.text(name.to_string()),
         ParsedType::Function {
-            parameters, result, ..
+            mut_range,
+            parameters,
+            result,
+            ..
         } => arena
-            .text("fn(")
+            .text(if mut_range.is_some() {
+                "mut fn("
+            } else {
+                "fn("
+            })
             .append(
                 arena.intersperse(
                     parameters
@@ -936,24 +945,27 @@ fn format_braced_expr<'a>(
 }
 
 /// Formats the inside of a block whose braces are supplied by the caller:
-/// one `let` statement per line, then the tail expression.
+/// one statement per line, then the tail expression.
 fn format_block_body<'a>(
     arena: &'a Arena<'a>,
     block: &'a ParsedBlock,
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let mut doc = arena.nil();
-    for binding in &block.bindings {
-        doc = doc
-            .append(drain_comments_before(
-                arena,
-                comments,
-                binding.range.start(),
-            ))
-            .append(arena.text("let "))
-            .append(format_let_binding(arena, binding, comments))
-            .append(arena.text(";"))
-            .append(arena.hardline());
+    for statement in &block.statements {
+        doc = doc.append(drain_comments_before(
+            arena,
+            comments,
+            statement.range().start(),
+        ));
+        doc = match statement {
+            ParsedStatement::Let(binding) => doc
+                .append(arena.text("let "))
+                .append(format_let_binding(arena, binding, comments)),
+            ParsedStatement::Expr { expr, .. } => doc.append(format_expr(arena, expr, comments)),
+        }
+        .append(arena.text(";"))
+        .append(arena.hardline());
     }
     doc.append(drain_comments_before(
         arena,
@@ -1010,12 +1022,17 @@ fn format_expr<'a>(
             .append(arena.hardline())
             .append(arena.text("}")),
         ParsedExpr::Lambda {
+            mut_range,
             params,
             return_type,
             body,
             ..
         } => arena
-            .text("fn(")
+            .text(if mut_range.is_some() {
+                "mut fn("
+            } else {
+                "fn("
+            })
             .append(arena.intersperse(
                 params.iter().map(|param| {
                     let name = arena.text(param.name());
@@ -1043,6 +1060,15 @@ fn format_expr<'a>(
             .append(arena.hardline())
             .append(arena.text("}")),
         ParsedExpr::Markup { markup } => format_markup(arena, markup, comments),
+        ParsedExpr::Assign { var, value, .. } => arena
+            .text(var.as_str())
+            .append(arena.text(" = "))
+            .append(format_expr_in_slot(
+                arena,
+                value,
+                Bound::Included(Precedence::Assign),
+                comments,
+            )),
         ParsedExpr::FieldAccess {
             record: object,
             field,
@@ -2195,6 +2221,43 @@ mod tests {
                   role: String,
                 ) -> Html {
                   <></>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn mut_functions_statements_and_assignments() {
+        check(
+            indoc! {r#"
+                mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
+                  press(); press()
+                }
+                fn Main() -> Html {
+                  let mut count = 0;
+                  let reset = mut fn() { count = 0 };
+                  <button on:click={mut fn() { count = count + 1; match count > 2 { true => count = 0, false => () } }}>
+                    {count.to_string()}
+                  </button>
+                }
+            "#},
+            expect![[r#"
+                mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
+                  press();
+                  press()
+                }
+
+                fn Main() -> Html {
+                  let mut count = 0;
+                  let reset = mut fn() {
+                    count = 0
+                  };
+                  <button on:click={mut fn() {
+                    count = count + 1;
+                    match count > 2 {true => count = 0, false => ()}
+                  }}>
+                    {count.to_string()}
+                  </button>
                 }
             "#]],
         );
@@ -6040,18 +6103,18 @@ mod tests {
     }
 
     #[test]
-    fn should_format_cells_clicks_keys_and_mutations() {
+    fn should_format_cells_clicks_and_keys() {
         check(
             indoc! {r#"
                 fn Counter(ids: Array[Int]) -> Html {
                   let   mut count:Int = 0;
                   let mut on = false;
-                  <ul on:click={fn()->Mutation[Tuple[]]{count.set(count+1).and_then(fn(_:Tuple[]){on.set(!on)})}}>
+                  <ul on:click={mut fn()->Tuple[]{count=count+1;on=!on}}>
                     {for id in ids key id*2 {
                       <li>{id.to_string()}</li>
                     }}
                     {for i in 1..=3 key (Item {id: i}).id {
-                      <li>{count.set(i == 1).to_string()}</li>
+                      <li>{count.max(i == 1).to_string()}</li>
                     }}
                   </ul>
                 }
@@ -6060,10 +6123,9 @@ mod tests {
                 fn Counter(ids: Array[Int]) -> Html {
                   let mut count: Int = 0;
                   let mut on = false;
-                  <ul on:click={fn() -> Mutation[Tuple[]] {
-                    count.set(count + 1).and_then(fn(_: Tuple[]) {
-                      on.set(!on)
-                    })
+                  <ul on:click={mut fn() -> Tuple[] {
+                    count = count + 1;
+                    on = !on
                   }}>
                     {for id in ids key id * 2 {
                       <li>
@@ -6072,94 +6134,10 @@ mod tests {
                     }}
                     {for i in 1..=3 key (Item {id: i}.id) {
                       <li>
-                        {count.set(i == 1).to_string()}
+                        {count.max(i == 1).to_string()}
                       </li>
                     }}
                   </ul>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_format_mutation_types_and_wildcard_parameters() {
-        check(
-            indoc! {r#"
-                fn load(n:Int)->Mutation[Option[Int]]{
-                  pure!(Some(n)).and_then(fn(_:Option[Int]){pure!(None)})
-                }
-            "#},
-            expect![[r#"
-                fn load(n: Int) -> Mutation[Option[Int]] {
-                  pure!(Some(n)).and_then(fn(_: Option[Int]) {
-                    pure!(None)
-                  })
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_format_a_chain_of_mutations() {
-        check(
-            indoc! {r#"
-                fn Counter() -> Html {
-                  let mut count = 0;
-                  let mut label = "none";
-                  <button on:click={fn() {
-                    count.set(count + 1).and_then(fn(_) { count.get() }).and_then(fn(n) { label.set(n.to_string()) }).and_then(fn(_) { count.get() }).and_then(fn(n) { count.set(n * 2) })
-                  }}>{label}</button>
-                }
-            "#},
-            expect![[r#"
-                fn Counter() -> Html {
-                  let mut count = 0;
-                  let mut label = "none";
-                  <button on:click={fn() {
-                    count.set(count + 1).and_then(fn(_) {
-                      count.get()
-                    }).and_then(fn(n) {
-                      label.set(n.to_string())
-                    }).and_then(fn(_) {
-                      count.get()
-                    }).and_then(fn(n) {
-                      count.set(n * 2)
-                    })
-                  }}>
-                    {label}
-                  </button>
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_format_nested_mutations() {
-        check(
-            indoc! {r#"
-                fn Counter() -> Html {
-                  let mut count = 0;
-                  let mut label = "none";
-                  <button on:click={fn() {
-                    count.set(count + 1).and_then(fn(_) { count.get().and_then(fn(n) { label.set(n.to_string()).and_then(fn(_) { count.set(n * 2) }) }) })
-                  }}>{label}</button>
-                }
-            "#},
-            expect![[r#"
-                fn Counter() -> Html {
-                  let mut count = 0;
-                  let mut label = "none";
-                  <button on:click={fn() {
-                    count.set(count + 1).and_then(fn(_) {
-                      count.get().and_then(fn(n) {
-                        label.set(n.to_string()).and_then(fn(_) {
-                          count.set(n * 2)
-                        })
-                      })
-                    })
-                  }}>
-                    {label}
-                  </button>
                 }
             "#]],
         );

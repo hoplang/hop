@@ -238,7 +238,7 @@ fn parse_markup(
                 match parse_expr::parse_block(iter, comments, errors, &left_brace) {
                     Ok(block) => builder.append_markup(ParsedMarkup::Interpolation {
                         range: block.range.clone(),
-                        expression: if block.bindings.is_empty() {
+                        expression: if block.statements.is_empty() {
                             *block.tail
                         } else {
                             ParsedExpr::Block { block }
@@ -383,7 +383,7 @@ fn parse_opening_tag(
                     attributes.push(ParsedAttribute::Expression {
                         name,
                         name_range,
-                        value: if block.bindings.is_empty() {
+                        value: if block.statements.is_empty() {
                             *block.tail
                         } else {
                             ParsedExpr::Block { block }

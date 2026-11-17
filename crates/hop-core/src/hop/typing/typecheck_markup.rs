@@ -29,8 +29,9 @@ fn typecheck_on_click(
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedExpr> {
     let handler_type = Type::Function(FunctionType {
+        mutates: true,
         parameters: Vec::new(),
-        result: Box::new(Type::UNIT_MUTATION),
+        result: Box::new(Type::UNIT),
     });
     let value = match attribute {
         ParsedAttribute::Expression { value, .. } => value,

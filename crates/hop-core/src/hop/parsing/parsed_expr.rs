@@ -140,14 +140,22 @@ pub enum ParsedExpr {
     },
 
     Lambda {
+        mut_range: Option<DocumentRange>,
         params: Vec<ParsedLambdaParameter>,
-        return_type: Option<ParsedType>,
+        return_type: Option<Box<ParsedType>>,
         body: ParsedBlock,
         range: DocumentRange,
     },
 
     Markup {
         markup: Box<ParsedMarkup>,
+    },
+
+    Assign {
+        var: VarName,
+        var_range: DocumentRange,
+        value: Box<Self>,
+        range: DocumentRange,
     },
 
     Call {
@@ -225,9 +233,34 @@ pub struct ParsedFieldInitializer {
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedBlock {
-    pub bindings: Vec<ParsedLetBinding>,
+    pub statements: Vec<ParsedStatement>,
     pub tail: Box<ParsedExpr>,
     pub range: DocumentRange,
+}
+
+#[derive(Debug, Clone)]
+pub enum ParsedStatement {
+    Let(ParsedLetBinding),
+    Expr {
+        expr: ParsedExpr,
+        range: DocumentRange,
+    },
+}
+
+impl ParsedStatement {
+    pub fn range(&self) -> &DocumentRange {
+        match self {
+            ParsedStatement::Let(binding) => &binding.range,
+            ParsedStatement::Expr { range, .. } => range,
+        }
+    }
+
+    pub fn expr(&self) -> &ParsedExpr {
+        match self {
+            ParsedStatement::Let(binding) => &binding.value_expr,
+            ParsedStatement::Expr { expr, .. } => expr,
+        }
+    }
 }
 
 /// A let statement in a block.
@@ -289,6 +322,7 @@ pub enum ParsedBinaryOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {
+    Assign,
     LogicalOr,
     LogicalAnd,
     Comparison,
@@ -468,11 +502,20 @@ impl ParsedBinaryOp {
 }
 
 impl ParsedBlock {
-    /// Apply `f` to the value of each `let` statement and to the tail, in
+    pub fn let_bindings(&self) -> impl Iterator<Item = &ParsedLetBinding> {
+        self.statements
+            .iter()
+            .filter_map(|statement| match statement {
+                ParsedStatement::Let(binding) => Some(binding),
+                ParsedStatement::Expr { .. } => None,
+            })
+    }
+
+    /// Apply `f` to the expression of each statement and to the tail, in
     /// source order.
     pub fn for_each_child<'a>(&'a self, f: &mut impl FnMut(&'a ParsedExpr)) {
-        for binding in &self.bindings {
-            f(&binding.value_expr);
+        for statement in &self.statements {
+            f(statement.expr());
         }
         f(&self.tail);
     }
@@ -480,13 +523,18 @@ impl ParsedBlock {
 
 impl Display for ParsedBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for binding in &self.bindings {
-            let mutable = if binding.mutable { "mut " } else { "" };
-            write!(f, "let {mutable}{}", binding.var_name.as_str())?;
-            if let Some(var_type) = &binding.var_type {
-                write!(f, ": {var_type}")?;
+        for statement in &self.statements {
+            match statement {
+                ParsedStatement::Let(binding) => {
+                    let mutable = if binding.mutable { "mut " } else { "" };
+                    write!(f, "let {mutable}{}", binding.var_name.as_str())?;
+                    if let Some(var_type) = &binding.var_type {
+                        write!(f, ": {var_type}")?;
+                    }
+                    writeln!(f, " = {};", binding.value_expr)?;
+                }
+                ParsedStatement::Expr { expr, .. } => writeln!(f, "{expr};")?,
             }
-            write!(f, " = {} in ", binding.value_expr)?;
         }
         write!(f, "{}", self.tail)
     }
@@ -497,7 +545,8 @@ impl ParsedExpr {
     pub fn for_each_child<'a>(&'a self, f: &mut impl FnMut(&'a ParsedExpr)) {
         match self {
             ParsedExpr::FieldAccess { record: inner, .. }
-            | ParsedExpr::Unary { operand: inner, .. } => f(inner),
+            | ParsedExpr::Unary { operand: inner, .. }
+            | ParsedExpr::Assign { value: inner, .. } => f(inner),
 
             ParsedExpr::MethodCall { receiver, args, .. } => {
                 f(receiver);
@@ -602,7 +651,7 @@ impl ParsedExpr {
     /// with nothing left to evaluate.
     pub fn is_constant(&self) -> bool {
         match self {
-            ParsedExpr::Block { .. } => false,
+            ParsedExpr::Block { .. } | ParsedExpr::Assign { .. } => false,
             ParsedExpr::StringLiteral { .. }
             | ParsedExpr::BoolLiteral { .. }
             | ParsedExpr::IntLiteral { .. }
@@ -653,7 +702,8 @@ impl ParsedExpr {
             | ParsedExpr::Option { range, .. }
             | ParsedExpr::Macro { range, .. }
             | ParsedExpr::Call { range, .. }
-            | ParsedExpr::Lambda { range, .. } => range,
+            | ParsedExpr::Lambda { range, .. }
+            | ParsedExpr::Assign { range, .. } => range,
             ParsedExpr::Block { block } => &block.range,
             ParsedExpr::Markup { markup } => markup.range(),
         }
@@ -662,6 +712,7 @@ impl ParsedExpr {
     pub fn precedence(&self) -> Precedence {
         match self {
             ParsedExpr::Binary { operator, .. } => operator.precedence(),
+            ParsedExpr::Assign { .. } => Precedence::Assign,
             ParsedExpr::Unary { .. }
             | ParsedExpr::IntLiteral {
                 minus_range: Some(_),
@@ -861,11 +912,15 @@ impl Display for ParsedExpr {
                 f.write_str("\n}")
             }
             ParsedExpr::Lambda {
+                mut_range,
                 params,
                 return_type,
                 body,
                 ..
             } => {
+                if mut_range.is_some() {
+                    f.write_str("mut ")?;
+                }
                 f.write_str("fn(")?;
                 for (i, param) in params.iter().enumerate() {
                     let sep = if i > 0 { ", " } else { "" };
@@ -882,7 +937,12 @@ impl Display for ParsedExpr {
                 write!(Indent::new(f), "\n{body}")?;
                 f.write_str("\n}")
             }
-            ParsedExpr::Block { block } => write!(f, "{block}"),
+            ParsedExpr::Block { block } => {
+                f.write_str("{")?;
+                write!(Indent::new(f), "\n{block}")?;
+                f.write_str("\n}")
+            }
+            ParsedExpr::Assign { var, value, .. } => write!(f, "{} = {value}", var.as_str()),
             ParsedExpr::Option { value, .. } => match value {
                 Some(inner) => write!(f, "Some({inner})"),
                 None => f.write_str("None"),

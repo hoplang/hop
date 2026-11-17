@@ -14,6 +14,7 @@ pub struct VariableScope {
     /// The loop and lambda bodies around the code being checked, outermost
     /// first.
     bodies: Vec<RepeatedBody>,
+    mutates: bool,
 }
 
 /// A body that runs any number of times for each run of the code around
@@ -82,7 +83,16 @@ impl VariableScope {
             entries: HashMap::new(),
             operations: Vec::new(),
             bodies: Vec::new(),
+            mutates: false,
         }
+    }
+
+    pub fn mutates(&self) -> bool {
+        self.mutates
+    }
+
+    pub fn set_mutates(&mut self, mutates: bool) -> bool {
+        std::mem::replace(&mut self.mutates, mutates)
     }
 
     /// Bring a function into scope for every body of the module. Functions

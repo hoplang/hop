@@ -7,20 +7,19 @@ use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::runtime::clicks::clicks;
 use crate::ir::runtime::eval_error::EvalError;
-use crate::ir::runtime::flat_evaluator::{invoke_entrypoint, run_mutation};
+use crate::ir::runtime::flat_evaluator::{invoke_entrypoint, run_handlers};
 use crate::ir::runtime::state::{ElementId, State};
-use crate::ir::runtime::value::{Html, HtmlNode, Mutation, Value};
+use crate::ir::runtime::value::{Closure, Html, HtmlNode, Value};
 use crate::symbols::attribute_name::AttributeName;
 
 /// An entrypoint as a page runs it: the state of its cells and elements, the
 /// Html its latest render gave, and the label of each element it has shown.
 ///
-/// A click runs the mutation of its handlers in a mutation transaction on the
-/// state, then renders the entrypoint in a render transaction on the state
-/// the mutations leave, and the runtime takes the state and the Html the
-/// render gives. The runtime takes nothing until both have finished, so a
-/// click that fails, whether its mutation or the render after it, leaves the
-/// runtime as it was.
+/// A click applies its handlers in a mutation transaction on the state, then
+/// renders the entrypoint in a render transaction on the state the handlers
+/// leave, and the runtime takes the state and the Html the render gives. The
+/// runtime takes nothing until both have finished, so a click that fails,
+/// whether a handler or the render after it, leaves the runtime as it was.
 ///
 /// An element is labelled by the order in which a render first shows it, in
 /// document order, so that its label does not depend on the identity the
@@ -32,7 +31,7 @@ pub struct PageRuntime<'a> {
     args: HashMap<AttributeName, Value<'a>>,
     state: State<'a>,
     html: Html<'a>,
-    targets: Vec<(ElementId, Result<Rc<Mutation<'a>>, EvalError>)>,
+    targets: Vec<(ElementId, Vec<Rc<Closure<'a>>>)>,
     shown: Vec<Shown>,
     labels: Labels,
 }
@@ -93,9 +92,8 @@ impl<'a> PageRuntime<'a> {
         let Some((_, target)) = self.targets.iter().find(|(target, _)| *target == identity) else {
             return Ok(());
         };
-        let mutation = target.clone()?;
         let mut mutations = self.state.begin_mutations();
-        run_mutation(&mutation, &mut mutations, &self.program.functions)?;
+        run_handlers(target, &mut mutations, &self.program.functions)?;
         let render = mutations.commit().begin_render();
         let (value, state) =
             invoke_entrypoint(self.program, self.entrypoint, self.args.clone(), render)?;
@@ -108,7 +106,7 @@ impl<'a> PageRuntime<'a> {
     /// Take the clicks of the latest render, and the elements it shows,
     /// labelling those that no render has shown before in document order.
     fn show(&mut self) {
-        self.targets = clicks(&self.program.functions, &self.html);
+        self.targets = clicks(&self.html);
         self.shown.clear();
         let mut pending = vec![&self.html];
         while let Some(html) = pending.pop() {

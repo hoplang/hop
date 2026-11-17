@@ -17,22 +17,17 @@ use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::var_name::VarName;
 
-/// What the context of a lambda says about its type.
-pub enum Expected<'a> {
-    Type(Option<&'a Type>),
-    Parameters(&'a [Type]),
-}
-
 /// Check a lambda. A parameter without a type takes the type of its
 /// position in the expected parameters, of which there must be as many as
 /// the lambda has. The body runs once for each application, so it is
 /// checked as a body that runs any number of times.
 pub fn typecheck_lambda(
+    mutates: bool,
     params: &[ParsedLambdaParameter],
     return_type: Option<&ParsedType>,
     body: &ParsedBlock,
     range: &DocumentRange,
-    expected: Expected<'_>,
+    expected: Option<&Type>,
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
     type_env: &TypeEnv,
@@ -44,7 +39,7 @@ pub fn typecheck_lambda(
 ) -> Option<TypedExpr> {
     // A parameter without a type has no position to take it from when the
     // expected function type has another number of parameters.
-    if let Expected::Type(Some(Type::Function(function))) = expected
+    if let Some(Type::Function(function)) = expected
         && function.parameters.len() != params.len()
         && params.iter().any(|param| param.var_type.is_none())
     {
@@ -58,12 +53,11 @@ pub fn typecheck_lambda(
         return None;
     }
     let (expected_params, expected_result) = match expected {
-        Expected::Type(Some(Type::Function(function))) => (
+        Some(Type::Function(function)) => (
             Some(function.parameters.as_slice()),
             Some(function.result.as_ref()),
         ),
-        Expected::Type(_) => (None, None),
-        Expected::Parameters(parameters) => (Some(parameters), None),
+        _ => (None, None),
     };
     let expected_params = expected_params.filter(|parameters| parameters.len() == params.len());
 
@@ -117,6 +111,7 @@ pub fn typecheck_lambda(
     let expected_result = declared_result.as_ref().or(expected_result);
 
     var_env.enter(RepeatedBody::Lambda);
+    let outer = var_env.set_mutates(mutates);
     let mut pushed = 0;
     for (param, typ) in &typed_params {
         let Some(name) = &param.var_name else {
@@ -161,6 +156,7 @@ pub fn typecheck_lambda(
             ));
         }
     }
+    var_env.set_mutates(outer);
     var_env.exit();
 
     let typed_body = typed_body?;
@@ -183,6 +179,7 @@ pub fn typecheck_lambda(
     }
 
     let function = FunctionType {
+        mutates,
         parameters: typed_params.iter().map(|(_, typ)| typ.clone()).collect(),
         result: Box::new(body_type),
     };
@@ -232,6 +229,13 @@ pub fn typecheck_apply(
         ));
         return None;
     };
+    if function.mutates && !var_env.mutates() {
+        errors.push(TypeError::new(
+            TypeErrorKind::MutCallOutsideMut,
+            report_range.clone(),
+        ));
+        return None;
+    }
     if values.len() != function.parameters.len() {
         errors.push(TypeError::new(
             TypeErrorKind::FunctionArgumentCountMismatch {

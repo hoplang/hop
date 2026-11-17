@@ -207,8 +207,13 @@ pub enum TypedExpr {
     /// A block of one or more let bindings, each in scope for the ones
     /// after it and for the tail, whose value is the block's.
     Block {
-        bindings: Vec<TypedLetBinding>,
+        statements: Vec<TypedStatement>,
         tail: Box<Self>,
+    },
+
+    Assign {
+        cell: VarName,
+        value: Box<Self>,
     },
 
     /// FoldMap over a monoid
@@ -217,28 +222,6 @@ pub enum TypedExpr {
         source: Box<TypedLoopSource>,
         key: Option<Box<Self>>,
         body: Box<Self>,
-        typ: Type,
-    },
-
-    /// A write of a cell.
-    CellWrite {
-        cell: VarName,
-        value: Box<Self>,
-    },
-
-    CellRead {
-        cell: VarName,
-        typ: Type,
-    },
-
-    MutationPure {
-        value: Box<Self>,
-        typ: Type,
-    },
-
-    MutationBind {
-        mutation: Box<Self>,
-        continuation: Box<Self>,
         typ: Type,
     },
 
@@ -324,7 +307,7 @@ pub enum TypedExpr {
         element: HtmlElementKind,
         attrs: TypedAttrs,
         children: Box<Self>,
-        /// The handler of a click on the element, of type `fn() -> Mutation[Tuple[]]`.
+        /// The handler of a click on the element, of type `mut fn() -> Tuple[]`.
         on_click: Option<Box<Self>>,
     },
 
@@ -400,6 +383,12 @@ pub struct TypedLetBinding {
 }
 
 #[derive(Debug, Clone)]
+pub enum TypedStatement {
+    Let(TypedLetBinding),
+    Expr(TypedExpr),
+}
+
+#[derive(Debug, Clone)]
 pub struct TypedAttrs {
     pub attributes: IndexMap<AttributeName, TypedAttribute>,
     pub spread: Option<VarName>,
@@ -424,9 +413,6 @@ impl TypedExpr {
             | TypedExpr::ArrayEnumerate { typ, .. }
             | TypedExpr::Lambda { typ, .. }
             | TypedExpr::Apply { typ, .. }
-            | TypedExpr::CellRead { typ, .. }
-            | TypedExpr::MutationPure { typ, .. }
-            | TypedExpr::MutationBind { typ, .. }
             | TypedExpr::Call { typ, .. } => typ.clone(),
 
             TypedExpr::Block { tail, .. } => tail.typ(),
@@ -467,7 +453,7 @@ impl TypedExpr {
 
             TypedExpr::ArrayLength { .. } | TypedExpr::FloatToInt { .. } => Type::INT,
 
-            TypedExpr::CellWrite { .. } => Type::UNIT_MUTATION,
+            TypedExpr::Assign { .. } => Type::UNIT,
 
             TypedExpr::HtmlConcat { .. }
             | TypedExpr::HtmlText { .. }
@@ -588,26 +574,24 @@ impl Display for TypedExpr {
                 }
                 f.write_str(if arms.is_empty() { "}" } else { "\n}" })
             }
-            TypedExpr::Block { bindings, tail } => {
-                for binding in bindings {
-                    let mutable = if binding.cell { "mut " } else { "" };
-                    write!(
-                        f,
-                        "let {mutable}{} = {} in ",
-                        binding.var.as_str(),
-                        binding.value
-                    )?;
+            TypedExpr::Block { statements, tail } => {
+                for statement in statements {
+                    match statement {
+                        TypedStatement::Let(binding) => {
+                            let mutable = if binding.cell { "mut " } else { "" };
+                            write!(
+                                f,
+                                "let {mutable}{} = {} in ",
+                                binding.var.as_str(),
+                                binding.value
+                            )?;
+                        }
+                        TypedStatement::Expr(expr) => write!(f, "{expr}; ")?,
+                    }
                 }
                 write!(f, "{tail}")
             }
-            TypedExpr::CellWrite { cell, value } => write!(f, "write({}, {value})", cell.as_str()),
-            TypedExpr::CellRead { cell, .. } => write!(f, "{}.get()", cell.as_str()),
-            TypedExpr::MutationPure { value, .. } => write!(f, "pure!({value})"),
-            TypedExpr::MutationBind {
-                mutation,
-                continuation,
-                ..
-            } => write!(f, "{mutation}.and_then({continuation})"),
+            TypedExpr::Assign { cell, value } => write!(f, "{} = {value}", cell.as_str()),
             TypedExpr::ArrayLength { array } => write!(f, "{array}.len()"),
             TypedExpr::ArrayIsEmpty { array } => write!(f, "{array}.is_empty()"),
             TypedExpr::ArrayGet { array, index, .. } => write!(f, "{array}.get({index})"),
@@ -667,6 +651,11 @@ impl Display for TypedExpr {
             }
             TypedExpr::Asset { path } => write!(f, "asset!(\"/{}\")", path.as_str()),
             TypedExpr::Lambda { params, body, typ } => {
+                if let Type::Function(function) = typ
+                    && function.mutates
+                {
+                    f.write_str("mut ")?;
+                }
                 f.write_str("fn(")?;
                 for (i, (name, typ)) in params.iter().enumerate() {
                     let sep = if i > 0 { ", " } else { "" };

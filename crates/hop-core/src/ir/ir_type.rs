@@ -6,7 +6,6 @@ use crate::symbols::type_name::TypeName;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrType {
     Data(IrDataType),
-    Mutation(IrDataType),
     Html,
     Function(IrSignature),
     /// A cell of the payload. Only a cell binding binds one.
@@ -28,18 +27,23 @@ pub enum IrDataType {
     Enum(TypeName),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IrModifier {
+    Pure,
+    Render,
+    Mut,
+}
+
 // A signature is that of a function or a closure alike.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IrSignature {
-    pub render_modifier: bool,
+    pub modifier: IrModifier,
     pub parameters: Vec<IrType>,
     pub result: Box<IrType>,
 }
 
 #[cfg(test)]
 impl IrType {
-    pub const MUTATION: IrType = IrType::Mutation(IrDataType::UNIT);
-
     pub fn array(element: IrDataType) -> IrType {
         IrType::Data(IrDataType::Array(Box::new(element)))
     }
@@ -57,12 +61,12 @@ impl IrType {
     pub const HTML: IrType = IrType::Html;
 
     pub fn function(
-        render_modifier: bool,
+        modifier: IrModifier,
         parameters: impl IntoIterator<Item = IrType>,
         result: IrType,
     ) -> IrType {
         IrType::Function(IrSignature {
-            render_modifier,
+            modifier,
             parameters: parameters.into_iter().collect(),
             result: Box::new(result),
         })
@@ -71,11 +75,7 @@ impl IrType {
     pub fn as_data(&self) -> Option<&IrDataType> {
         match self {
             IrType::Data(data) => Some(data),
-            IrType::Mutation(_)
-            | IrType::Html
-            | IrType::Function(_)
-            | IrType::Cell(_)
-            | IrType::Id => None,
+            IrType::Html | IrType::Function(_) | IrType::Cell(_) | IrType::Id => None,
         }
     }
 
@@ -83,15 +83,15 @@ impl IrType {
         match self {
             IrType::Html => true,
             IrType::Function(signature) => *signature.result == IrType::Html,
-            IrType::Data(_) | IrType::Mutation(_) | IrType::Cell(_) | IrType::Id => false,
+            IrType::Data(_) | IrType::Cell(_) | IrType::Id => false,
         }
     }
 
     pub fn is_value_or_value_closure(&self) -> bool {
         match self {
-            IrType::Data(_) | IrType::Mutation(_) => true,
+            IrType::Data(_) => true,
             IrType::Function(signature) => {
-                matches!(*signature.result, IrType::Data(_) | IrType::Mutation(_))
+                matches!(*signature.result, IrType::Data(_))
                     && (signature.parameters.iter()).all(IrType::is_value_or_value_closure)
             }
             IrType::Html | IrType::Cell(_) | IrType::Id => false,
@@ -107,7 +107,6 @@ impl fmt::Display for IrType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             IrType::Data(data) => data.fmt(f),
-            IrType::Mutation(data) => write!(f, "Mutation[{data}]"),
             IrType::Html => f.write_str("Html"),
             IrType::Function(signature) => signature.fmt(f),
             IrType::Cell(data) => write!(f, "Cell[{data}]"),
@@ -116,12 +115,19 @@ impl fmt::Display for IrType {
     }
 }
 
+impl fmt::Display for IrModifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IrModifier::Pure => Ok(()),
+            IrModifier::Render => f.write_str("render "),
+            IrModifier::Mut => f.write_str("mut "),
+        }
+    }
+}
+
 impl fmt::Display for IrSignature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.render_modifier {
-            write!(f, "render ")?;
-        }
-        write!(f, "(")?;
+        write!(f, "{}(", self.modifier)?;
         for (i, parameter) in self.parameters.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;

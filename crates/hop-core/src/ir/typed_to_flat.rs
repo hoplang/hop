@@ -6,7 +6,7 @@ use crate::document::CheapString;
 use crate::hop::typing::{
     Constructor, DataType, Pattern, PatternField, RecordField, ResolvedType, Type, TypeRegistry,
     TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource, TypedPageDeclaration,
-    TypedParameter, TypedPattern, TypedRecordUpdateField,
+    TypedParameter, TypedPattern, TypedRecordUpdateField, TypedStatement,
 };
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
@@ -23,7 +23,7 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{IrDataType, IrModifier, IrType};
 use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -171,10 +171,9 @@ struct Compiler<'a> {
     registry: &'a TypeRegistry,
     /// The specializations calls have requested so far, in request order.
     specializations: Vec<Specialization>,
-    /// The name each variable in scope stands for.
-    scopes: Vec<Vec<(VarName, ValueId)>>,
-    /// The cell of each name a track binds.
-    cells: HashMap<ValueId, ValueId>,
+    /// The name each variable in scope stands for, and the cell of one that
+    /// a let mut binds.
+    scopes: Vec<Vec<(VarName, ValueId, Option<ValueId>)>>,
     /// The parameters of the function being compiled, those it declares and
     /// those its rest adds from a function it is spread into. A forwarded
     /// parameter reads these, so a binding in the body that reuses the name
@@ -186,6 +185,7 @@ struct Compiler<'a> {
     rest: Vec<(AttributeName, Type, ValueId)>,
     /// The bindings of the block being compiled, in evaluation order.
     bindings: Vec<FlatBinding>,
+    mutates: bool,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
@@ -202,10 +202,10 @@ impl<'a> Compiler<'a> {
             registry,
             specializations: Vec::new(),
             scopes: vec![Vec::new()],
-            cells: HashMap::new(),
             params: HashMap::new(),
             rest: Vec::new(),
             bindings: Vec::new(),
+            mutates: false,
             asset_path_rewriter,
         }
     }
@@ -248,16 +248,34 @@ impl<'a> Compiler<'a> {
             parameters.push(IrParameter { name, binder });
         }
 
-        let (render_modifier, body) = match &decl.return_type {
-            Type::Html(_) => (true, self.compile_html_block(&decl.body)),
-            Type::Data(_) | Type::Mutation(_) => (false, self.compile_value_block(&decl.body)),
-            Type::Function(_) => unreachable!("a function returns data, Html or a mutation"),
+        let (modifier, return_type, body) = match &decl.return_type {
+            Type::Html(_) => (
+                IrModifier::Render,
+                IrType::Html,
+                self.compile_html_block(&decl.body),
+            ),
+            Type::Data(_) if decl.mutates => {
+                self.mutates = true;
+                let body = self.compile_value_block(&decl.body);
+                self.mutates = false;
+                (
+                    IrModifier::Mut,
+                    lower_type(self.registry, &decl.return_type),
+                    body,
+                )
+            }
+            Type::Data(_) => (
+                IrModifier::Pure,
+                lower_type(self.registry, &decl.return_type),
+                self.compile_value_block(&decl.body),
+            ),
+            Type::Function(_) => unreachable!("a function returns data or Html"),
         };
         let declaration = FlatFunction {
             function,
-            render_modifier,
+            modifier,
             parameters,
-            return_type: lower_type(self.registry, &decl.return_type),
+            return_type,
             body,
         };
         self.pop_scope();
@@ -325,7 +343,7 @@ impl<'a> Compiler<'a> {
             .into_iter()
             .inspect(|binding| {
                 assert!(
-                    !matches!(binding.op, FlatOp::Cell(_) | FlatOp::Track(_)),
+                    !matches!(binding.op, FlatOp::Cell(_)),
                     "a block that computes a value binds no cell"
                 );
                 assert!(
@@ -412,19 +430,23 @@ impl<'a> Compiler<'a> {
         self.scopes
             .last_mut()
             .expect("scope stack should not be empty")
-            .push((name.clone(), id));
+            .push((name.clone(), id, None));
         id
     }
 
-    /// The cell of the variable, which a let mut bound.
-    fn cell(&mut self, name: &VarName) -> ValueId {
-        let tracked = self.resolve(name);
-        self.cells[&tracked]
+    /// The cell of the variable, if a let mut bound it.
+    fn cell(&mut self, name: &VarName) -> Option<ValueId> {
+        for scope in self.scopes.iter().rev() {
+            if let Some((_, _, cell)) = scope.iter().rev().find(|(n, _, _)| n == name) {
+                return *cell;
+            }
+        }
+        panic!("undefined variable: {name}");
     }
 
     fn resolve(&mut self, name: &VarName) -> ValueId {
         for scope in self.scopes.iter().rev() {
-            if let Some((_, id)) = scope.iter().rev().find(|(n, _)| n == name) {
+            if let Some((_, id, _)) = scope.iter().rev().find(|(n, _, _)| n == name) {
                 return *id;
             }
         }
@@ -469,7 +491,16 @@ impl<'a> Compiler<'a> {
     fn compile_expr(&mut self, expr: &TypedExpr) -> ValueId {
         let typ = expr.typ();
         let op = match expr {
-            TypedExpr::Var { value, .. } => return self.resolve(value),
+            // In what mutates, a variable a let mut binds is the value its
+            // cell has now, not the one the render read.
+            TypedExpr::Var { value, .. } => match self.cell(value) {
+                Some(cell) if self.mutates => FlatOp::CellRead(cell),
+                _ => return self.resolve(value),
+            },
+            TypedExpr::Assign { cell, value } => {
+                let cell = self.cell(cell).expect("a let mut binds what is assigned");
+                FlatOp::CellWrite(cell, self.compile_expr(value))
+            }
             TypedExpr::ForwardedParam { value, .. } => return self.params[value],
             TypedExpr::FieldAccess { record, field, .. } => FlatOp::Data(IrDataOp::FieldAccess(
                 self.compile_expr(record),
@@ -848,17 +879,26 @@ impl<'a> Compiler<'a> {
             // A let binds nothing. Its variable is the name of its value, in
             // a scope that the block's lets share and that holds the tail. A
             // let mut binds a cell, whose initial value is the value, compiled
-            // as a block of its own, and its variable is the name that tracks
+            // as a block of its own, and its variable is the name that reads
             // the cell, from which a write or a read of the variable finds the
             // cell. A let of Html in a block that does not render Html is
             // erased.
-            TypedExpr::Block { bindings, tail } => {
+            TypedExpr::Block { statements, tail } => {
                 self.push_scope();
-                for binding in bindings {
+                for statement in statements {
+                    let binding = match statement {
+                        TypedStatement::Let(binding) => binding,
+                        TypedStatement::Expr(expr) => {
+                            if typ.renders_html() || !expr.typ().renders_html() {
+                                self.compile_expr(expr);
+                            }
+                            continue;
+                        }
+                    };
                     if !typ.renders_html() && binding.value.typ().renders_html() {
                         continue;
                     }
-                    let value = if binding.cell {
+                    let (value, cell) = if binding.cell {
                         let Type::Data(typ) = binding.value.typ() else {
                             unreachable!("a cell holds data");
                         };
@@ -878,35 +918,20 @@ impl<'a> Compiler<'a> {
                                 var: name,
                                 typ: IrType::Data(typ),
                             },
-                            op: FlatOp::Track(cell),
+                            op: FlatOp::CellRead(cell),
                         });
-                        self.cells.insert(name, cell);
-                        name
+                        (name, Some(cell))
                     } else {
-                        self.compile_expr(&binding.value)
+                        (self.compile_expr(&binding.value), None)
                     };
                     self.scopes
                         .last_mut()
                         .expect("scope stack should not be empty")
-                        .push((binding.var.clone(), value));
+                        .push((binding.var.clone(), value, cell));
                 }
                 let tail = self.compile_expr(tail);
                 self.pop_scope();
                 return tail;
-            }
-            TypedExpr::CellWrite { cell, value } => {
-                let cell = self.cell(cell);
-                FlatOp::CellWrite(cell, self.compile_expr(value))
-            }
-            TypedExpr::CellRead { cell, .. } => FlatOp::CellRead(self.cell(cell)),
-            TypedExpr::MutationPure { value, .. } => FlatOp::MutationPure(self.compile_expr(value)),
-            TypedExpr::MutationBind {
-                mutation,
-                continuation,
-                ..
-            } => {
-                let mutation = self.compile_expr(mutation);
-                FlatOp::MutationBind(mutation, self.compile_expr(continuation))
             }
             TypedExpr::For {
                 var_name,
@@ -955,6 +980,10 @@ impl<'a> Compiler<'a> {
                 }));
             }
             TypedExpr::Lambda { params, body, .. } => {
+                let outer = std::mem::replace(
+                    &mut self.mutates,
+                    matches!(&typ, Type::Function(function) if function.mutates),
+                );
                 self.push_scope();
                 let parameters: Vec<IrBinder<IrType>> = params
                     .iter()
@@ -969,6 +998,7 @@ impl<'a> Compiler<'a> {
                 if typ.renders_html() {
                     let body = self.compile_html_block(body);
                     self.pop_scope();
+                    self.mutates = outer;
                     let binder_type = lower_type(self.registry, &typ);
                     assert!(
                         binder_type.is_html_or_html_closure(),
@@ -979,6 +1009,7 @@ impl<'a> Compiler<'a> {
                 }
                 let body = self.compile_value_block(body);
                 self.pop_scope();
+                self.mutates = outer;
                 assert!(
                     (parameters.iter()).all(|binder| binder.typ.is_value_or_value_closure()),
                     "a lambda that computes a value takes values only"
@@ -1100,9 +1131,14 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
     match typ {
         Type::Data(data) => IrType::Data(lower_data_type(registry, data)),
         Type::Html(_) => IrType::Html,
-        Type::Mutation(payload) => IrType::Mutation(lower_data_type(registry, payload)),
         Type::Function(function) => IrType::function(
-            function.result.renders_html(),
+            if function.mutates {
+                IrModifier::Mut
+            } else if function.result.renders_html() {
+                IrModifier::Render
+            } else {
+                IrModifier::Pure
+            },
             (function.parameters.iter()).map(|parameter| lower_type(registry, parameter)),
             lower_type(registry, &function.result),
         ),
@@ -2243,7 +2279,7 @@ mod tests {
     }
 
     #[test]
-    fn should_compile_cells_clicks_keys_and_mutations() {
+    fn should_compile_cells_clicks_and_keys() {
         check(
             indoc! {r#"
                 record Item {
@@ -2253,7 +2289,7 @@ mod tests {
                 fn Counter(label: String) -> Html {
                   let mut count = 0;
                   let mut clicked = false;
-                  <button on:click={fn() { count.set(count + 1).and_then(fn(_: Tuple[]) { clicked.set(true) }) }}>
+                  <button on:click={mut fn() { count = count + 1; clicked = true }}>
                     {label} {count.to_string()}
                   </button>
                 }
@@ -2276,34 +2312,29 @@ mod tests {
                     let v19: Int = 0
                     v19
                   }
-                  let v21: Int = track(v20)
+                  let v21: Int = read(v20)
                   let v23: Cell[Bool] = cell {
                     let v22: Bool = false
                     v22
                   }
-                  let v24: Bool = track(v23)
-                  let v33: () -> Mutation[Tuple[]] = fn() {
-                    let v25: Int = 1
-                    let v26: Int = int_add(v21, v25)
-                    let v27: Mutation[Tuple[]] = v20 := v26
-                    let v31: (Tuple[]) -> Mutation[Tuple[]] = fn(
-                      v28: Tuple[],
-                    ) {
-                      let v29: Bool = true
-                      let v30: Mutation[Tuple[]] = v23 := v29
-                      v30
-                    }
-                    let v32: Mutation[Tuple[]] = bind(v27, v31)
-                    v32
+                  let v24: Bool = read(v23)
+                  let v31: mut () -> Tuple[] = fn() {
+                    let v25: Int = read(v20)
+                    let v26: Int = 1
+                    let v27: Int = int_add(v25, v26)
+                    let v28: Tuple[] = v20 := v27
+                    let v29: Bool = true
+                    let v30: Tuple[] = v23 := v29
+                    v30
                   }
-                  let v34: Html = escape(v18)
-                  let v35: Html = text(" ")
-                  let v36: String = int_to_string(v21)
-                  let v37: Html = escape(v36)
-                  let v38: Html = concat(v34, v35, v37)
-                  let v39: Id = mint()
-                  let v40: Html = element(v39, "button", {}, v38) on_click v33
-                  v40
+                  let v32: Html = escape(v18)
+                  let v33: Html = text(" ")
+                  let v34: String = int_to_string(v21)
+                  let v35: Html = escape(v34)
+                  let v36: Html = concat(v32, v33, v35)
+                  let v37: Id = mint()
+                  let v38: Html = element(v37, "button", {}, v36) on_click v31
+                  v38
                 }
                 entrypoint body@e0() -> Html {
                   let v0: Int = 1
@@ -2338,13 +2369,13 @@ mod tests {
     fn should_pass_a_handler_to_an_element_through_a_parameter() {
         check(
             indoc! {r#"
-                fn Button(on_press: fn() -> Mutation[Tuple[]], children: Html) -> Html {
+                fn Button(on_press: mut fn() -> Tuple[], children: Html) -> Html {
                   <button on:click={on_press}>{children}</button>
                 }
                 page Test() {
                   fn body() -> Html {
                     let mut on = false;
-                    <Button on_press={fn() { on.set(!on) }}>
+                    <Button on_press={mut fn() { on = !on }}>
                       {match on {true => "on", false => "off"}}
                     </Button>
                   }
@@ -2352,39 +2383,40 @@ mod tests {
             "#},
             expect![[r#"
                 render fn Button@f0(
-                  on_press@v12: () -> Mutation[Tuple[]],
-                  children@v13: Html,
+                  on_press@v13: mut () -> Tuple[],
+                  children@v14: Html,
                 ) -> Html {
-                  let v14: Html = concat(v13)
-                  let v15: Id = mint()
-                  let v16: Html = element(v15, "button", {}, v14) on_click v12
-                  v16
+                  let v15: Html = concat(v14)
+                  let v16: Id = mint()
+                  let v17: Html = element(v16, "button", {}, v15) on_click v13
+                  v17
                 }
                 entrypoint body@e0() -> Html {
                   let v1: Cell[Bool] = cell {
                     let v0: Bool = false
                     v0
                   }
-                  let v2: Bool = track(v1)
-                  let v5: () -> Mutation[Tuple[]] = fn() {
-                    let v3: Bool = bool_not(v2)
-                    let v4: Mutation[Tuple[]] = v1 := v3
-                    v4
+                  let v2: Bool = read(v1)
+                  let v6: mut () -> Tuple[] = fn() {
+                    let v3: Bool = read(v1)
+                    let v4: Bool = bool_not(v3)
+                    let v5: Tuple[] = v1 := v4
+                    v5
                   }
-                  let v8: String = match v2 {
+                  let v9: String = match v2 {
                     true => {
-                      let v6: String = "on"
-                      v6
-                    }
-                    false => {
-                      let v7: String = "off"
+                      let v7: String = "on"
                       v7
                     }
+                    false => {
+                      let v8: String = "off"
+                      v8
+                    }
                   }
-                  let v9: Html = escape(v8)
-                  let v10: Html = concat(v9)
-                  let v11: Html = f0(v5, v10)
-                  v11
+                  let v10: Html = escape(v9)
+                  let v11: Html = concat(v10)
+                  let v12: Html = f0(v6, v11)
+                  v12
                 }
                 page Test: e0
             "#]],
@@ -2392,62 +2424,68 @@ mod tests {
     }
 
     #[test]
-    fn should_compile_cell_reads_binds_and_pure_mutations() {
+    fn should_compile_mut_functions_assignments_and_reads_of_cells_in_what_mutates() {
         check(
             indoc! {r#"
-                fn bump(n: Int) -> Mutation[Int] {
-                  pure!(n + 1)
+                mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
+                  press();
+                  press()
                 }
                 page Test() {
                   fn body() -> Html {
                     let mut count = 0;
-                    <button on:click={fn() {
-                      count.get().and_then(fn(n: Int) {
-                        bump(n).and_then(fn(_: Int) { count.set(n) })
-                      })
+                    let rendered = count;
+                    <button on:click={mut fn() {
+                      twice(mut fn() { count = count + rendered });
+                      match count > 9 {true => count = 0, false => ()}
                     }}>{count.to_string()}</button>
                   }
                 }
             "#},
             expect![[r#"
-                fn bump@f0(
-                  n@v18: Int,
-                ) -> Mutation[Int] {
-                  let v19: Int = 1
-                  let v20: Int = int_add(v18, v19)
-                  let v21: Mutation[Int] = pure(v20)
-                  v21
+                mut fn twice@f0(
+                  press@v21: mut () -> Tuple[],
+                ) -> Tuple[] {
+                  let v22: Tuple[] = v21()
+                  let v23: Tuple[] = v21()
+                  v23
                 }
                 entrypoint body@e0() -> Html {
                   let v1: Cell[Int] = cell {
                     let v0: Int = 0
                     v0
                   }
-                  let v2: Int = track(v1)
-                  let v12: () -> Mutation[Tuple[]] = fn() {
-                    let v3: Mutation[Int] = read(v1)
-                    let v10: (Int) -> Mutation[Tuple[]] = fn(
-                      v4: Int,
-                    ) {
-                      let v5: Mutation[Int] = f0(v4)
-                      let v8: (Int) -> Mutation[Tuple[]] = fn(
-                        v6: Int,
-                      ) {
-                        let v7: Mutation[Tuple[]] = v1 := v4
-                        v7
-                      }
-                      let v9: Mutation[Tuple[]] = bind(v5, v8)
-                      v9
+                  let v2: Int = read(v1)
+                  let v15: mut () -> Tuple[] = fn() {
+                    let v6: mut () -> Tuple[] = fn() {
+                      let v3: Int = read(v1)
+                      let v4: Int = int_add(v3, v2)
+                      let v5: Tuple[] = v1 := v4
+                      v5
                     }
-                    let v11: Mutation[Tuple[]] = bind(v3, v10)
-                    v11
+                    let v7: Tuple[] = f0(v6)
+                    let v8: Int = read(v1)
+                    let v9: Int = 9
+                    let v10: Bool = int_lt(v9, v8)
+                    let v14: Tuple[] = match v10 {
+                      true => {
+                        let v11: Int = 0
+                        let v12: Tuple[] = v1 := v11
+                        v12
+                      }
+                      false => {
+                        let v13: Tuple[] = ()
+                        v13
+                      }
+                    }
+                    v14
                   }
-                  let v13: String = int_to_string(v2)
-                  let v14: Html = escape(v13)
-                  let v15: Html = concat(v14)
-                  let v16: Id = mint()
-                  let v17: Html = element(v16, "button", {}, v15) on_click v12
-                  v17
+                  let v16: String = int_to_string(v2)
+                  let v17: Html = escape(v16)
+                  let v18: Html = concat(v17)
+                  let v19: Id = mint()
+                  let v20: Html = element(v19, "button", {}, v18) on_click v15
+                  v20
                 }
                 page Test: e0
             "#]],

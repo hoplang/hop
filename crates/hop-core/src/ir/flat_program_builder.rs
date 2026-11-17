@@ -19,7 +19,7 @@ use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_parameter::IrParameter;
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{IrDataType, IrModifier, IrType};
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::attribute_name::AttributeName;
@@ -82,7 +82,23 @@ impl FlatProgramBuilder {
             .map(|(name, typ)| (name, self.types.ty(typ)))
             .collect();
         let return_type = self.types.ty(return_type);
-        self.declare_with_types(name, params, return_type, true)
+        self.declare_with_types(name, params, return_type, IrModifier::Render)
+            .define(name, |t, _| body_fn(t))
+    }
+
+    pub fn mut_function<'p>(
+        self,
+        name: &str,
+        params: impl IntoIterator<Item = (&'p str, Ty)>,
+        return_type: Ty,
+        body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
+    ) -> Self {
+        let params: Vec<(&str, IrType)> = params
+            .into_iter()
+            .map(|(name, typ)| (name, self.types.ty(typ)))
+            .collect();
+        let return_type = self.types.ty(return_type);
+        self.declare_with_types(name, params, return_type, IrModifier::Mut)
             .define(name, |t, _| body_fn(t))
     }
 
@@ -130,8 +146,12 @@ impl FlatProgramBuilder {
             .map(|(name, typ)| (name, self.types.ty(typ)))
             .collect();
         let return_type = self.types.ty(return_type);
-        let render = return_type == IrType::HTML;
-        self.declare_with_types(name, params, return_type, render)
+        let modifier = if return_type == IrType::HTML {
+            IrModifier::Render
+        } else {
+            IrModifier::Pure
+        };
+        self.declare_with_types(name, params, return_type, modifier)
     }
 
     pub fn declare_with_types<'p>(
@@ -139,7 +159,7 @@ impl FlatProgramBuilder {
         name: &str,
         params: impl IntoIterator<Item = (&'p str, IrType)>,
         return_type: IrType,
-        render_modifier: bool,
+        modifier: IrModifier,
     ) -> Self {
         let function =
             IrFunction::new(self.function_ids.next(), FunctionName::parse(name).unwrap());
@@ -157,7 +177,7 @@ impl FlatProgramBuilder {
             function,
             parameters,
             return_type,
-            render_modifier,
+            modifier,
             body: None,
         });
         self
@@ -194,7 +214,7 @@ impl FlatProgramBuilder {
             .into_iter()
             .map(|declared| FlatFunction {
                 function: declared.function,
-                render_modifier: declared.render_modifier,
+                modifier: declared.modifier,
                 parameters: declared.parameters,
                 return_type: declared.return_type,
                 body: declared.body.unwrap().into_block(),
@@ -215,7 +235,7 @@ pub struct DeclaredFunction {
     pub function: IrFunction,
     pub parameters: Vec<IrParameter<IrType>>,
     pub return_type: IrType,
-    pub render_modifier: bool,
+    pub modifier: IrModifier,
     body: Option<BuiltBlock>,
 }
 
@@ -744,17 +764,15 @@ impl<'a> FlatBlockBuilder<'a> {
         self.push(typ, FlatOp::Cell(initial.into_block()))
     }
 
-    pub fn track(&self, cell: ValueId) -> ValueId {
-        let typ = IrType::Data(self.cell_of(cell));
-        self.push(typ, FlatOp::Track(cell))
-    }
-
     pub fn cell_write(&self, cell: ValueId, value: ValueId) -> ValueId {
-        self.push(IrType::MUTATION, FlatOp::CellWrite(cell, value))
+        self.push(
+            IrType::Data(IrDataType::UNIT),
+            FlatOp::CellWrite(cell, value),
+        )
     }
 
     pub fn cell_read(&self, cell: ValueId) -> ValueId {
-        let typ = IrType::Mutation(self.cell_of(cell));
+        let typ = IrType::Data(self.cell_of(cell));
         self.push(typ, FlatOp::CellRead(cell))
     }
 
@@ -763,27 +781,6 @@ impl<'a> FlatBlockBuilder<'a> {
             panic!("{cell} is not a cell");
         };
         typ
-    }
-
-    pub fn mutation_pure(&self, value: ValueId) -> ValueId {
-        self.push(self.mutation_of(value), FlatOp::MutationPure(value))
-    }
-
-    pub fn mutation_bind(&self, mutation: ValueId, continuation: ValueId) -> ValueId {
-        let IrType::Function(signature) = self.typ(continuation) else {
-            panic!("a bind continues with a closure");
-        };
-        self.push(
-            (*signature.result).clone(),
-            FlatOp::MutationBind(mutation, continuation),
-        )
-    }
-
-    fn mutation_of(&self, value: ValueId) -> IrType {
-        let IrType::Data(typ) = self.typ(value) else {
-            panic!("a mutation gives data");
-        };
-        IrType::Mutation(typ)
     }
 
     pub fn attr_value(&self, name: &str, value: ValueId) -> (AttributeName, IrAttribute) {
@@ -888,12 +885,12 @@ impl<'a> FlatBlockBuilder<'a> {
     where
         F: FnOnce(&FlatBlockBuilder<'_>, &[ValueId]) -> ValueId,
     {
-        self.closure(Some(true), parameters, body_fn)
+        self.closure(Some(IrModifier::Render), parameters, body_fn)
     }
 
     fn closure<F>(
         &self,
-        render_modifier: Option<bool>,
+        modifier: Option<IrModifier>,
         parameters: impl IntoIterator<Item = IrType>,
         body_fn: F,
     ) -> ValueId
@@ -910,8 +907,12 @@ impl<'a> FlatBlockBuilder<'a> {
         let names: Vec<ValueId> = parameters.iter().map(|param| param.var).collect();
         let body = self.block(|t| body_fn(t, &names));
         let types = parameters.iter().map(|param| param.typ.clone());
-        let render_modifier = render_modifier.unwrap_or(body.typ == IrType::Html);
-        let typ = IrType::function(render_modifier, types, body.typ.clone());
+        let modifier = modifier.unwrap_or(if body.typ == IrType::Html {
+            IrModifier::Render
+        } else {
+            IrModifier::Pure
+        });
+        let typ = IrType::function(modifier, types, body.typ.clone());
         let lambda = IrLambda {
             parameters,
             body: body.into_block(),
@@ -919,8 +920,15 @@ impl<'a> FlatBlockBuilder<'a> {
         self.push(typ, FlatOp::Lambda(lambda))
     }
 
+    pub fn mut_lambda<F>(&self, parameters: impl IntoIterator<Item = IrType>, body_fn: F) -> ValueId
+    where
+        F: FnOnce(&FlatBlockBuilder<'_>, &[ValueId]) -> ValueId,
+    {
+        self.closure(Some(IrModifier::Mut), parameters, body_fn)
+    }
+
     pub fn event_handler(&self, body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) -> ValueId {
-        self.lambda([], |t, _| body_fn(t))
+        self.mut_lambda([], |t, _| body_fn(t))
     }
 
     pub fn apply(&self, closure: ValueId, args: impl IntoIterator<Item = ValueId>) -> ValueId {

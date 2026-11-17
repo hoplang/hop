@@ -58,18 +58,6 @@ pub enum HoverAnnotation {
     Asset {
         range: DocumentRange,
     },
-    Pure {
-        range: DocumentRange,
-    },
-    CellGet {
-        range: DocumentRange,
-    },
-    CellSet {
-        range: DocumentRange,
-    },
-    MutationAndThen {
-        range: DocumentRange,
-    },
 }
 
 impl HoverAnnotation {
@@ -91,10 +79,6 @@ impl HoverAnnotation {
             HoverAnnotation::Join { range } => range,
             HoverAnnotation::Format { range } => range,
             HoverAnnotation::Asset { range } => range,
-            HoverAnnotation::Pure { range } => range,
-            HoverAnnotation::CellGet { range } => range,
-            HoverAnnotation::CellSet { range } => range,
-            HoverAnnotation::MutationAndThen { range } => range,
         }
     }
 }
@@ -187,26 +171,6 @@ impl Display for HoverAnnotation {
                 "The path must start with `/`, which denotes the project root. \
                  Resolves to a content-hashed URL prefixed by \
                  `assets.production_prefix` in production builds.",
-            ),
-            HoverAnnotation::Pure { .. } => format_builtin(
-                f,
-                "pure!(value: T) -> Mutation[T]",
-                "Performs nothing and gives the value.",
-            ),
-            HoverAnnotation::CellGet { .. } => format_builtin(
-                f,
-                "Cell::get() -> Mutation[T]",
-                "Gives the value the cell holds when the mutation runs.",
-            ),
-            HoverAnnotation::CellSet { .. } => format_builtin(
-                f,
-                "Cell::set(value: T) -> Mutation[Tuple[]]",
-                "Writes the value to the cell when the mutation runs.",
-            ),
-            HoverAnnotation::MutationAndThen { .. } => format_builtin(
-                f,
-                "Mutation[A]::and_then(continuation: fn(A) -> Mutation[B]) -> Mutation[B]",
-                "Performs the mutation, then the mutation the continuation gives for its result.",
             ),
         }
     }

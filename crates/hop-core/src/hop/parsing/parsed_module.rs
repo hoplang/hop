@@ -35,6 +35,7 @@ pub enum ParsedDeclaration {
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedFunctionDeclaration {
+    pub mut_range: Option<DocumentRange>,
     pub name: FunctionName,
     pub name_range: DocumentRange,
     pub params: Vec<ParsedParameter>,
@@ -324,8 +325,9 @@ impl Display for ParsedFunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}fn {}({}",
+            "{}{}fn {}({}",
             pub_prefix(&self.pub_range),
+            if self.mut_range.is_some() { "mut " } else { "" },
             self.name.as_str(),
             join(&self.params, ", ")
         )?;

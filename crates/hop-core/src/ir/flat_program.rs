@@ -14,7 +14,7 @@ use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_parameter::IrParameter;
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{IrDataType, IrModifier, IrType};
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::function_name::FunctionName;
@@ -37,7 +37,7 @@ pub struct FlatEntrypoint {
 #[derive(Debug, Clone)]
 pub struct FlatFunction {
     pub function: IrFunction,
-    pub render_modifier: bool,
+    pub modifier: IrModifier,
     pub parameters: Vec<IrParameter<IrType>>,
     pub return_type: IrType,
     pub body: FlatBlock,
@@ -59,20 +59,13 @@ pub enum FlatOp {
     /// Bind a cell. Only when its path is new does the block run, and the
     /// cell takes the value it gives. `Cell[T]`.
     Cell(FlatBlock),
-    /// Bind the value a cell has at this render. `Cell[T] -> T`.
-    Track(ValueId),
     /// Bind an identity, which the node of the element that takes it keeps
     /// across renders. `Id`.
     Mint,
-    /// Write a cell. `(Cell[T], T) -> Mutation[Tuple[]]`.
+    /// Write a cell. `(Cell[T], T) -> Tuple[]`.
     CellWrite(ValueId, ValueId),
-    /// Read a cell. `Cell[T] -> Mutation[T]`.
+    /// Read the value of a cell. `Cell[T] -> T`.
     CellRead(ValueId),
-    /// Lift a value to a mutation. `T -> Mutation[T]`.
-    MutationPure(ValueId),
-    /// Run the first mutation, then return the mutation the second closure
-    /// gives for its result. `(Mutation[A], (A) -> Mutation[B]) -> Mutation[B]`.
-    MutationBind(ValueId, ValueId),
     /// Render text as written. `Html`.
     Text(CheapString),
     /// Html-escape a string. `String -> Html`.
@@ -106,11 +99,8 @@ impl FlatOp {
         match self {
             FlatOp::Data(op) => op.for_each_operand(f),
             FlatOp::Text(_) | FlatOp::Lambda(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
-            FlatOp::Track(name)
-            | FlatOp::CellRead(name)
-            | FlatOp::MutationPure(name)
-            | FlatOp::Escape(name) => f(*name),
-            FlatOp::CellWrite(first, second) | FlatOp::MutationBind(first, second) => {
+            FlatOp::CellRead(name) | FlatOp::Escape(name) => f(*name),
+            FlatOp::CellWrite(first, second) => {
                 f(*first);
                 f(*second);
             }
@@ -144,11 +134,8 @@ impl FlatOp {
         match self {
             FlatOp::Data(op) => op.for_each_operand_mut(f),
             FlatOp::Text(_) | FlatOp::Lambda(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
-            FlatOp::Track(name)
-            | FlatOp::CellRead(name)
-            | FlatOp::MutationPure(name)
-            | FlatOp::Escape(name) => f(name),
-            FlatOp::CellWrite(first, second) | FlatOp::MutationBind(first, second) => {
+            FlatOp::CellRead(name) | FlatOp::Escape(name) => f(name),
+            FlatOp::CellWrite(first, second) => {
                 f(first);
                 f(second);
             }
@@ -194,14 +181,9 @@ impl fmt::Display for FlatOp {
                 write!(Indent::new(f), "\n{initial}")?;
                 f.write_str("\n}")
             }
-            FlatOp::Track(cell) => write!(f, "track({cell})"),
             FlatOp::Mint => f.write_str("mint()"),
             FlatOp::CellWrite(cell, value) => write!(f, "{cell} := {value}"),
             FlatOp::CellRead(cell) => write!(f, "read({cell})"),
-            FlatOp::MutationPure(value) => write!(f, "pure({value})"),
-            FlatOp::MutationBind(mutation, continuation) => {
-                write!(f, "bind({mutation}, {continuation})")
-            }
             FlatOp::Text(content) => write!(f, "text({:?})", content.as_str()),
             FlatOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),
             FlatOp::Escape(string) => write!(f, "escape({string})"),
@@ -259,9 +241,7 @@ impl fmt::Display for FlatOp {
 
 impl fmt::Display for FlatFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.render_modifier {
-            f.write_str("render ")?;
-        }
+        write!(f, "{}", self.modifier)?;
         write_function(
             f,
             &self.function,

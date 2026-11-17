@@ -62,7 +62,8 @@ Using any of the words below as an identifier is a compile error.
 
 ```
 enum    false   fn      for     import  in
-let     match   page    pub     record  true
+let     match   mut     page    pub     record
+true
 
 None    Some
 
@@ -1816,13 +1817,13 @@ await        break        case         catch        comp         component
 const        constructor  continue     default      defer        elif
 else         entrypoint   export       extends      final        finally
 from         func         if           impl         implements   include
-interface    internal     is           loop         mod          mut
-namespace    new          newtype      nil          not          null
-of           or           out          package      priv         private
-public       return       self         static       struct       super
-this         throw        trait        try          undefined    use
-val          var          view         void         when         where
-while        yield
+interface    internal     is           loop         mod          namespace
+new          newtype      nil          not          null         of
+or           out          package      priv         private      public
+return       self         static       struct       super        this
+throw        trait        try          undefined    use          val
+var          view         void         when         where        while
+yield
 ```
 
 An `UppercaseIdentifier` that is one of these words is a compile error:

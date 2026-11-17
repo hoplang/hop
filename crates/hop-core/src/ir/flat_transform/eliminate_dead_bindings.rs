@@ -8,24 +8,30 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
+use crate::ir::ir_type::{IrModifier, IrType};
 use crate::ir::value_id::ValueId;
 
 /// A pass that removes the bindings nothing reads from every body.
 ///
-/// Every op is pure, so a binding whose name no later binding, nested
-/// block or result reads computes nothing anyone sees, and goes away with
-/// the blocks nested in it. A cell nothing reads or writes has a value
+/// Every op outside of a body that mutates is pure, so a binding there
+/// whose name no later binding, nested block or result reads computes
+/// nothing anyone sees, and goes away with the blocks nested in it. A body
+/// that mutates keeps every binding. A cell nothing reads or writes has a value
 /// nobody sees, and an element whose Html nothing reads is never shown, so
 /// the state of its node is never seen. A click reads its handler, a cell
-/// write the cell and the value it writes, and a mutation or a handler
-/// nothing performs goes away. A loop variable or binding of a
+/// write the cell and the value it writes, and a handler nothing applies
+/// goes away. A loop variable or binding of a
 /// pattern that nothing reads any more goes away too, and becomes `_`.
 pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
     let functions = program
         .functions
         .into_iter()
         .map(|function| FlatFunction {
-            body: eliminate_block(function.body, &mut HashSet::new()),
+            body: eliminate_block(
+                function.body,
+                &mut HashSet::new(),
+                function.modifier == IrModifier::Mut,
+            ),
             ..function
         })
         .collect();
@@ -34,7 +40,7 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
             .entrypoints
             .into_iter()
             .map(|entrypoint| FlatEntrypoint {
-                body: eliminate_block(entrypoint.body, &mut HashSet::new()),
+                body: eliminate_block(entrypoint.body, &mut HashSet::new(), false),
                 ..entrypoint
             })
             .collect(),
@@ -44,11 +50,11 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
     }
 }
 
-fn eliminate_block(block: FlatBlock, live: &mut HashSet<ValueId>) -> FlatBlock {
+fn eliminate_block(block: FlatBlock, live: &mut HashSet<ValueId>, keep: bool) -> FlatBlock {
     live.insert(block.result);
     let mut kept = Vec::with_capacity(block.bindings.len());
     for binding in block.bindings.into_iter().rev() {
-        kept.extend(eliminate_binding(binding, live));
+        kept.extend(eliminate_binding(binding, live, keep));
     }
     kept.reverse();
     IrBlock {
@@ -57,21 +63,25 @@ fn eliminate_block(block: FlatBlock, live: &mut HashSet<ValueId>) -> FlatBlock {
     }
 }
 
-fn eliminate_binding(binding: FlatBinding, live: &mut HashSet<ValueId>) -> Option<FlatBinding> {
-    if !live.contains(&binding.binder.var) {
+fn eliminate_binding(
+    binding: FlatBinding,
+    live: &mut HashSet<ValueId>,
+    keep: bool,
+) -> Option<FlatBinding> {
+    if !keep && !live.contains(&binding.binder.var) {
         return None;
     }
     let IrBinding { binder, op } = binding;
     let op = match op {
-        FlatOp::Match(match_) => FlatOp::Match(eliminate_match(match_, live)),
+        FlatOp::Match(match_) => FlatOp::Match(eliminate_match(match_, live, keep)),
         FlatOp::For(FlatFor {
             var,
             array,
             key,
             body,
         }) => {
-            let body = eliminate_block(body, live);
-            let key = key.map(|key| eliminate_block(key, live));
+            let body = eliminate_block(body, live, keep);
+            let key = key.map(|key| eliminate_block(key, live, keep));
             let var = var.filter(|binder| live.contains(&binder.var));
             FlatOp::For(FlatFor {
                 var,
@@ -80,11 +90,17 @@ fn eliminate_binding(binding: FlatBinding, live: &mut HashSet<ValueId>) -> Optio
                 body,
             })
         }
-        FlatOp::Lambda(IrLambda { parameters, body }) => FlatOp::Lambda(IrLambda {
-            parameters,
-            body: eliminate_block(body, live),
-        }),
-        FlatOp::Cell(initial) => FlatOp::Cell(eliminate_block(initial, live)),
+        FlatOp::Lambda(IrLambda { parameters, body }) => {
+            let mutates = matches!(
+                &binder.typ,
+                IrType::Function(signature) if signature.modifier == IrModifier::Mut
+            );
+            FlatOp::Lambda(IrLambda {
+                parameters,
+                body: eliminate_block(body, live, keep || mutates),
+            })
+        }
+        FlatOp::Cell(initial) => FlatOp::Cell(eliminate_block(initial, live, keep)),
         op => op,
     };
     op.for_each_operand(&mut |operand| {
@@ -93,14 +109,18 @@ fn eliminate_binding(binding: FlatBinding, live: &mut HashSet<ValueId>) -> Optio
     Some(IrBinding { binder, op })
 }
 
-fn eliminate_match(match_: IrMatch<FlatBlock>, live: &mut HashSet<ValueId>) -> IrMatch<FlatBlock> {
+fn eliminate_match(
+    match_: IrMatch<FlatBlock>,
+    live: &mut HashSet<ValueId>,
+    keep: bool,
+) -> IrMatch<FlatBlock> {
     IrMatch {
         subject: match_.subject,
         arms: match_
             .arms
             .into_iter()
             .map(|arm| {
-                let body = eliminate_block(arm.body, live);
+                let body = eliminate_block(arm.body, live, keep);
                 let mut pattern = arm.pattern;
                 pattern.for_each_binding_mut(&mut |binding| {
                     if let Pattern::Binding(binder) = binding
@@ -194,9 +214,9 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v4: () -> Mutation[Tuple[]] = fn() {
+                  let v4: mut () -> Tuple[] = fn() {
                     let v2: Int = 1
-                    let v3: Mutation[Tuple[]] = v1 := v2
+                    let v3: Tuple[] = v1 := v2
                     v3
                   }
                   let v5: Id = mint()
@@ -211,9 +231,9 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v4: () -> Mutation[Tuple[]] = fn() {
+                  let v4: mut () -> Tuple[] = fn() {
                     let v2: Int = 1
-                    let v3: Mutation[Tuple[]] = v1 := v2
+                    let v3: Tuple[] = v1 := v2
                     v3
                   }
                   let v5: Id = mint()
@@ -226,15 +246,17 @@ mod tests {
     }
 
     #[test]
-    fn should_drop_an_mutation_nothing_performs_and_keep_the_cell_a_click_writes() {
+    fn should_drop_a_closure_that_mutates_and_nothing_applies_and_keep_the_cell_a_click_writes() {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
                     let n = t.cell(|t| t.int(0));
                     let unseen = t.cell(|t| t.int(0));
-                    let _idle = t.cell_write(unseen, t.int(1));
-                    let bump = t.cell_write(n, t.add(NumericType::Int, t.track(n), t.int(1)));
-                    let bump = t.event_handler(|_| bump);
+                    let _idle = t.mut_lambda([], |t, _| t.cell_write(unseen, t.int(1)));
+                    let shown = t.cell_read(n);
+                    let bump = t.event_handler(|t| {
+                        t.cell_write(n, t.add(NumericType::Int, shown, t.int(1)))
+                    });
                     t.element_on_click(t.mint(), "button", [], bump, Some(t.text("x")))
                 })
                 .build()
@@ -250,19 +272,22 @@ mod tests {
                     let v2: Int = 0
                     v2
                   }
-                  let v4: Int = 1
-                  let v5: Mutation[Tuple[]] = v3 := v4
-                  let v6: Int = track(v1)
-                  let v7: Int = 1
-                  let v8: Int = int_add(v6, v7)
-                  let v9: Mutation[Tuple[]] = v1 := v8
-                  let v10: () -> Mutation[Tuple[]] = fn() {
-                    v9
+                  let v6: mut () -> Tuple[] = fn() {
+                    let v4: Int = 1
+                    let v5: Tuple[] = v3 := v4
+                    v5
                   }
-                  let v11: Id = mint()
-                  let v12: Html = text("x")
-                  let v13: Html = element(v11, "button", {}, v12) on_click v10
-                  v13
+                  let v7: Int = read(v1)
+                  let v11: mut () -> Tuple[] = fn() {
+                    let v8: Int = 1
+                    let v9: Int = int_add(v7, v8)
+                    let v10: Tuple[] = v1 := v9
+                    v10
+                  }
+                  let v12: Id = mint()
+                  let v13: Html = text("x")
+                  let v14: Html = element(v12, "button", {}, v13) on_click v11
+                  v14
                 }
 
                 -- after --
@@ -271,17 +296,17 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v6: Int = track(v1)
-                  let v7: Int = 1
-                  let v8: Int = int_add(v6, v7)
-                  let v9: Mutation[Tuple[]] = v1 := v8
-                  let v10: () -> Mutation[Tuple[]] = fn() {
-                    v9
+                  let v7: Int = read(v1)
+                  let v11: mut () -> Tuple[] = fn() {
+                    let v8: Int = 1
+                    let v9: Int = int_add(v7, v8)
+                    let v10: Tuple[] = v1 := v9
+                    v10
                   }
-                  let v11: Id = mint()
-                  let v12: Html = text("x")
-                  let v13: Html = element(v11, "button", {}, v12) on_click v10
-                  v13
+                  let v12: Id = mint()
+                  let v13: Html = text("x")
+                  let v14: Html = element(v12, "button", {}, v13) on_click v11
+                  v14
                 }
             "#]],
         );

@@ -17,7 +17,7 @@ use super::parse_type::parse_type;
 use super::parsed_expr::{
     Fixity, ParsedArguments, ParsedBinaryOp, ParsedBlock, ParsedExpr, ParsedFieldInitializer,
     ParsedLambdaParameter, ParsedLetBinding, ParsedLoopSource, ParsedMatchArm, ParsedNamedArgument,
-    ParsedPattern, ParsedUnaryOp, Precedence,
+    ParsedPattern, ParsedStatement, ParsedUnaryOp, Precedence,
 };
 use super::token::LangToken;
 use super::tokenize_expr::{next, peek, peek2, peek3};
@@ -50,7 +50,27 @@ pub fn parse_expr_with(
     errors: &mut Vec<ParseError>,
     restrictions: Restrictions,
 ) -> Result<ParsedExpr, ErrorEmitted> {
-    parse_binary(iter, comments, errors, restrictions, Bound::Unbounded)
+    let expr = parse_binary(iter, comments, errors, restrictions, Bound::Unbounded)?;
+    if next_if_eq(iter, comments, errors, LangToken::Assign).is_none() {
+        return Ok(expr);
+    }
+    let value = parse_expr_with(iter, comments, errors, restrictions)?;
+    let ParsedExpr::VariableReference {
+        value: var,
+        range: var_range,
+    } = expr
+    else {
+        return Err(errors.emit(
+            ParseErrorKind::InvalidAssignmentTarget {},
+            expr.range().clone(),
+        ));
+    };
+    Ok(ParsedExpr::Assign {
+        range: var_range.clone().to(value.range().clone()),
+        var,
+        var_range,
+        value: Box::new(value),
+    })
 }
 
 fn parse_binary(
@@ -149,28 +169,41 @@ fn parse_unary(
 }
 
 /// Parse a braced block after a left brace the caller has already consumed:
-/// any number of `let` statements followed by a tail expression, then the
-/// right brace.
+/// any number of `let` statements and expression statements followed by a
+/// tail expression, then the right brace.
 pub fn parse_block(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
     left_brace: &DocumentRange,
 ) -> Result<ParsedBlock, ErrorEmitted> {
-    let ((bindings, tail), range) = parse_delimited(
+    let ((statements, tail), range) = parse_delimited(
         iter,
         comments,
         errors,
         LangTokenPair::Braces,
         left_brace,
         |iter, comments, errors| {
-            let mut bindings = Vec::new();
-            while let Some(let_range) = next_if_eq(iter, comments, errors, LangToken::Let) {
-                let mutable = next_if_map(iter, comments, errors, |token| match token {
-                    LangToken::Identifier(name) if name.as_str() == "mut" => Some(()),
-                    _ => None,
-                })
-                .is_some();
+            let mut statements = Vec::new();
+            loop {
+                let Some(let_range) = next_if_eq(iter, comments, errors, LangToken::Let) else {
+                    let expr = parse_expr(iter, comments, errors)?;
+                    let Some(semicolon) = next_if_eq(iter, comments, errors, LangToken::Semicolon)
+                    else {
+                        return Ok((statements, expr));
+                    };
+                    if let Some((LangToken::RightBrace, _)) = peek(iter) {
+                        return Err(
+                            errors.emit(ParseErrorKind::BlockMissingTailExpression {}, semicolon)
+                        );
+                    }
+                    statements.push(ParsedStatement::Expr {
+                        range: expr.range().clone().to(semicolon),
+                        expr,
+                    });
+                    continue;
+                };
+                let mutable = next_if_eq(iter, comments, errors, LangToken::Mut).is_some();
                 let (var_name, var_name_range) = expect_identifier(iter, comments, errors)?;
                 let var_type = if next_if_eq(iter, comments, errors, LangToken::Colon).is_some() {
                     Some(parse_type(iter, comments, errors)?)
@@ -185,21 +218,19 @@ pub fn parse_block(
                         errors.emit(ParseErrorKind::BlockMissingTailExpression {}, semicolon)
                     );
                 }
-                bindings.push(ParsedLetBinding {
+                statements.push(ParsedStatement::Let(ParsedLetBinding {
                     range: let_range.to(semicolon),
                     mutable,
                     var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
                     var_name_range,
                     var_type,
                     value_expr,
-                });
+                }));
             }
-            let tail = parse_expr(iter, comments, errors)?;
-            Ok((bindings, tail))
         },
     )?;
     Ok(ParsedBlock {
-        bindings,
+        statements,
         tail: Box::new(tail),
         range,
     })
@@ -325,7 +356,10 @@ pub fn parse_primary(
     } else if let Some(for_range) = next_if_eq(iter, comments, errors, LangToken::For) {
         parse_for(iter, comments, errors, for_range)?
     } else if let Some(fn_range) = next_if_eq(iter, comments, errors, LangToken::Fn) {
-        parse_lambda(iter, comments, errors, fn_range)?
+        parse_lambda(iter, comments, errors, None, fn_range)?
+    } else if let Some(mut_range) = next_if_eq(iter, comments, errors, LangToken::Mut) {
+        let fn_range = expect_token(iter, comments, errors, &LangToken::Fn)?;
+        parse_lambda(iter, comments, errors, Some(mut_range), fn_range)?
     } else if let Some(some_range) = next_if_eq(iter, comments, errors, LangToken::Some) {
         let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
         let (value, parens) = parse_delimited(
@@ -347,7 +381,7 @@ pub fn parse_primary(
         }
     } else if let Some(left_brace) = next_if_eq(iter, comments, errors, LangToken::LeftBrace) {
         let block = parse_block(iter, comments, errors, &left_brace)?;
-        if block.bindings.is_empty() {
+        if block.statements.is_empty() {
             *block.tail
         } else {
             ParsedExpr::Block { block }
@@ -741,6 +775,7 @@ fn parse_lambda(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
+    mut_range: Option<DocumentRange>,
     fn_range: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
@@ -780,9 +815,10 @@ fn parse_lambda(
     let left_brace = expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
     let body = parse_block(iter, comments, errors, &left_brace)?;
     Ok(ParsedExpr::Lambda {
+        range: (mut_range.clone().unwrap_or(fn_range)).to(body.range.clone()),
+        mut_range,
         params,
-        return_type,
-        range: fn_range.to(body.range.clone()),
+        return_type: return_type.map(Box::new),
         body,
     })
 }
@@ -3420,7 +3456,8 @@ mod tests {
             "for item in items { let name = item.name; name }",
             expect![[r#"
                 for item in items {
-                  let name = item.name in name
+                  let name = item.name;
+                  name
                 }
             "#]],
         );
@@ -3833,7 +3870,11 @@ mod tests {
         accept(
             "{ let a = 1; let b = a + 1; a + b }",
             expect![[r#"
-                let a = 1 in let b = add(a, 1) in add(a, b)
+                {
+                  let a = 1;
+                  let b = add(a, 1);
+                  add(a, b)
+                }
             "#]],
         );
     }
@@ -3843,7 +3884,10 @@ mod tests {
         accept(
             "{ let a: Int = 1; a }",
             expect![[r#"
-                let a: Int = 1 in a
+                {
+                  let a: Int = 1;
+                  a
+                }
             "#]],
         );
     }
@@ -3854,7 +3898,10 @@ mod tests {
             "match x { Some(t) => { let s = t; s }, None => \"\" }",
             expect![[r#"
                 match x {
-                  Some(t) => let s = t in s,
+                  Some(t) => {
+                    let s = t;
+                    s
+                  },
                   None => "",
                 }
             "#]],
@@ -3866,13 +3913,19 @@ mod tests {
         accept(
             "1 + { let a = 2; a }",
             expect![[r#"
-                add(1, let a = 2 in a)
+                add(1, {
+                  let a = 2;
+                  a
+                })
             "#]],
         );
         accept(
             "f({ let a = 2; a })",
             expect![[r#"
-                f(let a = 2 in a)
+                f({
+                  let a = 2;
+                  a
+                })
             "#]],
         );
     }
@@ -3882,7 +3935,13 @@ mod tests {
         accept(
             "{ let x = { let a = 1; a }; x }",
             expect![[r#"
-                let x = let a = 1 in a in x
+                {
+                  let x = {
+                    let a = 1;
+                    a
+                  };
+                  x
+                }
             "#]],
         );
     }
@@ -3915,11 +3974,11 @@ mod tests {
         reject(
             "{ let a = 1; a; }",
             expect![[r#"
-            -- errors --
-            error: Expected token '}' but got ';'
-            { let a = 1; a; }
-                          ^
-        "#]],
+                -- errors --
+                error: A block must end with an expression
+                { let a = 1; a; }
+                              ^
+            "#]],
         );
     }
 

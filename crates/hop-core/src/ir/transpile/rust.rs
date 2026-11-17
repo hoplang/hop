@@ -437,7 +437,6 @@ impl RustTranspiler {
                 | IrDataType::Option(_),
             )
             | IrType::Html
-            | IrType::Mutation(_)
             | IrType::Function(_) => false,
             IrType::Cell(_) => unreachable!("flat_to_writer makes a cell its value"),
             IrType::Id => unreachable!("flat_to_writer drops identities"),
@@ -453,9 +452,6 @@ impl RustTranspiler {
             IrType::Data(IrDataType::Int) => arena.text("i32"),
             IrType::Html => {
                 unreachable!("Html is written, never held")
-            }
-            IrType::Mutation(_) => {
-                unreachable!("flat_to_writer makes a mutation the unit tuple")
             }
             IrType::Cell(_) => unreachable!("flat_to_writer makes a cell its value"),
             IrType::Id => unreachable!("flat_to_writer drops identities"),

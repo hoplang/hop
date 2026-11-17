@@ -1,5 +1,5 @@
 use crate::hop::typing::Ty;
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{IrDataType, IrModifier, IrType};
 use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -135,14 +135,24 @@ impl IrTypeDeclarations {
 fn ir_type(ty: Ty, records: &[String], enums: &[String]) -> IrType {
     match ty {
         Ty::Html => IrType::Html,
-        Ty::Mutation(payload) => IrType::Mutation(data_type(*payload, records, enums)),
         Ty::Cell(payload) => IrType::Cell(data_type(*payload, records, enums)),
-        Ty::Function { parameters, result } => {
+        Ty::Function {
+            mutates,
+            parameters,
+            result,
+        } => {
             let parameters = parameters
                 .into_iter()
                 .map(|parameter| ir_type(parameter, records, enums));
             let result = ir_type(*result, records, enums);
-            IrType::function(result == IrType::Html, parameters, result)
+            let modifier = if mutates {
+                IrModifier::Mut
+            } else if result == IrType::Html {
+                IrModifier::Render
+            } else {
+                IrModifier::Pure
+            };
+            IrType::function(modifier, parameters, result)
         }
         ty => IrType::Data(data_type(ty, records, enums)),
     }
@@ -156,7 +166,6 @@ fn data_type(ty: Ty, records: &[String], enums: &[String]) -> IrDataType {
         Ty::Bool => IrDataType::Bool,
         Ty::Float => IrDataType::Float,
         Ty::Html => panic!("Html is not a data type"),
-        Ty::Mutation(_) => panic!("Mutation is not a data type"),
         Ty::Cell(_) => panic!("a cell is not a data type"),
         Ty::Function { .. } => panic!("a function type is not a data type"),
         Ty::Array(ty) => IrDataType::Array(element(ty)),

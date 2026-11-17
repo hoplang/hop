@@ -28,21 +28,6 @@ pub fn parse_type(
     if let Some(type_range) = next_if_eq(iter, comments, errors, LangToken::TypeHtml) {
         return Ok(ParsedType::Html { range: type_range });
     }
-    if let Some(type_mutation) = next_if_eq(iter, comments, errors, LangToken::TypeMutation) {
-        let left_bracket = expect_token(iter, comments, errors, &LangToken::LeftBracket)?;
-        let (element, brackets) = parse_delimited(
-            iter,
-            comments,
-            errors,
-            LangTokenPair::Brackets,
-            &left_bracket,
-            parse_type,
-        )?;
-        return Ok(ParsedType::Mutation {
-            element: Box::new(element),
-            range: type_mutation.to(brackets),
-        });
-    }
     if let Some(type_array) = next_if_eq(iter, comments, errors, LangToken::TypeArray) {
         let left_bracket = expect_token(iter, comments, errors, &LangToken::LeftBracket)?;
         let (element, brackets) = parse_delimited(
@@ -73,7 +58,12 @@ pub fn parse_type(
             range: type_option.to(brackets),
         });
     }
-    if let Some(fn_keyword) = next_if_eq(iter, comments, errors, LangToken::Fn) {
+    let mut_range = next_if_eq(iter, comments, errors, LangToken::Mut);
+    let fn_keyword = match &mut_range {
+        Some(_) => Some(expect_token(iter, comments, errors, &LangToken::Fn)?),
+        None => next_if_eq(iter, comments, errors, LangToken::Fn),
+    };
+    if let Some(fn_keyword) = fn_keyword {
         let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
         let (parameters, _) = parse_delimited_list(
             iter,
@@ -87,7 +77,8 @@ pub fn parse_type(
         expect_token(iter, comments, errors, &LangToken::Arrow)?;
         let result = parse_type(iter, comments, errors)?;
         return Ok(ParsedType::Function {
-            range: fn_keyword.to(result.range().clone()),
+            range: (mut_range.clone().unwrap_or(fn_keyword)).to(result.range().clone()),
+            mut_range,
             parameters,
             result: Box::new(result),
         });

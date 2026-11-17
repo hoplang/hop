@@ -74,6 +74,7 @@ impl TestModuleBuilder {
                 })
                 .collect();
             let signature = FunctionSignature {
+                mutates: false,
                 declared: params.len(),
                 row: Row {
                     fields: params,

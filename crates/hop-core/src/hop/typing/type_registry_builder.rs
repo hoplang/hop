@@ -27,13 +27,13 @@ pub enum Ty {
     Bool,
     Float,
     Html,
-    Mutation(Box<Ty>),
     Cell(Box<Ty>),
     Named(String),
     Array(Box<Ty>),
     Option(Box<Ty>),
     Tuple(Vec<Ty>),
     Function {
+        mutates: bool,
         parameters: Vec<Ty>,
         result: Box<Ty>,
     },
@@ -52,10 +52,6 @@ impl Ty {
         Ty::Option(Box::new(element))
     }
 
-    pub fn mutation(payload: Ty) -> Ty {
-        Ty::Mutation(Box::new(payload))
-    }
-
     pub fn cell(payload: Ty) -> Ty {
         Ty::Cell(Box::new(payload))
     }
@@ -66,6 +62,15 @@ impl Ty {
 
     pub fn function(parameters: impl IntoIterator<Item = Ty>, result: Ty) -> Ty {
         Ty::Function {
+            mutates: false,
+            parameters: parameters.into_iter().collect(),
+            result: Box::new(result),
+        }
+    }
+
+    pub fn mut_function(parameters: impl IntoIterator<Item = Ty>, result: Ty) -> Ty {
+        Ty::Function {
+            mutates: true,
             parameters: parameters.into_iter().collect(),
             result: Box::new(result),
         }
@@ -76,10 +81,14 @@ impl From<Ty> for Type {
     fn from(ty: Ty) -> Type {
         match ty {
             Ty::Html => Type::HTML,
-            Ty::Mutation(payload) => Type::Mutation((*payload).into()),
             Ty::Cell(_) => panic!("the surface language has no cell type"),
-            Ty::Function { parameters, result } => {
+            Ty::Function {
+                mutates,
+                parameters,
+                result,
+            } => {
                 let function = FunctionType {
+                    mutates,
                     parameters: parameters.into_iter().map(Type::from).collect(),
                     result: Box::new((*result).into()),
                 };
@@ -101,7 +110,6 @@ impl From<Ty> for DataType {
             Ty::Bool => DataType::Bool,
             Ty::Float => DataType::Float,
             Ty::Html => panic!("Html is not a data type"),
-            Ty::Mutation(_) => panic!("Mutation is not a data type"),
             Ty::Cell(_) => panic!("a cell is not a data type"),
             Ty::Function { .. } => panic!("a function type is not a data type"),
             Ty::Named(name) => DataType::Named {

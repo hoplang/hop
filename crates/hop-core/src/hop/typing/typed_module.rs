@@ -28,6 +28,7 @@ pub struct TypedParameter {
 
 #[derive(Debug, Clone)]
 pub struct TypedFunctionDeclaration {
+    pub mutates: bool,
     pub name: FunctionName,
     pub params: Vec<TypedParameter>,
     pub rest_param: Option<VarName>,
@@ -86,7 +87,13 @@ impl Display for TypedPageDeclaration {
 
 impl Display for TypedFunctionDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "fn {}({}", self.name.as_str(), join(&self.params, ", "))?;
+        write!(
+            f,
+            "{}fn {}({}",
+            if self.mutates { "mut " } else { "" },
+            self.name.as_str(),
+            join(&self.params, ", ")
+        )?;
         if let Some(rest) = &self.rest_param {
             let sep = if self.params.is_empty() { "" } else { ", " };
             write!(f, "{sep}...{}", rest.as_str())?;

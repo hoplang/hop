@@ -301,12 +301,6 @@ pub enum TypeErrorKind {
     #[error("Method '{method}' is not available on type {typ}")]
     MethodNotAvailable { method: FieldName, typ: Type },
 
-    #[error("Expected a function from {payload} to a mutation, got {found}")]
-    NotAContinuation { payload: Type, found: Type },
-
-    #[error("pure! expects 1 argument, got {actual}")]
-    PureMacroArity { actual: usize },
-
     #[error("Method '{method}' expects {expected} argument(s), got {found}")]
     MethodArgumentCountMismatch {
         method: FieldName,
@@ -391,11 +385,26 @@ pub enum TypeErrorKind {
     )]
     DuplicateName { target: Target, name: AttributeName },
 
-    #[error("A cell can only be bound in a block that returns Html")]
-    CellOutsideHtml,
+    #[error("let mut needs a block that returns Html")]
+    LetMutOutsideHtml,
 
-    #[error("A cell cannot hold {typ}")]
-    CellNotData { typ: Type },
+    #[error("Only a mut fn can assign")]
+    AssignmentOutsideMut,
+
+    #[error("Variable {name} is not mutable")]
+    AssignmentToImmutable { name: VarName },
+
+    #[error("A statement has no effect outside a mut fn")]
+    StatementOutsideMut,
+
+    #[error("Call to a mut fn from a non-mut fn")]
+    MutCallOutsideMut,
+
+    #[error("A mut fn can not return {result}")]
+    MutFunctionReturnsNonData { result: Type },
+
+    #[error("let mut cannot hold {typ}")]
+    LetMutNotData { typ: Type },
 
     #[error("Expected Int or String got {found}")]
     KeyTypeMismatch { found: Type },

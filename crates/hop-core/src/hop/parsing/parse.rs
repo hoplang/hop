@@ -45,8 +45,27 @@ pub fn parse(document: Document, errors: &mut Vec<ParseError>) -> ParsedModule {
                 parse_page_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
                     .map(|page| ParsedDeclaration::Page(Box::new(page)))
             }
-            Some((LangToken::Fn, keyword)) => {
-                parse_function_declaration(&mut iter, &mut comments, errors, keyword, pub_range)
+            Some((LangToken::Fn, keyword)) => parse_function_declaration(
+                &mut iter,
+                &mut comments,
+                errors,
+                None,
+                keyword,
+                pub_range,
+            )
+            .map(|function| ParsedDeclaration::Function(Box::new(function))),
+            Some((LangToken::Mut, mut_range)) => {
+                parse_helpers::expect_token(&mut iter, &mut comments, errors, &LangToken::Fn)
+                    .and_then(|keyword| {
+                        parse_function_declaration(
+                            &mut iter,
+                            &mut comments,
+                            errors,
+                            Some(mut_range),
+                            keyword,
+                            pub_range,
+                        )
+                    })
                     .map(|function| ParsedDeclaration::Function(Box::new(function)))
             }
             token => {
@@ -323,13 +342,14 @@ fn parse_page_declaration(
         };
         // A member that fails to parse has already skipped past its body,
         // so the next member can still be parsed and reported.
-        let member = match parse_function_declaration(iter, comments, errors, fn_keyword, None) {
-            Ok(member) => member,
-            Err(reported) => {
-                failed_member = Some(reported);
-                continue;
-            }
-        };
+        let member =
+            match parse_function_declaration(iter, comments, errors, None, fn_keyword, None) {
+                Ok(member) => member,
+                Err(reported) => {
+                    failed_member = Some(reported);
+                    continue;
+                }
+            };
         let member_name = member.name.to_cheap_string();
         let slot = match member.name.as_str() {
             "head" => &mut head,
@@ -397,6 +417,7 @@ fn parse_function_declaration(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
+    mut_range: Option<DocumentRange>,
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedFunctionDeclaration, ErrorEmitted> {
@@ -452,12 +473,13 @@ fn parse_function_declaration(
     let (params, rest_param, return_type) = signature?;
     Ok(ParsedFunctionDeclaration {
         name: FunctionName::new(name).or_emit(errors, &name_range)?,
+        mut_range: mut_range.clone(),
         name_range,
         params,
         rest_param,
         return_type,
-        range: pub_range
-            .clone()
+        range: (pub_range.clone())
+            .or(mut_range)
             .unwrap_or_else(|| keyword_range.clone())
             .to(body.range.clone()),
         body,
@@ -940,7 +962,8 @@ mod tests {
             "},
             expect![[r#"
                 fn Greeting(first: String, last: String) -> Html {
-                  let name = add(add(first, " "), last) in element(
+                  let name = add(add(first, " "), last);
+                  element(
                     tag: "h1",
                     attrs: [],
                     children: [
@@ -965,10 +988,16 @@ mod tests {
                   element(
                     tag: "div",
                     attrs: [
-                      class: let base = "btn" in base,
+                      class: {
+                        let base = "btn";
+                        base
+                      },
                     ],
                     children: [
-                      interpolate(let b = add(a, 1) in b),
+                      interpolate({
+                        let b = add(a, 1);
+                        b
+                      }),
                     ],
                   )
                 }
@@ -994,8 +1023,14 @@ mod tests {
             "},
             expect![[r#"
                 fn Main(a: Int) -> Html {
-                  match let n = a in eq(n, 1) {
-                    true => match let m = a in eq(m, 1) {
+                  match {
+                    let n = a;
+                    eq(n, 1)
+                  } {
+                    true => match {
+                      let m = a;
+                      eq(m, 1)
+                    } {
                       true => fragment(
                         text("one"),
                       ),
@@ -2959,7 +2994,8 @@ mod tests {
                     attrs: [],
                     children: [
                       interpolate(for item in items {
-                        let name = item.name in element(
+                        let name = item.name;
+                        element(
                           tag: "li",
                           attrs: [],
                           children: [
@@ -3396,6 +3432,71 @@ mod tests {
     }
 
     #[test]
+    fn accepts_mut_functions_statements_and_assignments() {
+        accept(
+            indoc! {"
+                mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
+                  press(); press()
+                }
+                fn Main() -> Html {
+                  let mut count = 0;
+                  let reset = mut fn() { count = 0 };
+                  <button on:click={mut fn() { count = count + 1; match count > 2 { true => count = 0, false => () } }}>
+                    {count.to_string()}
+                  </button>
+                }
+            "},
+            expect![[r#"
+                mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
+                  press();
+                  press()
+                }
+
+                fn Main() -> Html {
+                  let mut count = 0;
+                  let reset = mut fn() {
+                    count = 0
+                  };
+                  element(
+                    tag: "button",
+                    attrs: [
+                      on:click: mut fn() {
+                        count = add(count, 1);
+                        match gt(count, 2) {
+                          true => count = 0,
+                          false => (),
+                        }
+                      },
+                    ],
+                    children: [
+                      interpolate(count.to_string()),
+                    ],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_an_assignment_to_something_other_than_a_variable() {
+        reject(
+            indoc! {"
+                mut fn reset(n: Int) -> Tuple[] {
+                  n + 1 = 0
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Only a variable can be assigned
+                1 | mut fn reset(n: Int) -> Tuple[] {
+                2 |   n + 1 = 0
+                  |   ^^^^^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_lambdas() {
         accept(
             indoc! {"
@@ -3412,13 +3513,16 @@ mod tests {
                 fn Main(labels: Array[String]) -> Html {
                   let double = fn(n: Int) -> Int {
                     mul(n, 2)
-                  } in let none = fn() {
+                  };
+                  let none = fn() {
                     1
-                  } in Rows(
+                  };
+                  Rows(
                     attrs: [
                       labels: labels,
                       row: fn(label, depth: Int) {
-                        let n = double(depth) in element(
+                        let n = double(depth);
+                        element(
                           tag: "li",
                           attrs: [],
                           children: [
@@ -4440,7 +4544,9 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  let a: Int = 1 in let b: Int = 2 in element(
+                  let a: Int = 1;
+                  let b: Int = 2;
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [
@@ -4466,7 +4572,9 @@ mod tests {
             "#},
             expect![[r#"
                 fn Main() -> Html {
-                  let first: String = "Hello" in let second: String = "World" in element(
+                  let first: String = "Hello";
+                  let second: String = "World";
+                  element(
                     tag: "div",
                     attrs: [],
                     children: [
@@ -4500,12 +4608,18 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    interpolate(let a: String = "Hello" in fragment(
-                      interpolate(a),
-                    )),
-                    interpolate(let b: String = "World" in fragment(
-                      interpolate(b),
-                    )),
+                    interpolate({
+                      let a: String = "Hello";
+                      fragment(
+                        interpolate(a),
+                      )
+                    }),
+                    interpolate({
+                      let b: String = "World";
+                      fragment(
+                        interpolate(b),
+                      )
+                    }),
                   )
                 }
             "#]],
@@ -4536,14 +4650,17 @@ mod tests {
                         text("First"),
                       ],
                     ),
-                    interpolate(let name: String = "World" in element(
-                      tag: "div",
-                      attrs: [],
-                      children: [
-                        text("Hello "),
-                        interpolate(name),
-                      ],
-                    )),
+                    interpolate({
+                      let name: String = "World";
+                      element(
+                        tag: "div",
+                        attrs: [],
+                        children: [
+                          text("Hello "),
+                          interpolate(name),
+                        ],
+                      )
+                    }),
                   )
                 }
             "#]],
@@ -4567,14 +4684,17 @@ mod tests {
             expect![[r#"
                 fn Main() -> Html {
                   fragment(
-                    interpolate(let name: String = "World" in element(
-                      tag: "div",
-                      attrs: [],
-                      children: [
-                        text("Hello "),
-                        interpolate(name),
-                      ],
-                    )),
+                    interpolate({
+                      let name: String = "World";
+                      element(
+                        tag: "div",
+                        attrs: [],
+                        children: [
+                          text("Hello "),
+                          interpolate(name),
+                        ],
+                      )
+                    }),
                     element(
                       tag: "div",
                       attrs: [],
@@ -5396,7 +5516,8 @@ mod tests {
             expect![[r#"
                 page Index() {
                   fn body() -> Html {
-                    let name: String = "World" in element(
+                    let name: String = "World";
+                    element(
                       tag: "div",
                       attrs: [],
                       children: [

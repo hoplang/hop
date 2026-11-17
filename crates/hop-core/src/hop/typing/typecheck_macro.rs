@@ -13,55 +13,6 @@ use crate::hover_annotation::HoverAnnotation;
 use crate::root_relative_file_path::RootRelativeFilePath;
 use crate::symbols::var_name::VarName;
 
-pub fn typecheck_pure(
-    args: &[ParsedExpr],
-    range: &DocumentRange,
-    expected_type: Option<&Type>,
-    forwarded_params: &[VarName],
-    var_env: &mut VariableScope,
-    type_env: &TypeEnv,
-    registry: &TypeRegistry,
-    annotations: &mut Vec<HoverAnnotation>,
-    definition_links: &mut Vec<DefinitionLink>,
-    asset_references: &mut Vec<AssetReference>,
-    errors: &mut Vec<TypeError>,
-) -> Option<TypedExpr> {
-    let [arg] = args else {
-        errors.push(TypeError::new(
-            TypeErrorKind::PureMacroArity { actual: args.len() },
-            range.clone(),
-        ));
-        return None;
-    };
-    let expected = match expected_type {
-        Some(Type::Mutation(payload)) => Some(Type::Data(payload.clone())),
-        _ => None,
-    };
-    let typed = typecheck_expr(
-        arg,
-        expected.as_ref(),
-        forwarded_params,
-        var_env,
-        type_env,
-        registry,
-        annotations,
-        definition_links,
-        asset_references,
-        errors,
-    )?;
-    let Type::Data(payload) = typed.typ() else {
-        errors.push(TypeError::new(
-            TypeErrorKind::NotData { typ: typed.typ() },
-            arg.range().clone(),
-        ));
-        return None;
-    };
-    Some(TypedExpr::MutationPure {
-        value: Box::new(typed),
-        typ: Type::Mutation(payload),
-    })
-}
-
 pub fn typecheck_join(
     args: &[ParsedExpr],
     forwarded_params: &[VarName],

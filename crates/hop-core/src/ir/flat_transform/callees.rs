@@ -25,12 +25,9 @@ pub fn collect_callees(block: &FlatBlock, out: &mut BTreeSet<FunctionId>) {
             }
             FlatOp::Cell(initial) => collect_callees(initial, out),
             FlatOp::Data(_)
-            | FlatOp::Track(_)
             | FlatOp::Mint
             | FlatOp::CellWrite(..)
             | FlatOp::CellRead(_)
-            | FlatOp::MutationPure(_)
-            | FlatOp::MutationBind(..)
             | FlatOp::Text(_)
             | FlatOp::Escape(_)
             | FlatOp::Concat(_)

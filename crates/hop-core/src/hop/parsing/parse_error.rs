@@ -86,6 +86,9 @@ pub enum ParseErrorKind {
     #[error("A block must end with an expression")]
     BlockMissingTailExpression,
 
+    #[error("Only a variable can be assigned")]
+    InvalidAssignmentTarget,
+
     #[error("let is only allowed inside a block: wrap the expression in braces")]
     LetOutsideBlock,
 

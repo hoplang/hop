@@ -29,9 +29,9 @@ use crate::symbols::field_name::FieldName;
 ///   what reads a name its pattern binds reads the constructor operand the
 ///   name binds.
 /// - A string concat takes the parts of a nested concat as its own, drops
-///   empty constants and merges adjacent constants. An html concat or an
-///   mutation concat takes the parts of a nested concat as its own, so an
-///   empty part goes. A concat of one part is that part.
+///   empty constants and merges adjacent constants. An html concat takes the
+///   parts of a nested concat as its own, so an empty part goes. A concat of
+///   one part is that part.
 /// - An html concat is bound just before each reader that is not a concat,
 ///   not where it stands. A path reads Html at most once, so a path that
 ///   read the concat reads each of its parts once.
@@ -446,12 +446,9 @@ impl<'a> Evaluator<'a> {
             // A cell is never constant, as a click may have set it.
             FlatOp::Cell(initial) => FlatOp::Cell(self.block(initial)),
             op @ (FlatOp::Call(..)
-            | FlatOp::Track(_)
             | FlatOp::Mint
             | FlatOp::CellWrite(..)
             | FlatOp::CellRead(_)
-            | FlatOp::MutationPure(_)
-            | FlatOp::MutationBind(..)
             | FlatOp::Text(_)) => op,
         };
         // Only Html reads a concat, so this binds none for a value.

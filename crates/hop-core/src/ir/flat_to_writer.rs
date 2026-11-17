@@ -20,7 +20,7 @@ use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::ir_type::{IrDataType, IrType};
+use crate::ir::ir_type::{IrDataType, IrModifier, IrType};
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::ir::writer_program::{
@@ -97,6 +97,9 @@ pub fn flat_to_writer(
         aliases: HashMap::new(),
         bound: HashSet::new(),
     };
+    let functions: Vec<FlatFunction> = (functions.into_iter())
+        .filter(|function| function.modifier != IrModifier::Mut)
+        .collect();
     for function in &functions {
         for param in &function.parameters {
             lowerer.analyze_parameter(&param.binder);
@@ -155,29 +158,35 @@ fn write(out: &mut Vec<WriterStmt>, content: &str) {
 }
 
 /// The Writer type of a parameter, where Html is a closure without
-/// parameters that writes it, in the signatures of closures as well, and an
-/// mutation is the unit tuple.
+/// parameters that writes it, in the signatures of closures as well, and a
+/// closure that mutates is the unit tuple.
 fn parameter_type(typ: &IrType) -> IrType {
     match typ {
-        IrType::Html => IrType::function(false, [], IrType::Html),
+        IrType::Html => IrType::function(IrModifier::Pure, [], IrType::Html),
         IrType::Function(signature) if *signature.result == IrType::Html => IrType::function(
-            false,
+            IrModifier::Pure,
             signature.parameters.iter().map(parameter_type),
             IrType::Html,
         ),
-        IrType::Data(_) | IrType::Mutation(_) | IrType::Function(_) => value_type(typ),
+        IrType::Data(_) | IrType::Function(_) => value_type(typ),
         IrType::Cell(_) | IrType::Id => {
             unreachable!("the typechecker rejects a parameter of a cell or an identity")
         }
     }
 }
 
+fn is_mut_closure(typ: &IrType) -> bool {
+    matches!(typ, IrType::Function(signature) if signature.modifier == IrModifier::Mut)
+}
+
 fn value_type(typ: &IrType) -> IrType {
     match typ {
         IrType::Data(_) => typ.clone(),
-        IrType::Mutation(_) => IrType::Data(IrDataType::UNIT),
+        IrType::Function(signature) if signature.modifier == IrModifier::Mut => {
+            IrType::Data(IrDataType::UNIT)
+        }
         IrType::Function(signature) => IrType::function(
-            false,
+            IrModifier::Pure,
             signature.parameters.iter().map(value_type),
             value_type(&signature.result),
         ),
@@ -250,14 +259,11 @@ impl<'a> Lowerer<'a> {
     }
 
     // An Html parameter takes a closure, and the type of a parameter of data
-    // is what a match on it needs. A mutation is the unit tuple.
+    // is what a match on it needs.
     fn analyze_parameter(&mut self, binder: &IrBinder<IrType>) {
         match &binder.typ {
             IrType::Data(typ) => {
                 self.binder_types.insert(binder.var, typ.clone());
-            }
-            IrType::Mutation(_) => {
-                self.binder_types.insert(binder.var, IrDataType::UNIT);
             }
             IrType::Html => {
                 self.html_parameters.insert(binder.var);
@@ -322,12 +328,10 @@ impl<'a> Lowerer<'a> {
                     self.analyze_value_block(&arm.body);
                 }
             }
-            // Rendered on the empty state, a mutation performs nothing, so
-            // it reads nothing.
-            FlatOp::CellWrite(..)
-            | FlatOp::CellRead(_)
-            | FlatOp::MutationPure(_)
-            | FlatOp::MutationBind(..) => {}
+            // Rendered on the empty state, a click never runs what mutates,
+            // so it reads nothing.
+            FlatOp::Lambda(_) if is_mut_closure(&binding.binder.typ) => {}
+            FlatOp::CellWrite(..) => unreachable!("only what mutates writes a cell"),
             FlatOp::Lambda(lambda) => {
                 for param in &lambda.parameters {
                     self.analyze_parameter(param);
@@ -338,10 +342,10 @@ impl<'a> Lowerer<'a> {
                 self.read(*closure, Reader::Value);
                 self.read_args(args);
             }
-            // Rendered on the empty state, a cell and its track are the
+            // Rendered on the empty state, a cell and a read of it are the
             // initial value of the cell.
             FlatOp::Cell(initial) => self.analyze_value_block(initial),
-            FlatOp::Track(cell) => self.read(*cell, Reader::Value),
+            FlatOp::CellRead(cell) => self.read(*cell, Reader::Value),
             FlatOp::Mint => {}
             FlatOp::Text(_)
             | FlatOp::Escape(_)
@@ -415,12 +419,9 @@ impl<'a> Lowerer<'a> {
                 }
                 FlatOp::Data(_)
                 | FlatOp::Cell(_)
-                | FlatOp::Track(_)
                 | FlatOp::Mint
                 | FlatOp::CellWrite(..)
-                | FlatOp::CellRead(_)
-                | FlatOp::MutationPure(_)
-                | FlatOp::MutationBind(..) => unreachable!("Html is not bound by an op of a value"),
+                | FlatOp::CellRead(_) => unreachable!("Html is not bound by an op of a value"),
             }
         }
     }
@@ -545,7 +546,7 @@ impl<'a> Lowerer<'a> {
             };
         }
         let IrType::Data(return_type) = value_type(&decl.return_type) else {
-            unreachable!("a value returned is data or a mutation");
+            unreachable!("a value returned is data");
         };
         let body = &decl.body;
         let mut bindings = Vec::new();
@@ -597,7 +598,7 @@ impl<'a> Lowerer<'a> {
                 self.aliases.insert(binding.binder.var, initial);
                 return;
             }
-            FlatOp::Track(cell) => {
+            FlatOp::CellRead(cell) => {
                 let cell = self.name(*cell);
                 self.aliases.insert(binding.binder.var, cell);
                 return;
@@ -609,10 +610,10 @@ impl<'a> Lowerer<'a> {
                 self.aliases.insert(binding.binder.var, alias);
                 return;
             }
-            FlatOp::CellWrite(..)
-            | FlatOp::CellRead(_)
-            | FlatOp::MutationPure(_)
-            | FlatOp::MutationBind(..) => WriterOp::Data(IrDataOp::Tuple(Vec::new())),
+            FlatOp::Lambda(_) if is_mut_closure(binder_type) => {
+                WriterOp::Data(IrDataOp::Tuple(Vec::new()))
+            }
+            FlatOp::CellWrite(..) => unreachable!("only what mutates writes a cell"),
             FlatOp::Call(function, args) => WriterOp::Call(
                 function.clone(),
                 args.iter().map(|arg| self.name(*arg)).collect(),
@@ -693,7 +694,7 @@ impl<'a> Lowerer<'a> {
                     lets.push(IrBinding {
                         binder: IrBinder {
                             var: name,
-                            typ: IrType::function(false, [], IrType::Html),
+                            typ: IrType::function(IrModifier::Pure, [], IrType::Html),
                         },
                         op: WriterOp::Lambda(IrLambda {
                             parameters: Vec::new(),
@@ -1141,12 +1142,9 @@ impl<'a> Lowerer<'a> {
             FlatOp::Lambda(_) => unreachable!("a closure is bound, not written"),
             FlatOp::Data(_)
             | FlatOp::Cell(_)
-            | FlatOp::Track(_)
             | FlatOp::Mint
             | FlatOp::CellWrite(..)
-            | FlatOp::CellRead(_)
-            | FlatOp::MutationPure(_)
-            | FlatOp::MutationBind(..) => unreachable!("Html is not bound by an op of a value"),
+            | FlatOp::CellRead(_) => unreachable!("Html is not bound by an op of a value"),
         }
     }
 
@@ -1359,7 +1357,7 @@ mod tests {
                     "Buttons",
                     [
                         ("n", Ty::Int),
-                        ("on_press", Ty::function([], Ty::mutation(Ty::tuple([])))),
+                        ("on_press", Ty::mut_function([], Ty::tuple([]))),
                     ],
                     Ty::Html,
                     |t| {
@@ -1383,7 +1381,7 @@ mod tests {
                 )
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(|t| t.int(0));
-                    let n = t.track(count);
+                    let n = t.cell_read(count);
                     let bump = t.event_handler(|t| {
                         t.cell_write(count, t.add(NumericType::Int, n, t.int(1)))
                     });
@@ -1397,7 +1395,7 @@ mod tests {
                 -- flat --
                 render fn Buttons@f0(
                   n@v0: Int,
-                  on_press@v1: () -> Mutation[Tuple[]],
+                  on_press@v1: mut () -> Tuple[],
                 ) -> Html {
                   let v2: Int = 0
                   let v3: Bool = int_lt_eq(v0, v2)
@@ -1425,11 +1423,11 @@ mod tests {
                     let v14: Int = 0
                     v14
                   }
-                  let v16: Int = track(v15)
-                  let v20: () -> Mutation[Tuple[]] = fn() {
+                  let v16: Int = read(v15)
+                  let v20: mut () -> Tuple[] = fn() {
                     let v17: Int = 1
                     let v18: Int = int_add(v16, v17)
-                    let v19: Mutation[Tuple[]] = v15 := v18
+                    let v19: Tuple[] = v15 := v18
                     v19
                   }
                   let v21: Int = 2
@@ -1443,7 +1441,7 @@ mod tests {
                 -- writer --
                 fn Buttons@f0(
                   n@v0: Int,
-                  on_press@v1: () -> Tuple[],
+                  on_press@v1: Tuple[],
                 ) -> Html {
                   let v2: Int = 0
                   let v3: Bool = int_lt_eq(v0, v2)
@@ -1463,12 +1461,7 @@ mod tests {
                 }
                 page Test() {
                   let v14: Int = 0
-                  let v20: () -> Tuple[] = fn() {
-                    let v17: Int = 1
-                    let v18: Int = int_add(v14, v17)
-                    let v19: Tuple[] = ()
-                    v19
-                  }
+                  let v20: Tuple[] = ()
                   let v21: Int = 2
                   let v23: String = int_to_string(v14)
                   write_string(v23)

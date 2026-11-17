@@ -21,10 +21,6 @@ pub enum ParsedType {
     Html {
         range: DocumentRange,
     },
-    Mutation {
-        element: Box<ParsedType>,
-        range: DocumentRange,
-    },
     Array {
         element: Box<ParsedType>,
         range: DocumentRange,
@@ -42,6 +38,7 @@ pub enum ParsedType {
         range: DocumentRange,
     },
     Function {
+        mut_range: Option<DocumentRange>,
         parameters: Vec<ParsedType>,
         result: Box<ParsedType>,
         range: DocumentRange,
@@ -56,7 +53,6 @@ impl ParsedType {
             | ParsedType::Int { range }
             | ParsedType::Float { range }
             | ParsedType::Html { range }
-            | ParsedType::Mutation { range, .. }
             | ParsedType::Array { range, .. }
             | ParsedType::Option { range, .. }
             | ParsedType::Tuple { range, .. }
@@ -74,14 +70,21 @@ impl Display for ParsedType {
             ParsedType::Int { .. } => f.write_str("Int"),
             ParsedType::Float { .. } => f.write_str("Float"),
             ParsedType::Html { .. } => f.write_str("Html"),
-            ParsedType::Mutation { element, .. } => write!(f, "Mutation[{element}]"),
             ParsedType::Option { element, .. } => write!(f, "Option[{element}]"),
             ParsedType::Array { element, .. } => write!(f, "Array[{element}]"),
             ParsedType::Tuple { elements, .. } => write!(f, "Tuple[{}]", join(elements, ", ")),
             ParsedType::Named { name, .. } => write!(f, "{name}"),
             ParsedType::Function {
-                parameters, result, ..
-            } => write!(f, "fn({}) -> {result}", join(parameters, ", ")),
+                mut_range,
+                parameters,
+                result,
+                ..
+            } => {
+                if mut_range.is_some() {
+                    f.write_str("mut ")?;
+                }
+                write!(f, "fn({}) -> {result}", join(parameters, ", "))
+            }
         }
     }
 }

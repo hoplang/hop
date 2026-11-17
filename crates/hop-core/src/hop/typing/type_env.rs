@@ -9,6 +9,7 @@ use crate::symbols::var_name::VarName;
 
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
+    pub mutates: bool,
     /// How many fields of the row the function declares. They come first,
     /// and they are the only fields a caller can pass by position.
     pub declared: usize,

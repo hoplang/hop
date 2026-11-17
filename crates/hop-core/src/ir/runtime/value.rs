@@ -5,6 +5,7 @@ use crate::hop::typing::{Constructor, Pattern};
 use crate::html::{HtmlElementKind, write_escaped_html};
 use crate::ir::flat_program::FlatLambda;
 use crate::ir::ir_match::IrPattern;
+use crate::ir::ir_type::IrModifier;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::state::{CellId, ElementId};
@@ -40,25 +41,14 @@ pub enum Value<'a> {
     Option(Option<Rc<Value<'a>>>),
     Enum(TypeName, Rc<[(FieldName, Value<'a>)]>),
     Closure(Rc<Closure<'a>>),
-    Mutation(Rc<Mutation<'a>>),
     Cell(CellId),
     Id(ElementId),
 }
 
 #[derive(Debug)]
-#[cfg_attr(not(test), allow(dead_code))]
-pub enum Mutation<'a> {
-    Pure(Value<'a>),
-    Write(CellId, Value<'a>),
-    Read(CellId),
-    Bind(Rc<Mutation<'a>>, Rc<Closure<'a>>),
-    Then(Rc<Mutation<'a>>, Rc<Mutation<'a>>),
-}
-
-#[derive(Debug)]
 pub struct Closure<'a> {
     pub lambda: &'a FlatLambda,
-    pub render_modifier: bool,
+    pub modifier: IrModifier,
     pub env: Option<Rc<Env<'a>>>,
 }
 
@@ -127,7 +117,7 @@ impl<'a> Value<'a> {
     /// is an equivalence relation, so values that share an allocation are
     /// equal without looking inside, as a value that nests a shared part in
     /// itself can be exponentially larger as a tree than in memory. Panics
-    /// on Html, a closure, a Mutation, a cell or an identity.
+    /// on Html, a closure, a cell or an identity.
     #[cfg(test)]
     pub fn total_eq(&self, other: &Value<'_>) -> bool {
         fn all(a: &[Value<'_>], b: &[Value<'_>]) -> bool {
@@ -139,22 +129,8 @@ impl<'a> Value<'a> {
                     .all(|((a_name, a), (b_name, b))| a_name == b_name && a.total_eq(b))
         }
         match (self, other) {
-            (
-                Value::Html(_)
-                | Value::Closure(_)
-                | Value::Mutation(_)
-                | Value::Cell(_)
-                | Value::Id(_),
-                _,
-            )
-            | (
-                _,
-                Value::Html(_)
-                | Value::Closure(_)
-                | Value::Mutation(_)
-                | Value::Cell(_)
-                | Value::Id(_),
-            ) => {
+            (Value::Html(_) | Value::Closure(_) | Value::Cell(_) | Value::Id(_), _)
+            | (_, Value::Html(_) | Value::Closure(_) | Value::Cell(_) | Value::Id(_)) => {
                 panic!("total_eq compares data, not {self:?} and {other:?}")
             }
             (Value::String(a), Value::String(b)) => a == b,
@@ -258,14 +234,6 @@ impl<'a> Value<'a> {
         match self {
             Value::Id(id) => *id,
             _ => panic!("expected an Id value, found {self:?}"),
-        }
-    }
-
-    /// Panics if the value is not a Mutation.
-    pub fn as_mutation(&self) -> &Rc<Mutation<'a>> {
-        match self {
-            Value::Mutation(mutation) => mutation,
-            _ => panic!("expected a Mutation value, found {self:?}"),
         }
     }
 

@@ -278,6 +278,7 @@ pub fn resolve_rest_targets(
             settled.insert(
                 name.clone(),
                 FunctionSignature {
+                    mutates: provisional.mutates,
                     declared: provisional.declared,
                     row: Row {
                         fields,

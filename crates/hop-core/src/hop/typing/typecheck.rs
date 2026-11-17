@@ -763,12 +763,22 @@ fn create_function_signature<'a>(
         ));
         return None;
     }
+    if function.mut_range.is_some() && return_type.as_data().is_none() {
+        errors.push(TypeError::new(
+            TypeErrorKind::MutFunctionReturnsNonData {
+                result: return_type,
+            },
+            function.return_type.range().clone(),
+        ));
+        return None;
+    }
 
     Some(PendingFunction {
         function,
         resolved_params,
         typed_params,
         signature: FunctionSignature {
+            mutates: function.mut_range.is_some(),
             declared: declared_params.len(),
             row: Row {
                 fields: declared_params,
@@ -804,6 +814,7 @@ fn typecheck_function_body(
         ..
     } = function;
     let return_type = signature.return_type;
+    let mutates = signature.mutates;
 
     // The row of the settled signature holds the parameters the rest adds,
     // after the declared ones. A function that lost its name to an earlier
@@ -835,6 +846,7 @@ fn typecheck_function_body(
 
     let forwarded_names: Vec<VarName> = forwarded.iter().map(|p| p.name.clone()).collect();
 
+    let outer = var_env.set_mutates(mutates);
     let typed_body = typecheck_block(
         body,
         Some(&return_type),
@@ -847,6 +859,7 @@ fn typecheck_function_body(
         asset_references,
         errors,
     );
+    var_env.set_mutates(outer);
 
     for _ in 0..pushed_params {
         let (name, entry) = var_env.pop();
@@ -883,6 +896,7 @@ fn typecheck_function_body(
     }
 
     Some(TypedFunctionDeclaration {
+        mutates,
         name: name.clone(),
         params: typed_params,
         rest_param: rest_param.as_ref().map(|(rest, _)| rest.clone()),
@@ -957,7 +971,6 @@ fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString
         }
         ParsedType::String { .. }
         | ParsedType::Bool { .. }
-        | ParsedType::Mutation { .. }
         | ParsedType::Int { .. }
         | ParsedType::Float { .. }
         | ParsedType::Html { .. } => {}
@@ -965,7 +978,7 @@ fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString
 }
 
 fn collect_names_in_block(block: &ParsedBlock, out: &mut HashSet<CheapString>) {
-    for var_type in block.bindings.iter().filter_map(|b| b.var_type.as_ref()) {
+    for var_type in block.let_bindings().filter_map(|b| b.var_type.as_ref()) {
         collect_names_in_type(var_type, out);
     }
     block.for_each_child(&mut |child| collect_names_in_expr(child, out));
@@ -986,7 +999,7 @@ fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
         }
         ParsedExpr::Markup { markup } => collect_names_in_markup(markup, out),
         ParsedExpr::Block { block: body } | ParsedExpr::For { body, .. } => {
-            for var_type in body.bindings.iter().filter_map(|b| b.var_type.as_ref()) {
+            for var_type in body.let_bindings().filter_map(|b| b.var_type.as_ref()) {
                 collect_names_in_type(var_type, out);
             }
         }
@@ -999,8 +1012,8 @@ fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
             for var_type in params
                 .iter()
                 .filter_map(|param| param.var_type.as_ref())
-                .chain(return_type)
-                .chain(body.bindings.iter().filter_map(|b| b.var_type.as_ref()))
+                .chain(return_type.as_deref())
+                .chain(body.let_bindings().filter_map(|b| b.var_type.as_ref()))
             {
                 collect_names_in_type(var_type, out);
             }
@@ -1651,7 +1664,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: A cell can only be bound in a block that returns Html
+                error: let mut needs a block that returns Html
                   --> main.hop (line 2, col 11)
                  1 | fn missing_value() -> Int {
                  2 |   let mut a = 0;
@@ -1663,7 +1676,7 @@ mod tests {
                  3 |   let b: Int = missing;
                    |                ^^^^^^^
 
-                error: A cell can only be bound in a block that returns Html
+                error: let mut needs a block that returns Html
                   --> main.hop (line 7, col 11)
                  6 | fn clash() -> Int {
                  7 |   let mut c = 0;
@@ -14952,20 +14965,21 @@ mod tests {
     }
 
     #[test]
-    fn accepts_cells_clicks_keys_and_mutations() {
+    fn accepts_cells_clicks_and_keys() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn both(first: fn() -> Mutation[Tuple[]], second: fn() -> Mutation[Tuple[]]) -> Mutation[Tuple[]] {
-                  first().and_then(fn(_: Tuple[]) { second() })
+                mut fn both(first: mut fn() -> Tuple[], second: mut fn() -> Tuple[]) -> Tuple[] {
+                  first();
+                  second()
                 }
                 fn Main(ids: Array[Int]) -> Html {
                   let mut count = 0;
                   let mut on = false;
-                  let bump = fn() { count.set(count + 1) };
-                  let flip = fn() -> Mutation[Tuple[]] { on.set(!on) };
+                  let bump = mut fn() { count = count + 1 };
+                  let flip = mut fn() -> Tuple[] { on = !on };
                   <>
-                    <button on:click={fn() { both(bump, flip) }}>
+                    <button on:click={mut fn() { both(bump, flip) }}>
                       {count.to_string()}
                     </button>
                     {for id in ids key id {
@@ -14977,10 +14991,10 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(ids: Array[Int]) -> Html {
-                  let mut count = 0 in let mut on = false in let bump = fn() -> Mutation[Tuple[]] {
-                    write(count, add(count, 1))
-                  } in let flip = fn() -> Mutation[Tuple[]] {
-                    write(on, not(on))
+                  let mut count = 0 in let mut on = false in let bump = mut fn() -> Tuple[] {
+                    count = add(count, 1)
+                  } in let flip = mut fn() -> Tuple[] {
+                    on = not(on)
                   } in concat(
                     element(
                       tag: "button",
@@ -14988,7 +15002,7 @@ mod tests {
                       children: concat(
                         escape(count.to_string()),
                       ),
-                      on_click: fn() -> Mutation[Tuple[]] {
+                      on_click: mut fn() -> Tuple[] {
                         both(first: bump, second: flip)
                       },
                     ),
@@ -15004,41 +15018,39 @@ mod tests {
                   )
                 }
 
-                fn both(first: fn() -> Mutation[Tuple[]], second: fn() -> Mutation[Tuple[]]) -> Mutation[Tuple[]] {
-                  first().and_then(fn(_: Tuple[]) -> Mutation[Tuple[]] {
-                    second()
-                  })
+                mut fn both(first: mut fn() -> Tuple[], second: mut fn() -> Tuple[]) -> Tuple[] {
+                  first(); second()
                 }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_a_write_of_a_variable_that_is_not_a_cell_or_of_a_value_of_another_type() {
+    fn rejects_an_assignment_to_a_variable_that_is_not_mutable_or_of_a_value_of_another_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Fixed() -> Html {
                   let count = 0;
-                  <button on:click={fn() { count.set(count + 1) }}>x</button>
+                  <button on:click={mut fn() { count = count + 1 }}>x</button>
                 }
                 fn Counter() -> Html {
                   let mut count = 0;
-                  <button on:click={fn() { count.set("one") }}>{count.to_string()}</button>
+                  <button on:click={mut fn() { count = "one" }}>{count.to_string()}</button>
                 }
             "#},
             expect![[r#"
-                error: Method 'set' is not available on type Int
-                  --> main.hop (line 3, col 28)
+                error: Variable count is not mutable
+                  --> main.hop (line 3, col 32)
                 2 |   let count = 0;
-                3 |   <button on:click={fn() { count.set(count + 1) }}>x</button>
-                  |                            ^^^^^^^^^^^^^^^^^^^^
+                3 |   <button on:click={mut fn() { count = count + 1 }}>x</button>
+                  |                                ^^^^^
 
                 error: Expected Int got String
-                  --> main.hop (line 7, col 38)
+                  --> main.hop (line 7, col 40)
                 6 |   let mut count = 0;
-                7 |   <button on:click={fn() { count.set("one") }}>{count.to_string()}</button>
-                  |                                      ^^^^^
+                7 |   <button on:click={mut fn() { count = "one" }}>{count.to_string()}</button>
+                  |                                        ^^^^^
             "#]],
         );
     }
@@ -15054,22 +15066,22 @@ mod tests {
                 }
                 fn Main() -> Html {
                   let mut count = 0;
-                  <button on:click={fn() {
+                  <button on:click={mut fn() {
                     let mut last = count;
-                    count.set(last + 1)
+                    count = last + 1
                   }}>{count.to_string()}</button>
                 }
             "#},
             expect![[r#"
-                error: A cell can only be bound in a block that returns Html
+                error: let mut needs a block that returns Html
                   --> main.hop (line 2, col 11)
                  1 | fn counter() -> Int {
                  2 |   let mut count = 0;
                    |           ^^^^^
 
-                error: A cell can only be bound in a block that returns Html
+                error: let mut needs a block that returns Html
                   --> main.hop (line 8, col 13)
-                 7 |   <button on:click={fn() {
+                 7 |   <button on:click={mut fn() {
                  8 |     let mut last = count;
                    |             ^^^^
             "#]],
@@ -15085,9 +15097,9 @@ mod tests {
                   let bump = match open {
                     true => {
                       let mut count = 0;
-                      count.set(count + 1)
+                      count + 1
                     },
-                    false => pure!(()),
+                    false => 0,
                   };
                   let seen = open && {
                     let mut first = true;
@@ -15102,31 +15114,31 @@ mod tests {
                     fallback
                   });
                   <>
-                    <button on:click={fn() { bump }} disabled={seen}>{label}</button>
+                    <button disabled={seen}>{label}{bump.to_string()}</button>
                     <button disabled={shut}>x</button>
                   </>
                 }
             "#},
             expect![[r#"
-                error: A cell can only be bound in a block that returns Html
+                error: let mut needs a block that returns Html
                   --> main.hop (line 4, col 15)
                  3 |     true => {
                  4 |       let mut count = 0;
                    |               ^^^^^
 
-                error: A cell can only be bound in a block that returns Html
+                error: let mut needs a block that returns Html
                   --> main.hop (line 10, col 13)
                  9 |   let seen = open && {
                 10 |     let mut first = true;
                    |             ^^^^^
 
-                error: A cell can only be bound in a block that returns Html
+                error: let mut needs a block that returns Html
                   --> main.hop (line 14, col 13)
                 13 |   let shut = open || {
                 14 |     let mut last = false;
                    |             ^^^^
 
-                error: A cell can only be bound in a block that returns Html
+                error: let mut needs a block that returns Html
                   --> main.hop (line 18, col 13)
                 17 |   let label = name.unwrap_or({
                 18 |     let mut fallback = "anon";
@@ -15144,14 +15156,14 @@ mod tests {
                   let row = {
                     let mut open = false;
                     fn(label: String) {
-                      <li on:click={fn() { open.set(!open) }}>{label}</li>
+                      <li on:click={mut fn() { open = !open }}>{label}</li>
                     }
                   };
                   <ul>{row("a")}{row("b")}</ul>
                 }
             "#},
             expect![[r#"
-                error: A cell can only be bound in a block that returns Html
+                error: let mut needs a block that returns Html
                   --> main.hop (line 3, col 13)
                 2 |   let row = {
                 3 |     let mut open = false;
@@ -15169,7 +15181,7 @@ mod tests {
                   match open {
                     true => {
                       let mut count = 0;
-                      <button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</button>
+                      <button on:click={mut fn() { count = count + 1 }}>{count.to_string()}</button>
                     },
                     false => <i>closed</i>,
                   }
@@ -15185,8 +15197,8 @@ mod tests {
                       children: concat(
                         escape(count.to_string()),
                       ),
-                      on_click: fn() -> Mutation[Tuple[]] {
-                        write(count, add(count, 1))
+                      on_click: mut fn() -> Tuple[] {
+                        count = add(count, 1)
                       },
                     ),
                     false => element(
@@ -15210,7 +15222,7 @@ mod tests {
                 fn Main() -> Html {
                   let row = fn(label: String) {
                     let mut open = false;
-                    <li on:click={fn() { open.set(!open) }}>{label}</li>
+                    <li on:click={mut fn() { open = !open }}>{label}</li>
                   };
                   <ul>{row("a")}{row("b")}</ul>
                 }
@@ -15225,8 +15237,8 @@ mod tests {
                       children: concat(
                         escape(label),
                       ),
-                      on_click: fn() -> Mutation[Tuple[]] {
-                        write(open, not(open))
+                      on_click: mut fn() -> Tuple[] {
+                        open = not(open)
                       },
                     )
                   } in element(
@@ -15262,7 +15274,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: A cell can only be bound in a block that returns Html
+                error: let mut needs a block that returns Html
                   --> main.hop (line 3, col 13)
                  2 |   for id in ids key {
                  3 |     let mut seen = id;
@@ -15288,7 +15300,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: A cell cannot hold Html
+                error: let mut cannot hold Html
                   --> main.hop (line 2, col 19)
                 1 | fn Main() -> Html {
                 2 |   let mut shown = <b>x</b>;
@@ -15305,22 +15317,22 @@ mod tests {
                 fn Main() -> Html {
                   let mut count = 0;
                   <>
-                    <button on:click={count.set(count + 1)}>{count.to_string()}</button>
+                    <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
                     <button on:click="go()">x</button>
                     <button on:click>y</button>
                   </>
                 }
             "#},
             expect![[r#"
-                error: Expected fn() -> Mutation[Tuple[]] got Mutation[Tuple[]]
+                error: Expected mut fn() -> Tuple[] got fn() -> Int
                   --> main.hop (line 4, col 23)
                 3 |   <>
-                4 |     <button on:click={count.set(count + 1)}>{count.to_string()}</button>
-                  |                       ^^^^^^^^^^^^^^^^^^^^
+                4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
+                  |                       ^^^^^^^^^^^^^^^^^^
 
-                error: Expected fn() -> Mutation[Tuple[]] got String
+                error: Expected mut fn() -> Tuple[] got String
                   --> main.hop (line 5, col 22)
-                4 |     <button on:click={count.set(count + 1)}>{count.to_string()}</button>
+                4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
                 5 |     <button on:click="go()">x</button>
                   |                      ^^^^^^
 
@@ -15343,165 +15355,192 @@ mod tests {
                 }
                 fn Twice() -> Html {
                   let mut count = 0;
-                  <button on:click={fn() { count.set(1) }} on:click={fn() { count.set(2) }}>
+                  <button on:click={mut fn() { count = 1 }} on:click={mut fn() { count = 2 }}>
                     {count.to_string()}
                   </button>
                 }
                 fn Main() -> Html {
                   let mut count = 0;
-                  <Button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</Button>
+                  <Button on:click={mut fn() { count = count + 1 }}>{count.to_string()}</Button>
                 }
             "#},
             expect![[r#"
                 error: Duplicate attribute 'on:click'
-                  --> main.hop (line 6, col 44)
+                  --> main.hop (line 6, col 45)
                  5 |   let mut count = 0;
-                 6 |   <button on:click={fn() { count.set(1) }} on:click={fn() { count.set(2) }}>
-                   |                                            ^^^^^^^^
+                 6 |   <button on:click={mut fn() { count = 1 }} on:click={mut fn() { count = 2 }}>
+                   |                                             ^^^^^^^^
 
                 error: Function Button does not accept argument 'on:click'
                   --> main.hop (line 12, col 11)
                 11 |   let mut count = 0;
-                12 |   <Button on:click={fn() { count.set(count + 1) }}>{count.to_string()}</Button>
+                12 |   <Button on:click={mut fn() { count = count + 1 }}>{count.to_string()}</Button>
                    |           ^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn rejects_a_value_as_an_mutation_and_an_mutation_inside_another_type() {
+    fn rejects_a_mut_fn_inside_another_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main() -> Html {
-                  let mut count = 0;
-                  <button on:click={fn() { count.set(1).and_then(2) }}>{count.to_string()}</button>
-                }
                 fn Listed() -> Html {
                   let mut count = 0;
-                  let writes = [count.set(1)];
+                  let writes = [mut fn() { count = 1 }];
                   <b>{count.to_string()}</b>
                 }
             "#},
             expect![[r#"
-                error: Expected a function from Tuple[] to a mutation, got Int
-                  --> main.hop (line 3, col 50)
+                error: mut fn() -> Tuple[] is not allowed inside another type
+                  --> main.hop (line 3, col 17)
                 2 |   let mut count = 0;
-                3 |   <button on:click={fn() { count.set(1).and_then(2) }}>{count.to_string()}</button>
-                  |                                                  ^
-
-                error: Mutation[Tuple[]] is not allowed inside another type
-                  --> main.hop (line 7, col 17)
-                6 |   let mut count = 0;
-                7 |   let writes = [count.set(1)];
-                  |                 ^^^^^^^^^^^^
+                3 |   let writes = [mut fn() { count = 1 }];
+                  |                 ^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_cell_reads_binds_and_pure_mutations() {
+    fn accepts_mut_functions_statements_and_assignments() {
         accept(
             indoc! {r#"
                 -- main.hop --
-                fn bump(n: Int) -> Mutation[Int] {
-                  pure!(n + 1)
+                mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
+                  press();
+                  press()
                 }
                 fn Main() -> Html {
                   let mut count = 0;
-                  <button on:click={fn() {
-                    count.get().and_then(fn(n) {
-                      bump(n).and_then(fn(_) { count.set(n) })
-                    })
+                  let bump = mut fn() { count = count + 1 };
+                  <button on:click={mut fn() {
+                    twice(bump);
+                    match count > 2 {true => count = 0, false => ()}
                   }}>{count.to_string()}</button>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let mut count = 0 in element(
+                  let mut count = 0 in let bump = mut fn() -> Tuple[] {
+                    count = add(count, 1)
+                  } in element(
                     tag: "button",
                     attrs: [],
                     children: concat(
                       escape(count.to_string()),
                     ),
-                    on_click: fn() -> Mutation[Tuple[]] {
-                      count.get().and_then(fn(n: Int) -> Mutation[Tuple[]] {
-                        bump(n: n).and_then(fn(_: Int) -> Mutation[Tuple[]] {
-                          write(count, n)
-                        })
-                      })
+                    on_click: mut fn() -> Tuple[] {
+                      twice(press: bump); match gt(count, 2) {
+                        true => count = 0,
+                        false => (),
+                      }
                     },
                   )
                 }
 
-                fn bump(n: Int) -> Mutation[Int] {
-                  pure!(add(n, 1))
+                mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
+                  press(); press()
                 }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_ill_typed_mutation_methods_and_handlers() {
+    fn rejects_a_mut_fn_that_returns_html() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                mut fn reset() -> Html {
+                  <b>x</b>
+                }
+            "#},
+            expect![[r#"
+                error: A mut fn can not return Html
+                  --> main.hop (line 1, col 19)
+                1 | mut fn reset() -> Html {
+                  |                   ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_an_assignment_outside_a_mut_fn() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
                   let mut count = 0;
-                  let plain = 1;
-                  <>
-                    <button on:click={fn() { count.get() }}>a</button>
-                    <button on:click={fn() { count.get().and_then(fn(s: String) { pure!(s) }) }}>b</button>
-                    <button on:click={fn() { pure!(<b>x</b>) }}>c</button>
-                    <button on:click={fn() { count.get().and_then(fn(n, m) { count.set(n) }) }}>d</button>
-                    <button on:click={fn() { plain.get().and_then(fn(_: Int) { count.set(1) }) }}>e</button>
-                    <button on:click={fn() { count.set("x") }}>f</button>
-                  </>
+                  <b on:click={fn() { count = 1 }}>{count.to_string()}</b>
                 }
             "#},
             expect![[r#"
-                error: Expected fn() -> Mutation[Tuple[]] got fn() -> Mutation[Int]
-                  --> main.hop (line 5, col 23)
-                 4 |   <>
-                 5 |     <button on:click={fn() { count.get() }}>a</button>
-                   |                       ^^^^^^^^^^^^^^^^^^^^
+                error: Only a mut fn can assign
+                  --> main.hop (line 3, col 23)
+                2 |   let mut count = 0;
+                3 |   <b on:click={fn() { count = 1 }}>{count.to_string()}</b>
+                  |                       ^^^^^^^^^
+            "#]],
+        );
+    }
 
-                error: Expected a function from Int to a mutation, got fn(String) -> Mutation[String]
-                  --> main.hop (line 6, col 51)
-                 5 |     <button on:click={fn() { count.get() }}>a</button>
-                 6 |     <button on:click={fn() { count.get().and_then(fn(s: String) { pure!(s) }) }}>b</button>
-                   |                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    #[test]
+    fn rejects_a_statement_outside_a_mut_fn() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn double(n: Int) -> Int {
+                  n + 1;
+                  n * 2
+                }
+            "#},
+            expect![[r#"
+                error: A statement has no effect outside a mut fn
+                  --> main.hop (line 2, col 3)
+                1 | fn double(n: Int) -> Int {
+                2 |   n + 1;
+                  |   ^^^^^^
+            "#]],
+        );
+    }
 
-                error: Html is not allowed inside another type
-                  --> main.hop (line 7, col 36)
-                 6 |     <button on:click={fn() { count.get().and_then(fn(s: String) { pure!(s) }) }}>b</button>
-                 7 |     <button on:click={fn() { pure!(<b>x</b>) }}>c</button>
-                   |                                    ^^^^^^^^
+    #[test]
+    fn rejects_a_call_of_a_mut_fn_outside_a_mut_fn() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                mut fn seven() -> Int {
+                  7
+                }
+                fn Main() -> Html {
+                  <b>{seven().to_string()}</b>
+                }
+            "#},
+            expect![[r#"
+                error: Call to a mut fn from a non-mut fn
+                  --> main.hop (line 5, col 7)
+                4 | fn Main() -> Html {
+                5 |   <b>{seven().to_string()}</b>
+                  |       ^^^^^^^
+            "#]],
+        );
+    }
 
-                error: The type of parameter n cannot be inferred
-                  --> main.hop (line 8, col 54)
-                 7 |     <button on:click={fn() { pure!(<b>x</b>) }}>c</button>
-                 8 |     <button on:click={fn() { count.get().and_then(fn(n, m) { count.set(n) }) }}>d</button>
-                   |                                                      ^
-
-                error: The type of parameter m cannot be inferred
-                  --> main.hop (line 8, col 57)
-                 7 |     <button on:click={fn() { pure!(<b>x</b>) }}>c</button>
-                 8 |     <button on:click={fn() { count.get().and_then(fn(n, m) { count.set(n) }) }}>d</button>
-                   |                                                         ^
-
-                error: Method 'get' is not available on type Int
-                  --> main.hop (line 9, col 30)
-                 8 |     <button on:click={fn() { count.get().and_then(fn(n, m) { count.set(n) }) }}>d</button>
-                 9 |     <button on:click={fn() { plain.get().and_then(fn(_: Int) { count.set(1) }) }}>e</button>
-                   |                              ^^^^^^^^^^^
-
-                error: Expected Int got String
-                  --> main.hop (line 10, col 40)
-                 9 |     <button on:click={fn() { plain.get().and_then(fn(_: Int) { count.set(1) }) }}>e</button>
-                10 |     <button on:click={fn() { count.set("x") }}>f</button>
-                   |                                        ^^^
+    #[test]
+    fn rejects_an_application_of_a_mut_closure_outside_a_mut_fn() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(next: mut fn() -> Int) -> Html {
+                  <b>{next().to_string()}</b>
+                }
+            "#},
+            expect![[r#"
+                error: Call to a mut fn from a non-mut fn
+                  --> main.hop (line 2, col 7)
+                1 | fn Main(next: mut fn() -> Int) -> Html {
+                2 |   <b>{next().to_string()}</b>
+                  |       ^^^^^^
             "#]],
         );
     }

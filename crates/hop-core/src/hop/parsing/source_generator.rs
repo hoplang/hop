@@ -142,6 +142,10 @@ fn declaration(u: &mut Unstructured<'_>, out: &mut String) -> Result<()> {
     }
     match p {
         P::Function => {
+            if u.int_in_range(0..=3)? == 3 {
+                out.push_str("mut");
+                ws(u, out)?;
+            }
             out.push_str("fn");
             ws(u, out)?;
             out.push_str(u.choose(FUNCTION_NAMES)?);
@@ -272,13 +276,12 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
         Named,
         Array,
         Option,
-        Mutation,
         Tuple,
         Function,
     }
     let mut kinds = vec![P::Scalar, P::Named];
     if depth > 0 {
-        kinds.extend([P::Array, P::Option, P::Mutation, P::Tuple, P::Function]);
+        kinds.extend([P::Array, P::Option, P::Tuple, P::Function]);
     }
     match u.choose(&kinds)? {
         P::Scalar => out.push_str(u.choose(&["Int", "String", "Bool", "Float", "Html"])?),
@@ -293,17 +296,16 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
             type_(u, depth - 1, out)?;
             out.push(']');
         }
-        P::Mutation => {
-            out.push_str("Mutation[");
-            type_(u, depth - 1, out)?;
-            out.push(']');
-        }
         P::Tuple => {
             out.push_str("Tuple[");
             list(u, 0..=3, out, |u, _, out| type_(u, depth - 1, out))?;
             out.push(']');
         }
         P::Function => {
+            if u.int_in_range(0..=3)? == 3 {
+                out.push_str("mut");
+                ws(u, out)?;
+            }
             out.push_str("fn(");
             list(u, 0..=3, out, |u, _, out| type_(u, depth - 1, out))?;
             out.push(')');
@@ -318,6 +320,13 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
 
 fn block_body(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()> {
     for _ in 0..u.int_in_range(0..=2)? {
+        if u.int_in_range(0..=2)? == 2 {
+            expr(u, depth, ANYWHERE, out)?;
+            ws(u, out)?;
+            out.push(';');
+            ws(u, out)?;
+            continue;
+        }
         out.push_str("let");
         ws(u, out)?;
         if u.arbitrary()? {
@@ -345,6 +354,13 @@ fn expr(
     restrictions: Restrictions,
     out: &mut String,
 ) -> Result<()> {
+    if depth > 0 && u.int_in_range(0..=9)? == 9 {
+        out.push_str(u.choose(VAR_NAMES)?);
+        ws(u, out)?;
+        out.push('=');
+        ws(u, out)?;
+        return expr(u, depth - 1, restrictions, out);
+    }
     unary(u, depth, restrictions, out)?;
     if u.int_in_range(0..=7)? == 7 {
         let mut comparison_since_logical = false;
@@ -593,6 +609,10 @@ fn primary(
             out.push('}');
         }
         P::Lambda => {
+            if u.int_in_range(0..=3)? == 3 {
+                out.push_str("mut");
+                ws(u, out)?;
+            }
             out.push_str("fn(");
             list(u, 0..=3, out, |u, _, out| {
                 out.push_str(if u.ratio(1, 5)? {

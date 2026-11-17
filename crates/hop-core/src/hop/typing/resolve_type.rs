@@ -20,16 +20,11 @@ pub fn resolve_type(
         ParsedType::Int { .. } => DataType::Int,
         ParsedType::Float { .. } => DataType::Float,
         ParsedType::Html { .. } => return Some(Type::HTML),
-        ParsedType::Mutation { element, .. } => {
-            return Some(Type::Mutation(resolve_data_type(
-                element,
-                names,
-                definition_links,
-                errors,
-            )?));
-        }
         ParsedType::Function {
-            parameters, result, ..
+            mut_range,
+            parameters,
+            result,
+            ..
         } => {
             let parameters = parameters
                 .iter()
@@ -38,6 +33,7 @@ pub fn resolve_type(
             let result_type = resolve_type(result, names, definition_links, errors)?;
             let parameters = parameters.into_iter().collect::<Option<Vec<_>>>()?;
             let function = FunctionType {
+                mutates: mut_range.is_some(),
                 parameters,
                 result: Box::new(result_type),
             };
@@ -116,6 +112,11 @@ pub fn check_function_type(function: &FunctionType) -> Option<TypeErrorKind> {
             result: function.result.as_ref().clone(),
         });
     }
+    if function.mutates && function.result.as_data().is_none() {
+        return Some(TypeErrorKind::MutFunctionReturnsNonData {
+            result: function.result.as_ref().clone(),
+        });
+    }
     if function.result.renders_html() {
         return None;
     }
@@ -138,7 +139,7 @@ pub fn resolve_data_type(
 ) -> Option<DataType> {
     match resolve_type(parsed_type, names, definition_links, errors)? {
         Type::Data(data) => Some(data),
-        typ @ (Type::Html(_) | Type::Mutation(_) | Type::Function(_)) => {
+        typ @ (Type::Html(_) | Type::Function(_)) => {
             errors.push(TypeError::new(
                 TypeErrorKind::NotData { typ },
                 parsed_type.range().clone(),

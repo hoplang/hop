@@ -8,6 +8,7 @@
 // than removing work: text tokens are kept out of expression positions.
 
 const PREC = {
+  assign: 0,
   or: 1,
   and: 2,
   equality: 3,
@@ -101,6 +102,7 @@ module.exports = grammar({
     function_declaration: ($) =>
       seq(
         optional($.visibility_modifier),
+        optional($.mutable_specifier),
         "fn",
         // A function with a capitalised name, e.g. `fn Card(...)`, can also be
         // called from markup.
@@ -152,6 +154,7 @@ module.exports = grammar({
 
     function_type: ($) =>
       seq(
+        optional($.mutable_specifier),
         "fn",
         field("parameters", $.parameter_types),
         "->",
@@ -162,7 +165,14 @@ module.exports = grammar({
     // only before it. Both are optional here so that a block stays parseable
     // while it is being written.
     block: ($) =>
-      seq("{", repeat($.let_statement), optional($._expression), "}"),
+      seq(
+        "{",
+        repeat(choice($.let_statement, $.expression_statement)),
+        optional($._expression),
+        "}",
+      ),
+
+    expression_statement: ($) => seq($._expression, ";"),
 
     let_statement: ($) =>
       seq(
@@ -193,6 +203,7 @@ module.exports = grammar({
         $.block,
         $.unary_expression,
         $.binary_expression,
+        $.assignment_expression,
         $.field_expression,
         $.call_expression,
         $.macro_invocation,
@@ -239,6 +250,12 @@ module.exports = grammar({
       ),
 
     spread_element: ($) => seq("...", $._expression),
+
+    assignment_expression: ($) =>
+      prec.right(
+        PREC.assign,
+        seq(field("left", $.identifier), "=", field("right", $._expression)),
+      ),
 
     unary_expression: ($) =>
       prec(PREC.unary, seq(choice("!", "-"), $._expression)),
@@ -327,6 +344,7 @@ module.exports = grammar({
 
     lambda_expression: ($) =>
       seq(
+        optional($.mutable_specifier),
         "fn",
         field("parameters", $.lambda_parameters),
         optional(seq("->", field("return_type", $._type))),

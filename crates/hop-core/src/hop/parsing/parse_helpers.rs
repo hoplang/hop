@@ -2,7 +2,7 @@ use crate::document::{CheapString, DocumentCursor, DocumentRange};
 use crate::hop::parsing::token::LangTokenPair;
 
 use super::token::LangToken;
-use super::tokenize_expr::{next, peek, peek2};
+use super::tokenize_expr::{next, peek, peek2, peek3};
 use crate::hop::parsing::parse_error::{Emit, ErrorEmitted, ParseError, ParseErrorKind};
 
 /// The tokens that start a declaration, at which skipping over unexpected
@@ -50,6 +50,10 @@ pub fn next_if_eq(
 pub fn at_declaration(iter: &DocumentCursor) -> bool {
     match peek(iter) {
         Some((LangToken::Fn, _)) => !matches!(peek2(iter), Some((LangToken::LeftParen, _))),
+        Some((LangToken::Mut, _)) => {
+            matches!(peek2(iter), Some((LangToken::Fn, _)))
+                && !matches!(peek3(iter), Some((LangToken::LeftParen, _)))
+        }
         Some((token, _)) => DECLARATION_KEYWORDS.contains(&token),
         None => false,
     }

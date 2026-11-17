@@ -416,64 +416,6 @@ fn f() -> Html {
           (tag_name))))))
 
 ================================================================================
-effects: cell methods, and_then with a wildcard parameter, pure
-================================================================================
-
-fn f() -> Mutation[Tuple[]] {
-  count.set(count + 1).and_then(fn(_) { count.get() }).and_then(fn(n: Int) { pure!(()) })
-}
-
---------------------------------------------------------------------------------
-
-(source_file
-  (function_declaration
-    (identifier)
-    (parameters)
-    (generic_type
-      (type_identifier)
-      (type_arguments
-        (generic_type
-          (type_identifier)
-          (type_arguments))))
-    (block
-      (call_expression
-        (field_expression
-          (call_expression
-            (field_expression
-              (call_expression
-                (field_expression
-                  (identifier)
-                  (field_identifier))
-                (arguments
-                  (binary_expression
-                    (identifier)
-                    (integer_literal))))
-              (field_identifier))
-            (arguments
-              (lambda_expression
-                (lambda_parameters
-                  (lambda_parameter
-                    (wildcard_pattern)))
-                (block
-                  (call_expression
-                    (field_expression
-                      (identifier)
-                      (field_identifier))
-                    (arguments))))))
-          (field_identifier))
-        (arguments
-          (lambda_expression
-            (lambda_parameters
-              (lambda_parameter
-                (identifier)
-                (type_identifier)))
-            (block
-              (macro_invocation
-                (identifier)
-                (arguments
-                  (tuple_expression))))))))))
-
-================================================================================
 keyed for over an array and over a range
 ================================================================================
 
@@ -528,12 +470,12 @@ fn f() -> Html {
           (tag_name))))))
 
 ================================================================================
-mut and key remain ordinary identifiers
+key remains an ordinary identifier
 ================================================================================
 
-fn f(key: Int, mut: Int) -> Int {
-  let mut mut = key;
-  let key = mut;
+fn f(key: Int, n: Int) -> Int {
+  let mut n = key;
+  let key = n;
   for key in key key key { key }
 }
 
@@ -564,3 +506,71 @@ fn f(key: Int, mut: Int) -> Int {
         (identifier)
         (block
           (identifier))))))
+
+================================================================================
+mut functions, expression statements and assignments
+================================================================================
+
+mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
+  press();
+  press()
+}
+
+fn Main() -> Int {
+  let mut count = 0;
+  let reset = mut fn() { count = 0 };
+  count = count + 1;
+  count
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (mutable_specifier)
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (function_type
+          (mutable_specifier)
+          (parameter_types)
+          (generic_type
+            (type_identifier)
+            (type_arguments)))))
+    (generic_type
+      (type_identifier)
+      (type_arguments))
+    (block
+      (expression_statement
+        (call_expression
+          (identifier)
+          (arguments)))
+      (call_expression
+        (identifier)
+        (arguments))))
+  (function_declaration
+    (type_identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (let_statement
+        (mutable_specifier)
+        (identifier)
+        (integer_literal))
+      (let_statement
+        (identifier)
+        (lambda_expression
+          (mutable_specifier)
+          (lambda_parameters)
+          (block
+            (assignment_expression
+              (identifier)
+              (integer_literal)))))
+      (expression_statement
+        (assignment_expression
+          (identifier)
+          (binary_expression
+            (identifier)
+            (integer_literal))))
+      (identifier))))

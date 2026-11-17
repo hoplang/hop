@@ -219,7 +219,7 @@ mod tests {
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::flat_typecheck;
-    use crate::ir::ir_type::{IrDataType, IrType};
+    use crate::ir::ir_type::IrType;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use expect_test::{Expect, expect};
@@ -527,7 +527,7 @@ mod tests {
             FlatProgramBuilder::new()
                 .function("counter", [], Ty::Html, |t| {
                     let n = t.cell(|t| t.int(0));
-                    let count = t.track(n);
+                    let count = t.cell_read(n);
                     let bump = t.event_handler(|t| {
                         t.cell_write(n, t.add(NumericType::Int, count, t.int(1)))
                     });
@@ -551,11 +551,11 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v2: Int = track(v1)
-                  let v6: () -> Mutation[Tuple[]] = fn() {
+                  let v2: Int = read(v1)
+                  let v6: mut () -> Tuple[] = fn() {
                     let v3: Int = 1
                     let v4: Int = int_add(v2, v3)
-                    let v5: Mutation[Tuple[]] = v1 := v4
+                    let v5: Tuple[] = v1 := v4
                     v5
                   }
                   let v7: Id = mint()
@@ -577,11 +577,11 @@ mod tests {
                     let v14: Int = 0
                     v14
                   }
-                  let v16: Int = track(v15)
-                  let v20: () -> Mutation[Tuple[]] = fn() {
+                  let v16: Int = read(v15)
+                  let v20: mut () -> Tuple[] = fn() {
                     let v17: Int = 1
                     let v18: Int = int_add(v16, v17)
-                    let v19: Mutation[Tuple[]] = v15 := v18
+                    let v19: Tuple[] = v15 := v18
                     v19
                   }
                   let v21: Id = mint()
@@ -592,11 +592,11 @@ mod tests {
                     let v25: Int = 0
                     v25
                   }
-                  let v27: Int = track(v26)
-                  let v31: () -> Mutation[Tuple[]] = fn() {
+                  let v27: Int = read(v26)
+                  let v31: mut () -> Tuple[] = fn() {
                     let v28: Int = 1
                     let v29: Int = int_add(v27, v28)
-                    let v30: Mutation[Tuple[]] = v26 := v29
+                    let v30: Tuple[] = v26 := v29
                     v30
                   }
                   let v32: Id = mint()
@@ -611,30 +611,31 @@ mod tests {
     }
 
     #[test]
-    fn should_inline_a_function_that_gives_an_mutation_into_a_handler() {
+    fn should_inline_a_function_that_mutates_into_a_handler() {
         check(
             FlatProgramBuilder::new()
-                .function(
+                .mut_function(
                     "both",
                     [
-                        ("first", Ty::mutation(Ty::tuple([]))),
-                        ("second", Ty::mutation(Ty::tuple([]))),
+                        ("first", Ty::mut_function([], Ty::tuple([]))),
+                        ("second", Ty::mut_function([], Ty::tuple([]))),
                     ],
-                    Ty::mutation(Ty::tuple([])),
+                    Ty::tuple([]),
                     |t| {
-                        let unit = IrType::Data(IrDataType::UNIT);
-                        let second = t.lambda([unit], |t, _| t.param("second"));
-                        t.mutation_bind(t.param("first"), second)
+                        t.apply(t.param("first"), []);
+                        t.apply(t.param("second"), [])
                     },
                 )
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(|t| t.int(0));
                     let on = t.cell(|t| t.bool(false));
-                    let n = t.track(count);
-                    let is_on = t.track(on);
+                    let n = t.cell_read(count);
+                    let is_on = t.cell_read(on);
                     let both = t.event_handler(|t| {
-                        let bump = t.cell_write(count, t.add(NumericType::Int, n, t.int(1)));
-                        let flip = t.cell_write(on, t.not(is_on));
+                        let bump = t.mut_lambda([], |t, _| {
+                            t.cell_write(count, t.add(NumericType::Int, n, t.int(1)))
+                        });
+                        let flip = t.mut_lambda([], |t, _| t.cell_write(on, t.not(is_on)));
                         t.call("both", [bump, flip])
                     });
                     t.element_on_click(
@@ -649,76 +650,80 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn both@f0(
-                  first@v0: Mutation[Tuple[]],
-                  second@v1: Mutation[Tuple[]],
-                ) -> Mutation[Tuple[]] {
-                  let v3: (Tuple[]) -> Mutation[Tuple[]] = fn(
-                    v2: Tuple[],
-                  ) {
-                    v1
-                  }
-                  let v4: Mutation[Tuple[]] = bind(v0, v3)
-                  v4
+                mut fn both@f0(
+                  first@v0: mut () -> Tuple[],
+                  second@v1: mut () -> Tuple[],
+                ) -> Tuple[] {
+                  let v2: Tuple[] = v0()
+                  let v3: Tuple[] = v1()
+                  v3
                 }
                 entrypoint Test@e0() -> Html {
-                  let v6: Cell[Int] = cell {
-                    let v5: Int = 0
-                    v5
+                  let v5: Cell[Int] = cell {
+                    let v4: Int = 0
+                    v4
                   }
-                  let v8: Cell[Bool] = cell {
-                    let v7: Bool = false
-                    v7
+                  let v7: Cell[Bool] = cell {
+                    let v6: Bool = false
+                    v6
                   }
-                  let v9: Int = track(v6)
-                  let v10: Bool = track(v8)
-                  let v17: () -> Mutation[Tuple[]] = fn() {
-                    let v11: Int = 1
-                    let v12: Int = int_add(v9, v11)
-                    let v13: Mutation[Tuple[]] = v6 := v12
-                    let v14: Bool = bool_not(v10)
-                    let v15: Mutation[Tuple[]] = v8 := v14
-                    let v16: Mutation[Tuple[]] = f0(v13, v15)
-                    v16
+                  let v8: Int = read(v5)
+                  let v9: Bool = read(v7)
+                  let v18: mut () -> Tuple[] = fn() {
+                    let v13: mut () -> Tuple[] = fn() {
+                      let v10: Int = 1
+                      let v11: Int = int_add(v8, v10)
+                      let v12: Tuple[] = v5 := v11
+                      v12
+                    }
+                    let v16: mut () -> Tuple[] = fn() {
+                      let v14: Bool = bool_not(v9)
+                      let v15: Tuple[] = v7 := v14
+                      v15
+                    }
+                    let v17: Tuple[] = f0(v13, v16)
+                    v17
                   }
-                  let v18: Id = mint()
-                  let v19: String = int_to_string(v9)
-                  let v20: Html = escape(v19)
-                  let v21: Html = element(v18, "button", {}, v20) on_click v17
-                  v21
+                  let v19: Id = mint()
+                  let v20: String = int_to_string(v8)
+                  let v21: Html = escape(v20)
+                  let v22: Html = element(v19, "button", {}, v21) on_click v18
+                  v22
                 }
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v6: Cell[Int] = cell {
-                    let v5: Int = 0
-                    v5
+                  let v5: Cell[Int] = cell {
+                    let v4: Int = 0
+                    v4
                   }
-                  let v8: Cell[Bool] = cell {
-                    let v7: Bool = false
-                    v7
+                  let v7: Cell[Bool] = cell {
+                    let v6: Bool = false
+                    v6
                   }
-                  let v9: Int = track(v6)
-                  let v10: Bool = track(v8)
-                  let v17: () -> Mutation[Tuple[]] = fn() {
-                    let v11: Int = 1
-                    let v12: Int = int_add(v9, v11)
-                    let v13: Mutation[Tuple[]] = v6 := v12
-                    let v14: Bool = bool_not(v10)
-                    let v15: Mutation[Tuple[]] = v8 := v14
-                    let v23: (Tuple[]) -> Mutation[Tuple[]] = fn(
-                      v22: Tuple[],
-                    ) {
+                  let v8: Int = read(v5)
+                  let v9: Bool = read(v7)
+                  let v18: mut () -> Tuple[] = fn() {
+                    let v13: mut () -> Tuple[] = fn() {
+                      let v10: Int = 1
+                      let v11: Int = int_add(v8, v10)
+                      let v12: Tuple[] = v5 := v11
+                      v12
+                    }
+                    let v16: mut () -> Tuple[] = fn() {
+                      let v14: Bool = bool_not(v9)
+                      let v15: Tuple[] = v7 := v14
                       v15
                     }
-                    let v24: Mutation[Tuple[]] = bind(v13, v23)
+                    let v23: Tuple[] = v13()
+                    let v24: Tuple[] = v16()
                     v24
                   }
-                  let v18: Id = mint()
-                  let v19: String = int_to_string(v9)
-                  let v20: Html = escape(v19)
-                  let v21: Html = element(v18, "button", {}, v20) on_click v17
-                  v21
+                  let v19: Id = mint()
+                  let v20: String = int_to_string(v8)
+                  let v21: Html = escape(v20)
+                  let v22: Html = element(v19, "button", {}, v21) on_click v18
+                  v22
                 }
             "#]],
         );

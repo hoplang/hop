@@ -111,7 +111,9 @@ pub fn typecheck_call(
     let element_row;
     let (row, declared, target) = match &callee {
         Callee::Function {
-            name, name_range, ..
+            name,
+            name_range,
+            report_range,
         } => {
             function = match var_env.lookup(name.as_str()) {
                 Some(ScopeEntry::Function(FunctionScopeEntry {
@@ -176,6 +178,13 @@ pub fn typecheck_call(
                 use_range: DocumentRange::clone(name_range),
                 definition_range: definition_range.clone(),
             });
+            if signature.mutates && !var_env.mutates() {
+                errors.push(TypeError::new(
+                    TypeErrorKind::MutCallOutsideMut,
+                    DocumentRange::clone(report_range),
+                ));
+                return None;
+            }
             (
                 &signature.row,
                 signature.declared,

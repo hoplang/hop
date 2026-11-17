@@ -10,15 +10,14 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_page::IrPage;
-use crate::ir::ir_type::IrType;
+use crate::ir::ir_type::{IrModifier, IrType};
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::state::{
     IterationKey, MutationTransaction, RenderTransaction, State, Step,
 };
 use crate::ir::runtime::value::{
-    Closure, Env, Html, HtmlAttribute, HtmlNode, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Mutation,
-    Value,
+    Closure, Env, Html, HtmlAttribute, HtmlNode, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value,
 };
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
@@ -110,7 +109,7 @@ pub(super) fn invoke_entrypoint<'a>(
         &entrypoint.body,
         env,
         &program.functions,
-        Some(&mut render),
+        Context::Render(&mut render),
         1,
         &mut 0,
     )?;
@@ -121,7 +120,7 @@ fn evaluate_function<'a>(
     functions: &'a [FlatFunction],
     function: &IrFunction,
     args: Vec<Value<'a>>,
-    render: Option<&mut RenderTransaction<'a>>,
+    context: Context<'_, 'a>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -145,7 +144,7 @@ fn evaluate_function<'a>(
             bindings,
         },
         functions,
-        render,
+        context,
         depth + 1,
         op_count,
     )
@@ -155,7 +154,7 @@ fn evaluate_block<'a>(
     block: &'a FlatBlock,
     mut env: Env<'a>,
     functions: &'a [FlatFunction],
-    mut render: Option<&mut RenderTransaction<'a>>,
+    mut context: Context<'_, 'a>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -170,7 +169,7 @@ fn evaluate_block<'a>(
             binding,
             &mut env,
             functions,
-            render.as_deref_mut(),
+            context.reborrow(),
             depth,
             op_count,
         )?;
@@ -179,11 +178,11 @@ fn evaluate_block<'a>(
     Ok(env[&block.result].clone())
 }
 
-pub fn evaluate_apply<'a>(
+fn evaluate_apply<'a>(
     closure: &Closure<'a>,
     args: Vec<Value<'a>>,
     functions: &'a [FlatFunction],
-    render: Option<&mut RenderTransaction<'a>>,
+    context: Context<'_, 'a>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -206,44 +205,30 @@ pub fn evaluate_apply<'a>(
         &lambda.body,
         body_env,
         functions,
-        render,
+        context,
         depth + 1,
         op_count,
     )
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub(super) fn run_mutation<'a>(
-    mutation: &Mutation<'a>,
+pub(super) fn run_handlers<'a>(
+    handlers: &[Rc<Closure<'a>>],
     mutations: &mut MutationTransaction<'a>,
     functions: &'a [FlatFunction],
-) -> Result<Value<'a>, EvalError> {
-    perform_mutation(mutation, mutations, functions, &mut 0)
-}
-
-fn perform_mutation<'a>(
-    mutation: &Mutation<'a>,
-    mutations: &mut MutationTransaction<'a>,
-    functions: &'a [FlatFunction],
-    op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
-    match mutation {
-        Mutation::Pure(value) => Ok(value.clone()),
-        Mutation::Write(cell, value) => {
-            mutations.write(*cell, value.clone());
-            Ok(Value::Tuple(Rc::new([])))
-        }
-        Mutation::Read(cell) => Ok(mutations.read(*cell).clone()),
-        Mutation::Then(first, second) => {
-            perform_mutation(first, mutations, functions, op_count)?;
-            perform_mutation(second, mutations, functions, op_count)
-        }
-        Mutation::Bind(mutation, continuation) => {
-            let value = perform_mutation(mutation, mutations, functions, op_count)?;
-            let next = evaluate_apply(continuation, vec![value], functions, None, 0, op_count)?;
-            perform_mutation(next.as_mutation(), mutations, functions, op_count)
-        }
+) -> Result<(), EvalError> {
+    let mut op_count = 0;
+    for handler in handlers {
+        evaluate_apply(
+            handler,
+            Vec::new(),
+            functions,
+            Context::Mut(mutations),
+            0,
+            &mut op_count,
+        )?;
     }
+    Ok(())
 }
 
 fn enter_arm<'a, B>(match_: &'a IrMatch<B>, env: &mut Env<'a>) -> (usize, &'a B, Env<'a>) {
@@ -272,7 +257,7 @@ fn evaluate_op<'a>(
     binding: &'a FlatBinding,
     env: &mut Env<'a>,
     functions: &'a [FlatFunction],
-    render: Option<&mut RenderTransaction<'a>>,
+    context: Context<'_, 'a>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -281,39 +266,32 @@ fn evaluate_op<'a>(
         FlatOp::Data(op) => evaluate_data_op(op, env)?,
 
         FlatOp::Cell(initial) => {
-            let render = render.expect("a pure block binds no cell");
+            let render = context.render("binds a cell");
             Value::Cell(render.bind_cell(var, || {
                 let env = Env {
                     parent: env.freeze(),
                     bindings: Vec::new(),
                 };
-                evaluate_block(initial, env, functions, None, depth, op_count)
+                evaluate_block(initial, env, functions, Context::Pure, depth, op_count)
             })?)
         }
 
-        FlatOp::Track(cell) => {
-            let render = render.expect("a pure block tracks no cell");
-            render.read(env[cell].as_cell()).clone()
-        }
-
         FlatOp::Mint => {
-            let render = render.expect("a pure block mints no identity");
+            let render = context.render("mints an identity");
             Value::Id(render.bind_element(var))
         }
 
-        FlatOp::CellWrite(cell, value) => Value::Mutation(Rc::new(Mutation::Write(
-            env[cell].as_cell(),
-            env[value].clone(),
-        ))),
+        FlatOp::CellWrite(cell, value) => {
+            let mutations = context.mutations("writes a cell");
+            mutations.write(env[cell].as_cell(), env[value].clone());
+            Value::Tuple(Rc::new([]))
+        }
 
-        FlatOp::CellRead(cell) => Value::Mutation(Rc::new(Mutation::Read(env[cell].as_cell()))),
-
-        FlatOp::MutationPure(value) => Value::Mutation(Rc::new(Mutation::Pure(env[value].clone()))),
-
-        FlatOp::MutationBind(mutation, continuation) => Value::Mutation(Rc::new(Mutation::Bind(
-            env[mutation].as_mutation().clone(),
-            env[continuation].as_closure().clone(),
-        ))),
+        FlatOp::CellRead(cell) => match context {
+            Context::Render(render) => render.read(env[cell].as_cell()).clone(),
+            Context::Mut(mutations) => mutations.read(env[cell].as_cell()).clone(),
+            Context::Pure => panic!("only a block that renders or mutates reads a cell"),
+        },
 
         FlatOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.as_str()))?),
 
@@ -376,35 +354,47 @@ fn evaluate_op<'a>(
                 .iter()
                 .find(|decl| decl.function.id == function.id)
                 .unwrap();
-            if callee.render_modifier {
-                let render = render.expect("a pure block calls no function that renders");
-                render.enter(Step::Call(var));
-                let value = evaluate_function(
-                    functions,
-                    function,
-                    values,
-                    Some(&mut *render),
-                    depth,
-                    op_count,
-                )?;
-                render.exit();
-                value
-            } else {
-                evaluate_function(functions, function, values, None, depth, op_count)?
+            match callee.modifier {
+                IrModifier::Render => {
+                    let render = context.render("calls a function that renders");
+                    render.enter(Step::Call(var));
+                    let value = evaluate_function(
+                        functions,
+                        function,
+                        values,
+                        Context::Render(&mut *render),
+                        depth,
+                        op_count,
+                    )?;
+                    render.exit();
+                    value
+                }
+                IrModifier::Mut => {
+                    evaluate_function(functions, function, values, context, depth, op_count)?
+                }
+                IrModifier::Pure => {
+                    evaluate_function(functions, function, values, Context::Pure, depth, op_count)?
+                }
             }
         }
 
         FlatOp::Match(match_) => {
             let (index, body, env) = enter_arm(match_, env);
-            match render {
-                Some(render) => {
+            match context {
+                Context::Render(render) => {
                     render.enter(Step::Arm(var, index));
-                    let value =
-                        evaluate_block(body, env, functions, Some(&mut *render), depth, op_count)?;
+                    let value = evaluate_block(
+                        body,
+                        env,
+                        functions,
+                        Context::Render(&mut *render),
+                        depth,
+                        op_count,
+                    )?;
                     render.exit();
                     value
                 }
-                None => evaluate_block(body, env, functions, None, depth, op_count)?,
+                context => evaluate_block(body, env, functions, context, depth, op_count)?,
             }
         }
 
@@ -414,7 +404,7 @@ fn evaluate_op<'a>(
             key,
             body,
         }) => {
-            let render = render.expect("a pure block renders no Html");
+            let render = context.render("renders a loop");
             let mut parts = Vec::new();
             let mut occurrences: BTreeMap<IterationKey, usize> = BTreeMap::new();
             let items = env[array].clone();
@@ -434,7 +424,12 @@ fn evaluate_op<'a>(
                             bindings: Vec::new(),
                         };
                         IterationKey::from_value(evaluate_block(
-                            key, env, functions, None, depth, op_count,
+                            key,
+                            env,
+                            functions,
+                            Context::Pure,
+                            depth,
+                            op_count,
                         )?)
                     }
                     None => IterationKey::Int(index as i32),
@@ -442,8 +437,14 @@ fn evaluate_op<'a>(
                 let occurrence = occurrences.entry(key.clone()).or_default();
                 render.enter(Step::Iteration(var, key, *occurrence));
                 *occurrence += 1;
-                let part =
-                    evaluate_block(body, env, functions, Some(&mut *render), depth, op_count)?;
+                let part = evaluate_block(
+                    body,
+                    env,
+                    functions,
+                    Context::Render(&mut *render),
+                    depth,
+                    op_count,
+                )?;
                 render.exit();
                 parts.push(part.unwrap_html());
             }
@@ -452,8 +453,8 @@ fn evaluate_op<'a>(
 
         FlatOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
             lambda,
-            render_modifier: match &binding.binder.typ {
-                IrType::Function(signature) => signature.render_modifier,
+            modifier: match &binding.binder.typ {
+                IrType::Function(signature) => signature.modifier,
                 typ => unreachable!("a lambda binds a closure, not {typ}"),
             },
             env: env.freeze(),
@@ -462,24 +463,60 @@ fn evaluate_op<'a>(
         FlatOp::Apply(closure, args) => {
             let args = args.iter().map(|arg| env[arg].clone()).collect();
             let closure = env[closure].as_closure();
-            if closure.render_modifier {
-                let render = render.expect("a pure block applies no closure that renders");
-                render.enter(Step::Apply(var));
-                let value = evaluate_apply(
-                    closure,
-                    args,
-                    functions,
-                    Some(&mut *render),
-                    depth,
-                    op_count,
-                )?;
-                render.exit();
-                value
-            } else {
-                evaluate_apply(closure, args, functions, None, depth, op_count)?
+            match closure.modifier {
+                IrModifier::Render => {
+                    let render = context.render("applies a closure that renders");
+                    render.enter(Step::Apply(var));
+                    let value = evaluate_apply(
+                        closure,
+                        args,
+                        functions,
+                        Context::Render(&mut *render),
+                        depth,
+                        op_count,
+                    )?;
+                    render.exit();
+                    value
+                }
+                IrModifier::Mut => {
+                    evaluate_apply(closure, args, functions, context, depth, op_count)?
+                }
+                IrModifier::Pure => {
+                    evaluate_apply(closure, args, functions, Context::Pure, depth, op_count)?
+                }
             }
         }
     })
+}
+
+enum Context<'t, 'a> {
+    Pure,
+    Render(&'t mut RenderTransaction<'a>),
+    Mut(&'t mut MutationTransaction<'a>),
+}
+
+impl<'t, 'a> Context<'t, 'a> {
+    fn reborrow(&mut self) -> Context<'_, 'a> {
+        match self {
+            Context::Pure => Context::Pure,
+            Context::Render(render) => Context::Render(render),
+            Context::Mut(mutations) => Context::Mut(mutations),
+        }
+    }
+
+    fn render(self, what: &str) -> &'t mut RenderTransaction<'a> {
+        match self {
+            Context::Render(render) => render,
+            Context::Pure | Context::Mut(_) => panic!("only a block that renders {what}"),
+        }
+    }
+
+    fn mutations(self, what: &str) -> &'t mut MutationTransaction<'a> {
+        match self {
+            Context::Mut(mutations) => mutations,
+            Context::Pure | Context::Render(_) => panic!("only a block that mutates {what}"),
+        }
+    }
 }
 
 fn evaluate_data_op<'a>(op: &IrDataOp, env: &Env<'a>) -> Result<Value<'a>, EvalError> {
@@ -668,8 +705,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 1533596 allocations
-            program evaluation: 21482 allocations
+            program generation: 2227196 allocations
+            program evaluation: 24207 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -1294,8 +1331,9 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
-                    let counter =
-                        t.render_lambda([IrType::INT], |t, params| t.track(t.cell(|_| params[0])));
+                    let counter = t.render_lambda([IrType::INT], |t, params| {
+                        t.cell_read(t.cell(|_| params[0]))
+                    });
                     let one = t.apply(counter, [t.int(1)]);
                     let two = t.apply(counter, [t.int(2)]);
                     t.html_concat([
@@ -1315,7 +1353,7 @@ mod tests {
                     let v1: Cell[Int] = cell {
                       v0
                     }
-                    let v2: Int = track(v1)
+                    let v2: Int = read(v1)
                     v2
                   }
                   let v4: Int = 1
@@ -1630,16 +1668,16 @@ mod tests {
         );
     }
 
-    fn mutations_are_equal<'a>(
+    fn clicks_are_equal<'a>(
         functions: &'a [FlatFunction],
         state: &State<'a>,
-        a: &Mutation<'a>,
-        b: &Mutation<'a>,
+        a: &[Rc<Closure<'a>>],
+        b: &[Rc<Closure<'a>>],
     ) -> bool {
         let (mut a_mutations, mut b_mutations) = (state.begin_mutations(), state.begin_mutations());
         match (
-            run_mutation(a, &mut a_mutations, functions),
-            run_mutation(b, &mut b_mutations, functions),
+            run_handlers(a, &mut a_mutations, functions),
+            run_handlers(b, &mut b_mutations, functions),
         ) {
             (Ok(_), Ok(_)) => a_mutations.commit() == b_mutations.commit(),
             (Err(a), Err(b)) => a == b,
@@ -1656,16 +1694,11 @@ mod tests {
         let (mut a_markup, mut b_markup) = (String::new(), String::new());
         a.write(&mut a_markup);
         b.write(&mut b_markup);
-        let (a_clicks, b_clicks) = (clicks(functions, a), clicks(functions, b));
+        let (a_clicks, b_clicks) = (clicks(a), clicks(b));
         a_markup == b_markup
             && a_clicks.len() == b_clicks.len()
             && (a_clicks.iter().zip(&b_clicks)).all(|((a_node, a), (b_node, b))| {
-                a_node == b_node
-                    && match (a, b) {
-                        (Ok(a), Ok(b)) => mutations_are_equal(functions, state, a, b),
-                        (Err(a), Err(b)) => a == b,
-                        _ => false,
-                    }
+                a_node == b_node && clicks_are_equal(functions, state, a, b)
             })
     }
 
@@ -1777,14 +1810,11 @@ mod tests {
             self.cells_bound += state.cell_values().count();
             let mut markup = String::new();
             html.write(&mut markup);
-            for (_, target) in clicks(&program.functions, html) {
+            for (_, handlers) in clicks(html) {
                 self.clicks += 1;
                 self.program.any = true;
-                let Ok(mutation) = target else {
-                    continue;
-                };
                 let mut mutations = state.begin_mutations();
-                if run_mutation(&mutation, &mut mutations, &program.functions).is_err() {
+                if run_handlers(&handlers, &mut mutations, &program.functions).is_err() {
                     continue;
                 }
                 let next = mutations.commit();
@@ -1897,7 +1927,7 @@ mod tests {
                     if let Some(stats) = stats.as_deref_mut() {
                         stats.count_clicks(program, entrypoint, &args, &html, &new_state);
                     }
-                    let targets = clicks(&program.functions, &html);
+                    let targets = clicks(&html);
                     // Invoking on the new state gives the same result and
                     // state.
                     let (again, again_state) = invoke_entrypoint(
@@ -1920,14 +1950,10 @@ mod tests {
                     }
                     // A click whose handler reaches a limit of the evaluator
                     // performs nothing to compare.
-                    let ran = match &u.choose(&targets)?.1 {
-                        Ok(mutation) => {
-                            let mut mutations = state.begin_mutations();
-                            run_mutation(mutation, &mut mutations, &program.functions)
-                                .map(|_| mutations.commit())
-                        }
-                        Err(error) => Err(error.clone()),
-                    };
+                    let handlers = &u.choose(&targets)?.1;
+                    let mut mutations = state.begin_mutations();
+                    let ran = run_handlers(handlers, &mut mutations, &program.functions)
+                        .map(|()| mutations.commit());
                     match ran {
                         Ok(clicked) => *state = clicked,
                         Err(
@@ -1987,22 +2013,22 @@ mod tests {
             program: _,
         } = stats;
         expect![[r#"
-            2920 invocations
-            38 invocations hit the call depth limit
+            3338 invocations
+            32 invocations hit the call depth limit
             0 invocations hit the array length limit
             0 invocations hit the string length limit
             0 invocations hit the Html size limit
-            27 invocations hit the op count limit
-            81847 cells bound
+            9 invocations hit the op count limit
+            44496 cells bound
 
-            13470 clicks
-            60 programs have a click
-            40 programs have a click that changes a cell
-            29 programs have a click that changes the page
-            14 programs have a click that switches an arm of a match
-            14 programs have a click that switches an arm of a match that binds cells
-            12 programs have a click that changes the iterations of a loop
-            7 programs have a click that changes an array cell
+            11667 clicks
+            62 programs have a click
+            34 programs have a click that changes a cell
+            26 programs have a click that changes the page
+            12 programs have a click that switches an arm of a match
+            10 programs have a click that switches an arm of a match that binds cells
+            9 programs have a click that changes the iterations of a loop
+            9 programs have a click that changes an array cell
         "#]].assert_eq(&format!(
             "{invocations} invocations\n\
              {call_depth_limit} invocations hit the call depth limit\n\
