@@ -1708,7 +1708,7 @@ mod tests {
         changing: usize,
         /// Programs with a click after which the page renders differently.
         rerendering: usize,
-        /// Programs with a click after which a scope is entered or no
+        /// Programs with a click after which a region is entered or no
         /// longer entered although each iteration it is in is evaluated
         /// both before and after, as a match took another arm.
         switching_arms: usize,
@@ -1738,9 +1738,9 @@ mod tests {
         changing_arrays: bool,
     }
 
-    /// The iterations among the scopes, each by its path.
-    fn iterations(scopes: &BTreeSet<Vec<Step>>) -> BTreeSet<Vec<Step>> {
-        (scopes.iter())
+    /// The iterations among the regions, each by its path.
+    fn iterations(regions: &BTreeSet<Vec<Step>>) -> BTreeSet<Vec<Step>> {
+        (regions.iter())
             .filter(|path| matches!(path.last(), Some(Step::Iteration(..))))
             .cloned()
             .collect()
@@ -1824,13 +1824,13 @@ mod tests {
                     let mut next_markup = String::new();
                     value.unwrap_html().write(&mut next_markup);
                     self.program.rerendering |= markup != next_markup;
-                    let scopes: BTreeSet<Vec<Step>> = state.scopes().collect();
-                    let next_scopes: BTreeSet<Vec<Step>> = next_state.scopes().collect();
-                    let before = iterations(&scopes);
-                    let after = iterations(&next_scopes);
+                    let regions: BTreeSet<Vec<Step>> = state.regions().collect();
+                    let next_regions: BTreeSet<Vec<Step>> = next_state.regions().collect();
+                    let before = iterations(&regions);
+                    let after = iterations(&next_regions);
                     let both = before.intersection(&after).cloned().collect();
                     self.program.changing_loops |= before != after;
-                    self.program.switching_arms |= (scopes.symmetric_difference(&next_scopes))
+                    self.program.switching_arms |= (regions.symmetric_difference(&next_regions))
                         .any(|path| in_both_iterations(path, &both));
                     let cells: BTreeSet<(Vec<Step>, ValueId)> =
                         (state.cell_values().map(|(path, var, _)| (path, var))).collect();

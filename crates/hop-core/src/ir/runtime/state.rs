@@ -6,9 +6,9 @@ use crate::ir::value_id::ValueId;
 
 #[derive(Debug, Clone)]
 pub struct State<'a> {
-    scope_tree: Rc<BTreeMap<(ScopeId, Step), ScopeId>>,
+    region_tree: Rc<BTreeMap<(RegionId, Step), RegionId>>,
     cells: Rc<BTreeMap<CellId, Value<'a>>>,
-    next_scope: ScopeId,
+    next_region: RegionId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -26,17 +26,17 @@ pub enum IterationKey {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ScopeId(usize);
+pub struct RegionId(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CellId {
-    scope: ScopeId,
+    region: RegionId,
     var: ValueId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ElementId {
-    scope: ScopeId,
+    region: RegionId,
     var: ValueId,
 }
 
@@ -47,14 +47,14 @@ pub struct MutationTransaction<'a> {
 
 pub struct RenderTransaction<'a> {
     old: State<'a>,
-    stack: Vec<ScopeId>,
-    scope_tree: BTreeMap<(ScopeId, Step), ScopeId>,
+    stack: Vec<RegionId>,
+    region_tree: BTreeMap<(RegionId, Step), RegionId>,
     cells: BTreeMap<CellId, Value<'a>>,
-    next_scope: ScopeId,
+    next_region: RegionId,
 }
 
-impl ScopeId {
-    const ROOT: ScopeId = ScopeId(0);
+impl RegionId {
+    const ROOT: RegionId = RegionId(0);
 }
 
 impl<'a> State<'a> {
@@ -69,10 +69,10 @@ impl<'a> State<'a> {
     pub fn begin_render(&self) -> RenderTransaction<'a> {
         RenderTransaction {
             old: self.clone(),
-            stack: vec![ScopeId::ROOT],
-            scope_tree: BTreeMap::new(),
+            stack: vec![RegionId::ROOT],
+            region_tree: BTreeMap::new(),
             cells: BTreeMap::new(),
-            next_scope: self.next_scope,
+            next_region: self.next_region,
         }
     }
 }
@@ -80,9 +80,9 @@ impl<'a> State<'a> {
 impl<'a> Default for State<'a> {
     fn default() -> State<'a> {
         State {
-            scope_tree: Rc::new(BTreeMap::new()),
+            region_tree: Rc::new(BTreeMap::new()),
             cells: Rc::new(BTreeMap::new()),
-            next_scope: ScopeId(ScopeId::ROOT.0 + 1),
+            next_region: RegionId(RegionId::ROOT.0 + 1),
         }
     }
 }
@@ -114,23 +114,23 @@ impl<'a> MutationTransaction<'a> {
 }
 
 impl<'a> RenderTransaction<'a> {
-    fn current(&self) -> ScopeId {
+    fn current(&self) -> RegionId {
         *self.stack.last().expect("a render is inside the root")
     }
 
     pub fn enter(&mut self, step: Step) {
         let key = (self.current(), step);
-        let scope = match self.old.scope_tree.get(&key) {
-            Some(scope) => *scope,
+        let region = match self.old.region_tree.get(&key) {
+            Some(region) => *region,
             None => {
-                let scope = self.next_scope;
-                self.next_scope = ScopeId(scope.0 + 1);
-                scope
+                let region = self.next_region;
+                self.next_region = RegionId(region.0 + 1);
+                region
             }
         };
-        let previous = self.scope_tree.insert(key, scope);
-        assert!(previous.is_none(), "two scopes at the same step");
-        self.stack.push(scope);
+        let previous = self.region_tree.insert(key, region);
+        assert!(previous.is_none(), "two regions at the same step");
+        self.stack.push(region);
     }
 
     pub fn exit(&mut self) {
@@ -144,7 +144,7 @@ impl<'a> RenderTransaction<'a> {
         initial: impl FnOnce() -> Result<Value<'a>, E>,
     ) -> Result<CellId, E> {
         let cell = CellId {
-            scope: self.current(),
+            region: self.current(),
             var,
         };
         let value = match self.old.cells.get(&cell) {
@@ -158,7 +158,7 @@ impl<'a> RenderTransaction<'a> {
 
     pub fn bind_element(&self, var: ValueId) -> ElementId {
         ElementId {
-            scope: self.current(),
+            region: self.current(),
             var,
         }
     }
@@ -168,11 +168,11 @@ impl<'a> RenderTransaction<'a> {
     }
 
     pub fn commit(self) -> State<'a> {
-        assert!(self.stack.len() == 1, "a render commits inside a scope");
+        assert!(self.stack.len() == 1, "a render commits inside a region");
         State {
-            scope_tree: Rc::new(self.scope_tree),
+            region_tree: Rc::new(self.region_tree),
             cells: Rc::new(self.cells),
-            next_scope: self.next_scope,
+            next_region: self.next_region,
         }
     }
 }
@@ -192,40 +192,40 @@ mod test_support {
     use super::*;
 
     impl<'a> State<'a> {
-        fn paths(&self) -> BTreeMap<ScopeId, Vec<Step>> {
-            let mut ordered: Vec<_> = (self.scope_tree.iter())
-                .map(|((parent, step), scope)| (*scope, *parent, step))
+        fn paths(&self) -> BTreeMap<RegionId, Vec<Step>> {
+            let mut ordered: Vec<_> = (self.region_tree.iter())
+                .map(|((parent, step), region)| (*region, *parent, step))
                 .collect();
-            ordered.sort_by_key(|(scope, _, _)| *scope);
-            let mut paths = BTreeMap::from([(ScopeId::ROOT, Vec::new())]);
-            for (scope, parent, step) in ordered {
+            ordered.sort_by_key(|(region, _, _)| *region);
+            let mut paths = BTreeMap::from([(RegionId::ROOT, Vec::new())]);
+            for (region, parent, step) in ordered {
                 let mut path = paths[&parent].clone();
                 path.push(step.clone());
-                paths.insert(scope, path);
+                paths.insert(region, path);
             }
             paths
         }
 
-        pub fn scopes(&self) -> impl Iterator<Item = Vec<Step>> {
+        pub fn regions(&self) -> impl Iterator<Item = Vec<Step>> {
             let mut paths = self.paths();
-            paths.remove(&ScopeId::ROOT);
+            paths.remove(&RegionId::ROOT);
             paths.into_values()
         }
 
         pub fn cell_values(&self) -> impl Iterator<Item = (Vec<Step>, ValueId, &Value<'a>)> {
             let paths = self.paths();
             (self.cells.iter())
-                .map(move |(cell, value)| (paths[&cell.scope].clone(), cell.var, value))
+                .map(move |(cell, value)| (paths[&cell.region].clone(), cell.var, value))
         }
     }
 
     impl PartialEq for State<'_> {
         fn eq(&self, other: &Self) -> bool {
-            self.scope_tree == other.scope_tree
+            self.region_tree == other.region_tree
                 && self.cells.len() == other.cells.len()
                 && (self.cells.iter().zip(other.cells.iter()))
                     .all(|((a_cell, a), (b_cell, b))| a_cell == b_cell && a.total_eq(b))
-                && self.next_scope == other.next_scope
+                && self.next_region == other.next_region
         }
     }
 
