@@ -385,8 +385,13 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn Twice@f0(f@v0: (Int) -> Int, x@v1: Int) -> Int {
-                  let v4: (Int) -> Int = fn(v2: Int) {
+                fn Twice@f0(
+                  f@v0: (Int) -> Int,
+                  x@v1: Int,
+                ) -> Int {
+                  let v4: (Int) -> Int = fn(
+                    v2: Int,
+                  ) {
                     let v3: Int = v0(v2)
                     v3
                   }
@@ -394,8 +399,12 @@ mod tests {
                   let v6: Int = v4(v5)
                   v6
                 }
-                entrypoint Test@e0(n@v7: Int) -> Html {
-                  let v10: (Int) -> Int = fn(v8: Int) {
+                entrypoint Test@e0(
+                  n@v7: Int,
+                ) -> Html {
+                  let v10: (Int) -> Int = fn(
+                    v8: Int,
+                  ) {
                     let v9: Int = add[Int](v8, v7)
                     v9
                   }
@@ -407,13 +416,19 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(n@v7: Int) -> Html {
-                  let v10: (Int) -> Int = fn(v8: Int) {
+                entrypoint Test@e0(
+                  n@v7: Int,
+                ) -> Html {
+                  let v10: (Int) -> Int = fn(
+                    v8: Int,
+                  ) {
                     let v9: Int = add[Int](v8, v7)
                     v9
                   }
                   let v11: Int = 1
-                  let v17: (Int) -> Int = fn(v15: Int) {
+                  let v17: (Int) -> Int = fn(
+                    v15: Int,
+                  ) {
                     let v16: Int = v10(v15)
                     v16
                   }
@@ -441,11 +456,15 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn double@f0(x@v0: Int) -> Int {
+                fn double@f0(
+                  x@v0: Int,
+                ) -> Int {
                   let v1: Int = add[Int](v0, v0)
                   v1
                 }
-                entrypoint Test@e0(n@v2: Int) -> Html {
+                entrypoint Test@e0(
+                  n@v2: Int,
+                ) -> Html {
                   let v3: Int = double@f0(v2)
                   let v4: String = v3.to_string()
                   let v5: Html = escape(v4)
@@ -453,7 +472,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(n@v2: Int) -> Html {
+                entrypoint Test@e0(
+                  n@v2: Int,
+                ) -> Html {
                   let v6: Int = add[Int](v2, v2)
                   let v4: String = v6.to_string()
                   let v5: Html = escape(v4)
@@ -480,18 +501,24 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn inner@f0(x@v0: Int) -> Int {
+                fn inner@f0(
+                  x@v0: Int,
+                ) -> Int {
                   let v1: Int = 1
                   let v2: Int = add[Int](v0, v1)
                   v2
                 }
-                fn outer@f1(y@v3: Int) -> Int {
+                fn outer@f1(
+                  y@v3: Int,
+                ) -> Int {
                   let v4: Int = inner@f0(v3)
                   let v5: Int = 2
                   let v6: Int = mul[Int](v4, v5)
                   v6
                 }
-                entrypoint Test@e0(n@v7: Int) -> Html {
+                entrypoint Test@e0(
+                  n@v7: Int,
+                ) -> Html {
                   let v8: Int = outer@f1(v7)
                   let v9: String = v8.to_string()
                   let v10: Html = escape(v9)
@@ -499,7 +526,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(n@v7: Int) -> Html {
+                entrypoint Test@e0(
+                  n@v7: Int,
+                ) -> Html {
                   let v13: Int = 1
                   let v14: Int = add[Int](v7, v13)
                   let v15: Int = 2
@@ -535,7 +564,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn list@f0(items@v0: Array[String]) -> Html {
+                fn list@f0(
+                  items@v0: Array[String],
+                ) -> Html {
                   let v4: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
                     let v3: Html = element("li", {}, v2)
@@ -543,7 +574,10 @@ mod tests {
                   }
                   v4
                 }
-                entrypoint Test@e0(a@v5: Array[String], b@v6: Array[String]) -> Html {
+                entrypoint Test@e0(
+                  a@v5: Array[String],
+                  b@v6: Array[String],
+                ) -> Html {
                   let v7: Html = list@f0(v5)
                   let v8: Html = list@f0(v6)
                   let v9: Html = concat(v7, v8)
@@ -551,7 +585,10 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(a@v5: Array[String], b@v6: Array[String]) -> Html {
+                entrypoint Test@e0(
+                  a@v5: Array[String],
+                  b@v6: Array[String],
+                ) -> Html {
                   let v13: Html = for v10: String in v5 {
                     let v11: Html = escape(v10)
                     let v12: Html = element("li", {}, v11)
@@ -682,8 +719,13 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn both@f0(first@v0: Mutation[Tuple[]], second@v1: Mutation[Tuple[]]) -> Mutation[Tuple[]] {
-                  let v3: (Tuple[]) -> Mutation[Tuple[]] = fn(v2: Tuple[]) {
+                fn both@f0(
+                  first@v0: Mutation[Tuple[]],
+                  second@v1: Mutation[Tuple[]],
+                ) -> Mutation[Tuple[]] {
+                  let v3: (Tuple[]) -> Mutation[Tuple[]] = fn(
+                    v2: Tuple[],
+                  ) {
                     v1
                   }
                   let v4: Mutation[Tuple[]] = bind(v0, v3)
@@ -733,7 +775,9 @@ mod tests {
                     let v13: Mutation[Tuple[]] = v6 := v12
                     let v14: Bool = not(v10)
                     let v15: Mutation[Tuple[]] = v8 := v14
-                    let v22: (Tuple[]) -> Mutation[Tuple[]] = fn(v21: Tuple[]) {
+                    let v22: (Tuple[]) -> Mutation[Tuple[]] = fn(
+                      v21: Tuple[],
+                    ) {
                       v15
                     }
                     let v23: Mutation[Tuple[]] = bind(v13, v22)
@@ -765,7 +809,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn count@f0(n@v0: Int) -> Html {
+                fn count@f0(
+                  n@v0: Int,
+                ) -> Html {
                   let v1: Int = 1
                   let v2: Bool = lt[Int](v0, v1)
                   let v7: Html = match v2 {
@@ -789,7 +835,9 @@ mod tests {
                 }
 
                 -- after --
-                fn count@f0(n@v0: Int) -> Html {
+                fn count@f0(
+                  n@v0: Int,
+                ) -> Html {
                   let v1: Int = 1
                   let v2: Bool = lt[Int](v0, v1)
                   let v7: Html = match v2 {
@@ -835,7 +883,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn ping@f0(n@v0: Int) -> Html {
+                fn ping@f0(
+                  n@v0: Int,
+                ) -> Html {
                   let v2: Int = 1
                   let v3: Bool = lt[Int](v0, v2)
                   let v8: Html = match v3 {
@@ -852,7 +902,9 @@ mod tests {
                   }
                   v8
                 }
-                fn pong@f1(n@v1: Int) -> Html {
+                fn pong@f1(
+                  n@v1: Int,
+                ) -> Html {
                   let v9: Html = ping@f0(v1)
                   v9
                 }
@@ -863,7 +915,9 @@ mod tests {
                 }
 
                 -- after --
-                fn ping@f0(n@v0: Int) -> Html {
+                fn ping@f0(
+                  n@v0: Int,
+                ) -> Html {
                   let v2: Int = 1
                   let v3: Bool = lt[Int](v0, v2)
                   let v8: Html = match v3 {
@@ -880,7 +934,9 @@ mod tests {
                   }
                   v8
                 }
-                fn pong@f1(n@v1: Int) -> Html {
+                fn pong@f1(
+                  n@v1: Int,
+                ) -> Html {
                   let v9: Html = ping@f0(v1)
                   v9
                 }
@@ -912,7 +968,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn Bump@f0(count@v0: Cell[Int]) -> Html {
+                fn Bump@f0(
+                  count@v0: Cell[Int],
+                ) -> Html {
                   let v1: Int = track(v0)
                   let v5: () -> Mutation[Tuple[]] = fn() {
                     let v2: Int = 1

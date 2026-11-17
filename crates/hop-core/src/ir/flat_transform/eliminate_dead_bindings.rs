@@ -405,7 +405,9 @@ mod tests {
                   let v0: Int = f@f0()
                   v0
                 }
-                entrypoint Test@e0(flag@v1: Bool) -> Html {
+                entrypoint Test@e0(
+                  flag@v1: Bool,
+                ) -> Html {
                   let v4: Int = match v1 {
                     true => {
                       let v2: Int = f@f0()
@@ -425,7 +427,9 @@ mod tests {
                   let v0: Int = f@f0()
                   v0
                 }
-                entrypoint Test@e0(flag@v1: Bool) -> Html {
+                entrypoint Test@e0(
+                  flag@v1: Bool,
+                ) -> Html {
                   let v5: Html = text("Hello")
                   v5
                 }
@@ -444,7 +448,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(items@v0: Array[String]) -> Html {
+                entrypoint Test@e0(
+                  items@v0: Array[String],
+                ) -> Html {
                   let v3: Html = for v1: String in v0 {
                     let v2: Html = text(".")
                     v2
@@ -453,7 +459,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(items@v0: Array[String]) -> Html {
+                entrypoint Test@e0(
+                  items@v0: Array[String],
+                ) -> Html {
                   let v3: Html = for _ in v0 {
                     let v2: Html = text(".")
                     v2
@@ -478,7 +486,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(name@v0: Option[String]) -> Html {
+                entrypoint Test@e0(
+                  name@v0: Option[String],
+                ) -> Html {
                   let v4: Html = match v0 {
                     Some(v1: String) => {
                       let v2: Html = text("some")
@@ -493,7 +503,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(name@v0: Option[String]) -> Html {
+                entrypoint Test@e0(
+                  name@v0: Option[String],
+                ) -> Html {
                   let v4: Html = match v0 {
                     Some(_) => {
                       let v2: Html = text("some")
@@ -539,7 +551,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn width@f0(shape@v0: Shape) -> Int {
+                fn width@f0(
+                  shape@v0: Shape,
+                ) -> Int {
                   let v4: Int = match v0 {
                     Shape::Dot => {
                       let v1: Int = 0
@@ -553,7 +567,9 @@ mod tests {
                 }
 
                 -- after --
-                fn width@f0(shape@v0: Shape) -> Int {
+                fn width@f0(
+                  shape@v0: Shape,
+                ) -> Int {
                   let v4: Int = match v0 {
                     Shape::Dot => {
                       let v1: Int = 0

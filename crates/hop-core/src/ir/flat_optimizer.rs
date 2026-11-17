@@ -154,7 +154,10 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn Rows@f0(items@v0: Array[String], row@v1: (String) -> Html) -> Html {
+                fn Rows@f0(
+                  items@v0: Array[String],
+                  row@v1: (String) -> Html,
+                ) -> Html {
                   let v4: Html = for v2: String in v0 {
                     let v3: Html = v1(v2)
                     v3
@@ -162,8 +165,12 @@ mod tests {
                   let v5: Html = element("ul", {}, v4)
                   v5
                 }
-                entrypoint Test@e0(items@v6: Array[String]) -> Html {
-                  let v10: (String) -> Html = fn(v7: String) {
+                entrypoint Test@e0(
+                  items@v6: Array[String],
+                ) -> Html {
+                  let v10: (String) -> Html = fn(
+                    v7: String,
+                  ) {
                     let v8: Html = escape(v7)
                     let v9: Html = element("li", {}, v8)
                     v9
@@ -173,7 +180,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(items@v6: Array[String]) -> Html {
+                entrypoint Test@e0(
+                  items@v6: Array[String],
+                ) -> Html {
                   let v14: Html = for v12: String in v6 {
                     let v16: Html = escape(v12)
                     let v17: Html = element("li", {}, v16)
@@ -204,7 +213,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint Items@e0(items@v0: Array[String]) -> Html {
+                entrypoint Items@e0(
+                  items@v0: Array[String],
+                ) -> Html {
                   let v1: String = "value"
                   let v5: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
@@ -216,7 +227,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Items@e0(items@v0: Array[String]) -> Html {
+                entrypoint Items@e0(
+                  items@v0: Array[String],
+                ) -> Html {
                   let v5: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
                     let v4: Html = element("li", {}, v3)
@@ -284,7 +297,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn double@f0(x@v0: Int) -> Int {
+                fn double@f0(
+                  x@v0: Int,
+                ) -> Int {
                   let v1: Int = add[Int](v0, v0)
                   v1
                 }

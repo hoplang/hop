@@ -934,9 +934,13 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(n@v0: Int) -> Html {
+                entrypoint Test@e0(
+                  n@v0: Int,
+                ) -> Html {
                   let v1: Int = 10
-                  let v4: (Int) -> Int = fn(v2: Int) {
+                  let v4: (Int) -> Int = fn(
+                    v2: Int,
+                  ) {
                     let v3: Int = add[Int](v2, v1)
                     v3
                   }
@@ -952,9 +956,13 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(n@v0: Int) -> Html {
+                entrypoint Test@e0(
+                  n@v0: Int,
+                ) -> Html {
                   let v1: Int = 10
-                  let v4: (Int) -> Int = fn(v2: Int) {
+                  let v4: (Int) -> Int = fn(
+                    v2: Int,
+                  ) {
                     let v3: Int = add[Int](v2, v1)
                     v3
                   }
@@ -987,7 +995,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- before --
-                entrypoint body@e0(nickname@v0: Option[String]) -> Html {
+                entrypoint body@e0(
+                  nickname@v0: Option[String],
+                ) -> Html {
                   let v1: Bool = true
                   let v2: Tuple[Bool, Option[String]] = (v1, v0)
                   let v13: Html = match v2 {
@@ -1017,7 +1027,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint body@e0(nickname@v0: Option[String]) -> Html {
+                entrypoint body@e0(
+                  nickname@v0: Option[String],
+                ) -> Html {
                   let v1: Bool = true
                   let v2: Tuple[Bool, Option[String]] = (v1, v0)
                   let v9: String = match v0 {
@@ -1052,7 +1064,9 @@ mod tests {
             "#},
             expect![[r#"
                 -- before --
-                entrypoint body@e0(nickname@v0: Option[String]) -> Html {
+                entrypoint body@e0(
+                  nickname@v0: Option[String],
+                ) -> Html {
                   let v1: Bool = true
                   let v2: Tuple[Bool, Option[String]] = (v1, v0)
                   let v10: Html = match v2 {
@@ -1073,7 +1087,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint body@e0(nickname@v0: Option[String]) -> Html {
+                entrypoint body@e0(
+                  nickname@v0: Option[String],
+                ) -> Html {
                   let v1: Bool = true
                   let v2: Tuple[Bool, Option[String]] = (v1, v0)
                   let v10: Html = match v2 {
@@ -1178,7 +1194,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(flag@v0: Bool) -> Html {
+                entrypoint Test@e0(
+                  flag@v0: Bool,
+                ) -> Html {
                   let v3: Html = match v0 {
                     true => {
                       let v1: Html = text("yes")
@@ -1193,7 +1211,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(flag@v0: Bool) -> Html {
+                entrypoint Test@e0(
+                  flag@v0: Bool,
+                ) -> Html {
                   let v3: Html = match v0 {
                     true => {
                       let v1: Html = text("yes")
@@ -1230,7 +1250,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(n@v0: Int) -> Html {
+                entrypoint Test@e0(
+                  n@v0: Int,
+                ) -> Html {
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
                   let v3: Int = v2.x
@@ -1240,7 +1262,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(n@v0: Int) -> Html {
+                entrypoint Test@e0(
+                  n@v0: Int,
+                ) -> Html {
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
                   let v4: String = v0.to_string()
@@ -1304,7 +1328,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(dyn@v0: String) -> Html {
+                entrypoint Test@e0(
+                  dyn@v0: String,
+                ) -> Html {
                   let v1: String = "a"
                   let v2: String = string_concat(v0, v1)
                   let v3: String = "b"
@@ -1315,7 +1341,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(dyn@v0: String) -> Html {
+                entrypoint Test@e0(
+                  dyn@v0: String,
+                ) -> Html {
                   let v1: String = "a"
                   let v2: String = string_concat(v0, v1)
                   let v3: String = "b"
@@ -1340,7 +1368,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(dyn@v0: String) -> Html {
+                entrypoint Test@e0(
+                  dyn@v0: String,
+                ) -> Html {
                   let v1: String = ""
                   let v2: String = ""
                   let v3: String = string_concat(v1, v0, v2)
@@ -1349,7 +1379,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(dyn@v0: String) -> Html {
+                entrypoint Test@e0(
+                  dyn@v0: String,
+                ) -> Html {
                   let v1: String = ""
                   let v2: String = ""
                   let v4: Html = escape(v0)
@@ -1444,7 +1476,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(flag@v0: Bool) -> Html {
+                entrypoint Test@e0(
+                  flag@v0: Bool,
+                ) -> Html {
                   let v1: Html = text("a")
                   let v2: Html = text("b")
                   let v3: Html = concat(v1, v2)
@@ -1462,7 +1496,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(flag@v0: Bool) -> Html {
+                entrypoint Test@e0(
+                  flag@v0: Bool,
+                ) -> Html {
                   let v1: Html = text("a")
                   let v2: Html = text("b")
                   let v6: Html = match v0 {
@@ -1514,7 +1550,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn area@f0(n@v0: Int) -> Int {
+                fn area@f0(
+                  n@v0: Int,
+                ) -> Int {
                   let v1: Shape = Circle {radius: v0}
                   let v5: Int = match v1 {
                     Shape::Dot => {
@@ -1530,7 +1568,9 @@ mod tests {
                 }
 
                 -- after --
-                fn area@f0(n@v0: Int) -> Int {
+                fn area@f0(
+                  n@v0: Int,
+                ) -> Int {
                   let v1: Shape = Circle {radius: v0}
                   let v4: Int = mul[Int](v0, v0)
                   v4
@@ -1800,7 +1840,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(items@v0: Array[Int]) -> Html {
+                entrypoint Test@e0(
+                  items@v0: Array[Int],
+                ) -> Html {
                   let v1: String = "row"
                   let v4: Html = for _ in v0 {
                     let v2: Html = escape(v1)
@@ -1811,7 +1853,9 @@ mod tests {
                 }
 
                 -- after --
-                entrypoint Test@e0(items@v0: Array[Int]) -> Html {
+                entrypoint Test@e0(
+                  items@v0: Array[Int],
+                ) -> Html {
                   let v1: String = "row"
                   let v4: Html = for _ in v0 {
                     let v2: Html = text("row")

@@ -1250,7 +1250,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint body@e0(name@v0: String) -> Html {
+                entrypoint body@e0(
+                  name@v0: String,
+                ) -> Html {
                   let v1: Html = text("Hello ")
                   let v2: Html = escape(v0)
                   let v3: Html = concat(v1, v2)
@@ -1298,7 +1300,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint body@e0(items@v0: Array[String]) -> Html {
+                entrypoint body@e0(
+                  items@v0: Array[String],
+                ) -> Html {
                   let v5: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
                     let v3: Html = concat(v2)
@@ -1334,7 +1338,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint body@e0(items@v0: Array[String], name@v1: Option[String]) -> Html {
+                entrypoint body@e0(
+                  items@v0: Array[String],
+                  name@v1: Option[String],
+                ) -> Html {
                   let v6: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
                     let v4: Html = concat(v3)
@@ -1399,7 +1406,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint body@e0(cls@v0: String) -> Html {
+                entrypoint body@e0(
+                  cls@v0: String,
+                ) -> Html {
                   let v1: String = "base"
                   let v2: Html = text("Content")
                   let v3: Html = concat(v2)
@@ -1425,7 +1434,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint body@e0(flag@v0: Bool) -> Html {
+                entrypoint body@e0(
+                  flag@v0: Bool,
+                ) -> Html {
                   let v5: Html = match v0 {
                     true => {
                       let v1: Html = text("yes")
@@ -1465,7 +1476,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint body@e0(a@v0: Bool, b@v1: Bool) -> Html {
+                entrypoint body@e0(
+                  a@v0: Bool,
+                  b@v1: Bool,
+                ) -> Html {
                   let v4: Bool = match v0 {
                     true => {
                       let v2: Bool = not(v1)
@@ -1536,7 +1550,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint body@e0(signed_in@v0: Bool, status@v1: Status) -> Html {
+                entrypoint body@e0(
+                  signed_in@v0: Bool,
+                  status@v1: Status,
+                ) -> Html {
                   let v2: Tuple[Bool, Status] = (v0, v1)
                   let v13: Html = match v2 {
                     (true, Status::Away {since@v3: String}) => {
@@ -1601,7 +1618,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint body@e0(user@v0: User) -> Html {
+                entrypoint body@e0(
+                  user@v0: User,
+                ) -> Html {
                   let v1: String = "Jane"
                   let v2: Int = v0.age
                   let v3: User = {name: v1, age: v2}
@@ -1635,7 +1654,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                entrypoint body@e0(app@v0: App) -> Html {
+                entrypoint body@e0(
+                  app@v0: App,
+                ) -> Html {
                   let v1: State = v0.state
                   let v2: String = v1.query
                   let v3: Int = 1
@@ -1671,13 +1692,18 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Button@f0(id@v8: String) -> Html {
+                fn Button@f0(
+                  id@v8: String,
+                ) -> Html {
                   let v9: Html = text("Go")
                   let v10: Html = concat(v9)
                   let v11: Html = element("button", {id: v8}, v10)
                   v11
                 }
-                fn Button@f1(class@v12: String, disabled@v13: Bool) -> Html {
+                fn Button@f1(
+                  class@v12: String,
+                  disabled@v13: Bool,
+                ) -> Html {
                   let v14: Html = text("Go")
                   let v15: Html = concat(v14)
                   let v16: Html = element("button", {class: v12, disabled: v13}, v15)
@@ -1723,13 +1749,20 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Card@f1(title@v7: String, id@v8: String, class@v9: String) -> Html {
+                fn Card@f1(
+                  title@v7: String,
+                  id@v8: String,
+                  class@v9: String,
+                ) -> Html {
                   let v10: Html = escape(v7)
                   let v11: Html = concat(v10)
                   let v12: Html = element("div", {id: v8, class: v9}, v11)
                   v12
                 }
-                fn Panel@f0(title@v3: String, class@v4: String) -> Html {
+                fn Panel@f0(
+                  title@v3: String,
+                  class@v4: String,
+                ) -> Html {
                   let v5: String = "panel"
                   let v6: Html = Card@f1(v3, v5, v4)
                   v6
@@ -1768,7 +1801,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Nest@f0(depth@v3: Int, id@v4: String) -> Html {
+                fn Nest@f0(
+                  depth@v3: Int,
+                  id@v4: String,
+                ) -> Html {
                   let v5: Int = 0
                   let v6: Bool = lt[Int](v5, v3)
                   let v12: Html = match v6 {
@@ -1788,7 +1824,10 @@ mod tests {
                   let v14: Html = element("div", {id: v4}, v13)
                   v14
                 }
-                fn Nest@f1(depth@v15: Int, class@v16: String) -> Html {
+                fn Nest@f1(
+                  depth@v15: Int,
+                  class@v16: String,
+                ) -> Html {
                   let v17: Int = 0
                   let v18: Bool = lt[Int](v17, v15)
                   let v24: Html = match v18 {
@@ -1836,7 +1875,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Button@f0(data-x@v3: String, aria-label@v4: String) -> Html {
+                fn Button@f0(
+                  data-x@v3: String,
+                  aria-label@v4: String,
+                ) -> Html {
                   let v5: Html = text("Go")
                   let v6: Html = concat(v5)
                   let v7: Html = element("button", {data-x: v3, aria-label: v4}, v6)
@@ -1916,7 +1958,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn label@f0(name@v5: String) -> String {
+                fn label@f0(
+                  name@v5: String,
+                ) -> String {
                   let v6: Int = 3
                   let v7: Int = width@f1(v6)
                   let v8: String = " "
@@ -1924,7 +1968,9 @@ mod tests {
                   let v10: String = string_concat(v5, v8, v9)
                   v10
                 }
-                fn width@f1(n@v11: Int) -> Int {
+                fn width@f1(
+                  n@v11: Int,
+                ) -> Int {
                   let v12: Int = 0
                   let v13: Bool = lt_eq[Int](v11, v12)
                   let v20: Int = match v13 {
@@ -1943,7 +1989,9 @@ mod tests {
                   }
                   v20
                 }
-                entrypoint body@e0(name@v0: String) -> Html {
+                entrypoint body@e0(
+                  name@v0: String,
+                ) -> Html {
                   let v1: String = label@f0(v0)
                   let v2: Html = escape(v1)
                   let v3: Html = concat(v2)
@@ -1977,7 +2025,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Rows@f0(labels@v15: Array[String], row@v16: (String) -> Html) -> Html {
+                fn Rows@f0(
+                  labels@v15: Array[String],
+                  row@v16: (String) -> Html,
+                ) -> Html {
                   let v19: Html = for v17: String in v15 {
                     let v18: Html = v16(v17)
                     v18
@@ -1986,12 +2037,19 @@ mod tests {
                   let v21: Html = element("ul", {}, v20)
                   v21
                 }
-                entrypoint body@e0(labels@v0: Array[String], scale@v1: Int) -> Html {
-                  let v4: (Int) -> Int = fn(v2: Int) {
+                entrypoint body@e0(
+                  labels@v0: Array[String],
+                  scale@v1: Int,
+                ) -> Html {
+                  let v4: (Int) -> Int = fn(
+                    v2: Int,
+                  ) {
                     let v3: Int = mul[Int](v2, v1)
                     v3
                   }
-                  let v13: (String) -> Html = fn(v5: String) {
+                  let v13: (String) -> Html = fn(
+                    v5: String,
+                  ) {
                     let v6: Html = escape(v5)
                     let v7: Int = 2
                     let v8: Int = v4(v7)
@@ -2028,7 +2086,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn width@f0(scale@v10: (Int) -> Int, n@v11: Int) -> Int {
+                fn width@f0(
+                  scale@v10: (Int) -> Int,
+                  n@v11: Int,
+                ) -> Int {
                   let v12: Int = 0
                   let v13: Bool = lt_eq[Int](v11, v12)
                   let v19: Int = match v13 {
@@ -2046,8 +2107,12 @@ mod tests {
                   }
                   v19
                 }
-                entrypoint body@e0(n@v0: Int) -> Html {
-                  let v3: (Int) -> Int = fn(v1: Int) {
+                entrypoint body@e0(
+                  n@v0: Int,
+                ) -> Html {
+                  let v3: (Int) -> Int = fn(
+                    v1: Int,
+                  ) {
                     let v2: Int = add[Int](v1, v0)
                     v2
                   }
@@ -2090,7 +2155,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn width@f0(n@v9: Int) -> Int {
+                fn width@f0(
+                  n@v9: Int,
+                ) -> Int {
                   let v10: Int = 0
                   let v11: Bool = lt_eq[Int](v9, v10)
                   let v18: Int = match v11 {
@@ -2109,7 +2176,9 @@ mod tests {
                   }
                   v18
                 }
-                entrypoint body@e0(flag@v0: Bool) -> Html {
+                entrypoint body@e0(
+                  flag@v0: Bool,
+                ) -> Html {
                   let v5: String = match v0 {
                     true => {
                       let v1: Int = 1
@@ -2156,7 +2225,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Callout@f1(open@v9: Bool, children@v10: Html) -> Html {
+                fn Callout@f1(
+                  open@v9: Bool,
+                  children@v10: Html,
+                ) -> Html {
                   let v15: Html = match v9 {
                     true => {
                       let v11: Html = concat(v10)
@@ -2171,11 +2243,16 @@ mod tests {
                   }
                   v15
                 }
-                fn Tip@f0(open@v6: Bool, children@v7: Html) -> Html {
+                fn Tip@f0(
+                  open@v6: Bool,
+                  children@v7: Html,
+                ) -> Html {
                   let v8: Html = Callout@f1(v6, v7)
                   v8
                 }
-                entrypoint body@e0(open@v0: Bool) -> Html {
+                entrypoint body@e0(
+                  open@v0: Bool,
+                ) -> Html {
                   let v1: Html = text("x")
                   let v2: Html = concat(v1)
                   let v3: Html = element("b", {}, v2)
@@ -2215,7 +2292,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Counter@f0(label@v16: String) -> Html {
+                fn Counter@f0(
+                  label@v16: String,
+                ) -> Html {
                   let v18: Cell[Int] = cell {
                     let v17: Int = 0
                     v17
@@ -2230,7 +2309,9 @@ mod tests {
                     let v23: Int = 1
                     let v24: Int = add[Int](v19, v23)
                     let v25: Mutation[Tuple[]] = v18 := v24
-                    let v29: (Tuple[]) -> Mutation[Tuple[]] = fn(v26: Tuple[]) {
+                    let v29: (Tuple[]) -> Mutation[Tuple[]] = fn(
+                      v26: Tuple[],
+                    ) {
                       let v27: Bool = true
                       let v28: Mutation[Tuple[]] = v21 := v27
                       v28
@@ -2290,7 +2371,10 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn Button@f0(on_press@v12: () -> Mutation[Tuple[]], children@v13: Html) -> Html {
+                fn Button@f0(
+                  on_press@v12: () -> Mutation[Tuple[]],
+                  children@v13: Html,
+                ) -> Html {
                   let v14: Html = concat(v13)
                   let v15: Html = element("button", {}, v14) on_click v12
                   v15
@@ -2345,7 +2429,9 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn bump@f0(n@v17: Int) -> Mutation[Int] {
+                fn bump@f0(
+                  n@v17: Int,
+                ) -> Mutation[Int] {
                   let v18: Int = 1
                   let v19: Int = add[Int](v17, v18)
                   let v20: Mutation[Int] = pure(v19)
@@ -2359,9 +2445,13 @@ mod tests {
                   let v2: Int = track(v1)
                   let v12: () -> Mutation[Tuple[]] = fn() {
                     let v3: Mutation[Int] = read(v1)
-                    let v10: (Int) -> Mutation[Tuple[]] = fn(v4: Int) {
+                    let v10: (Int) -> Mutation[Tuple[]] = fn(
+                      v4: Int,
+                    ) {
                       let v5: Mutation[Int] = bump@f0(v4)
-                      let v8: (Int) -> Mutation[Tuple[]] = fn(v6: Int) {
+                      let v8: (Int) -> Mutation[Tuple[]] = fn(
+                        v6: Int,
+                      ) {
                         let v7: Mutation[Tuple[]] = v1 := v4
                         v7
                       }

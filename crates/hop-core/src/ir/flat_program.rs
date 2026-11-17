@@ -378,13 +378,14 @@ impl fmt::Display for FlatProgram {
             write!(f, "{function}")?;
         }
         for (id, entrypoint) in self.entrypoints.iter_enumerated() {
-            write!(
-                f,
-                "entrypoint {}@e{}({}) -> Html {{",
-                entrypoint.name,
-                id,
-                join(&entrypoint.parameters, ", ")
-            )?;
+            write!(f, "entrypoint {}@e{}(", entrypoint.name, id)?;
+            for parameter in &entrypoint.parameters {
+                write!(Indent::new(f), "\n{parameter},")?;
+            }
+            if !entrypoint.parameters.is_empty() {
+                f.write_str("\n")?;
+            }
+            f.write_str(") -> Html {")?;
             write!(Indent::new(f), "\n{}", entrypoint.body)?;
             writeln!(f, "\n}}")?;
         }

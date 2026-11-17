@@ -110,11 +110,15 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn ping@f0(n@v0: Int) -> Int {
+                fn ping@f0(
+                  n@v0: Int,
+                ) -> Int {
                   let v2: Int = pong@f1(v0)
                   v2
                 }
-                fn pong@f1(n@v1: Int) -> Int {
+                fn pong@f1(
+                  n@v1: Int,
+                ) -> Int {
                   let v3: Int = ping@f0(v1)
                   v3
                 }
@@ -149,7 +153,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn row@f0(n@v0: Int) -> Html {
+                fn row@f0(
+                  n@v0: Int,
+                ) -> Html {
                   let v1: String = v0.to_string()
                   let v2: Html = escape(v1)
                   v2
@@ -162,7 +168,9 @@ mod tests {
                   let v4: Html = text("unused")
                   v4
                 }
-                entrypoint Test@e0(items@v5: Array[Int]) -> Html {
+                entrypoint Test@e0(
+                  items@v5: Array[Int],
+                ) -> Html {
                   let v7: () -> Html = fn() {
                     let v6: Html = label@f1()
                     v6
@@ -175,7 +183,9 @@ mod tests {
                 }
 
                 -- after --
-                fn row@f0(n@v0: Int) -> Html {
+                fn row@f0(
+                  n@v0: Int,
+                ) -> Html {
                   let v1: String = v0.to_string()
                   let v2: Html = escape(v1)
                   v2
@@ -184,7 +194,9 @@ mod tests {
                   let v3: Html = text("label")
                   v3
                 }
-                entrypoint Test@e0(items@v5: Array[Int]) -> Html {
+                entrypoint Test@e0(
+                  items@v5: Array[Int],
+                ) -> Html {
                   let v7: () -> Html = fn() {
                     let v6: Html = label@f1()
                     v6
@@ -212,10 +224,14 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn key@f0(n@v0: Int) -> Int {
+                fn key@f0(
+                  n@v0: Int,
+                ) -> Int {
                   v0
                 }
-                entrypoint Test@e0(items@v1: Array[Int]) -> Html {
+                entrypoint Test@e0(
+                  items@v1: Array[Int],
+                ) -> Html {
                   let v5: Html = for v2: Int in v1 key {
                     let v3: Int = key@f0(v2)
                     v3
@@ -227,10 +243,14 @@ mod tests {
                 }
 
                 -- after --
-                fn key@f0(n@v0: Int) -> Int {
+                fn key@f0(
+                  n@v0: Int,
+                ) -> Int {
                   v0
                 }
-                entrypoint Test@e0(items@v1: Array[Int]) -> Html {
+                entrypoint Test@e0(
+                  items@v1: Array[Int],
+                ) -> Html {
                   let v5: Html = for v2: Int in v1 key {
                     let v3: Int = key@f0(v2)
                     v3
@@ -259,12 +279,16 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn double@f0(n@v0: Int) -> Int {
+                fn double@f0(
+                  n@v0: Int,
+                ) -> Int {
                   let v1: Int = 2
                   let v2: Int = mul[Int](v0, v1)
                   v2
                 }
-                entrypoint Count@e0(n@v3: Int) -> Html {
+                entrypoint Count@e0(
+                  n@v3: Int,
+                ) -> Html {
                   let v4: Int = double@f0(v3)
                   let v5: String = v4.to_string()
                   let v6: Html = escape(v5)
@@ -276,12 +300,16 @@ mod tests {
                 }
 
                 -- after --
-                fn double@f0(n@v0: Int) -> Int {
+                fn double@f0(
+                  n@v0: Int,
+                ) -> Int {
                   let v1: Int = 2
                   let v2: Int = mul[Int](v0, v1)
                   v2
                 }
-                entrypoint Count@e0(n@v3: Int) -> Html {
+                entrypoint Count@e0(
+                  n@v3: Int,
+                ) -> Html {
                   let v4: Int = double@f0(v3)
                   let v5: String = v4.to_string()
                   let v6: Html = escape(v5)

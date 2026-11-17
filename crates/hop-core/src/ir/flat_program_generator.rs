@@ -2590,7 +2590,14 @@ mod tests {
                   W1 {f0: Tuple[]},
                 }
 
-                fn C0@f0(p0@v0: (Tuple[Float, R0], Cell[String]) -> Tuple[Float, E1, Bool], p1@v1: Option[Array[R1]], p2@v2: E0, p3@v3: (() -> R0, () -> Array[Bool]) -> Html, p4@v4: Option[String], p5@v5: Option[Float]) -> Html {
+                fn C0@f0(
+                  p0@v0: (Tuple[Float, R0], Cell[String]) -> Tuple[Float, E1, Bool],
+                  p1@v1: Option[Array[R1]],
+                  p2@v2: E0,
+                  p3@v3: (() -> R0, () -> Array[Bool]) -> Html,
+                  p4@v4: Option[String],
+                  p5@v5: Option[Float],
+                ) -> Html {
                   let v8: Int = -2147483648
                   let v9: Cell[Int] = cell {
                     v8
@@ -2599,7 +2606,10 @@ mod tests {
                   let v11: Html = concat()
                   v11
                 }
-                fn C1@f1(p0@v6: Html, p1@v7: Mutation[Tuple[]]) -> Html {
+                fn C1@f1(
+                  p0@v6: Html,
+                  p1@v7: Mutation[Tuple[]],
+                ) -> Html {
                   let v12: Int = -2147483648
                   let v13: Cell[Int] = cell {
                     v12
@@ -2636,7 +2646,10 @@ mod tests {
                   W1,
                 }
 
-                entrypoint V0@e0(p0@v0: Option[Int], p1@v1: Option[Array[Int]]) -> Html {
+                entrypoint V0@e0(
+                  p0@v0: Option[Int],
+                  p1@v1: Option[Array[Int]],
+                ) -> Html {
                   let v2: Html = text("a\"b'c")
                   v2
                 }

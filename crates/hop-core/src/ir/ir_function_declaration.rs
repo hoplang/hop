@@ -1,6 +1,6 @@
 use std::fmt::{self, Write};
 
-use crate::display::{Indent, join};
+use crate::display::Indent;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_parameter::IrParameter;
 
@@ -20,13 +20,14 @@ impl<Param: fmt::Display, Return: fmt::Display, Body> IrFunctionDeclaration<Para
         w: &mut dyn Write,
         write_body: impl Fn(&Body, &mut dyn Write) -> fmt::Result,
     ) -> fmt::Result {
-        write!(
-            w,
-            "fn {}({}) -> {} {{",
-            self.function,
-            join(&self.parameters, ", "),
-            self.return_type
-        )?;
+        write!(w, "fn {}(", self.function)?;
+        for parameter in &self.parameters {
+            write!(Indent::new(w), "\n{parameter},")?;
+        }
+        if !self.parameters.is_empty() {
+            w.write_str("\n")?;
+        }
+        write!(w, ") -> {} {{", self.return_type)?;
         write_body(&self.body, &mut Indent::new(w))?;
         w.write_str("\n}")
     }

@@ -788,7 +788,9 @@ mod tests {
             |v| vec![("items", v.array(vec![v.str("a<b"), v.str("c")]))],
             expect![[r#"
                 -- before --
-                entrypoint Items@e0(items@v0: Array[String]) -> Html {
+                entrypoint Items@e0(
+                  items@v0: Array[String],
+                ) -> Html {
                   let v4: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
                     let v3: Html = element("li", {}, v2)
@@ -828,7 +830,9 @@ mod tests {
                   let v0: Bool = diverge@f0()
                   v0
                 }
-                entrypoint Test@e0(flag@v1: Bool) -> Html {
+                entrypoint Test@e0(
+                  flag@v1: Bool,
+                ) -> Html {
                   let v4: Bool = match v1 {
                     true => {
                       let v2: Bool = diverge@f0()
@@ -888,7 +892,9 @@ mod tests {
             },
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(shape@v0: Shape) -> Html {
+                entrypoint Test@e0(
+                  shape@v0: Shape,
+                ) -> Html {
                   let v4: String = match v0 {
                     Shape::Dot => {
                       let v1: String = "dot"
@@ -1131,7 +1137,10 @@ mod tests {
             |v| vec![("cls", v.str("a\"b")), ("flag", v.bool(true))],
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(cls@v0: String, flag@v1: Bool) -> Html {
+                entrypoint Test@e0(
+                  cls@v0: String,
+                  flag@v1: Bool,
+                ) -> Html {
                   let v2: Bool = false
                   let v3: Html = element("input", {class: v0, disabled: v1, checked: v2})
                   v3
@@ -1155,7 +1164,9 @@ mod tests {
             |v| vec![("content", v.str("<script>alert('xss')</script>"))],
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(content@v0: String) -> Html {
+                entrypoint Test@e0(
+                  content@v0: String,
+                ) -> Html {
                   let v1: Html = escape(v0)
                   v1
                 }
@@ -1183,7 +1194,9 @@ mod tests {
             |v| vec![("show", v.bool(true))],
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(show@v0: Bool) -> Html {
+                entrypoint Test@e0(
+                  show@v0: Bool,
+                ) -> Html {
                   let v4: Html = match v0 {
                     true => {
                       let v1: Html = text("Visible")
@@ -1221,7 +1234,9 @@ mod tests {
             |v| vec![("show", v.bool(false))],
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(show@v0: Bool) -> Html {
+                entrypoint Test@e0(
+                  show@v0: Bool,
+                ) -> Html {
                   let v4: Html = match v0 {
                     true => {
                       let v1: Html = text("Hidden")
@@ -1261,7 +1276,9 @@ mod tests {
             },
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(items@v0: Array[String]) -> Html {
+                entrypoint Test@e0(
+                  items@v0: Array[String],
+                ) -> Html {
                   let v6: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
                     let v3: Html = element("li", {}, v2)
@@ -1305,7 +1322,9 @@ mod tests {
             |_| vec![],
             expect![[r#"
                 -- before --
-                fn Sum@f0(n@v0: Int) -> Int {
+                fn Sum@f0(
+                  n@v0: Int,
+                ) -> Int {
                   let v1: Int = 0
                   let v2: Bool = lt_eq[Int](v0, v1)
                   let v8: Int = match v2 {
@@ -1358,8 +1377,12 @@ mod tests {
             |v| vec![("base", v.int(10))],
             expect![[r#"
                 -- before --
-                entrypoint Test@e0(base@v0: Int) -> Html {
-                  let v3: (Int) -> Int = fn(v1: Int) {
+                entrypoint Test@e0(
+                  base@v0: Int,
+                ) -> Html {
+                  let v3: (Int) -> Int = fn(
+                    v1: Int,
+                  ) {
                     let v2: Int = add[Int](v1, v0)
                     v2
                   }
@@ -1411,7 +1434,10 @@ mod tests {
             |v| vec![("items", v.array(vec![v.str("a"), v.str("b")]))],
             expect![[r#"
                 -- before --
-                fn Rows@f0(items@v0: Array[String], row@v1: (String) -> Html) -> Html {
+                fn Rows@f0(
+                  items@v0: Array[String],
+                  row@v1: (String) -> Html,
+                ) -> Html {
                   let v4: Html = for v2: String in v0 {
                     let v3: Html = v1(v2)
                     v3
@@ -1419,9 +1445,13 @@ mod tests {
                   let v5: Html = element("ul", {}, v4)
                   v5
                 }
-                entrypoint Test@e0(items@v6: Array[String]) -> Html {
+                entrypoint Test@e0(
+                  items@v6: Array[String],
+                ) -> Html {
                   let v7: String = "- "
-                  let v13: (String) -> Html = fn(v8: String) {
+                  let v13: (String) -> Html = fn(
+                    v8: String,
+                  ) {
                     let v9: Html = escape(v7)
                     let v10: Html = escape(v8)
                     let v11: Html = concat(v9, v10)
