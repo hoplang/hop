@@ -3,7 +3,7 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::{
-    ParsedDeclaration, ParsedEnumDeclaration, ParsedExpr, ParsedFunctionDeclaration,
+    ParsedBlock, ParsedDeclaration, ParsedEnumDeclaration, ParsedExpr, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedMarkup, ParsedModule, ParsedPageDeclaration, ParsedParameter,
     ParsedPattern, ParsedRecordDeclaration, ParsedType,
 };
@@ -17,7 +17,7 @@ use crate::hop::typing::type_env::{
 };
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
-use crate::hop::typing::typecheck_expr::typecheck_expr;
+use crate::hop::typing::typecheck_expr::{typecheck_block, typecheck_expr};
 use crate::hop::typing::typed_module::{
     TypedFunctionDeclaration, TypedModule, TypedPageDeclaration, TypedParameter,
 };
@@ -285,7 +285,7 @@ fn typecheck_module(
     let mut rest_targets: HashMap<CheapString, Option<RestSpreadTarget>> = HashMap::new();
     for function in parsed_module.function_declarations() {
         let mut spreads = Vec::new();
-        collect_spreads(&function.body, &mut spreads);
+        (function.body).for_each_child(&mut |child| collect_spreads(child, &mut spreads));
         let rest_target = pair_rest_spread(
             function
                 .rest_param
@@ -303,9 +303,9 @@ fn typecheck_module(
     for page in parsed_module.page_declarations() {
         let mut spreads = Vec::new();
         if let Some(head) = &page.head {
-            collect_spreads(&head.body, &mut spreads);
+            (head.body).for_each_child(&mut |child| collect_spreads(child, &mut spreads));
         }
-        collect_spreads(&page.body.body, &mut spreads);
+        (page.body.body).for_each_child(&mut |child| collect_spreads(child, &mut spreads));
         pair_rest_spread(None, spreads, errors);
     }
     let settled = resolve_rest_targets(&rest_targets, &declared, errors);
@@ -637,8 +637,9 @@ fn typecheck_page_declaration(
     }
 
     let typed_head = head.as_ref().and_then(|head| {
-        typecheck_expr(
-            &head.body,
+        typecheck_block(
+            &head.body.bindings,
+            &head.body.tail,
             None,
             &[],
             var_env,
@@ -650,8 +651,9 @@ fn typecheck_page_declaration(
             errors,
         )
     });
-    let typed_body = typecheck_expr(
-        &body.body,
+    let typed_body = typecheck_block(
+        &body.body.bindings,
+        &body.body.tail,
         None,
         &[],
         var_env,
@@ -678,8 +680,8 @@ fn typecheck_page_declaration(
         params: typed_params,
         head: head
             .as_ref()
-            .map(|head| check_declaration_body(typed_head, head.body.range(), errors)),
-        body: check_declaration_body(typed_body, body.body.range(), errors),
+            .map(|head| check_declaration_body(typed_head, head.body.tail.range(), errors)),
+        body: check_declaration_body(typed_body, body.body.tail.range(), errors),
     }
 }
 
@@ -835,8 +837,9 @@ fn typecheck_function_body(
 
     let forwarded_names: Vec<VarName> = forwarded.iter().map(|p| p.name.clone()).collect();
 
-    let typed_body = typecheck_expr(
-        body,
+    let typed_body = typecheck_block(
+        &body.bindings,
+        &body.tail,
         Some(&return_type),
         &forwarded_names,
         var_env,
@@ -878,7 +881,7 @@ fn typecheck_function_body(
                 expected: return_type.clone(),
                 found: body_type,
             },
-            body.range().clone(),
+            body.tail.range().clone(),
         ));
     }
 
@@ -915,9 +918,9 @@ fn referenced_names(parsed_module: &ParsedModule) -> HashSet<CheapString> {
                     collect_names_in_type(&param.var_type, &mut names);
                 }
                 if let Some(head) = &page.head {
-                    collect_names_in_expr(&head.body, &mut names);
+                    collect_names_in_block(&head.body, &mut names);
                 }
-                collect_names_in_expr(&page.body.body, &mut names);
+                collect_names_in_block(&page.body.body, &mut names);
             }
             ParsedDeclaration::Function(function) => {
                 for param in &function.params {
@@ -927,7 +930,7 @@ fn referenced_names(parsed_module: &ParsedModule) -> HashSet<CheapString> {
                     }
                 }
                 collect_names_in_type(&function.return_type, &mut names);
-                collect_names_in_expr(&function.body, &mut names);
+                collect_names_in_block(&function.body, &mut names);
             }
         }
     }
@@ -964,6 +967,13 @@ fn collect_names_in_type(parsed_type: &ParsedType, out: &mut HashSet<CheapString
     }
 }
 
+fn collect_names_in_block(block: &ParsedBlock, out: &mut HashSet<CheapString>) {
+    for var_type in block.bindings.iter().filter_map(|b| b.var_type.as_ref()) {
+        collect_names_in_type(var_type, out);
+    }
+    block.for_each_child(&mut |child| collect_names_in_expr(child, out));
+}
+
 fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
     match expr {
         ParsedExpr::Record { type_name, .. } | ParsedExpr::Enum { type_name, .. } => {
@@ -978,20 +988,22 @@ fn collect_names_in_expr(expr: &ParsedExpr, out: &mut HashSet<CheapString>) {
             out.insert(name.to_cheap_string());
         }
         ParsedExpr::Markup { markup } => collect_names_in_markup(markup, out),
-        ParsedExpr::Let { binding, .. } => {
-            if let Some(var_type) = &binding.var_type {
+        ParsedExpr::Block { block: body } | ParsedExpr::For { body, .. } => {
+            for var_type in body.bindings.iter().filter_map(|b| b.var_type.as_ref()) {
                 collect_names_in_type(var_type, out);
             }
         }
         ParsedExpr::Lambda {
             params,
             return_type,
+            body,
             ..
         } => {
             for var_type in params
                 .iter()
                 .filter_map(|param| param.var_type.as_ref())
                 .chain(return_type)
+                .chain(body.bindings.iter().filter_map(|b| b.var_type.as_ref()))
             {
                 collect_names_in_type(var_type, out);
             }
@@ -1600,6 +1612,27 @@ mod tests {
                 1 | fn Main() -> Int {
                 2 |   let a: Int = "one";
                   |                ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_function_body_with_lets_whose_tail_has_the_wrong_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn main() -> String {
+                  let x = 20;
+                  let y = 30;
+                  x + y
+                }
+            "#},
+            expect![[r#"
+                error: Expected String got Int
+                  --> main.hop (line 4, col 3)
+                3 |   let y = 30;
+                4 |   x + y
+                  |   ^^^^^
             "#]],
         );
     }

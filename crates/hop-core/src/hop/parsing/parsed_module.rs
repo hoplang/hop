@@ -1,7 +1,7 @@
 use crate::display::{Indent, join, write_lines, write_variant};
 use crate::document::DocumentRange;
-use crate::hop::parsing::ParsedExpr;
 use crate::hop::parsing::ParsedType;
+use crate::hop::parsing::{ParsedBlock, ParsedExpr};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
@@ -40,7 +40,7 @@ pub struct ParsedFunctionDeclaration {
     pub params: Vec<ParsedParameter>,
     pub rest_param: Option<(VarName, DocumentRange)>,
     pub return_type: ParsedType,
-    pub body: ParsedExpr,
+    pub body: ParsedBlock,
     pub range: DocumentRange,
     pub pub_range: Option<DocumentRange>,
 }

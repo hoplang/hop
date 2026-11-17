@@ -5,13 +5,13 @@ use super::r#type::{FunctionType, Type};
 use super::type_env::TypeEnv;
 use super::type_registry::TypeRegistry;
 use super::typecheck_call::CallArguments;
-use super::typecheck_expr::typecheck_expr;
+use super::typecheck_expr::{typecheck_block, typecheck_expr};
 use super::typed_expr::TypedExpr;
 use super::variable_scope::{RepeatedBody, VariableScope};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
-use crate::hop::parsing::{ParsedExpr, ParsedLambdaParameter, ParsedType};
+use crate::hop::parsing::{ParsedBlock, ParsedLambdaParameter, ParsedType};
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::function_name::FunctionName;
@@ -30,7 +30,7 @@ pub enum Expected<'a> {
 pub fn typecheck_lambda(
     params: &[ParsedLambdaParameter],
     return_type: Option<&ParsedType>,
-    body: &ParsedExpr,
+    body: &ParsedBlock,
     range: &DocumentRange,
     expected: Expected<'_>,
     forwarded_params: &[VarName],
@@ -140,8 +140,9 @@ pub fn typecheck_lambda(
             }
         }
     }
-    let typed_body = typecheck_expr(
-        body,
+    let typed_body = typecheck_block(
+        &body.bindings,
+        &body.tail,
         expected_result,
         forwarded_params,
         var_env,
@@ -177,7 +178,7 @@ pub fn typecheck_lambda(
                 expected: declared.clone(),
                 found: body_type,
             },
-            body.range().clone(),
+            body.tail.range().clone(),
         ));
         return None;
     }
@@ -193,8 +194,8 @@ pub fn typecheck_lambda(
             TypeErrorKind::DataFunctionTakesHtml { .. } => typed_params
                 .iter()
                 .find(|(_, typ)| typ.renders_html())
-                .map_or(body.range(), |(param, _)| &param.var_name_range),
-            _ => body.range(),
+                .map_or(body.tail.range(), |(param, _)| &param.var_name_range),
+            _ => body.tail.range(),
         };
         errors.push(TypeError::new(error, range.clone()));
         return None;

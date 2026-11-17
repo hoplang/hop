@@ -236,9 +236,14 @@ fn parse_markup(
 
             MarkupToken::ExpressionStart { left_brace } => {
                 match parse_expr::parse_block(iter, comments, errors, &left_brace) {
-                    Ok((expression, range)) => {
-                        builder.append_markup(ParsedMarkup::Interpolation { expression, range })
-                    }
+                    Ok(block) => builder.append_markup(ParsedMarkup::Interpolation {
+                        range: block.range.clone(),
+                        expression: if block.bindings.is_empty() {
+                            *block.tail
+                        } else {
+                            ParsedExpr::Block { block }
+                        },
+                    }),
                     Err(guar) => builder.drop_item(guar),
                 }
             }
@@ -371,14 +376,18 @@ fn parse_opening_tag(
             } => {
                 let name =
                     AttributeName::new(name_range.to_cheap_string()).or_emit(errors, &name_range);
-                if let (Ok(name), Ok((value, _))) = (
+                if let (Ok(name), Ok(block)) = (
                     name,
                     parse_expr::parse_block(iter, comments, errors, &left_brace),
                 ) {
                     attributes.push(ParsedAttribute::Expression {
                         name,
                         name_range,
-                        value,
+                        value: if block.bindings.is_empty() {
+                            *block.tail
+                        } else {
+                            ParsedExpr::Block { block }
+                        },
                     });
                 }
             }
@@ -394,7 +403,7 @@ fn parse_opening_tag(
 
             TagToken::ExpressionStart { left_brace } => {
                 let range = match parse_expr::parse_block(iter, comments, errors, &left_brace) {
-                    Ok((_, braces)) => braces,
+                    Ok(block) => block.range,
                     Err(_) => left_brace,
                 };
                 let _ = errors.emit(

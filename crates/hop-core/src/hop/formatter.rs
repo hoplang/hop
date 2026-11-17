@@ -1,6 +1,6 @@
 use crate::document::DocumentRange;
 use crate::hop::parsing::{
-    ParsedArguments, ParsedAttribute, ParsedDeclaration, ParsedEnumDeclaration,
+    ParsedArguments, ParsedAttribute, ParsedBlock, ParsedDeclaration, ParsedEnumDeclaration,
     ParsedEnumDeclarationVariant, ParsedExpr, ParsedFieldDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedLetBinding, ParsedLoopSource, ParsedMarkup, ParsedMatchArm,
     ParsedModule, ParsedNamedArgument, ParsedPageDeclaration, ParsedParameter, ParsedPattern,
@@ -406,10 +406,7 @@ fn format_function_declaration<'a>(
         }
     };
 
-    let body_leading_comments =
-        drain_comments_before(arena, comments, function.body.range().start());
-    let body_content =
-        body_leading_comments.append(format_block_body(arena, &function.body, comments));
+    let body_content = format_block_body(arena, &function.body, comments);
     let has_trailing_comments = comments
         .line
         .front()
@@ -476,7 +473,7 @@ fn format_attribute<'a>(
     match item {
         ParsedAttribute::KeyOnly { name, .. } => arena.text(name.as_str()),
         ParsedAttribute::Expression { name, value, .. }
-            if matches!(value, ParsedExpr::Let { .. }) =>
+            if matches!(value, ParsedExpr::Block { .. }) =>
         {
             arena
                 .text(name.as_str())
@@ -922,13 +919,13 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
 }
 
 /// Formats an expression that the surrounding syntax wraps in `{` `}`. A
-/// `let` chain brings its own braces and layout, so it is not wrapped again.
+/// block brings its own braces and layout, so it is not wrapped again.
 fn format_braced_expr<'a>(
     arena: &'a Arena<'a>,
     expr: &'a ParsedExpr,
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    if let ParsedExpr::Let { .. } = expr {
+    if let ParsedExpr::Block { .. } = expr {
         format_expr(arena, expr, comments)
     } else {
         arena
@@ -942,22 +939,28 @@ fn format_braced_expr<'a>(
 /// one `let` statement per line, then the tail expression.
 fn format_block_body<'a>(
     arena: &'a Arena<'a>,
-    expr: &'a ParsedExpr,
+    block: &'a ParsedBlock,
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let mut doc = arena.nil();
-    let mut expr = expr;
-    while let ParsedExpr::Let { binding, body, .. } = expr {
+    for binding in &block.bindings {
         doc = doc
-            .append(drain_comments_before(arena, comments, expr.range().start()))
+            .append(drain_comments_before(
+                arena,
+                comments,
+                binding.range.start(),
+            ))
             .append(arena.text("let "))
             .append(format_let_binding(arena, binding, comments))
             .append(arena.text(";"))
             .append(arena.hardline());
-        expr = body;
     }
-    doc.append(drain_comments_before(arena, comments, expr.range().start()))
-        .append(format_expr(arena, expr, comments))
+    doc.append(drain_comments_before(
+        arena,
+        comments,
+        block.tail.range().start(),
+    ))
+    .append(format_expr(arena, &block.tail, comments))
 }
 
 fn format_expr<'a>(
@@ -967,12 +970,12 @@ fn format_expr<'a>(
 ) -> DocBuilder<'a, Arena<'a>> {
     match expr {
         ParsedExpr::VariableReference { value, .. } => arena.text(value.as_str()),
-        ParsedExpr::Let { .. } => arena
+        ParsedExpr::Block { block } => arena
             .text("{")
             .append(
                 arena
                     .hardline()
-                    .append(format_block_body(arena, expr, comments))
+                    .append(format_block_body(arena, block, comments))
                     .nest(2),
             )
             .append(arena.hardline())

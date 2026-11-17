@@ -15,7 +15,7 @@ use super::parse_helpers::{
 use super::parse_markup;
 use super::parse_type::parse_type;
 use super::parsed_expr::{
-    Fixity, ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedFieldInitializer,
+    Fixity, ParsedArguments, ParsedBinaryOp, ParsedBlock, ParsedExpr, ParsedFieldInitializer,
     ParsedLambdaParameter, ParsedLetBinding, ParsedLoopSource, ParsedMatchArm, ParsedNamedArgument,
     ParsedPattern, ParsedUnaryOp, Precedence,
 };
@@ -150,15 +150,14 @@ fn parse_unary(
 
 /// Parse a braced block after a left brace the caller has already consumed:
 /// any number of `let` statements followed by a tail expression, then the
-/// right brace. Returns the expression with the range from the left brace
-/// through the right.
+/// right brace.
 pub fn parse_block(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
     left_brace: &DocumentRange,
-) -> Result<(ParsedExpr, DocumentRange), ErrorEmitted> {
-    parse_delimited(
+) -> Result<ParsedBlock, ErrorEmitted> {
+    let ((bindings, tail), range) = parse_delimited(
         iter,
         comments,
         errors,
@@ -186,35 +185,24 @@ pub fn parse_block(
                         errors.emit(ParseErrorKind::BlockMissingTailExpression {}, semicolon)
                     );
                 }
-                bindings.push((
-                    let_range,
+                bindings.push(ParsedLetBinding {
+                    range: let_range.to(semicolon),
                     mutable,
-                    var_name,
+                    var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
                     var_name_range,
                     var_type,
                     value_expr,
-                ));
+                });
             }
-            let mut expr = parse_expr(iter, comments, errors)?;
-            for (let_range, mutable, var_name, var_name_range, var_type, value_expr) in
-                bindings.into_iter().rev()
-            {
-                let range = let_range.to(expr.range().clone());
-                expr = ParsedExpr::Let {
-                    binding: Box::new(ParsedLetBinding {
-                        mutable,
-                        var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
-                        var_name_range,
-                        var_type,
-                        value_expr,
-                    }),
-                    body: Box::new(expr),
-                    range,
-                };
-            }
-            Ok(expr)
+            let tail = parse_expr(iter, comments, errors)?;
+            Ok((bindings, tail))
         },
-    )
+    )?;
+    Ok(ParsedBlock {
+        bindings,
+        tail: Box::new(tail),
+        range,
+    })
 }
 
 pub fn parse_primary(
@@ -358,8 +346,12 @@ pub fn parse_primary(
             range: none_range,
         }
     } else if let Some(left_brace) = next_if_eq(iter, comments, errors, LangToken::LeftBrace) {
-        let (inner, _) = parse_block(iter, comments, errors, &left_brace)?;
-        inner
+        let block = parse_block(iter, comments, errors, &left_brace)?;
+        if block.bindings.is_empty() {
+            *block.tail
+        } else {
+            ParsedExpr::Block { block }
+        }
     } else if let Some(left_angle) = next_if_eq(iter, comments, errors, LangToken::LessThan) {
         parse_markup::parse_markup_expr(iter, comments, errors, left_angle)?
     } else {
@@ -734,14 +726,14 @@ fn parse_for(
         None => None,
     };
     let left_brace = expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
-    let (body, braces) = parse_block(iter, comments, errors, &left_brace)?;
+    let body = parse_block(iter, comments, errors, &left_brace)?;
     Ok(ParsedExpr::For {
         var_name,
         var_name_range,
         source: Box::new(source),
         key,
-        body: Box::new(body),
-        range: for_range.to(braces),
+        range: for_range.to(body.range.clone()),
+        body,
     })
 }
 
@@ -786,12 +778,12 @@ fn parse_lambda(
         None
     };
     let left_brace = expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
-    let (body, braces) = parse_block(iter, comments, errors, &left_brace)?;
+    let body = parse_block(iter, comments, errors, &left_brace)?;
     Ok(ParsedExpr::Lambda {
         params,
         return_type,
-        body: Box::new(body),
-        range: fn_range.to(braces),
+        range: fn_range.to(body.range.clone()),
+        body,
     })
 }
 

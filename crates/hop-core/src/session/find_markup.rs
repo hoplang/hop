@@ -1,5 +1,5 @@
 use crate::document::DocumentPosition;
-use crate::hop::parsing::{ParsedExpr, ParsedMarkup, ParsedModule};
+use crate::hop::parsing::{ParsedBlock, ParsedMarkup, ParsedModule};
 
 /// Finds the deepest markup that contains the given position.
 ///
@@ -26,28 +26,30 @@ pub fn find_markup_at_position<'a>(
     for n in module.page_declarations() {
         if n.range.contains_position(position) {
             if let Some(head) = &n.head
-                && let Some(markup) = find_markup_at_position_in_expr(&head.body, position)
+                && let Some(markup) = find_markup_at_position_in_block(&head.body, position)
             {
                 return Some(markup);
             }
-            return find_markup_at_position_in_expr(&n.body.body, position);
+            return find_markup_at_position_in_block(&n.body.body, position);
         }
     }
 
     for n in module.function_declarations() {
         if n.range.contains_position(position) {
-            return find_markup_at_position_in_expr(&n.body, position);
+            return find_markup_at_position_in_block(&n.body, position);
         }
     }
 
     None
 }
 
-fn find_markup_at_position_in_expr<'a>(
-    expr: &'a ParsedExpr,
+fn find_markup_at_position_in_block<'a>(
+    block: &'a ParsedBlock,
     position: &DocumentPosition,
 ) -> Option<&'a ParsedMarkup> {
-    expr.markup()
+    let mut roots = Vec::new();
+    block.for_each_child(&mut |child| roots.extend(child.markup()));
+    roots
         .into_iter()
         .find_map(|root| find_markup_at_position_in_markup(root, position))
 }

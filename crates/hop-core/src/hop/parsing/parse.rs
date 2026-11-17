@@ -447,7 +447,7 @@ fn parse_function_declaration(
             Err(reported) => *reported,
         });
     }
-    let (body, braces) = parse_expr::parse_block(iter, comments, errors, &left_brace)?;
+    let body = parse_expr::parse_block(iter, comments, errors, &left_brace)?;
     let (name, name_range) = name?;
     let (params, rest_param, return_type) = signature?;
     Ok(ParsedFunctionDeclaration {
@@ -456,11 +456,11 @@ fn parse_function_declaration(
         params,
         rest_param,
         return_type,
-        body,
         range: pub_range
             .clone()
             .unwrap_or_else(|| keyword_range.clone())
-            .to(braces),
+            .to(body.range.clone()),
+        body,
         pub_range,
     })
 }

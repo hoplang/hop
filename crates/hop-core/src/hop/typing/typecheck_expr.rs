@@ -14,8 +14,8 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::hop::parsing::{
-    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLoopSource, ParsedNamedArgument,
-    ParsedUnaryOp,
+    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLetBinding, ParsedLoopSource,
+    ParsedNamedArgument, ParsedUnaryOp,
 };
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
@@ -1015,117 +1015,19 @@ pub fn typecheck_expr(
                 })
             }
         },
-        ParsedExpr::Let { binding, body, .. } => {
-            let declared_type = match &binding.var_type {
-                Some(parsed_type) => Some(resolve_type(
-                    parsed_type,
-                    &type_env.names,
-                    definition_links,
-                    errors,
-                )?),
-                None => None,
-            };
-            let typed_value = typecheck_expr(
-                &binding.value_expr,
-                declared_type.as_ref(),
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            let binding_type = match (&declared_type, &typed_value) {
-                (Some(declared), _) => declared.clone(),
-                (None, Some(typed_value)) => typed_value.typ(),
-                (None, None) => return None,
-            };
-            if binding.mutable && binding_type.as_data().is_none() {
-                errors.push(TypeError::new(
-                    TypeErrorKind::CellNotData {
-                        typ: binding_type.clone(),
-                    },
-                    binding.value_expr.range().clone(),
-                ));
-            }
-            // On a clash the body is still typechecked, with the name
-            // resolving to the existing binding, so that its errors surface
-            // and the existing binding is not reported unused.
-            let pushed = var_env
-                .bind(
-                    binding.var_name.clone(),
-                    binding_type.clone(),
-                    binding.var_name_range.clone(),
-                    binding.mutable,
-                )
-                .is_ok();
-            if pushed {
-                annotations.push(HoverAnnotation::VarName {
-                    range: binding.var_name_range.clone(),
-                    typ: binding_type,
-                    var_name: binding.var_name.clone(),
-                });
-            } else {
-                errors.push(TypeError::new(
-                    TypeErrorKind::VariableAlreadyDefined {
-                        name: binding.var_name.clone(),
-                    },
-                    binding.var_name_range.clone(),
-                ));
-            }
-            if let (Some(declared), Some(typed_value)) = (&declared_type, &typed_value) {
-                let value_type = typed_value.typ();
-                if value_type != *declared {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::TypeMismatch {
-                            context: TypeMismatchContext::LetBinding,
-                            expected: declared.clone(),
-                            found: value_type,
-                        },
-                        binding.value_expr.range().clone(),
-                    ));
-                }
-            }
-            let typed_body = typecheck_expr(
-                body,
-                expected_type,
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            );
-            if !pushed {
-                return None;
-            }
-            let (name, entry) = var_env.pop();
-            if !entry.accessed {
-                errors.push(TypeError::new(
-                    TypeErrorKind::UnusedVariable { var_name: name },
-                    entry.range,
-                ));
-            }
-            let typed_body = typed_body?;
-            let typ = typed_body.typ();
-            if binding.mutable && typ != Type::HTML {
-                errors.push(TypeError::new(
-                    TypeErrorKind::CellOutsideHtml,
-                    binding.var_name_range.clone(),
-                ));
-            }
-            Some(TypedExpr::Let {
-                var: binding.var_name.clone(),
-                cell: binding.mutable,
-                value: Box::new(typed_value?),
-                body: Box::new(typed_body),
-                typ,
-            })
-        }
+        ParsedExpr::Block { block } => typecheck_block(
+            &block.bindings,
+            &block.tail,
+            expected_type,
+            forwarded_params,
+            var_env,
+            type_env,
+            registry,
+            annotations,
+            definition_links,
+            asset_references,
+            errors,
+        ),
         ParsedExpr::Match { subject, arms, .. } => typecheck_match(
             subject,
             arms,
@@ -1284,8 +1186,9 @@ pub fn typecheck_expr(
                 Some(typed_key)
             });
             var_env.enter(RepeatedBody::Loop);
-            let typed_body = typecheck_expr(
-                body,
+            let typed_body = typecheck_block(
+                &body.bindings,
+                &body.tail,
                 Some(&Type::HTML),
                 forwarded_params,
                 var_env,
@@ -1315,7 +1218,7 @@ pub fn typecheck_expr(
                         expected: Type::HTML,
                         found: body_type,
                     },
-                    body.range().clone(),
+                    body.tail.range().clone(),
                 ));
                 return None;
             }
@@ -1789,6 +1692,148 @@ pub fn typecheck_expr(
             errors,
         ),
     }
+}
+
+/// Typecheck a block: its `let` statements in order, each in scope for
+/// the ones after it and for the tail. The typed block is a chain of
+/// nested lets.
+pub fn typecheck_block(
+    bindings: &[ParsedLetBinding],
+    tail: &ParsedExpr,
+    expected_type: Option<&Type>,
+    forwarded_params: &[VarName],
+    var_env: &mut VariableScope,
+    type_env: &TypeEnv,
+    registry: &TypeRegistry,
+    annotations: &mut Vec<HoverAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+    errors: &mut Vec<TypeError>,
+) -> Option<TypedExpr> {
+    let Some((binding, rest)) = bindings.split_first() else {
+        return typecheck_expr(
+            tail,
+            expected_type,
+            forwarded_params,
+            var_env,
+            type_env,
+            registry,
+            annotations,
+            definition_links,
+            asset_references,
+            errors,
+        );
+    };
+    let declared_type = match &binding.var_type {
+        Some(parsed_type) => Some(resolve_type(
+            parsed_type,
+            &type_env.names,
+            definition_links,
+            errors,
+        )?),
+        None => None,
+    };
+    let typed_value = typecheck_expr(
+        &binding.value_expr,
+        declared_type.as_ref(),
+        forwarded_params,
+        var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    );
+    let binding_type = match (&declared_type, &typed_value) {
+        (Some(declared), _) => declared.clone(),
+        (None, Some(typed_value)) => typed_value.typ(),
+        (None, None) => return None,
+    };
+    if binding.mutable && binding_type.as_data().is_none() {
+        errors.push(TypeError::new(
+            TypeErrorKind::CellNotData {
+                typ: binding_type.clone(),
+            },
+            binding.value_expr.range().clone(),
+        ));
+    }
+    // On a clash the body is still typechecked, with the name
+    // resolving to the existing binding, so that its errors surface
+    // and the existing binding is not reported unused.
+    let pushed = var_env
+        .bind(
+            binding.var_name.clone(),
+            binding_type.clone(),
+            binding.var_name_range.clone(),
+            binding.mutable,
+        )
+        .is_ok();
+    if pushed {
+        annotations.push(HoverAnnotation::VarName {
+            range: binding.var_name_range.clone(),
+            typ: binding_type,
+            var_name: binding.var_name.clone(),
+        });
+    } else {
+        errors.push(TypeError::new(
+            TypeErrorKind::VariableAlreadyDefined {
+                name: binding.var_name.clone(),
+            },
+            binding.var_name_range.clone(),
+        ));
+    }
+    if let (Some(declared), Some(typed_value)) = (&declared_type, &typed_value) {
+        let value_type = typed_value.typ();
+        if value_type != *declared {
+            errors.push(TypeError::new(
+                TypeErrorKind::TypeMismatch {
+                    context: TypeMismatchContext::LetBinding,
+                    expected: declared.clone(),
+                    found: value_type,
+                },
+                binding.value_expr.range().clone(),
+            ));
+        }
+    }
+    let typed_body = typecheck_block(
+        rest,
+        tail,
+        expected_type,
+        forwarded_params,
+        var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    );
+    if !pushed {
+        return None;
+    }
+    let (name, entry) = var_env.pop();
+    if !entry.accessed {
+        errors.push(TypeError::new(
+            TypeErrorKind::UnusedVariable { var_name: name },
+            entry.range,
+        ));
+    }
+    let typed_body = typed_body?;
+    let typ = typed_body.typ();
+    if binding.mutable && typ != Type::HTML {
+        errors.push(TypeError::new(
+            TypeErrorKind::CellOutsideHtml,
+            binding.var_name_range.clone(),
+        ));
+    }
+    Some(TypedExpr::Let {
+        var: binding.var_name.clone(),
+        cell: binding.mutable,
+        value: Box::new(typed_value?),
+        body: Box::new(typed_body),
+        typ,
+    })
 }
 
 #[cfg(test)]

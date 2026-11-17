@@ -114,7 +114,7 @@ pub enum ParsedExpr {
         var_name_range: Option<DocumentRange>,
         source: Box<ParsedLoopSource>,
         key: Option<Box<Self>>,
-        body: Box<Self>,
+        body: ParsedBlock,
         range: DocumentRange,
     },
 
@@ -132,16 +132,17 @@ pub enum ParsedExpr {
         range: DocumentRange,
     },
 
-    Let {
-        binding: Box<ParsedLetBinding>,
-        body: Box<Self>,
-        range: DocumentRange,
+    /// A braced block with at least one `let` statement, where an
+    /// expression is expected. A braced expression without a `let` is
+    /// parsed as its tail.
+    Block {
+        block: ParsedBlock,
     },
 
     Lambda {
         params: Vec<ParsedLambdaParameter>,
         return_type: Option<ParsedType>,
-        body: Box<Self>,
+        body: ParsedBlock,
         range: DocumentRange,
     },
 
@@ -213,14 +214,31 @@ pub struct ParsedFieldInitializer {
     pub value: ParsedExpr,
 }
 
-/// A let binding in a block expression.
+/// A braced block: any number of `let` statements followed by a tail
+/// expression. The range runs from the left brace through the right.
+///
+/// ```text
+/// {
+///   let name = "World";
+///   <h1>Hello {name}</h1>
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ParsedBlock {
+    pub bindings: Vec<ParsedLetBinding>,
+    pub tail: Box<ParsedExpr>,
+    pub range: DocumentRange,
+}
+
+/// A let statement in a block.
 ///
 /// ```text
 /// let name: String = "World";
-///     ^^^^^^^^^^^^^^^^^^^^^^
+/// ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedLetBinding {
+    pub range: DocumentRange,
     pub mutable: bool,
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
@@ -449,6 +467,31 @@ impl ParsedBinaryOp {
     }
 }
 
+impl ParsedBlock {
+    /// Apply `f` to the value of each `let` statement and to the tail, in
+    /// source order.
+    pub fn for_each_child<'a>(&'a self, f: &mut impl FnMut(&'a ParsedExpr)) {
+        for binding in &self.bindings {
+            f(&binding.value_expr);
+        }
+        f(&self.tail);
+    }
+}
+
+impl Display for ParsedBlock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for binding in &self.bindings {
+            let mutable = if binding.mutable { "mut " } else { "" };
+            write!(f, "let {mutable}{}", binding.var_name.as_str())?;
+            if let Some(var_type) = &binding.var_type {
+                write!(f, ": {var_type}")?;
+            }
+            write!(f, " = {} in ", binding.value_expr)?;
+        }
+        write!(f, "{}", self.tail)
+    }
+}
+
 impl ParsedExpr {
     /// Apply `f` to each direct child expression, in source order.
     pub fn for_each_child<'a>(&'a self, f: &mut impl FnMut(&'a ParsedExpr)) {
@@ -521,18 +564,16 @@ impl ParsedExpr {
                 if let Some(key) = key {
                     f(key);
                 }
-                f(body);
+                body.for_each_child(f);
             }
             ParsedExpr::Option { value, .. } => {
                 if let Some(value) = value {
                     f(value);
                 }
             }
-            ParsedExpr::Let { binding, body, .. } => {
-                f(&binding.value_expr);
-                f(body);
+            ParsedExpr::Block { block: body } | ParsedExpr::Lambda { body, .. } => {
+                body.for_each_child(f);
             }
-            ParsedExpr::Lambda { body, .. } => f(body),
 
             ParsedExpr::Markup { .. }
             | ParsedExpr::VariableReference { .. }
@@ -561,7 +602,7 @@ impl ParsedExpr {
     /// with nothing left to evaluate.
     pub fn is_constant(&self) -> bool {
         match self {
-            ParsedExpr::Let { .. } => false,
+            ParsedExpr::Block { .. } => false,
             ParsedExpr::StringLiteral { .. }
             | ParsedExpr::BoolLiteral { .. }
             | ParsedExpr::IntLiteral { .. }
@@ -612,8 +653,8 @@ impl ParsedExpr {
             | ParsedExpr::Option { range, .. }
             | ParsedExpr::Macro { range, .. }
             | ParsedExpr::Call { range, .. }
-            | ParsedExpr::Let { range, .. }
             | ParsedExpr::Lambda { range, .. } => range,
+            ParsedExpr::Block { block } => &block.range,
             ParsedExpr::Markup { markup } => markup.range(),
         }
     }
@@ -648,7 +689,7 @@ impl ParsedExpr {
             | ParsedExpr::For { .. }
             | ParsedExpr::Option { .. }
             | ParsedExpr::Macro { .. }
-            | ParsedExpr::Let { .. }
+            | ParsedExpr::Block { .. }
             | ParsedExpr::Lambda { .. }
             | ParsedExpr::Markup { .. }
             | ParsedExpr::Call { .. } => Precedence::Atom,
@@ -841,14 +882,7 @@ impl Display for ParsedExpr {
                 write!(Indent::new(f), "\n{body}")?;
                 f.write_str("\n}")
             }
-            ParsedExpr::Let { binding, body, .. } => {
-                let mutable = if binding.mutable { "mut " } else { "" };
-                write!(f, "let {mutable}{}", binding.var_name.as_str())?;
-                if let Some(var_type) = &binding.var_type {
-                    write!(f, ": {var_type}")?;
-                }
-                write!(f, " = {} in {body}", binding.value_expr)
-            }
+            ParsedExpr::Block { block } => write!(f, "{block}"),
             ParsedExpr::Option { value, .. } => match value {
                 Some(inner) => write!(f, "Some({inner})"),
                 None => f.write_str("None"),
