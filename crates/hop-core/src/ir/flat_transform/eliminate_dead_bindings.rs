@@ -2,15 +2,12 @@ use std::collections::HashSet;
 
 use crate::hop::typing::Pattern;
 use crate::ir::flat_program::{
-    FlatEntrypoint, FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
-    FlatPureBlock, FlatPureOp,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
 };
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
-use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
-use crate::ir::ir_type::{IrFunctionDataType, IrFunctionHtmlType};
 use crate::ir::value_id::ValueId;
 
 /// A pass that removes the bindings nothing reads from every body.
@@ -27,15 +24,9 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
     let functions = program
         .functions
         .into_iter()
-        .map(|function| match function {
-            FlatFunction::Pure(function) => FlatFunction::Pure(IrFunctionDeclaration {
-                body: eliminate_pure(function.body, &mut HashSet::new()),
-                ..function
-            }),
-            FlatFunction::Html(function) => FlatFunction::Html(IrFunctionDeclaration {
-                body: eliminate_html(function.body, &mut HashSet::new()),
-                ..function
-            }),
+        .map(|function| FlatFunction {
+            body: eliminate_block(function.body, &mut HashSet::new()),
+            ..function
         })
         .collect();
     FlatProgram {
@@ -43,7 +34,7 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
             .entrypoints
             .into_iter()
             .map(|entrypoint| FlatEntrypoint {
-                body: eliminate_html(entrypoint.body, &mut HashSet::new()),
+                body: eliminate_block(entrypoint.body, &mut HashSet::new()),
                 ..entrypoint
             })
             .collect(),
@@ -53,11 +44,11 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
     }
 }
 
-fn eliminate_pure(block: FlatPureBlock, live: &mut HashSet<ValueId>) -> FlatPureBlock {
+fn eliminate_block(block: FlatBlock, live: &mut HashSet<ValueId>) -> FlatBlock {
     live.insert(block.result);
     let mut kept = Vec::with_capacity(block.bindings.len());
     for binding in block.bindings.into_iter().rev() {
-        kept.extend(eliminate_pure_binding(binding, live));
+        kept.extend(eliminate_binding(binding, live));
     }
     kept.reverse();
     IrBlock {
@@ -66,102 +57,34 @@ fn eliminate_pure(block: FlatPureBlock, live: &mut HashSet<ValueId>) -> FlatPure
     }
 }
 
-fn eliminate_html(block: FlatHtmlBlock, live: &mut HashSet<ValueId>) -> FlatHtmlBlock {
-    live.insert(block.result);
-    let mut kept = Vec::with_capacity(block.bindings.len());
-    for binding in block.bindings.into_iter().rev() {
-        let binding = match binding {
-            FlatHtmlBinding::Pure(binding) => {
-                eliminate_pure_binding(binding, live).map(FlatHtmlBinding::Pure)
-            }
-            FlatHtmlBinding::Cell(binder, initial) => {
-                if !live.contains(&binder.var) {
-                    continue;
-                }
-                Some(FlatHtmlBinding::Cell(binder, eliminate_pure(initial, live)))
-            }
-            FlatHtmlBinding::Track(binder, cell) => {
-                if !live.contains(&binder.var) {
-                    continue;
-                }
-                live.insert(cell);
-                Some(FlatHtmlBinding::Track(binder, cell))
-            }
-            FlatHtmlBinding::Mint(binder) => {
-                if !live.contains(&binder.var) {
-                    continue;
-                }
-                Some(FlatHtmlBinding::Mint(binder))
-            }
-            FlatHtmlBinding::Html(binding) => {
-                eliminate_html_binding(binding, live).map(FlatHtmlBinding::Html)
-            }
-        };
-        kept.extend(binding);
-    }
-    kept.reverse();
-    IrBlock {
-        bindings: kept,
-        result: block.result,
-    }
-}
-
-fn eliminate_pure_binding(
-    binding: IrBinding<IrFunctionDataType, FlatPureOp>,
-    live: &mut HashSet<ValueId>,
-) -> Option<IrBinding<IrFunctionDataType, FlatPureOp>> {
+fn eliminate_binding(binding: FlatBinding, live: &mut HashSet<ValueId>) -> Option<FlatBinding> {
     if !live.contains(&binding.binder.var) {
         return None;
     }
     let IrBinding { binder, op } = binding;
     let op = match op {
-        FlatPureOp::Match(match_) => {
-            FlatPureOp::Match(eliminate_match(match_, live, eliminate_pure))
-        }
-        FlatPureOp::Lambda(IrLambda { parameters, body }) => FlatPureOp::Lambda(IrLambda {
-            parameters,
-            body: eliminate_pure(body, live),
-        }),
-        op => op,
-    };
-    op.for_each_operand(&mut |operand| {
-        live.insert(operand);
-    });
-    Some(IrBinding { binder, op })
-}
-
-fn eliminate_html_binding(
-    binding: IrBinding<IrFunctionHtmlType, FlatHtmlOp>,
-    live: &mut HashSet<ValueId>,
-) -> Option<IrBinding<IrFunctionHtmlType, FlatHtmlOp>> {
-    if !live.contains(&binding.binder.var) {
-        return None;
-    }
-    let IrBinding { binder, op } = binding;
-    let op = match op {
-        FlatHtmlOp::Match(match_) => {
-            FlatHtmlOp::Match(eliminate_match(match_, live, eliminate_html))
-        }
-        FlatHtmlOp::For(FlatFor {
+        FlatOp::Match(match_) => FlatOp::Match(eliminate_match(match_, live)),
+        FlatOp::For(FlatFor {
             var,
             array,
             key,
             body,
         }) => {
-            let body = eliminate_html(body, live);
-            let key = key.map(|key| eliminate_pure(key, live));
+            let body = eliminate_block(body, live);
+            let key = key.map(|key| eliminate_block(key, live));
             let var = var.filter(|binder| live.contains(&binder.var));
-            FlatHtmlOp::For(FlatFor {
+            FlatOp::For(FlatFor {
                 var,
                 array,
                 key,
                 body,
             })
         }
-        FlatHtmlOp::Lambda(IrLambda { parameters, body }) => FlatHtmlOp::Lambda(IrLambda {
+        FlatOp::Lambda(IrLambda { parameters, body }) => FlatOp::Lambda(IrLambda {
             parameters,
-            body: eliminate_html(body, live),
+            body: eliminate_block(body, live),
         }),
+        FlatOp::Cell(initial) => FlatOp::Cell(eliminate_block(initial, live)),
         op => op,
     };
     op.for_each_operand(&mut |operand| {
@@ -170,11 +93,7 @@ fn eliminate_html_binding(
     Some(IrBinding { binder, op })
 }
 
-fn eliminate_match<B>(
-    match_: IrMatch<B>,
-    live: &mut HashSet<ValueId>,
-    eliminate_block: impl Fn(B, &mut HashSet<ValueId>) -> B,
-) -> IrMatch<B> {
+fn eliminate_match(match_: IrMatch<FlatBlock>, live: &mut HashSet<ValueId>) -> IrMatch<FlatBlock> {
     IrMatch {
         subject: match_.subject,
         arms: match_

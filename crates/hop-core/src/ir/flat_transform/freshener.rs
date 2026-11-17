@@ -1,15 +1,13 @@
 use std::collections::HashMap;
 
 use crate::hop::typing::Pattern;
-use crate::ir::flat_program::{
-    FlatFor, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatPureBlock, FlatPureOp,
-};
+use crate::ir::flat_program::{FlatBlock, FlatFor, FlatOp};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
-use crate::ir::ir_type::{IrFunctionDataType, IrFunctionHtmlType};
+use crate::ir::ir_type::IrType;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// Copies a block with fresh names, so the copy shares none of the names
@@ -47,11 +45,7 @@ impl<'a> Freshener<'a> {
 
     /// Copy the arms of a match, each pattern binding fresh names, and its
     /// subject.
-    fn freshen_match<B>(
-        &mut self,
-        match_: &IrMatch<B>,
-        freshen_block: impl Fn(&mut Self, &B) -> B,
-    ) -> IrMatch<B> {
+    fn freshen_match(&mut self, match_: &IrMatch<FlatBlock>) -> IrMatch<FlatBlock> {
         IrMatch {
             subject: self.name(match_.subject),
             arms: match_
@@ -66,31 +60,18 @@ impl<'a> Freshener<'a> {
                     });
                     IrMatchArm {
                         pattern,
-                        body: freshen_block(self, &arm.body),
+                        body: self.freshen_block(&arm.body),
                     }
                 })
                 .collect(),
         }
     }
 
-    fn freshen_lambda<P: Clone, B>(
-        &mut self,
-        lambda: &IrLambda<P, B>,
-        freshen_block: impl Fn(&mut Self, &B) -> B,
-    ) -> IrLambda<P, B> {
-        IrLambda {
-            parameters: (lambda.parameters.iter())
-                .map(|binder| self.fresh_binder(binder))
-                .collect(),
-            body: freshen_block(self, &lambda.body),
-        }
-    }
-
-    pub fn freshen_pure_block(&mut self, block: &FlatPureBlock) -> FlatPureBlock {
+    pub fn freshen_block(&mut self, block: &FlatBlock) -> FlatBlock {
         let bindings = block
             .bindings
             .iter()
-            .map(|binding| self.freshen_pure_binding(binding))
+            .map(|binding| self.freshen_binding(binding))
             .collect();
         IrBlock {
             bindings,
@@ -98,66 +79,14 @@ impl<'a> Freshener<'a> {
         }
     }
 
-    pub fn freshen_html_block(&mut self, block: &FlatHtmlBlock) -> FlatHtmlBlock {
-        let bindings = block
-            .bindings
-            .iter()
-            .map(|binding| match binding {
-                FlatHtmlBinding::Pure(binding) => {
-                    FlatHtmlBinding::Pure(self.freshen_pure_binding(binding))
-                }
-                FlatHtmlBinding::Cell(binder, initial) => {
-                    let initial = self.freshen_pure_block(initial);
-                    FlatHtmlBinding::Cell(self.fresh_binder(binder), initial)
-                }
-                FlatHtmlBinding::Track(binder, cell) => {
-                    let cell = self.name(*cell);
-                    FlatHtmlBinding::Track(self.fresh_binder(binder), cell)
-                }
-                FlatHtmlBinding::Mint(binder) => FlatHtmlBinding::Mint(self.fresh_binder(binder)),
-                FlatHtmlBinding::Html(binding) => {
-                    FlatHtmlBinding::Html(self.freshen_html_binding(binding))
-                }
-            })
-            .collect();
-        IrBlock {
-            bindings,
-            result: self.name(block.result),
-        }
-    }
-
-    fn freshen_pure_binding(
+    fn freshen_binding(
         &mut self,
-        binding: &IrBinding<IrFunctionDataType, FlatPureOp>,
-    ) -> IrBinding<IrFunctionDataType, FlatPureOp> {
+        binding: &IrBinding<IrType, FlatOp>,
+    ) -> IrBinding<IrType, FlatOp> {
         let op = match &binding.op {
-            FlatPureOp::Match(match_) => {
-                FlatPureOp::Match(self.freshen_match(match_, Self::freshen_pure_block))
-            }
-            FlatPureOp::Lambda(lambda) => {
-                FlatPureOp::Lambda(self.freshen_lambda(lambda, Self::freshen_pure_block))
-            }
-            op => {
-                let mut op = op.clone();
-                op.for_each_operand_mut(&mut |operand| *operand = self.name(*operand));
-                op
-            }
-        };
-        IrBinding {
-            binder: self.fresh_binder(&binding.binder),
-            op,
-        }
-    }
-
-    fn freshen_html_binding(
-        &mut self,
-        binding: &IrBinding<IrFunctionHtmlType, FlatHtmlOp>,
-    ) -> IrBinding<IrFunctionHtmlType, FlatHtmlOp> {
-        let op = match &binding.op {
-            FlatHtmlOp::Match(match_) => {
-                FlatHtmlOp::Match(self.freshen_match(match_, Self::freshen_html_block))
-            }
-            FlatHtmlOp::For(FlatFor {
+            FlatOp::Match(match_) => FlatOp::Match(self.freshen_match(match_)),
+            FlatOp::Cell(initial) => FlatOp::Cell(self.freshen_block(initial)),
+            FlatOp::For(FlatFor {
                 var,
                 array,
                 key,
@@ -165,16 +94,19 @@ impl<'a> Freshener<'a> {
             }) => {
                 let array = self.name(*array);
                 let var = var.as_ref().map(|binder| self.fresh_binder(binder));
-                FlatHtmlOp::For(FlatFor {
+                FlatOp::For(FlatFor {
                     var,
                     array,
-                    key: key.as_ref().map(|key| self.freshen_pure_block(key)),
-                    body: self.freshen_html_block(body),
+                    key: key.as_ref().map(|key| self.freshen_block(key)),
+                    body: self.freshen_block(body),
                 })
             }
-            FlatHtmlOp::Lambda(lambda) => {
-                FlatHtmlOp::Lambda(self.freshen_lambda(lambda, Self::freshen_html_block))
-            }
+            FlatOp::Lambda(lambda) => FlatOp::Lambda(IrLambda {
+                parameters: (lambda.parameters.iter())
+                    .map(|binder| self.fresh_binder(binder))
+                    .collect(),
+                body: self.freshen_block(&lambda.body),
+            }),
             op => {
                 let mut op = op.clone();
                 op.for_each_operand_mut(&mut |operand| *operand = self.name(*operand));

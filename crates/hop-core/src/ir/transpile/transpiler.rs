@@ -7,10 +7,7 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::IrSwitch;
-use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrResultType, IrSignature,
-    IrType,
-};
+use crate::ir::ir_type::{IrDataType, IrSignature, IrType};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
     WriterBlock, WriterFunctionBody, WriterOp, WriterPageDeclaration, WriterProgram, WriterStmt,
@@ -132,15 +129,10 @@ pub trait Transpiler {
     ) -> Doc<'a>;
     fn transpile_record_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
     fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
-    fn transpile_value_function_type<'a>(
+    fn transpile_closure_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrSignature<IrFunctionDataType, IrResultType>,
-    ) -> Doc<'a>;
-    fn transpile_html_function_type<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        signature: &IrSignature<IrType, IrHtmlType>,
+        signature: &IrSignature,
     ) -> Doc<'a>;
 
     // Closures. `typ` is the type of the let that binds the lambda.
@@ -164,28 +156,26 @@ pub trait Transpiler {
     ) -> Doc<'a>;
     fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrType) -> Doc<'a> {
         match t {
-            IrType::Data(IrFunctionDataType::Data(data)) => self.transpile_data_type(arena, data),
-            IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
+            IrType::Data(data) => self.transpile_data_type(arena, data),
+            IrType::Html => {
                 unreachable!("Html is written, never held")
             }
-            IrType::Data(IrFunctionDataType::Mutation(_)) => {
+            IrType::Mutation(_) => {
                 unreachable!("flat_to_writer makes a mutation the unit tuple")
             }
             IrType::Cell(_) => unreachable!("flat_to_writer makes a cell its value"),
-            IrType::Id(_) => unreachable!("flat_to_writer drops identities"),
-            IrType::Data(IrFunctionDataType::Function(signature)) => {
-                self.transpile_value_function_type(arena, signature)
-            }
-            IrType::Html(IrFunctionHtmlType::Function(signature)) => {
-                self.transpile_html_function_type(arena, signature)
-            }
+            IrType::Id => unreachable!("flat_to_writer drops identities"),
+            IrType::Function(signature) => self.transpile_closure_type(arena, signature),
         }
     }
-    fn transpile_result_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrResultType) -> Doc<'a> {
+    fn transpile_result_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrType) -> Doc<'a> {
         match t {
-            IrResultType::Data(data) => self.transpile_data_type(arena, data),
-            IrResultType::Mutation(_) => {
+            IrType::Data(data) => self.transpile_data_type(arena, data),
+            IrType::Mutation(_) => {
                 unreachable!("flat_to_writer makes a mutation the unit tuple")
+            }
+            IrType::Html | IrType::Function(_) | IrType::Cell(_) | IrType::Id => {
+                unreachable!("a closure returns data or a mutation")
             }
         }
     }
@@ -407,37 +397,37 @@ pub trait Transpiler {
             }
             WriterOp::TupleIndex(tuple, index) => self.transpile_tuple_index(arena, *tuple, *index),
             WriterOp::Data(IrDataOp::Array(elements)) => match typ {
-                IrType::Data(IrFunctionDataType::Data(IrDataType::Array(elem_type))) => {
+                IrType::Data(IrDataType::Array(elem_type)) => {
                     self.transpile_array_literal(arena, elements, elem_type)
                 }
                 _ => unreachable!("Array value must have Array type"),
             },
             WriterOp::Data(IrDataOp::Tuple(elements)) => match typ {
-                IrType::Data(IrFunctionDataType::Data(IrDataType::Tuple(element_types))) => {
+                IrType::Data(IrDataType::Tuple(element_types)) => {
                     self.transpile_tuple_literal(arena, elements, element_types)
                 }
                 _ => unreachable!("Tuple value must have Tuple type"),
             },
             WriterOp::Data(IrDataOp::Record(fields)) => match typ {
-                IrType::Data(IrFunctionDataType::Data(IrDataType::Record(name))) => {
+                IrType::Data(IrDataType::Record(name)) => {
                     self.transpile_record_literal(arena, name.as_str(), fields)
                 }
                 _ => unreachable!("Record value must have a Record type"),
             },
             WriterOp::Data(IrDataOp::Enum(variant_name, fields)) => match typ {
-                IrType::Data(IrFunctionDataType::Data(IrDataType::Enum(name))) => {
+                IrType::Data(IrDataType::Enum(name)) => {
                     self.transpile_enum_literal(arena, name.as_str(), variant_name.as_str(), fields)
                 }
                 _ => unreachable!("Enum value must have an Enum type"),
             },
             WriterOp::Data(IrDataOp::OptionSome(value)) => match typ {
-                IrType::Data(IrFunctionDataType::Data(IrDataType::Option(inner_type))) => {
+                IrType::Data(IrDataType::Option(inner_type)) => {
                     self.transpile_option_literal(arena, Some(*value), inner_type)
                 }
                 _ => unreachable!("Option value must have Option type"),
             },
             WriterOp::Data(IrDataOp::OptionNone) => match typ {
-                IrType::Data(IrFunctionDataType::Data(IrDataType::Option(inner_type))) => {
+                IrType::Data(IrDataType::Option(inner_type)) => {
                     self.transpile_option_literal(arena, None, inner_type)
                 }
                 _ => unreachable!("Option value must have Option type"),
@@ -488,20 +478,18 @@ pub trait Transpiler {
                 self.transpile_array_is_empty(arena, *operand)
             }
             WriterOp::Data(IrDataOp::ArrayGet(array, index)) => match typ {
-                IrType::Data(IrFunctionDataType::Data(IrDataType::Option(element_type))) => {
+                IrType::Data(IrDataType::Option(element_type)) => {
                     self.transpile_array_get(arena, *array, *index, element_type)
                 }
                 _ => unreachable!("ArrayGet must produce an Option"),
             },
             WriterOp::Data(IrDataOp::ArrayEnumerate(array)) => match typ {
-                IrType::Data(IrFunctionDataType::Data(IrDataType::Array(pair))) => {
-                    match pair.as_ref() {
-                        IrDataType::Tuple(types) if types.len() == 2 => {
-                            self.transpile_array_enumerate(arena, *array, &types[1])
-                        }
-                        _ => unreachable!("ArrayEnumerate must produce an Array of pairs"),
+                IrType::Data(IrDataType::Array(pair)) => match pair.as_ref() {
+                    IrDataType::Tuple(types) if types.len() == 2 => {
+                        self.transpile_array_enumerate(arena, *array, &types[1])
                     }
-                }
+                    _ => unreachable!("ArrayEnumerate must produce an Array of pairs"),
+                },
                 _ => unreachable!("ArrayEnumerate must produce an Array"),
             },
             WriterOp::Data(IrDataOp::StringIsEmpty(operand)) => {

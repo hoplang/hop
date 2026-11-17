@@ -4,19 +4,17 @@ use crate::document::CheapString;
 use crate::hop::typing::{Constructor, Pattern};
 use crate::html::write_escaped_html;
 use crate::ir::flat_program::{
-    FlatEntrypoint, FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlLambda,
-    FlatHtmlOp, FlatProgram, FlatPureBlock, FlatPureLambda, FlatPureOp,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatLambda, FlatOp, FlatProgram,
 };
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
-use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
-use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType};
+use crate::ir::ir_type::IrType;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::field_name::FieldName;
 
@@ -71,15 +69,9 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
         .into_iter()
         .map(|function| {
             let mut evaluator = Evaluator::new(&mut value_ids);
-            match function {
-                FlatFunction::Pure(function) => FlatFunction::Pure(IrFunctionDeclaration {
-                    body: evaluator.pure_block(function.body),
-                    ..function
-                }),
-                FlatFunction::Html(function) => FlatFunction::Html(IrFunctionDeclaration {
-                    body: evaluator.html_block(function.body),
-                    ..function
-                }),
+            FlatFunction {
+                body: evaluator.block(function.body),
+                ..function
             }
         })
         .collect();
@@ -88,7 +80,7 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
         .map(|entrypoint| {
             let mut evaluator = Evaluator::new(&mut value_ids);
             FlatEntrypoint {
-                body: evaluator.html_block(entrypoint.body),
+                body: evaluator.block(entrypoint.body),
                 ..entrypoint
             }
         })
@@ -109,47 +101,22 @@ const APPLY_BUDGET: usize = 100;
 /// function or entrypoint.
 const APPLY_FUEL: usize = 10_000;
 
-fn html_fits(block: &FlatHtmlBlock, budget: &mut usize) -> bool {
+fn fits(block: &FlatBlock, budget: &mut usize) -> bool {
     block.bindings.iter().all(|binding| {
         let Some(rest) = budget.checked_sub(1) else {
             return false;
         };
         *budget = rest;
-        match binding {
-            FlatHtmlBinding::Pure(binding) => pure_op_fits(&binding.op, budget),
-            FlatHtmlBinding::Cell(_, initial) => pure_fits(initial, budget),
-            FlatHtmlBinding::Track(..) | FlatHtmlBinding::Mint(_) => true,
-            FlatHtmlBinding::Html(binding) => match &binding.op {
-                FlatHtmlOp::Match(match_) => {
-                    (match_.arms.iter()).all(|arm| html_fits(&arm.body, budget))
-                }
-                FlatHtmlOp::For(for_) => {
-                    (for_.key.iter()).all(|key| pure_fits(key, budget))
-                        && html_fits(&for_.body, budget)
-                }
-                FlatHtmlOp::Lambda(lambda) => html_fits(&lambda.body, budget),
-                _ => true,
-            },
+        match &binding.op {
+            FlatOp::Match(match_) => (match_.arms.iter()).all(|arm| fits(&arm.body, budget)),
+            FlatOp::For(for_) => {
+                (for_.key.iter()).all(|key| fits(key, budget)) && fits(&for_.body, budget)
+            }
+            FlatOp::Lambda(lambda) => fits(&lambda.body, budget),
+            FlatOp::Cell(initial) => fits(initial, budget),
+            _ => true,
         }
     })
-}
-
-fn pure_fits(block: &FlatPureBlock, budget: &mut usize) -> bool {
-    block.bindings.iter().all(|binding| {
-        let Some(rest) = budget.checked_sub(1) else {
-            return false;
-        };
-        *budget = rest;
-        pure_op_fits(&binding.op, budget)
-    })
-}
-
-fn pure_op_fits(op: &FlatPureOp, budget: &mut usize) -> bool {
-    match op {
-        FlatPureOp::Match(match_) => (match_.arms.iter()).all(|arm| pure_fits(&arm.body, budget)),
-        FlatPureOp::Lambda(lambda) => pure_fits(&lambda.body, budget),
-        _ => true,
-    }
 }
 
 fn arguments<P, B>(lambda: &IrLambda<P, B>, args: &[ValueId]) -> HashMap<ValueId, ValueId> {
@@ -182,8 +149,7 @@ struct Evaluator<'a> {
     /// The lambdas kept so far, evaluated, whose body fits `APPLY_BUDGET`,
     /// with the bindings the body has, for the applications that read them
     /// to copy.
-    pure_lambdas: HashMap<ValueId, (usize, FlatPureLambda)>,
-    html_lambdas: HashMap<ValueId, (usize, FlatHtmlLambda)>,
+    lambdas: HashMap<ValueId, (usize, FlatLambda)>,
     /// The bindings the copies of lambda bodies may still add to the body
     /// being evaluated. Once it runs out, applications are kept.
     fuel: usize,
@@ -201,8 +167,7 @@ impl<'a> Evaluator<'a> {
             values: HashMap::new(),
             html_concats: HashMap::new(),
             renames: HashMap::new(),
-            pure_lambdas: HashMap::new(),
-            html_lambdas: HashMap::new(),
+            lambdas: HashMap::new(),
             fuel: APPLY_FUEL,
         }
     }
@@ -211,7 +176,7 @@ impl<'a> Evaluator<'a> {
         self.renames.get(&name).copied().unwrap_or(name)
     }
 
-    fn bind_concat(&mut self, name: ValueId, out: &mut Vec<FlatHtmlBinding>) -> ValueId {
+    fn bind_concat(&mut self, name: ValueId, out: &mut Vec<FlatBinding>) -> ValueId {
         let Some(concat) = self.html_concats.get_mut(&name) else {
             return name;
         };
@@ -223,30 +188,19 @@ impl<'a> Evaluator<'a> {
         } else {
             name
         };
-        out.push(FlatHtmlBinding::Html(IrBinding {
+        out.push(IrBinding {
             binder: IrBinder {
                 var,
-                typ: IrFunctionHtmlType::Html(IrHtmlType),
+                typ: IrType::HTML,
             },
-            op: FlatHtmlOp::Concat(concat.parts.clone()),
-        }));
+            op: FlatOp::Concat(concat.parts.clone()),
+        });
         var
     }
 
-    fn pure_block(&mut self, block: FlatPureBlock) -> FlatPureBlock {
+    fn block(&mut self, block: FlatBlock) -> FlatBlock {
         let mut bindings = Vec::with_capacity(block.bindings.len());
-        for binding in block.bindings {
-            self.pure_binding(binding, &mut bindings);
-        }
-        IrBlock {
-            bindings,
-            result: self.resolve(block.result),
-        }
-    }
-
-    fn html_block(&mut self, block: FlatHtmlBlock) -> FlatHtmlBlock {
-        let mut bindings = Vec::with_capacity(block.bindings.len());
-        self.html_bindings(block.bindings, &mut bindings);
+        self.bindings(block.bindings, &mut bindings);
         let result = self.resolve(block.result);
         let result = self.bind_concat(result, &mut bindings);
         IrBlock { bindings, result }
@@ -353,11 +307,7 @@ impl<'a> Evaluator<'a> {
             .body
     }
 
-    fn evaluate_arms<B>(
-        &mut self,
-        match_: IrMatch<B>,
-        evaluate_block: impl Fn(&mut Self, B) -> B,
-    ) -> IrMatch<B> {
+    fn evaluate_arms(&mut self, match_: IrMatch<FlatBlock>) -> IrMatch<FlatBlock> {
         IrMatch {
             subject: match_.subject,
             arms: match_
@@ -365,177 +315,81 @@ impl<'a> Evaluator<'a> {
                 .into_iter()
                 .map(|arm| IrMatchArm {
                     pattern: arm.pattern,
-                    body: evaluate_block(self, arm.body),
+                    body: self.block(arm.body),
                 })
                 .collect(),
         }
     }
 
-    fn pure_binding(
-        &mut self,
-        binding: IrBinding<IrFunctionDataType, FlatPureOp>,
-        out: &mut Vec<IrBinding<IrFunctionDataType, FlatPureOp>>,
-    ) {
-        let IrBinding { binder, mut op } = binding;
-        let name = binder.var;
-        op.for_each_operand_mut(&mut |operand| *operand = self.resolve(*operand));
-        match op {
-            FlatPureOp::Match(match_) => {
-                // The selected arm runs in place of the match, its bindings
-                // joining the block the match sits in, and the readers of
-                // the match read the arm's result.
-                if let Some((index, bound)) = self.selected_arm(&match_) {
-                    let arm = self.take_arm(match_, index, bound);
-                    for binding in arm.bindings {
-                        self.pure_binding(binding, out);
-                    }
-                    let result = self.resolve(arm.result);
-                    self.renames.insert(name, result);
-                    return;
-                }
-                let match_ = self.evaluate_arms(match_, Self::pure_block);
-                out.push(IrBinding {
-                    binder,
-                    op: FlatPureOp::Match(match_),
-                });
-            }
-            FlatPureOp::Data(op) => match self.fold(op, out) {
-                Folded::Name(target) => {
-                    self.renames.insert(name, target);
-                }
-                Folded::Op(op) => {
-                    self.values.insert(name, op.clone());
-                    out.push(IrBinding {
-                        binder,
-                        op: FlatPureOp::Data(op),
-                    });
-                }
-            },
-            FlatPureOp::Lambda(IrLambda { parameters, body }) => {
-                let lambda = IrLambda {
-                    parameters,
-                    body: self.pure_block(body),
-                };
-                let mut budget = APPLY_BUDGET;
-                if pure_fits(&lambda.body, &mut budget) {
-                    self.pure_lambdas
-                        .insert(name, (APPLY_BUDGET - budget, lambda.clone()));
-                }
-                out.push(IrBinding {
-                    binder,
-                    op: FlatPureOp::Lambda(lambda),
-                });
-            }
-            FlatPureOp::Apply(closure, args) => {
-                // The copy runs in place of the application, its bindings
-                // joining the block the application sits in, as the
-                // selected arm of a match does.
-                if let Some((size, lambda)) = self.pure_lambdas.get(&closure)
-                    && let Some(fuel) = self.fuel.checked_sub(*size)
-                {
-                    self.fuel = fuel;
-                    let body = Freshener::new(&mut *self.value_ids, arguments(lambda, &args))
-                        .freshen_pure_block(&lambda.body);
-                    for binding in body.bindings {
-                        self.pure_binding(binding, out);
-                    }
-                    let result = self.resolve(body.result);
-                    self.renames.insert(name, result);
-                    return;
-                }
-                out.push(IrBinding {
-                    binder,
-                    op: FlatPureOp::Apply(closure, args),
-                });
-            }
-            op @ (FlatPureOp::Call(..)
-            | FlatPureOp::CellWrite(..)
-            | FlatPureOp::CellRead(_)
-            | FlatPureOp::MutationPure(_)
-            | FlatPureOp::MutationBind(..)) => {
-                out.push(IrBinding { binder, op });
-            }
-        }
-    }
-
-    fn html_bindings(&mut self, bindings: Vec<FlatHtmlBinding>, out: &mut Vec<FlatHtmlBinding>) {
-        let mut pure = Vec::new();
+    fn bindings(&mut self, bindings: Vec<FlatBinding>, out: &mut Vec<FlatBinding>) {
         for binding in bindings {
-            match binding {
-                FlatHtmlBinding::Pure(binding) => {
-                    self.pure_binding(binding, &mut pure);
-                    out.extend(pure.drain(..).map(FlatHtmlBinding::Pure));
-                }
-                // A cell is never constant, as a click may have set it.
-                FlatHtmlBinding::Cell(binder, initial) => {
-                    out.push(FlatHtmlBinding::Cell(binder, self.pure_block(initial)));
-                }
-                FlatHtmlBinding::Track(binder, cell) => {
-                    out.push(FlatHtmlBinding::Track(binder, self.resolve(cell)));
-                }
-                FlatHtmlBinding::Mint(binder) => out.push(FlatHtmlBinding::Mint(binder)),
-                FlatHtmlBinding::Html(binding) => self.html_binding(binding, out),
-            }
+            self.binding(binding, out);
         }
     }
 
-    fn html_binding(
-        &mut self,
-        binding: IrBinding<IrFunctionHtmlType, FlatHtmlOp>,
-        out: &mut Vec<FlatHtmlBinding>,
-    ) {
+    fn binding(&mut self, binding: FlatBinding, out: &mut Vec<FlatBinding>) {
         let IrBinding { binder, mut op } = binding;
         let name = binder.var;
         op.for_each_operand_mut(&mut |operand| *operand = self.resolve(*operand));
         let mut op = match op {
-            FlatHtmlOp::Match(match_) => {
+            FlatOp::Match(match_) => {
                 if let Some((index, bound)) = self.selected_arm(&match_) {
                     let arm = self.take_arm(match_, index, bound);
-                    self.html_bindings(arm.bindings, out);
+                    self.bindings(arm.bindings, out);
                     let result = self.resolve(arm.result);
                     self.renames.insert(name, result);
                     return;
                 }
-                FlatHtmlOp::Match(self.evaluate_arms(match_, Self::html_block))
+                FlatOp::Match(self.evaluate_arms(match_))
             }
-            FlatHtmlOp::For(FlatFor {
+            FlatOp::Data(op) => match self.fold(op, out) {
+                Folded::Name(target) => {
+                    self.renames.insert(name, target);
+                    return;
+                }
+                Folded::Op(op) => {
+                    self.values.insert(name, op.clone());
+                    FlatOp::Data(op)
+                }
+            },
+            FlatOp::For(FlatFor {
                 var,
                 array,
                 key,
                 body,
-            }) => FlatHtmlOp::For(FlatFor {
+            }) => FlatOp::For(FlatFor {
                 var,
                 array,
-                key: key.map(|key| self.pure_block(key)),
-                body: self.html_block(body),
+                key: key.map(|key| self.block(key)),
+                body: self.block(body),
             }),
-            FlatHtmlOp::Lambda(IrLambda { parameters, body }) => {
+            FlatOp::Lambda(IrLambda { parameters, body }) => {
                 let lambda = IrLambda {
                     parameters,
-                    body: self.html_block(body),
+                    body: self.block(body),
                 };
                 let mut budget = APPLY_BUDGET;
-                if html_fits(&lambda.body, &mut budget) {
-                    self.html_lambdas
+                if fits(&lambda.body, &mut budget) {
+                    self.lambdas
                         .insert(name, (APPLY_BUDGET - budget, lambda.clone()));
                 }
-                FlatHtmlOp::Lambda(lambda)
+                FlatOp::Lambda(lambda)
             }
-            FlatHtmlOp::Apply(closure, args) => {
-                if let Some((size, lambda)) = self.html_lambdas.get(&closure)
+            FlatOp::Apply(closure, args) => {
+                if let Some((size, lambda)) = self.lambdas.get(&closure)
                     && let Some(fuel) = self.fuel.checked_sub(*size)
                 {
                     self.fuel = fuel;
                     let body = Freshener::new(&mut *self.value_ids, arguments(lambda, &args))
-                        .freshen_html_block(&lambda.body);
-                    self.html_bindings(body.bindings, out);
+                        .freshen_block(&lambda.body);
+                    self.bindings(body.bindings, out);
                     let result = self.resolve(body.result);
                     self.renames.insert(name, result);
                     return;
                 }
-                FlatHtmlOp::Apply(closure, args)
+                FlatOp::Apply(closure, args)
             }
-            FlatHtmlOp::Concat(parts) => {
+            FlatOp::Concat(parts) => {
                 let mut flattened = Vec::with_capacity(parts.len());
                 for part in parts {
                     match self.html_concats.get(&part) {
@@ -554,18 +408,18 @@ impl<'a> Evaluator<'a> {
                 }
                 return;
             }
-            FlatHtmlOp::Escape(string) => match self.values.get(&string) {
+            FlatOp::Escape(string) => match self.values.get(&string) {
                 // TODO: Fold a literal with a carriage return too, once the
                 // escapes of the evaluator and of the TypeScript and Rust
                 // backends write it as &#13;.
                 Some(IrDataOp::StringLiteral(value)) if !value.as_str().contains('\r') => {
                     let mut markup = String::new();
                     write_escaped_html(value.as_str(), &mut markup);
-                    FlatHtmlOp::Text(CheapString::new(markup))
+                    FlatOp::Text(CheapString::new(markup))
                 }
-                _ => FlatHtmlOp::Escape(string),
+                _ => FlatOp::Escape(string),
             },
-            FlatHtmlOp::Element(mut element) => {
+            FlatOp::Element(mut element) => {
                 let values = &self.values;
                 element.attributes.retain(|_, attribute| {
                     !matches!(attribute, IrAttribute::Presence(present)
@@ -587,22 +441,28 @@ impl<'a> Evaluator<'a> {
                         *attribute = IrAttribute::Constant(constant);
                     }
                 }
-                FlatHtmlOp::Element(element)
+                FlatOp::Element(element)
             }
-            op => op,
+            // A cell is never constant, as a click may have set it.
+            FlatOp::Cell(initial) => FlatOp::Cell(self.block(initial)),
+            op @ (FlatOp::Call(..)
+            | FlatOp::Track(_)
+            | FlatOp::Mint
+            | FlatOp::CellWrite(..)
+            | FlatOp::CellRead(_)
+            | FlatOp::MutationPure(_)
+            | FlatOp::MutationBind(..)
+            | FlatOp::Text(_)) => op,
         };
+        // Only Html reads a concat, so this binds none for a value.
         op.for_each_operand_mut(&mut |operand| *operand = self.bind_concat(*operand, out));
-        out.push(FlatHtmlBinding::Html(IrBinding { binder, op }));
+        out.push(IrBinding { binder, op });
     }
 
     /// Fold an op whose operands are resolved. Returns the constant or
     /// name it computes when the operands allow it, and the op unchanged
     /// otherwise.
-    fn fold(
-        &mut self,
-        op: IrDataOp,
-        out: &mut Vec<IrBinding<IrFunctionDataType, FlatPureOp>>,
-    ) -> Folded {
+    fn fold(&mut self, op: IrDataOp, out: &mut Vec<FlatBinding>) -> Folded {
         match op {
             IrDataOp::FieldAccess(record, field) => match self.values.get(&record) {
                 Some(IrDataOp::Record(fields)) => Folded::Name(
@@ -656,9 +516,9 @@ impl<'a> Evaluator<'a> {
                             out.push(IrBinding {
                                 binder: IrBinder {
                                     var: name,
-                                    typ: IrFunctionDataType::Data(IrDataType::String),
+                                    typ: IrType::STRING,
                                 },
-                                op: FlatPureOp::Data(op),
+                                op: FlatOp::Data(op),
                             });
                             *merged.last_mut().expect("a previous part exists") = name;
                         }

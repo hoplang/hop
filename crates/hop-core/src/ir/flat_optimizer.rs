@@ -154,9 +154,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn Rows@f0(
+                render fn Rows@f0(
                   items@v0: Array[String],
-                  row@v1: (String) -> Html,
+                  row@v1: render (String) -> Html,
                 ) -> Html {
                   let v4: Html = for v2: String in v0 {
                     let v3: Html = v1(v2)
@@ -169,7 +169,7 @@ mod tests {
                 entrypoint Test@e0(
                   items@v7: Array[String],
                 ) -> Html {
-                  let v12: (String) -> Html = fn(
+                  let v12: render (String) -> Html = fn(
                     v8: String,
                   ) {
                     let v9: Id = mint()

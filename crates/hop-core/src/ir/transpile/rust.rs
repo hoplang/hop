@@ -12,10 +12,7 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrResultType, IrSignature,
-    IrType,
-};
+use crate::ir::ir_type::{IrDataType, IrSignature, IrType};
 use crate::ir::ir_type_declarations::{IrEnum, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
@@ -199,8 +196,8 @@ impl RustTranspiler {
             return self.name_place(arena, name);
         }
         let method = match typ {
-            IrType::Data(IrFunctionDataType::Data(IrDataType::Array(_))) => ".to_vec()",
-            IrType::Data(IrFunctionDataType::Data(IrDataType::String)) => ".to_string()",
+            IrType::Data(IrDataType::Array(_)) => ".to_vec()",
+            IrType::Data(IrDataType::String) => ".to_string()",
             _ => ".clone()",
         };
         let receiver = match self.name_binding(name) {
@@ -322,7 +319,7 @@ impl RustTranspiler {
         owner: &str,
         value: ValueId,
     ) -> Doc<'a> {
-        if let IrType::Data(IrFunctionDataType::Data(value_type)) = self.name_type(value)
+        if let IrType::Data(value_type) = self.name_type(value)
             && self.field_type_is_boxed(value_type, owner)
         {
             arena
@@ -370,13 +367,8 @@ impl RustTranspiler {
             } else {
                 Binding::Borrowed
             };
-            self.names.insert(
-                binder.var,
-                (
-                    binding,
-                    IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
-                ),
-            );
+            self.names
+                .insert(binder.var, (binding, IrType::Data(binder.typ.clone())));
         }
         if bindings.is_empty() {
             let has_fields = variants
@@ -435,66 +427,59 @@ impl RustTranspiler {
     /// Whether `t` is one of hop's scalar types.
     fn is_scalar(t: &IrType) -> bool {
         match t {
-            IrType::Data(IrFunctionDataType::Data(
-                IrDataType::Bool | IrDataType::Int | IrDataType::Float,
-            )) => true,
-            IrType::Data(IrFunctionDataType::Data(
+            IrType::Data(IrDataType::Bool | IrDataType::Int | IrDataType::Float) => true,
+            IrType::Data(
                 IrDataType::String
                 | IrDataType::Array(_)
                 | IrDataType::Tuple(_)
                 | IrDataType::Record(_)
                 | IrDataType::Enum(_)
                 | IrDataType::Option(_),
-            ))
-            | IrType::Html(IrFunctionHtmlType::Html(IrHtmlType))
-            | IrType::Data(IrFunctionDataType::Mutation(_) | IrFunctionDataType::Function(_))
-            | IrType::Html(IrFunctionHtmlType::Function(_)) => false,
+            )
+            | IrType::Html
+            | IrType::Mutation(_)
+            | IrType::Function(_) => false,
             IrType::Cell(_) => unreachable!("flat_to_writer makes a cell its value"),
-            IrType::Id(_) => unreachable!("flat_to_writer drops identities"),
+            IrType::Id => unreachable!("flat_to_writer drops identities"),
         }
     }
 
     /// Transpile a type for use in function parameters (uses references without explicit lifetimes)
     fn transpile_param_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrType) -> Doc<'a> {
         match t {
-            IrType::Data(IrFunctionDataType::Data(IrDataType::Bool)) => arena.text("bool"),
-            IrType::Data(IrFunctionDataType::Data(IrDataType::String)) => arena.text("&str"),
-            IrType::Data(IrFunctionDataType::Data(IrDataType::Float)) => arena.text("f64"),
-            IrType::Data(IrFunctionDataType::Data(IrDataType::Int)) => arena.text("i32"),
-            IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
+            IrType::Data(IrDataType::Bool) => arena.text("bool"),
+            IrType::Data(IrDataType::String) => arena.text("&str"),
+            IrType::Data(IrDataType::Float) => arena.text("f64"),
+            IrType::Data(IrDataType::Int) => arena.text("i32"),
+            IrType::Html => {
                 unreachable!("Html is written, never held")
             }
-            IrType::Data(IrFunctionDataType::Mutation(_)) => {
+            IrType::Mutation(_) => {
                 unreachable!("flat_to_writer makes a mutation the unit tuple")
             }
             IrType::Cell(_) => unreachable!("flat_to_writer makes a cell its value"),
-            IrType::Id(_) => unreachable!("flat_to_writer drops identities"),
-            IrType::Data(IrFunctionDataType::Data(IrDataType::Array(elem))) => arena
+            IrType::Id => unreachable!("flat_to_writer drops identities"),
+            IrType::Data(IrDataType::Array(elem)) => arena
                 .text("&[")
                 .append(self.transpile_data_type(arena, elem))
                 .append(arena.text("]")),
-            IrType::Data(IrFunctionDataType::Data(IrDataType::Option(inner))) => arena
+            IrType::Data(IrDataType::Option(inner)) => arena
                 .text("&Option<")
                 .append(self.transpile_data_type(arena, inner))
                 .append(arena.text(">")),
-            IrType::Data(IrFunctionDataType::Data(IrDataType::Tuple(_))) => {
+            IrType::Data(IrDataType::Tuple(_)) => {
                 arena.text("&").append(self.transpile_type(arena, t))
             }
-            IrType::Data(IrFunctionDataType::Data(
-                IrDataType::Record(name) | IrDataType::Enum(name),
-            )) => arena
+            IrType::Data(IrDataType::Record(name) | IrDataType::Enum(name)) => arena
                 .text("&")
                 .append(arena.text(name.as_str().to_string())),
-            IrType::Data(IrFunctionDataType::Function(signature)) => {
-                let parameters: Vec<IrType> = (signature.parameters.iter().cloned())
-                    .map(IrType::Data)
-                    .collect();
-                let result = self.transpile_result_type(arena, &signature.result);
-                self.transpile_fn_type(arena, None, &parameters, Some(result))
-            }
-            IrType::Html(IrFunctionHtmlType::Function(signature)) => {
+            IrType::Function(signature) if *signature.result == IrType::Html => {
                 let output = arena.text("&mut String");
                 self.transpile_fn_type(arena, Some(output), &signature.parameters, None)
+            }
+            IrType::Function(signature) => {
+                let result = self.transpile_result_type(arena, &signature.result);
+                self.transpile_fn_type(arena, None, &signature.parameters, Some(result))
             }
         }
     }
@@ -1035,10 +1020,7 @@ impl Transpiler for RustTranspiler {
         if let Some(binder) = var {
             self.names.insert(
                 binder.var,
-                (
-                    Binding::Borrowed,
-                    IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
-                ),
+                (Binding::Borrowed, IrType::Data(binder.typ.clone())),
             );
         }
         doc.append(
@@ -1143,10 +1125,7 @@ impl Transpiler for RustTranspiler {
                 if let Some(binder) = some_arm_binding {
                     self.names.insert(
                         binder.var,
-                        (
-                            Binding::Borrowed,
-                            IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
-                        ),
+                        (Binding::Borrowed, IrType::Data(binder.typ.clone())),
                     );
                 }
 
@@ -1319,26 +1298,12 @@ impl Transpiler for RustTranspiler {
         arena.text(name.to_string())
     }
 
-    fn transpile_value_function_type<'a>(
+    fn transpile_closure_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrSignature<IrFunctionDataType, IrResultType>,
+        signature: &IrSignature,
     ) -> Doc<'a> {
-        self.transpile_param_type(
-            arena,
-            &IrType::Data(IrFunctionDataType::Function(signature.clone())),
-        )
-    }
-
-    fn transpile_html_function_type<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        signature: &IrSignature<IrType, IrHtmlType>,
-    ) -> Doc<'a> {
-        self.transpile_param_type(
-            arena,
-            &IrType::Html(IrFunctionHtmlType::Function(signature.clone())),
-        )
+        self.transpile_param_type(arena, &IrType::Function(signature.clone()))
     }
 
     // The parameter types are written out, which makes the closure take
@@ -1365,10 +1330,7 @@ impl Transpiler for RustTranspiler {
                 let body = self.transpile_braced_statements(arena, statements);
                 return head.append(arena.text(" ")).append(body);
             }
-            (
-                WriterFunctionBody::Returns(block),
-                IrType::Data(IrFunctionDataType::Function(signature)),
-            ) => {
+            (WriterFunctionBody::Returns(block), IrType::Function(signature)) => {
                 let result = self.transpile_result_type(arena, &signature.result);
                 (
                     head.append(arena.text(" -> ")).append(result),
@@ -1874,10 +1836,7 @@ impl Transpiler for RustTranspiler {
                 if let Some(binder) = some_arm_binding {
                     self.names.insert(
                         binder.var,
-                        (
-                            Binding::Borrowed,
-                            IrType::Data(IrFunctionDataType::Data(binder.typ.clone())),
-                        ),
+                        (Binding::Borrowed, IrType::Data(binder.typ.clone())),
                     );
                 }
                 let subject_doc = self.name_ref(arena, *subject);

@@ -2,19 +2,16 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
 use crate::ir::flat_program::{
-    FlatEntrypoint, FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
-    FlatPureBlock, FlatPureOp,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
 };
-use crate::ir::flat_transform::callees::{collect_html_callees, collect_pure_callees};
+use crate::ir::flat_transform::callees::collect_callees;
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
-use crate::ir::ir_type::{IrFunctionDataType, IrFunctionHtmlType};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// A pass that replaces a call to a non-recursive function with the
@@ -39,15 +36,8 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
     let mut graph: DependencyGraph<FunctionId> = DependencyGraph::new();
     for function in &functions {
         let mut callees = BTreeSet::new();
-        match function {
-            FlatFunction::Pure(function) => {
-                collect_pure_callees(&function.body, &mut callees);
-            }
-            FlatFunction::Html(function) => {
-                collect_html_callees(&function.body, &mut callees);
-            }
-        }
-        graph.set_dependencies(function.function().id, callees);
+        collect_callees(&function.body, &mut callees);
+        graph.set_dependencies(function.function.id, callees);
     }
 
     let sccs = graph.sorted_sccs();
@@ -59,11 +49,9 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
         .collect();
 
     // Declaration order is part of the program's identity, so keep it.
-    let order: Vec<FunctionId> = functions.iter().map(|f| f.function().id).collect();
-    let mut decls: HashMap<FunctionId, FlatFunction> = functions
-        .into_iter()
-        .map(|f| (f.function().id, f))
-        .collect();
+    let order: Vec<FunctionId> = functions.iter().map(|f| f.function.id).collect();
+    let mut decls: HashMap<FunctionId, FlatFunction> =
+        functions.into_iter().map(|f| (f.function.id, f)).collect();
 
     // The name each inlined call's result is read through. One map serves
     // every body, since names are unique in the program.
@@ -83,15 +71,9 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
             value_ids: &mut value_ids,
             renames: &mut renames,
         };
-        let decl = match decl {
-            FlatFunction::Pure(function) => FlatFunction::Pure(IrFunctionDeclaration {
-                body: inliner.pure_block(function.body),
-                ..function
-            }),
-            FlatFunction::Html(function) => FlatFunction::Html(IrFunctionDeclaration {
-                body: inliner.html_block(function.body),
-                ..function
-            }),
+        let decl = FlatFunction {
+            body: inliner.block(decl.body),
+            ..decl
         };
         decls.insert(id, decl);
     }
@@ -106,7 +88,7 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
                 renames: &mut renames,
             };
             FlatEntrypoint {
-                body: inliner.html_block(entrypoint.body),
+                body: inliner.block(entrypoint.body),
                 ..entrypoint
             }
         })
@@ -117,7 +99,7 @@ pub fn inline_function_calls(program: FlatProgram) -> FlatProgram {
     let functions = order
         .into_iter()
         .map(|id| decls.remove(&id).expect("each function is declared once"))
-        .filter(|decl| recursive.contains(&decl.function().id))
+        .filter(|decl| recursive.contains(&decl.function.id))
         .collect();
 
     FlatProgram {
@@ -156,12 +138,12 @@ impl<'a> Inliner<'a> {
     fn freshener(&mut self, decl: &FlatFunction, args: Vec<ValueId>) -> Freshener<'_> {
         assert_eq!(
             args.len(),
-            decl.parameters().len(),
+            decl.parameters.len(),
             "call to {} supplies one argument per parameter",
-            decl.function()
+            decl.function
         );
         let arguments = decl
-            .parameters()
+            .parameters
             .iter()
             .zip(args)
             .map(|(param, arg)| (param.binder.var, arg))
@@ -169,36 +151,11 @@ impl<'a> Inliner<'a> {
         Freshener::new(self.value_ids, arguments)
     }
 
-    fn pure_block(&mut self, block: FlatPureBlock) -> FlatPureBlock {
-        let mut bindings = Vec::with_capacity(block.bindings.len());
-        for binding in block.bindings {
-            self.pure_binding(binding, &mut bindings);
-        }
-        IrBlock {
-            bindings,
-            result: self.rename(block.result),
-        }
-    }
-
     /// The bindings of an inlined call take its place in the block.
-    fn html_block(&mut self, block: FlatHtmlBlock) -> FlatHtmlBlock {
+    fn block(&mut self, block: FlatBlock) -> FlatBlock {
         let mut bindings = Vec::with_capacity(block.bindings.len());
-        let mut pure = Vec::new();
         for binding in block.bindings {
-            match binding {
-                FlatHtmlBinding::Pure(binding) => {
-                    self.pure_binding(binding, &mut pure);
-                    bindings.extend(pure.drain(..).map(FlatHtmlBinding::Pure));
-                }
-                FlatHtmlBinding::Cell(binder, initial) => {
-                    bindings.push(FlatHtmlBinding::Cell(binder, self.pure_block(initial)));
-                }
-                FlatHtmlBinding::Track(binder, cell) => {
-                    bindings.push(FlatHtmlBinding::Track(binder, self.rename(cell)));
-                }
-                FlatHtmlBinding::Mint(binder) => bindings.push(FlatHtmlBinding::Mint(binder)),
-                FlatHtmlBinding::Html(binding) => self.html_binding(binding, &mut bindings),
-            }
+            self.binding(binding, &mut bindings);
         }
         IrBlock {
             bindings,
@@ -206,97 +163,51 @@ impl<'a> Inliner<'a> {
         }
     }
 
-    fn match_<B>(
-        &mut self,
-        match_: IrMatch<B>,
-        inline_block: impl Fn(&mut Self, B) -> B,
-    ) -> IrMatch<B> {
-        IrMatch {
-            subject: match_.subject,
-            arms: match_
-                .arms
-                .into_iter()
-                .map(|arm| IrMatchArm {
-                    pattern: arm.pattern,
-                    body: inline_block(self, arm.body),
-                })
-                .collect(),
-        }
-    }
-
-    fn pure_binding(
-        &mut self,
-        binding: IrBinding<IrFunctionDataType, FlatPureOp>,
-        out: &mut Vec<IrBinding<IrFunctionDataType, FlatPureOp>>,
-    ) {
+    fn binding(&mut self, binding: FlatBinding, out: &mut Vec<FlatBinding>) {
         let IrBinding { binder, mut op } = binding;
         op.for_each_operand_mut(&mut |operand| *operand = self.rename(*operand));
         let op = match op {
-            FlatPureOp::Call(function, args) => match self.inlined(&function) {
+            FlatOp::Call(function, args) => match self.inlined(&function) {
                 Some(decl) => {
-                    let FlatFunction::Pure(callee) = decl else {
-                        panic!("{function} is called for a value but returns Html");
-                    };
-                    let body = self.freshener(decl, args).freshen_pure_block(&callee.body);
+                    let body = self.freshener(decl, args).freshen_block(&decl.body);
                     out.extend(body.bindings);
                     // The result is a fresh name or an argument, and neither
                     // is ever renamed, so no read goes through two renames.
                     self.renames.insert(binder.var, body.result);
                     return;
                 }
-                None => FlatPureOp::Call(function, args),
+                None => FlatOp::Call(function, args),
             },
-            FlatPureOp::Match(match_) => FlatPureOp::Match(self.match_(match_, Self::pure_block)),
-            FlatPureOp::Lambda(IrLambda { parameters, body }) => FlatPureOp::Lambda(IrLambda {
-                parameters,
-                body: self.pure_block(body),
+            FlatOp::Match(match_) => FlatOp::Match(IrMatch {
+                subject: match_.subject,
+                arms: match_
+                    .arms
+                    .into_iter()
+                    .map(|arm| IrMatchArm {
+                        pattern: arm.pattern,
+                        body: self.block(arm.body),
+                    })
+                    .collect(),
             }),
-            op => op,
-        };
-        out.push(IrBinding { binder, op });
-    }
-
-    fn html_binding(
-        &mut self,
-        binding: IrBinding<IrFunctionHtmlType, FlatHtmlOp>,
-        out: &mut Vec<FlatHtmlBinding>,
-    ) {
-        let IrBinding { binder, mut op } = binding;
-        op.for_each_operand_mut(&mut |operand| *operand = self.rename(*operand));
-        let op = match op {
-            FlatHtmlOp::Call(function, args) => match self.inlined(&function) {
-                Some(decl) => {
-                    let FlatFunction::Html(callee) = decl else {
-                        panic!("{function} is called for Html but returns a value");
-                    };
-                    let body = self.freshener(decl, args).freshen_html_block(&callee.body);
-                    out.extend(body.bindings);
-                    // The result is a fresh name or an argument, and neither
-                    // is ever renamed, so no read goes through two renames.
-                    self.renames.insert(binder.var, body.result);
-                    return;
-                }
-                None => FlatHtmlOp::Call(function, args),
-            },
-            FlatHtmlOp::Match(match_) => FlatHtmlOp::Match(self.match_(match_, Self::html_block)),
-            FlatHtmlOp::For(FlatFor {
+            FlatOp::For(FlatFor {
                 var,
                 array,
                 key,
                 body,
-            }) => FlatHtmlOp::For(FlatFor {
+            }) => FlatOp::For(FlatFor {
                 var,
                 array,
-                key: key.map(|key| self.pure_block(key)),
-                body: self.html_block(body),
+                key: key.map(|key| self.block(key)),
+                body: self.block(body),
             }),
-            FlatHtmlOp::Lambda(IrLambda { parameters, body }) => FlatHtmlOp::Lambda(IrLambda {
+            FlatOp::Lambda(IrLambda { parameters, body }) => FlatOp::Lambda(IrLambda {
                 parameters,
-                body: self.html_block(body),
+                body: self.block(body),
             }),
+            FlatOp::Cell(initial) => FlatOp::Cell(self.block(initial)),
             op => op,
         };
-        out.push(FlatHtmlBinding::Html(IrBinding { binder, op }));
+        out.push(IrBinding { binder, op });
     }
 }
 
@@ -308,7 +219,7 @@ mod tests {
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::flat_typecheck;
-    use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrType};
+    use crate::ir::ir_type::{IrDataType, IrType};
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use expect_test::{Expect, expect};
@@ -565,7 +476,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn list@f0(
+                render fn list@f0(
                   items@v0: Array[String],
                 ) -> Html {
                   let v5: Html = for v1: String in v0 {
@@ -635,7 +546,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn counter@f0() -> Html {
+                render fn counter@f0() -> Html {
                   let v1: Cell[Int] = cell {
                     let v0: Int = 0
                     v0
@@ -711,7 +622,7 @@ mod tests {
                     ],
                     Ty::mutation(Ty::tuple([])),
                     |t| {
-                        let unit = IrType::Data(IrFunctionDataType::Data(IrDataType::UNIT));
+                        let unit = IrType::Data(IrDataType::UNIT);
                         let second = t.lambda([unit], |t, _| t.param("second"));
                         t.mutation_bind(t.param("first"), second)
                     },
@@ -830,7 +741,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn count@f0(
+                render fn count@f0(
                   n@v0: Int,
                 ) -> Html {
                   let v1: Int = 1
@@ -856,7 +767,7 @@ mod tests {
                 }
 
                 -- after --
-                fn count@f0(
+                render fn count@f0(
                   n@v0: Int,
                 ) -> Html {
                   let v1: Int = 1
@@ -904,7 +815,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn ping@f0(
+                render fn ping@f0(
                   n@v0: Int,
                 ) -> Html {
                   let v2: Int = 1
@@ -923,7 +834,7 @@ mod tests {
                   }
                   v8
                 }
-                fn pong@f1(
+                render fn pong@f1(
                   n@v1: Int,
                 ) -> Html {
                   let v9: Html = f0(v1)
@@ -936,7 +847,7 @@ mod tests {
                 }
 
                 -- after --
-                fn ping@f0(
+                render fn ping@f0(
                   n@v0: Int,
                 ) -> Html {
                   let v2: Int = 1
@@ -955,7 +866,7 @@ mod tests {
                   }
                   v8
                 }
-                fn pong@f1(
+                render fn pong@f1(
                   n@v1: Int,
                 ) -> Html {
                   let v9: Html = f0(v1)

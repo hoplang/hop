@@ -7,8 +7,7 @@ use crate::html::write_escaped_html;
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
-    FlatEntrypoint, FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram,
-    FlatPureBlock, FlatPureOp,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
 };
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
@@ -21,10 +20,7 @@ use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrResultType, IrSignature,
-    IrType,
-};
+use crate::ir::ir_type::{IrDataType, IrType};
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::ir::writer_program::{
@@ -102,12 +98,13 @@ pub fn flat_to_writer(
         bound: HashSet::new(),
     };
     for function in &functions {
-        for param in &function.parameters() {
+        for param in &function.parameters {
             lowerer.analyze_parameter(&param.binder);
         }
-        match function {
-            FlatFunction::Pure(function) => lowerer.analyze_pure_block(&function.body),
-            FlatFunction::Html(function) => lowerer.analyze_html_block(&function.body),
+        if function.return_type == IrType::HTML {
+            lowerer.analyze_html_block(&function.body);
+        } else {
+            lowerer.analyze_value_block(&function.body);
         }
     }
     for entrypoint in entrypoints.iter() {
@@ -162,32 +159,31 @@ fn write(out: &mut Vec<WriterStmt>, content: &str) {
 /// mutation is the unit tuple.
 fn parameter_type(typ: &IrType) -> IrType {
     match typ {
-        IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => IrType::html_function([]),
-        IrType::Html(IrFunctionHtmlType::Function(signature)) => {
-            IrType::html_function(signature.parameters.iter().map(parameter_type))
-        }
-        IrType::Data(data) => IrType::Data(value_type(data)),
-        IrType::Cell(_) | IrType::Id(_) => {
+        IrType::Html => IrType::function(false, [], IrType::Html),
+        IrType::Function(signature) if *signature.result == IrType::Html => IrType::function(
+            false,
+            signature.parameters.iter().map(parameter_type),
+            IrType::Html,
+        ),
+        IrType::Data(_) | IrType::Mutation(_) | IrType::Function(_) => value_type(typ),
+        IrType::Cell(_) | IrType::Id => {
             unreachable!("the typechecker rejects a parameter of a cell or an identity")
         }
     }
 }
 
-fn value_type(typ: &IrFunctionDataType) -> IrFunctionDataType {
+fn value_type(typ: &IrType) -> IrType {
     match typ {
-        IrFunctionDataType::Data(_) => typ.clone(),
-        IrFunctionDataType::Mutation(_) => IrFunctionDataType::Data(IrDataType::UNIT),
-        IrFunctionDataType::Function(signature) => IrFunctionDataType::Function(IrSignature {
-            parameters: signature.parameters.iter().map(value_type).collect(),
-            result: IrResultType::Data(result_type(&signature.result)),
-        }),
-    }
-}
-
-fn result_type(typ: &IrResultType) -> IrDataType {
-    match typ {
-        IrResultType::Data(data) => data.clone(),
-        IrResultType::Mutation(_) => IrDataType::UNIT,
+        IrType::Data(_) => typ.clone(),
+        IrType::Mutation(_) => IrType::Data(IrDataType::UNIT),
+        IrType::Function(signature) => IrType::function(
+            false,
+            signature.parameters.iter().map(value_type),
+            value_type(&signature.result),
+        ),
+        IrType::Html | IrType::Cell(_) | IrType::Id => {
+            unreachable!("{typ} is not the type of a value")
+        }
     }
 }
 
@@ -206,33 +202,29 @@ enum Reader {
     Value,
 }
 
-fn html_bindings(
-    block: &FlatHtmlBlock,
-) -> impl Iterator<Item = &IrBinding<IrFunctionHtmlType, FlatHtmlOp>> {
-    block.bindings.iter().filter_map(|binding| match binding {
-        FlatHtmlBinding::Pure(_)
-        | FlatHtmlBinding::Cell(..)
-        | FlatHtmlBinding::Track(..)
-        | FlatHtmlBinding::Mint(_) => None,
-        FlatHtmlBinding::Html(binding) => Some(binding),
-    })
+fn html_bindings(block: &FlatBlock) -> impl Iterator<Item = &FlatBinding> {
+    (block.bindings.iter()).filter(|binding| binding.binder.typ.is_html_or_html_closure())
+}
+
+fn value_bindings(block: &FlatBlock) -> impl Iterator<Item = &FlatBinding> {
+    (block.bindings.iter()).filter(|binding| !binding.binder.typ.is_html_or_html_closure())
 }
 
 struct Lowerer<'a> {
     types: &'a IrTypeDeclarations,
     value_ids: ValueIdCounter,
-    /// Every Pure binding of the program, by name and by the fresh name of
+    /// Every value binding of the program, by name and by the fresh name of
     /// each copy of it. Names are unique, so one map serves every block.
-    bindings: HashMap<ValueId, &'a IrBinding<IrFunctionDataType, FlatPureOp>>,
+    bindings: HashMap<ValueId, &'a FlatBinding>,
     /// Every Html binding of the program, by name, to write it where it is
     /// read.
-    html: HashMap<ValueId, &'a IrBinding<IrFunctionHtmlType, FlatHtmlOp>>,
+    html: HashMap<ValueId, &'a FlatBinding>,
     /// The Html parameters of every function and lambda, which take a
     /// closure that writes the Html. Html is never part of another type, so
     /// these are the only names of Html that no binding binds.
     html_parameters: HashSet<ValueId>,
-    /// The type of each parameter, loop variable, binding of a pattern of
-    /// data, cell and track, none of which is in `bindings`.
+    /// The type of each parameter, loop variable and binding of a pattern
+    /// of data, none of which is in `bindings`.
     binder_types: HashMap<ValueId, IrDataType>,
     /// What reads each name, once for each read.
     readers: HashMap<ValueId, Vec<Reader>>,
@@ -254,28 +246,26 @@ impl<'a> Lowerer<'a> {
     /// Whether the name is Html.
     fn is_html(&self, name: ValueId) -> bool {
         self.html_parameters.contains(&name)
-            || (self.html.get(&name))
-                .is_some_and(|binding| binding.binder.typ == IrFunctionHtmlType::Html(IrHtmlType))
+            || (self.html.get(&name)).is_some_and(|binding| binding.binder.typ == IrType::HTML)
     }
 
     // An Html parameter takes a closure, and the type of a parameter of data
     // is what a match on it needs. A mutation is the unit tuple.
     fn analyze_parameter(&mut self, binder: &IrBinder<IrType>) {
         match &binder.typ {
-            IrType::Data(IrFunctionDataType::Data(typ)) => {
+            IrType::Data(typ) => {
                 self.binder_types.insert(binder.var, typ.clone());
             }
-            IrType::Data(IrFunctionDataType::Mutation(_)) => {
+            IrType::Mutation(_) => {
                 self.binder_types.insert(binder.var, IrDataType::UNIT);
             }
-            IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => {
+            IrType::Html => {
                 self.html_parameters.insert(binder.var);
             }
-            IrType::Cell(_) | IrType::Id(_) => {
+            IrType::Cell(_) | IrType::Id => {
                 unreachable!("the typechecker rejects a parameter of a cell or an identity")
             }
-            IrType::Data(IrFunctionDataType::Function(_))
-            | IrType::Html(IrFunctionHtmlType::Function(_)) => {}
+            IrType::Function(_) => {}
         }
     }
 
@@ -302,7 +292,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Record the binding and what it reads. Panics if it reads Html.
-    fn analyze_pure_binding(&mut self, binding: &'a IrBinding<IrFunctionDataType, FlatPureOp>) {
+    fn analyze_value_binding(&mut self, binding: &'a FlatBinding) {
         binding.op.for_each_operand(&mut |operand| {
             assert!(
                 !self.is_html(operand),
@@ -312,80 +302,78 @@ impl<'a> Lowerer<'a> {
         });
         self.bindings.insert(binding.binder.var, binding);
         match &binding.op {
-            FlatPureOp::Data(IrDataOp::StringConcat(parts)) => {
+            FlatOp::Data(IrDataOp::StringConcat(parts)) => {
                 for part in parts {
                     self.read(*part, Reader::ConcatPart(binding.binder.var));
                 }
             }
-            FlatPureOp::Data(op) => {
+            FlatOp::Data(op) => {
                 op.for_each_operand(&mut |operand| self.read(operand, Reader::Value));
             }
-            FlatPureOp::Call(_, args) => {
+            FlatOp::Call(_, args) => {
                 for arg in args {
                     self.read(*arg, Reader::Value);
                 }
             }
-            FlatPureOp::Match(match_) => {
+            FlatOp::Match(match_) => {
                 self.read_subject(match_);
                 for arm in &match_.arms {
                     self.analyze_pattern(&arm.pattern);
-                    self.analyze_pure_block(&arm.body);
+                    self.analyze_value_block(&arm.body);
                 }
             }
             // Rendered on the empty state, a mutation performs nothing, so
             // it reads nothing.
-            FlatPureOp::CellWrite(..)
-            | FlatPureOp::CellRead(_)
-            | FlatPureOp::MutationPure(_)
-            | FlatPureOp::MutationBind(..) => {}
-            FlatPureOp::Lambda(lambda) => {
+            FlatOp::CellWrite(..)
+            | FlatOp::CellRead(_)
+            | FlatOp::MutationPure(_)
+            | FlatOp::MutationBind(..) => {}
+            FlatOp::Lambda(lambda) => {
                 for param in &lambda.parameters {
-                    self.analyze_parameter(&IrBinder {
-                        var: param.var,
-                        typ: IrType::Data(param.typ.clone()),
-                    });
+                    self.analyze_parameter(param);
                 }
-                self.analyze_pure_block(&lambda.body);
+                self.analyze_value_block(&lambda.body);
             }
-            FlatPureOp::Apply(closure, args) => {
+            FlatOp::Apply(closure, args) => {
                 self.read(*closure, Reader::Value);
                 self.read_args(args);
             }
+            // Rendered on the empty state, a cell and its track are the
+            // initial value of the cell.
+            FlatOp::Cell(initial) => self.analyze_value_block(initial),
+            FlatOp::Track(cell) => self.read(*cell, Reader::Value),
+            FlatOp::Mint => {}
+            FlatOp::Text(_)
+            | FlatOp::Escape(_)
+            | FlatOp::Concat(_)
+            | FlatOp::Element(_)
+            | FlatOp::For(_) => unreachable!("an op of a value renders no Html"),
         }
     }
 
-    fn analyze_pure_block(&mut self, block: &'a FlatPureBlock) {
+    /// Record the bindings of a block that produces a value, and what they
+    /// read. Such a block binds no Html.
+    fn analyze_value_block(&mut self, block: &'a FlatBlock) {
         for binding in &block.bindings {
-            self.analyze_pure_binding(binding);
+            self.analyze_value_binding(binding);
         }
         self.read(block.result, Reader::Value);
     }
 
     /// Record the bindings of the block and what they read. Its Html is
     /// recorded first, so that a value that reads it is found.
-    fn analyze_html_block(&mut self, block: &'a FlatHtmlBlock) {
+    fn analyze_html_block(&mut self, block: &'a FlatBlock) {
         for binding in html_bindings(block) {
             self.html.insert(binding.binder.var, binding);
         }
-        for binding in &block.bindings {
-            match binding {
-                FlatHtmlBinding::Pure(binding) => self.analyze_pure_binding(binding),
-                FlatHtmlBinding::Cell(binder, initial) => {
-                    self.binder_types.insert(binder.var, binder.typ.clone());
-                    self.analyze_pure_block(initial);
-                }
-                FlatHtmlBinding::Track(binder, cell) => {
-                    self.binder_types.insert(binder.var, binder.typ.clone());
-                    self.read(*cell, Reader::Value);
-                }
-                FlatHtmlBinding::Mint(_) | FlatHtmlBinding::Html(_) => {}
-            }
+        for binding in value_bindings(block) {
+            self.analyze_value_binding(binding);
         }
         for binding in html_bindings(block) {
             match &binding.op {
-                FlatHtmlOp::Text(_) | FlatHtmlOp::Concat(_) => {}
-                FlatHtmlOp::Escape(string) => self.read(*string, Reader::Escaped),
-                FlatHtmlOp::Element(IrHtmlElement { attributes, .. }) => {
+                FlatOp::Text(_) | FlatOp::Concat(_) => {}
+                FlatOp::Escape(string) => self.read(*string, Reader::Escaped),
+                FlatOp::Element(IrHtmlElement { attributes, .. }) => {
                     for attribute in attributes.values() {
                         match attribute {
                             IrAttribute::Value(value) => {
@@ -398,14 +386,14 @@ impl<'a> Lowerer<'a> {
                         }
                     }
                 }
-                FlatHtmlOp::Match(match_) => {
+                FlatOp::Match(match_) => {
                     self.read_subject(match_);
                     for arm in &match_.arms {
                         self.analyze_pattern(&arm.pattern);
                         self.analyze_html_block(&arm.body);
                     }
                 }
-                FlatHtmlOp::For(FlatFor {
+                FlatOp::For(FlatFor {
                     var, array, body, ..
                 }) => {
                     if let Some(binder) = var {
@@ -414,17 +402,25 @@ impl<'a> Lowerer<'a> {
                     self.read(*array, Reader::Value);
                     self.analyze_html_block(body);
                 }
-                FlatHtmlOp::Call(_, args) => self.read_args(args),
-                FlatHtmlOp::Lambda(lambda) => {
+                FlatOp::Call(_, args) => self.read_args(args),
+                FlatOp::Lambda(lambda) => {
                     for param in &lambda.parameters {
                         self.analyze_parameter(param);
                     }
                     self.analyze_html_block(&lambda.body);
                 }
-                FlatHtmlOp::Apply(closure, args) => {
+                FlatOp::Apply(closure, args) => {
                     self.read(*closure, Reader::Value);
                     self.read_args(args);
                 }
+                FlatOp::Data(_)
+                | FlatOp::Cell(_)
+                | FlatOp::Track(_)
+                | FlatOp::Mint
+                | FlatOp::CellWrite(..)
+                | FlatOp::CellRead(_)
+                | FlatOp::MutationPure(_)
+                | FlatOp::MutationBind(..) => unreachable!("Html is not bound by an op of a value"),
             }
         }
     }
@@ -449,14 +445,14 @@ impl<'a> Lowerer<'a> {
             return false;
         };
         match binding.op {
-            FlatPureOp::Data(IrDataOp::StringLiteral(_) | IrDataOp::StringConcat(_)) => {
+            FlatOp::Data(IrDataOp::StringLiteral(_) | IrDataOp::StringConcat(_)) => {
                 readers.iter().all(|reader| match reader {
                     Reader::Escaped => true,
                     Reader::ConcatPart(concat) => self.folded(*concat),
                     Reader::TakenApart | Reader::Value => false,
                 })
             }
-            FlatPureOp::Data(IrDataOp::Tuple(_) | IrDataOp::Record(..)) => readers
+            FlatOp::Data(IrDataOp::Tuple(_) | IrDataOp::Record(..)) => readers
                 .iter()
                 .all(|reader| matches!(reader, Reader::TakenApart)),
             _ => false,
@@ -530,95 +526,106 @@ impl<'a> Lowerer<'a> {
         &mut self,
         decl: &'a FlatFunction,
     ) -> IrFunctionDeclaration<IrType, IrType, WriterFunctionBody> {
-        match decl {
-            FlatFunction::Html(function) => {
-                let mut statements = Vec::new();
-                self.write_block(&function.body, &mut statements);
-                IrFunctionDeclaration {
-                    function: function.function.clone(),
-                    parameters: (function.parameters.iter())
-                        .map(|param| IrParameter {
-                            name: param.name.clone(),
-                            binder: IrBinder {
-                                var: param.binder.var,
-                                typ: parameter_type(&param.binder.typ),
-                            },
-                        })
-                        .collect(),
-                    return_type: IrType::HTML,
-                    body: WriterFunctionBody::Writes(statements),
-                }
-            }
-            FlatFunction::Pure(function) => {
-                let mut bindings = Vec::new();
-                self.lower_pure_bindings(&function.body.bindings, &mut bindings);
-                IrFunctionDeclaration {
-                    function: function.function.clone(),
-                    parameters: (decl.parameters().into_iter())
-                        .map(|param| IrParameter {
-                            name: param.name,
-                            binder: IrBinder {
-                                var: param.binder.var,
-                                typ: parameter_type(&param.binder.typ),
-                            },
-                        })
-                        .collect(),
-                    return_type: IrType::Data(IrFunctionDataType::Data(result_type(
-                        &function.return_type,
-                    ))),
-                    body: WriterFunctionBody::Returns(WriterBlock {
-                        bindings,
-                        result: self.name(function.body.result),
-                    }),
-                }
-            }
+        if decl.return_type == IrType::HTML {
+            let mut statements = Vec::new();
+            self.write_block(&decl.body, &mut statements);
+            return IrFunctionDeclaration {
+                function: decl.function.clone(),
+                parameters: (decl.parameters.iter())
+                    .map(|param| IrParameter {
+                        name: param.name.clone(),
+                        binder: IrBinder {
+                            var: param.binder.var,
+                            typ: parameter_type(&param.binder.typ),
+                        },
+                    })
+                    .collect(),
+                return_type: IrType::HTML,
+                body: WriterFunctionBody::Writes(statements),
+            };
+        }
+        let IrType::Data(return_type) = value_type(&decl.return_type) else {
+            unreachable!("a value returned is data or a mutation");
+        };
+        let body = &decl.body;
+        let mut bindings = Vec::new();
+        self.lower_value_bindings(&body.bindings, &mut bindings);
+        IrFunctionDeclaration {
+            function: decl.function.clone(),
+            parameters: (decl.parameters.iter())
+                .map(|param| IrParameter {
+                    name: param.name.clone(),
+                    binder: IrBinder {
+                        var: param.binder.var,
+                        typ: parameter_type(&param.binder.typ),
+                    },
+                })
+                .collect(),
+            return_type: IrType::Data(return_type),
+            body: WriterFunctionBody::Returns(WriterBlock {
+                bindings,
+                result: self.name(body.result),
+            }),
         }
     }
 
     /// Lower the bindings to lets, folding the results of matches into their
     /// readers and leaving out the bindings folded where they are read.
-    fn lower_pure_bindings(
+    fn lower_value_bindings(
         &mut self,
-        bindings: &'a [IrBinding<IrFunctionDataType, FlatPureOp>],
+        bindings: &'a [FlatBinding],
         out: &mut Vec<IrBinding<IrType, WriterOp>>,
     ) {
         for binding in bindings {
-            self.lower_pure_binding(binding, out);
+            self.lower_value_binding(binding, out);
         }
     }
 
-    fn lower_pure_binding(
+    fn lower_value_binding(
         &mut self,
-        binding: &'a IrBinding<IrFunctionDataType, FlatPureOp>,
+        binding: &'a FlatBinding,
         out: &mut Vec<IrBinding<IrType, WriterOp>>,
     ) {
         if self.folded(binding.binder.var) {
             return;
         }
+        let binder_type = &binding.binder.typ;
         let op = match &binding.op {
-            FlatPureOp::Match(match_) => {
-                let typ = value_type(&binding.binder.typ);
+            FlatOp::Cell(initial) => {
+                self.lower_value_bindings(&initial.bindings, out);
+                let initial = self.name(initial.result);
+                self.aliases.insert(binding.binder.var, initial);
+                return;
+            }
+            FlatOp::Track(cell) => {
+                let cell = self.name(*cell);
+                self.aliases.insert(binding.binder.var, cell);
+                return;
+            }
+            FlatOp::Mint => return,
+            FlatOp::Match(match_) => {
+                let typ = value_type(binder_type);
                 let alias = self.lower_data_match(match_, &typ, out);
                 self.aliases.insert(binding.binder.var, alias);
                 return;
             }
-            FlatPureOp::CellWrite(..)
-            | FlatPureOp::CellRead(_)
-            | FlatPureOp::MutationPure(_)
-            | FlatPureOp::MutationBind(..) => WriterOp::Data(IrDataOp::Tuple(Vec::new())),
-            FlatPureOp::Call(function, args) => WriterOp::Call(
+            FlatOp::CellWrite(..)
+            | FlatOp::CellRead(_)
+            | FlatOp::MutationPure(_)
+            | FlatOp::MutationBind(..) => WriterOp::Data(IrDataOp::Tuple(Vec::new())),
+            FlatOp::Call(function, args) => WriterOp::Call(
                 function.clone(),
                 args.iter().map(|arg| self.name(*arg)).collect(),
             ),
-            FlatPureOp::Data(op) => {
+            FlatOp::Data(op) => {
                 let mut op = op.clone();
                 op.for_each_operand_mut(&mut |name| *name = self.name(*name));
                 WriterOp::Data(op)
             }
-            FlatPureOp::Lambda(lambda) => {
+            FlatOp::Lambda(lambda) => {
                 let parameters = self.bind_parameters(&lambda.parameters);
                 let mut bindings = Vec::new();
-                self.lower_pure_bindings(&lambda.body.bindings, &mut bindings);
+                self.lower_value_bindings(&lambda.body.bindings, &mut bindings);
                 let body = WriterFunctionBody::Returns(WriterBlock {
                     bindings,
                     result: self.name(lambda.body.result),
@@ -627,21 +634,26 @@ impl<'a> Lowerer<'a> {
                     parameters: (parameters.into_iter())
                         .map(|param| IrBinder {
                             var: param.var,
-                            typ: IrType::Data(value_type(&param.typ)),
+                            typ: parameter_type(&param.typ),
                         })
                         .collect(),
                     body,
                 })
             }
-            FlatPureOp::Apply(closure, args) => WriterOp::Apply(
+            FlatOp::Apply(closure, args) => WriterOp::Apply(
                 self.name(*closure),
                 args.iter().map(|arg| self.name(*arg)).collect(),
             ),
+            FlatOp::Text(_)
+            | FlatOp::Escape(_)
+            | FlatOp::Concat(_)
+            | FlatOp::Element(_)
+            | FlatOp::For(_) => unreachable!("an op of a value renders no Html"),
         };
         out.push(IrBinding {
             binder: IrBinder {
                 var: self.bind(binding.binder.var),
-                typ: IrType::Data(value_type(&binding.binder.typ)),
+                typ: value_type(binder_type),
             },
             op,
         });
@@ -681,7 +693,7 @@ impl<'a> Lowerer<'a> {
                     lets.push(IrBinding {
                         binder: IrBinder {
                             var: name,
-                            typ: IrType::html_function([]),
+                            typ: IrType::function(false, [], IrType::Html),
                         },
                         op: WriterOp::Lambda(IrLambda {
                             parameters: Vec::new(),
@@ -710,7 +722,7 @@ impl<'a> Lowerer<'a> {
         let patterns: Vec<_> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
         let subject_type = match self.bindings.get(&match_.subject) {
             Some(binding) => {
-                let IrFunctionDataType::Data(typ) = &binding.binder.typ else {
+                let Some(typ) = binding.binder.typ.as_data() else {
                     unreachable!("a match subject is data");
                 };
                 typ.clone()
@@ -738,7 +750,7 @@ impl<'a> Lowerer<'a> {
     ) {
         let constructed = match self.bindings.get(&record).copied() {
             Some(IrBinding {
-                op: FlatPureOp::Data(IrDataOp::Record(operands)),
+                op: FlatOp::Data(IrDataOp::Record(operands)),
                 ..
             }) => Some(operands),
             _ => None,
@@ -760,7 +772,7 @@ impl<'a> Lowerer<'a> {
                     lets.push(IrBinding {
                         binder: IrBinder {
                             var: name,
-                            typ: IrType::Data(IrFunctionDataType::Data(field.var.typ.clone())),
+                            typ: IrType::Data(field.var.typ.clone()),
                         },
                         op: WriterOp::Data(IrDataOp::FieldAccess(record, field.field_name.clone())),
                     });
@@ -785,7 +797,7 @@ impl<'a> Lowerer<'a> {
     ) {
         let constructed = match self.bindings.get(&tuple).copied() {
             Some(IrBinding {
-                op: FlatPureOp::Data(IrDataOp::Tuple(operands)),
+                op: FlatOp::Data(IrDataOp::Tuple(operands)),
                 ..
             }) => Some(operands),
             _ => None,
@@ -801,7 +813,7 @@ impl<'a> Lowerer<'a> {
                     lets.push(IrBinding {
                         binder: IrBinder {
                             var: name,
-                            typ: IrType::Data(IrFunctionDataType::Data(element.typ.clone())),
+                            typ: IrType::Data(element.typ.clone()),
                         },
                         op: WriterOp::TupleIndex(tuple, index),
                     });
@@ -816,8 +828,8 @@ impl<'a> Lowerer<'a> {
     /// that compute it appended to `lets`.
     fn lower_data_match(
         &mut self,
-        match_: &'a IrMatch<FlatPureBlock>,
-        typ: &IrFunctionDataType,
+        match_: &'a IrMatch<FlatBlock>,
+        typ: &IrType,
         lets: &mut Vec<IrBinding<IrType, WriterOp>>,
     ) -> ValueId {
         let (decision, used, mut parts) = self.compile_match(match_);
@@ -832,8 +844,8 @@ impl<'a> Lowerer<'a> {
     fn lower_data_decision(
         &mut self,
         decision: &Decision<IrBinder<IrDataType>, IrDataType>,
-        arms: &'a [IrMatchArm<FlatPureBlock>],
-        typ: &IrFunctionDataType,
+        arms: &'a [IrMatchArm<FlatBlock>],
+        typ: &IrType,
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
         lets: &mut Vec<IrBinding<IrType, WriterOp>>,
@@ -845,7 +857,7 @@ impl<'a> Lowerer<'a> {
                         .insert(binding.binder.var, parts[&binding.source]);
                 }
                 let block = &arms[body.value].body;
-                self.lower_pure_bindings(&block.bindings, lets);
+                self.lower_value_bindings(&block.bindings, lets);
                 return self.name(block.result);
             }
 
@@ -978,7 +990,7 @@ impl<'a> Lowerer<'a> {
         lets.push(IrBinding {
             binder: IrBinder {
                 var: name,
-                typ: IrType::Data(typ.clone()),
+                typ: typ.clone(),
             },
             op: WriterOp::Match(switch),
         });
@@ -1008,28 +1020,14 @@ impl<'a> Lowerer<'a> {
 
     /// Write a block: the lets of its values, then those of its closures,
     /// then its result.
-    fn write_block(&mut self, block: &'a FlatHtmlBlock, out: &mut Vec<WriterStmt>) {
+    fn write_block(&mut self, block: &'a FlatBlock, out: &mut Vec<WriterStmt>) {
         let mut lets = Vec::new();
-        for binding in &block.bindings {
-            match binding {
-                FlatHtmlBinding::Pure(binding) => {
-                    self.lower_pure_binding(binding, &mut lets);
-                }
-                FlatHtmlBinding::Cell(binder, initial) => {
-                    self.lower_pure_bindings(&initial.bindings, &mut lets);
-                    let initial = self.name(initial.result);
-                    self.aliases.insert(binder.var, initial);
-                }
-                FlatHtmlBinding::Track(binder, cell) => {
-                    let cell = self.name(*cell);
-                    self.aliases.insert(binder.var, cell);
-                }
-                FlatHtmlBinding::Mint(_) | FlatHtmlBinding::Html(_) => {}
-            }
+        for binding in value_bindings(block) {
+            self.lower_value_binding(binding, &mut lets);
         }
         out.extend(lets.into_iter().map(WriterStmt::Let));
         for binding in html_bindings(block) {
-            let FlatHtmlOp::Lambda(lambda) = &binding.op else {
+            let FlatOp::Lambda(lambda) = &binding.op else {
                 continue;
             };
             let parameters = (self.bind_parameters(&lambda.parameters).into_iter())
@@ -1043,7 +1041,7 @@ impl<'a> Lowerer<'a> {
             out.push(WriterStmt::Let(IrBinding {
                 binder: IrBinder {
                     var: self.bind(binding.binder.var),
-                    typ: parameter_type(&IrType::Html(binding.binder.typ.clone())),
+                    typ: parameter_type(&binding.binder.typ),
                 },
                 op: WriterOp::Lambda(IrLambda {
                     parameters,
@@ -1063,12 +1061,12 @@ impl<'a> Lowerer<'a> {
             return;
         }
         match &self.bindings[&name].op {
-            FlatPureOp::Data(IrDataOp::StringLiteral(value)) => {
+            FlatOp::Data(IrDataOp::StringLiteral(value)) => {
                 let mut content = String::new();
                 write_escaped_html(value.as_str(), &mut content);
                 write(out, &content);
             }
-            FlatPureOp::Data(IrDataOp::StringConcat(parts)) => {
+            FlatOp::Data(IrDataOp::StringConcat(parts)) => {
                 for part in parts {
                     self.write_escaped(*part, out);
                 }
@@ -1089,24 +1087,24 @@ impl<'a> Lowerer<'a> {
             .get(&html)
             .unwrap_or_else(|| panic!("{html} is read as Html but is not Html"));
         match &binding.op {
-            FlatHtmlOp::Text(text) => write(out, text.as_str()),
+            FlatOp::Text(text) => write(out, text.as_str()),
 
-            FlatHtmlOp::Escape(string) => self.write_escaped(*string, out),
+            FlatOp::Escape(string) => self.write_escaped(*string, out),
 
-            FlatHtmlOp::Concat(parts) => {
+            FlatOp::Concat(parts) => {
                 for part in parts {
                     self.write_html(*part, out);
                 }
             }
 
-            FlatHtmlOp::Element(element) => self.write_element(element, out),
+            FlatOp::Element(element) => self.write_element(element, out),
 
-            FlatHtmlOp::Match(match_) => {
+            FlatOp::Match(match_) => {
                 let (decision, used, mut parts) = self.compile_match(match_);
                 self.write_decision(&decision, &match_.arms, &used, &mut parts, out);
             }
 
-            FlatHtmlOp::For(FlatFor {
+            FlatOp::For(FlatFor {
                 var,
                 array,
                 body,
@@ -1126,21 +1124,29 @@ impl<'a> Lowerer<'a> {
                 }));
             }
 
-            FlatHtmlOp::Call(function, args) => {
+            FlatOp::Call(function, args) => {
                 let mut lets = Vec::new();
                 let args = self.lower_args(args, &mut lets);
                 out.extend(lets.into_iter().map(WriterStmt::Let));
                 out.push(WriterStmt::WriteFunction(function.clone(), args));
             }
 
-            FlatHtmlOp::Apply(closure, args) => {
+            FlatOp::Apply(closure, args) => {
                 let mut lets = Vec::new();
                 let args = self.lower_args(args, &mut lets);
                 out.extend(lets.into_iter().map(WriterStmt::Let));
                 out.push(WriterStmt::WriteApply(self.name(*closure), args));
             }
 
-            FlatHtmlOp::Lambda(_) => unreachable!("a closure is bound, not written"),
+            FlatOp::Lambda(_) => unreachable!("a closure is bound, not written"),
+            FlatOp::Data(_)
+            | FlatOp::Cell(_)
+            | FlatOp::Track(_)
+            | FlatOp::Mint
+            | FlatOp::CellWrite(..)
+            | FlatOp::CellRead(_)
+            | FlatOp::MutationPure(_)
+            | FlatOp::MutationBind(..) => unreachable!("Html is not bound by an op of a value"),
         }
     }
 
@@ -1204,7 +1210,7 @@ impl<'a> Lowerer<'a> {
     fn write_decision(
         &mut self,
         decision: &Decision<IrBinder<IrDataType>, IrDataType>,
-        arms: &'a [IrMatchArm<FlatHtmlBlock>],
+        arms: &'a [IrMatchArm<FlatBlock>],
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
         out: &mut Vec<WriterStmt>,
@@ -1389,7 +1395,7 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- flat --
-                fn Buttons@f0(
+                render fn Buttons@f0(
                   n@v0: Int,
                   on_press@v1: () -> Mutation[Tuple[]],
                 ) -> Html {
@@ -1509,9 +1515,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- flat --
-                fn Countdown@f0(
+                render fn Countdown@f0(
                   n@v0: Int,
-                  row@v1: (Int) -> Html,
+                  row@v1: render (Int) -> Html,
                 ) -> Html {
                   let v2: Int = 0
                   let v3: Bool = int_lt_eq(v0, v2)
@@ -1534,7 +1540,7 @@ mod tests {
                 entrypoint Test@e0(
                   prefix@v11: String,
                 ) -> Html {
-                  let v18: (Int) -> Html = fn(
+                  let v18: render (Int) -> Html = fn(
                     v12: Int,
                   ) {
                     let v13: String = int_to_string(v12)
@@ -1748,9 +1754,9 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- flat --
-                fn Wrap@f0(
+                render fn Wrap@f0(
                   n@v0: Int,
-                  wrap@v1: (Html) -> Html,
+                  wrap@v1: render (Html) -> Html,
                 ) -> Html {
                   let v2: Int = 0
                   let v3: Bool = int_lt_eq(v0, v2)
@@ -1770,7 +1776,7 @@ mod tests {
                   v9
                 }
                 entrypoint Test@e0() -> Html {
-                  let v13: (Html) -> Html = fn(
+                  let v13: render (Html) -> Html = fn(
                     v10: Html,
                   ) {
                     let v11: Id = mint()
@@ -2582,7 +2588,7 @@ mod tests {
             None,
             expect![[r#"
                 -- flat --
-                fn Nest@f0(
+                render fn Nest@f0(
                   depth@v8: Int,
                   children@v9: Html,
                 ) -> Html {

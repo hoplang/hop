@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::ir::flat_program::FlatFunction;
 use crate::ir::runtime::eval_error::EvalError;
-use crate::ir::runtime::flat_evaluator::evaluate_pure_apply;
+use crate::ir::runtime::flat_evaluator::evaluate_apply;
 use crate::ir::runtime::state::ElementId;
 use crate::ir::runtime::value::{Html, HtmlNode, Mutation};
 
@@ -35,7 +35,7 @@ pub fn clicks<'a>(
                         // The handler is applied to nothing, on a frame and an
                         // op count of its own. It is Pure, so the application
                         // reads no state and adds none.
-                        let own = evaluate_pure_apply(handler, Vec::new(), functions, 0, &mut 0);
+                        let own = evaluate_apply(handler, Vec::new(), functions, None, 0, &mut 0);
                         Some(match (own, around) {
                             (Err(error), _) => Err(error),
                             (Ok(_), Some(Err(error))) => Err(error.clone()),

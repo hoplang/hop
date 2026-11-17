@@ -1,29 +1,22 @@
 use std::collections::BTreeSet;
 
-use crate::ir::flat_program::{FlatFunction, FlatProgram};
+use crate::ir::flat_program::FlatProgram;
 use crate::ir::function_id::FunctionId;
 
-use super::callees::{collect_html_callees, collect_pure_callees};
+use super::callees::collect_callees;
 
 pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
     let mut reached = BTreeSet::new();
     for entrypoint in program.entrypoints.iter() {
-        collect_html_callees(&entrypoint.body, &mut reached);
+        collect_callees(&entrypoint.body, &mut reached);
     }
     let mut pending: Vec<FunctionId> = reached.iter().copied().collect();
     while let Some(id) = pending.pop() {
         let mut callees = BTreeSet::new();
-        match (program.functions.iter())
-            .find(|function| function.function().id == id)
-            .unwrap()
-        {
-            FlatFunction::Pure(function) => {
-                collect_pure_callees(&function.body, &mut callees);
-            }
-            FlatFunction::Html(function) => {
-                collect_html_callees(&function.body, &mut callees);
-            }
-        }
+        let function = (program.functions.iter())
+            .find(|function| function.function.id == id)
+            .unwrap();
+        collect_callees(&function.body, &mut callees);
         for callee in callees {
             if reached.insert(callee) {
                 pending.push(callee);
@@ -32,7 +25,7 @@ pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
     }
     FlatProgram {
         functions: (program.functions.into_iter())
-            .filter(|function| reached.contains(&function.function().id))
+            .filter(|function| reached.contains(&function.function.id))
             .collect(),
         ..program
     }
@@ -153,25 +146,25 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
-                fn row@f0(
+                render fn row@f0(
                   n@v0: Int,
                 ) -> Html {
                   let v1: String = int_to_string(v0)
                   let v2: Html = escape(v1)
                   v2
                 }
-                fn label@f1() -> Html {
+                render fn label@f1() -> Html {
                   let v3: Html = text("label")
                   v3
                 }
-                fn unused@f2() -> Html {
+                render fn unused@f2() -> Html {
                   let v4: Html = text("unused")
                   v4
                 }
                 entrypoint Test@e0(
                   items@v5: Array[Int],
                 ) -> Html {
-                  let v7: () -> Html = fn() {
+                  let v7: render () -> Html = fn() {
                     let v6: Html = f1()
                     v6
                   }
@@ -183,21 +176,21 @@ mod tests {
                 }
 
                 -- after --
-                fn row@f0(
+                render fn row@f0(
                   n@v0: Int,
                 ) -> Html {
                   let v1: String = int_to_string(v0)
                   let v2: Html = escape(v1)
                   v2
                 }
-                fn label@f1() -> Html {
+                render fn label@f1() -> Html {
                   let v3: Html = text("label")
                   v3
                 }
                 entrypoint Test@e0(
                   items@v5: Array[Int],
                 ) -> Html {
-                  let v7: () -> Html = fn() {
+                  let v7: render () -> Html = fn() {
                     let v6: Html = f1()
                     v6
                   }

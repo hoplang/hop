@@ -4,27 +4,22 @@ use std::rc::Rc;
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::entrypoint_id::EntrypointId;
-use crate::ir::flat_program::{
-    FlatFor, FlatFunction, FlatHtmlBinding, FlatHtmlBlock, FlatHtmlOp, FlatProgram, FlatPureBlock,
-    FlatPureOp,
-};
-use crate::ir::ir_binding::IrBinding;
+use crate::ir::flat_program::{FlatBinding, FlatBlock, FlatFor, FlatFunction, FlatOp, FlatProgram};
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_page::IrPage;
-use crate::ir::ir_type::IrFunctionDataType;
+use crate::ir::ir_type::IrType;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::state::{
     IterationKey, MutationTransaction, RenderTransaction, State, Step,
 };
 use crate::ir::runtime::value::{
-    Closure, Env, Html, HtmlAttribute, HtmlNode, Lambda, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH,
-    Mutation, Value,
+    Closure, Env, Html, HtmlAttribute, HtmlNode, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Mutation,
+    Value,
 };
-use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::type_name::TypeName;
 
@@ -111,22 +106,22 @@ pub(super) fn invoke_entrypoint<'a>(
             })?;
         env.bindings.push((param.binder.var, value));
     }
-    let value = evaluate_html_block(
+    let value = evaluate_block(
         &entrypoint.body,
         env,
         &program.functions,
-        &mut render,
+        Some(&mut render),
         1,
         &mut 0,
     )?;
     Ok((value, render.commit()))
 }
 
-fn evaluate_html_function<'a>(
+fn evaluate_function<'a>(
     functions: &'a [FlatFunction],
     function: &IrFunction,
     args: Vec<Value<'a>>,
-    render: &mut RenderTransaction<'a>,
+    render: Option<&mut RenderTransaction<'a>>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -137,17 +132,17 @@ fn evaluate_html_function<'a>(
     }
     let decl = functions
         .iter()
-        .find(|decl| decl.function().id == function.id)
+        .find(|decl| decl.function.id == function.id)
         .unwrap();
-    let FlatFunction::Html(decl) = decl else {
-        panic!("an Html call calls {function}, which computes a value");
-    };
-    let vars = decl.parameters.iter().map(|param| param.binder.var);
-    evaluate_html_block(
+    let bindings = (decl.parameters.iter())
+        .map(|param| param.binder.var)
+        .zip(args)
+        .collect();
+    evaluate_block(
         &decl.body,
         Env {
             parent: None,
-            bindings: vars.zip(args).collect(),
+            bindings,
         },
         functions,
         render,
@@ -156,42 +151,11 @@ fn evaluate_html_function<'a>(
     )
 }
 
-fn evaluate_pure_function<'a>(
-    functions: &'a [FlatFunction],
-    function: &IrFunction,
-    args: Vec<Value<'a>>,
-    depth: usize,
-    op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
-    if depth >= MAX_CALL_DEPTH {
-        return Err(EvalError::CallDepthLimit {
-            limit: MAX_CALL_DEPTH,
-        });
-    }
-    let decl = functions
-        .iter()
-        .find(|decl| decl.function().id == function.id)
-        .unwrap();
-    let FlatFunction::Pure(decl) = decl else {
-        panic!("a Pure call calls {function}, which is not Pure");
-    };
-    let vars = decl.parameters.iter().map(|param| param.binder.var);
-    evaluate_pure_block(
-        &decl.body,
-        Env {
-            parent: None,
-            bindings: vars.zip(args).collect(),
-        },
-        functions,
-        depth + 1,
-        op_count,
-    )
-}
-
-fn evaluate_pure_block<'a>(
-    block: &'a FlatPureBlock,
+fn evaluate_block<'a>(
+    block: &'a FlatBlock,
     mut env: Env<'a>,
     functions: &'a [FlatFunction],
+    mut render: Option<&mut RenderTransaction<'a>>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -202,113 +166,24 @@ fn evaluate_pure_block<'a>(
                 limit: MAX_OP_COUNT,
             });
         }
-        evaluate_pure_binding(binding, &mut env, functions, depth, op_count)?;
+        let value = evaluate_op(
+            binding,
+            &mut env,
+            functions,
+            render.as_deref_mut(),
+            depth,
+            op_count,
+        )?;
+        env.bindings.push((binding.binder.var, value));
     }
     Ok(env[&block.result].clone())
 }
 
-fn evaluate_html_block<'a>(
-    block: &'a FlatHtmlBlock,
-    mut env: Env<'a>,
-    functions: &'a [FlatFunction],
-    render: &mut RenderTransaction<'a>,
-    depth: usize,
-    op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
-    for binding in &block.bindings {
-        *op_count += 1;
-        if *op_count > MAX_OP_COUNT {
-            return Err(EvalError::OpCountLimit {
-                limit: MAX_OP_COUNT,
-            });
-        }
-        match binding {
-            FlatHtmlBinding::Pure(binding) => {
-                evaluate_pure_binding(binding, &mut env, functions, depth, op_count)?;
-            }
-            FlatHtmlBinding::Cell(binder, initial) => {
-                let cell = render.bind_cell(binder.var, || {
-                    let env = Env {
-                        parent: env.freeze(),
-                        bindings: Vec::new(),
-                    };
-                    evaluate_pure_block(initial, env, functions, depth, op_count)
-                })?;
-                env.bindings.push((binder.var, Value::Cell(cell)));
-            }
-            FlatHtmlBinding::Track(binder, cell) => {
-                let value = render.read(env[cell].as_cell()).clone();
-                env.bindings.push((binder.var, value));
-            }
-            FlatHtmlBinding::Mint(binder) => {
-                let id = render.bind_element(binder.var);
-                env.bindings.push((binder.var, Value::Id(id)));
-            }
-            FlatHtmlBinding::Html(binding) => {
-                let value = evaluate_html_op(
-                    &binding.op,
-                    binding.binder.var,
-                    &mut env,
-                    functions,
-                    render,
-                    depth,
-                    op_count,
-                )?;
-                env.bindings.push((binding.binder.var, value));
-            }
-        }
-    }
-    Ok(env[&block.result].clone())
-}
-
-fn evaluate_pure_binding<'a>(
-    binding: &'a IrBinding<IrFunctionDataType, FlatPureOp>,
-    env: &mut Env<'a>,
-    functions: &'a [FlatFunction],
-    depth: usize,
-    op_count: &mut usize,
-) -> Result<(), EvalError> {
-    let value = match &binding.op {
-        FlatPureOp::Data(op) => evaluate_data_op(op, env)?,
-        FlatPureOp::Call(function, args) => {
-            let values = args.iter().map(|arg| env[arg].clone()).collect();
-            evaluate_pure_function(functions, function, values, depth, op_count)?
-        }
-        FlatPureOp::Match(match_) => {
-            let (_, body, env) = enter_arm(match_, env);
-            evaluate_pure_block(body, env, functions, depth, op_count)?
-        }
-        FlatPureOp::CellWrite(cell, value) => Value::Mutation(Rc::new(Mutation::Write(
-            env[cell].as_cell(),
-            env[value].clone(),
-        ))),
-        FlatPureOp::CellRead(cell) => Value::Mutation(Rc::new(Mutation::Read(env[cell].as_cell()))),
-        FlatPureOp::MutationPure(value) => {
-            Value::Mutation(Rc::new(Mutation::Pure(env[value].clone())))
-        }
-        FlatPureOp::MutationBind(mutation, continuation) => {
-            Value::Mutation(Rc::new(Mutation::Bind(
-                env[mutation].as_mutation().clone(),
-                env[continuation].as_closure().clone(),
-            )))
-        }
-        FlatPureOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
-            lambda: Lambda::Pure(lambda),
-            env: env.freeze(),
-        })),
-        FlatPureOp::Apply(closure, args) => {
-            let args = args.iter().map(|arg| env[arg].clone()).collect();
-            evaluate_pure_apply(env[closure].as_closure(), args, functions, depth, op_count)?
-        }
-    };
-    env.bindings.push((binding.binder.var, value));
-    Ok(())
-}
-
-pub fn evaluate_pure_apply<'a>(
+pub fn evaluate_apply<'a>(
     closure: &Closure<'a>,
     args: Vec<Value<'a>>,
     functions: &'a [FlatFunction],
+    render: Option<&mut RenderTransaction<'a>>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
@@ -317,9 +192,7 @@ pub fn evaluate_pure_apply<'a>(
             limit: MAX_CALL_DEPTH,
         });
     }
-    let Lambda::Pure(lambda) = closure.lambda else {
-        panic!("a Pure application applies a closure that renders Html");
-    };
+    let lambda = closure.lambda;
     let body_env = Env {
         parent: closure.env.clone(),
         bindings: lambda
@@ -329,7 +202,14 @@ pub fn evaluate_pure_apply<'a>(
             .zip(args)
             .collect(),
     };
-    evaluate_pure_block(&lambda.body, body_env, functions, depth + 1, op_count)
+    evaluate_block(
+        &lambda.body,
+        body_env,
+        functions,
+        render,
+        depth + 1,
+        op_count,
+    )
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -360,45 +240,10 @@ fn perform_mutation<'a>(
         }
         Mutation::Bind(mutation, continuation) => {
             let value = perform_mutation(mutation, mutations, functions, op_count)?;
-            let next = evaluate_pure_apply(continuation, vec![value], functions, 0, op_count)?;
+            let next = evaluate_apply(continuation, vec![value], functions, None, 0, op_count)?;
             perform_mutation(next.as_mutation(), mutations, functions, op_count)
         }
     }
-}
-
-fn evaluate_html_apply<'a>(
-    closure: &Closure<'a>,
-    args: Vec<Value<'a>>,
-    functions: &'a [FlatFunction],
-    render: &mut RenderTransaction<'a>,
-    depth: usize,
-    op_count: &mut usize,
-) -> Result<Value<'a>, EvalError> {
-    if depth >= MAX_CALL_DEPTH {
-        return Err(EvalError::CallDepthLimit {
-            limit: MAX_CALL_DEPTH,
-        });
-    }
-    let Lambda::Html(lambda) = closure.lambda else {
-        panic!("an Html application applies a closure that computes a value");
-    };
-    let body_env = Env {
-        parent: closure.env.clone(),
-        bindings: lambda
-            .parameters
-            .iter()
-            .map(|param| param.var)
-            .zip(args)
-            .collect(),
-    };
-    evaluate_html_block(
-        &lambda.body,
-        body_env,
-        functions,
-        render,
-        depth + 1,
-        op_count,
-    )
 }
 
 fn enter_arm<'a, B>(match_: &'a IrMatch<B>, env: &mut Env<'a>) -> (usize, &'a B, Env<'a>) {
@@ -421,30 +266,69 @@ fn enter_arm<'a, B>(match_: &'a IrMatch<B>, env: &mut Env<'a>) -> (usize, &'a B,
     (index, &arm.body, env)
 }
 
-fn evaluate_html_op<'a>(
-    op: &'a FlatHtmlOp,
-    var: ValueId,
+/// Evaluate the op of a binding. What renders enters a region of the render
+/// transaction, which a pure block does not have.
+fn evaluate_op<'a>(
+    binding: &'a FlatBinding,
     env: &mut Env<'a>,
     functions: &'a [FlatFunction],
-    render: &mut RenderTransaction<'a>,
+    render: Option<&mut RenderTransaction<'a>>,
     depth: usize,
     op_count: &mut usize,
 ) -> Result<Value<'a>, EvalError> {
-    Ok(match op {
-        FlatHtmlOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.as_str()))?),
+    let var = binding.binder.var;
+    Ok(match &binding.op {
+        FlatOp::Data(op) => evaluate_data_op(op, env)?,
 
-        FlatHtmlOp::Escape(string) => Value::Html(Html::new(HtmlNode::Escape(
+        FlatOp::Cell(initial) => {
+            let render = render.expect("a pure block binds no cell");
+            Value::Cell(render.bind_cell(var, || {
+                let env = Env {
+                    parent: env.freeze(),
+                    bindings: Vec::new(),
+                };
+                evaluate_block(initial, env, functions, None, depth, op_count)
+            })?)
+        }
+
+        FlatOp::Track(cell) => {
+            let render = render.expect("a pure block tracks no cell");
+            render.read(env[cell].as_cell()).clone()
+        }
+
+        FlatOp::Mint => {
+            let render = render.expect("a pure block mints no identity");
+            Value::Id(render.bind_element(var))
+        }
+
+        FlatOp::CellWrite(cell, value) => Value::Mutation(Rc::new(Mutation::Write(
+            env[cell].as_cell(),
+            env[value].clone(),
+        ))),
+
+        FlatOp::CellRead(cell) => Value::Mutation(Rc::new(Mutation::Read(env[cell].as_cell()))),
+
+        FlatOp::MutationPure(value) => Value::Mutation(Rc::new(Mutation::Pure(env[value].clone()))),
+
+        FlatOp::MutationBind(mutation, continuation) => Value::Mutation(Rc::new(Mutation::Bind(
+            env[mutation].as_mutation().clone(),
+            env[continuation].as_closure().clone(),
+        ))),
+
+        FlatOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.as_str()))?),
+
+        FlatOp::Escape(string) => Value::Html(Html::new(HtmlNode::Escape(
             env[string].as_string().clone(),
         ))?),
 
-        FlatHtmlOp::Concat(parts) => Value::Html(Html::new(HtmlNode::Concat(
+        FlatOp::Concat(parts) => Value::Html(Html::new(HtmlNode::Concat(
             parts
                 .iter()
                 .map(|part| env[part].clone().unwrap_html())
                 .collect(),
         ))?),
 
-        FlatHtmlOp::Element(IrHtmlElement {
+        FlatOp::Element(IrHtmlElement {
             identity,
             element,
             attributes,
@@ -486,29 +370,51 @@ fn evaluate_html_op<'a>(
             })?)
         }
 
-        FlatHtmlOp::Call(function, args) => {
+        FlatOp::Call(function, args) => {
             let values = args.iter().map(|arg| env[arg].clone()).collect();
-            render.enter(Step::Call(var));
-            let value =
-                evaluate_html_function(functions, function, values, render, depth, op_count)?;
-            render.exit();
-            value
+            let callee = functions
+                .iter()
+                .find(|decl| decl.function.id == function.id)
+                .unwrap();
+            if callee.render_modifier {
+                let render = render.expect("a pure block calls no function that renders");
+                render.enter(Step::Call(var));
+                let value = evaluate_function(
+                    functions,
+                    function,
+                    values,
+                    Some(&mut *render),
+                    depth,
+                    op_count,
+                )?;
+                render.exit();
+                value
+            } else {
+                evaluate_function(functions, function, values, None, depth, op_count)?
+            }
         }
 
-        FlatHtmlOp::Match(match_) => {
+        FlatOp::Match(match_) => {
             let (index, body, env) = enter_arm(match_, env);
-            render.enter(Step::Arm(var, index));
-            let value = evaluate_html_block(body, env, functions, render, depth, op_count)?;
-            render.exit();
-            value
+            match render {
+                Some(render) => {
+                    render.enter(Step::Arm(var, index));
+                    let value =
+                        evaluate_block(body, env, functions, Some(&mut *render), depth, op_count)?;
+                    render.exit();
+                    value
+                }
+                None => evaluate_block(body, env, functions, None, depth, op_count)?,
+            }
         }
 
-        FlatHtmlOp::For(FlatFor {
+        FlatOp::For(FlatFor {
             var: loop_var,
             array,
             key,
             body,
         }) => {
+            let render = render.expect("a pure block renders no Html");
             let mut parts = Vec::new();
             let mut occurrences: BTreeMap<IterationKey, usize> = BTreeMap::new();
             let items = env[array].clone();
@@ -527,8 +433,8 @@ fn evaluate_html_op<'a>(
                             parent: env.freeze(),
                             bindings: Vec::new(),
                         };
-                        IterationKey::from_value(evaluate_pure_block(
-                            key, env, functions, depth, op_count,
+                        IterationKey::from_value(evaluate_block(
+                            key, env, functions, None, depth, op_count,
                         )?)
                     }
                     None => IterationKey::Int(index as i32),
@@ -536,31 +442,42 @@ fn evaluate_html_op<'a>(
                 let occurrence = occurrences.entry(key.clone()).or_default();
                 render.enter(Step::Iteration(var, key, *occurrence));
                 *occurrence += 1;
-                let part = evaluate_html_block(body, env, functions, render, depth, op_count)?;
+                let part =
+                    evaluate_block(body, env, functions, Some(&mut *render), depth, op_count)?;
                 render.exit();
                 parts.push(part.unwrap_html());
             }
             Value::Html(Html::new(HtmlNode::Concat(parts))?)
         }
 
-        FlatHtmlOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
-            lambda: Lambda::Html(lambda),
+        FlatOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
+            lambda,
+            render_modifier: match &binding.binder.typ {
+                IrType::Function(signature) => signature.render_modifier,
+                typ => unreachable!("a lambda binds a closure, not {typ}"),
+            },
             env: env.freeze(),
         })),
 
-        FlatHtmlOp::Apply(closure, args) => {
+        FlatOp::Apply(closure, args) => {
             let args = args.iter().map(|arg| env[arg].clone()).collect();
-            render.enter(Step::Apply(var));
-            let value = evaluate_html_apply(
-                env[closure].as_closure(),
-                args,
-                functions,
-                render,
-                depth,
-                op_count,
-            )?;
-            render.exit();
-            value
+            let closure = env[closure].as_closure();
+            if closure.render_modifier {
+                let render = render.expect("a pure block applies no closure that renders");
+                render.enter(Step::Apply(var));
+                let value = evaluate_apply(
+                    closure,
+                    args,
+                    functions,
+                    Some(&mut *render),
+                    depth,
+                    op_count,
+                )?;
+                render.exit();
+                value
+            } else {
+                evaluate_apply(closure, args, functions, None, depth, op_count)?
+            }
         }
     })
 }
@@ -700,10 +617,10 @@ mod tests {
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::index_vec::Idx;
-    use crate::ir::ir_type::IrType;
     use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::clicks::clicks;
     use crate::ir::runtime::value_builder::ValueBuilder;
+    use crate::ir::value_id::ValueId;
     use crate::symbols::function_name::FunctionName;
     use arbitrary::Unstructured;
     use expect_test::{Expect, expect};
@@ -751,8 +668,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 2388639 allocations
-            program evaluation: 35540 allocations
+            program generation: 1533596 allocations
+            program evaluation: 21482 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -1373,6 +1290,53 @@ mod tests {
     }
 
     #[test]
+    fn should_keep_a_cell_for_each_application_of_a_closure_that_renders_a_value() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [], |t| {
+                    let counter =
+                        t.render_lambda([IrType::INT], |t, params| t.track(t.cell(|_| params[0])));
+                    let one = t.apply(counter, [t.int(1)]);
+                    let two = t.apply(counter, [t.int(2)]);
+                    t.html_concat([
+                        t.escape(t.int_to_string(one)),
+                        t.escape(t.int_to_string(two)),
+                    ])
+                })
+                .build()
+                .unwrap(),
+            |_| vec![],
+            expect![[r#"
+                -- before --
+                entrypoint Test@e0() -> Html {
+                  let v3: render (Int) -> Int = fn(
+                    v0: Int,
+                  ) {
+                    let v1: Cell[Int] = cell {
+                      v0
+                    }
+                    let v2: Int = track(v1)
+                    v2
+                  }
+                  let v4: Int = 1
+                  let v5: Int = v3(v4)
+                  let v6: Int = 2
+                  let v7: Int = v3(v6)
+                  let v8: String = int_to_string(v5)
+                  let v9: Html = escape(v8)
+                  let v10: String = int_to_string(v7)
+                  let v11: Html = escape(v10)
+                  let v12: Html = concat(v9, v11)
+                  v12
+                }
+
+                -- after --
+                12
+            "#]],
+        );
+    }
+
+    #[test]
     fn should_apply_a_closure_to_its_arguments_and_the_names_it_captures() {
         check(
             FlatProgramBuilder::new()
@@ -1450,9 +1414,9 @@ mod tests {
             |v| vec![("items", v.array(vec![v.str("a"), v.str("b")]))],
             expect![[r#"
                 -- before --
-                fn Rows@f0(
+                render fn Rows@f0(
                   items@v0: Array[String],
-                  row@v1: (String) -> Html,
+                  row@v1: render (String) -> Html,
                 ) -> Html {
                   let v4: Html = for v2: String in v0 {
                     let v3: Html = v1(v2)
@@ -1466,7 +1430,7 @@ mod tests {
                   items@v7: Array[String],
                 ) -> Html {
                   let v8: String = "- "
-                  let v15: (String) -> Html = fn(
+                  let v15: render (String) -> Html = fn(
                     v9: String,
                   ) {
                     let v10: Html = escape(v8)
@@ -2023,22 +1987,22 @@ mod tests {
             program: _,
         } = stats;
         expect![[r#"
-            3392 invocations
-            41 invocations hit the call depth limit
+            2920 invocations
+            38 invocations hit the call depth limit
             0 invocations hit the array length limit
             0 invocations hit the string length limit
             0 invocations hit the Html size limit
-            9 invocations hit the op count limit
-            33211 cells bound
+            27 invocations hit the op count limit
+            81847 cells bound
 
-            9993 clicks
-            61 programs have a click
-            34 programs have a click that changes a cell
-            24 programs have a click that changes the page
-            13 programs have a click that switches an arm of a match
-            10 programs have a click that switches an arm of a match that binds cells
+            13470 clicks
+            60 programs have a click
+            40 programs have a click that changes a cell
+            29 programs have a click that changes the page
+            14 programs have a click that switches an arm of a match
+            14 programs have a click that switches an arm of a match that binds cells
             12 programs have a click that changes the iterations of a loop
-            6 programs have a click that changes an array cell
+            7 programs have a click that changes an array cell
         "#]].assert_eq(&format!(
             "{invocations} invocations\n\
              {call_depth_limit} invocations hit the call depth limit\n\

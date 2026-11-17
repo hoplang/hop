@@ -9,14 +9,12 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_function_declaration::IrFunctionDeclaration;
+use crate::ir::ir_function_declaration::write_function;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_parameter::IrParameter;
-use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrIdType, IrResultType, IrType,
-};
+use crate::ir::ir_type::{IrDataType, IrType};
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::function_name::FunctionName;
@@ -33,45 +31,39 @@ pub struct FlatProgram {
 pub struct FlatEntrypoint {
     pub name: FunctionName,
     pub parameters: Vec<IrParameter<IrDataType>>,
-    pub body: FlatHtmlBlock,
+    pub body: FlatBlock,
 }
 
 #[derive(Debug, Clone)]
-pub enum FlatFunction {
-    Pure(IrFunctionDeclaration<IrFunctionDataType, IrResultType, FlatPureBlock>),
-    Html(IrFunctionDeclaration<IrType, IrHtmlType, FlatHtmlBlock>),
+pub struct FlatFunction {
+    pub function: IrFunction,
+    pub render_modifier: bool,
+    pub parameters: Vec<IrParameter<IrType>>,
+    pub return_type: IrType,
+    pub body: FlatBlock,
 }
 
-pub type FlatPureBlock = IrBlock<IrBinding<IrFunctionDataType, FlatPureOp>>;
-pub type FlatHtmlBlock = IrBlock<FlatHtmlBinding>;
+pub type FlatBlock = IrBlock<FlatBinding>;
 
-/// A binding of a block that renders Html. The cells and identities a render
-/// binds are retained across renders by path: the binding names and loop
-/// iterations that reach them.
-#[derive(Debug, Clone)]
-pub enum FlatHtmlBinding {
-    Pure(IrBinding<IrFunctionDataType, FlatPureOp>),
-    Html(IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
-    /// Bind a cell. Only when its path is new does the block run, and the
-    /// cell takes the value it gives.
-    Cell(IrBinder<IrDataType>, FlatPureBlock),
-    /// Bind the value a cell has at this render. `Cell[T] -> T`.
-    Track(IrBinder<IrDataType>, ValueId),
-    /// Bind an identity, which the node of the element that takes it keeps
-    /// across renders. `Id`.
-    Mint(IrBinder<IrIdType>),
-}
+pub type FlatBinding = IrBinding<IrType, FlatOp>;
 
-pub type FlatPureLambda = IrLambda<IrFunctionDataType, FlatPureBlock>;
-pub type FlatHtmlLambda = IrLambda<IrType, FlatHtmlBlock>;
+pub type FlatLambda = IrLambda<IrType, FlatBlock>;
 
 #[derive(Debug, Clone)]
-pub enum FlatPureOp {
+pub enum FlatOp {
     Data(IrDataOp),
     /// Invoke a function.
     Call(IrFunction, Vec<ValueId>),
     /// Match exhaustively.
-    Match(IrMatch<FlatPureBlock>),
+    Match(IrMatch<FlatBlock>),
+    /// Bind a cell. Only when its path is new does the block run, and the
+    /// cell takes the value it gives. `Cell[T]`.
+    Cell(FlatBlock),
+    /// Bind the value a cell has at this render. `Cell[T] -> T`.
+    Track(ValueId),
+    /// Bind an identity, which the node of the element that takes it keeps
+    /// across renders. `Id`.
+    Mint,
     /// Write a cell. `(Cell[T], T) -> Mutation[Tuple[]]`.
     CellWrite(ValueId, ValueId),
     /// Read a cell. `Cell[T] -> Mutation[T]`.
@@ -81,18 +73,6 @@ pub enum FlatPureOp {
     /// Run the first mutation, then return the mutation the second closure
     /// gives for its result. `(Mutation[A], (A) -> Mutation[B]) -> Mutation[B]`.
     MutationBind(ValueId, ValueId),
-    /// Bind a closure.
-    Lambda(FlatPureLambda),
-    /// Invoke a closure.
-    Apply(ValueId, Vec<ValueId>),
-}
-
-#[derive(Debug, Clone)]
-pub enum FlatHtmlOp {
-    /// Invoke a function.
-    Call(IrFunction, Vec<ValueId>),
-    /// Match exhaustively.
-    Match(IrMatch<FlatHtmlBlock>),
     /// Render text as written. `Html`.
     Text(CheapString),
     /// Html-escape a string. `String -> Html`.
@@ -108,7 +88,7 @@ pub enum FlatHtmlOp {
     /// cells and elements keep across renders. `Array[T] -> Html`.
     For(FlatFor),
     /// Bind a closure.
-    Lambda(FlatHtmlLambda),
+    Lambda(FlatLambda),
     /// Invoke a closure.
     Apply(ValueId, Vec<ValueId>),
 }
@@ -117,101 +97,29 @@ pub enum FlatHtmlOp {
 pub struct FlatFor {
     pub var: Option<IrBinder<IrDataType>>,
     pub array: ValueId,
-    pub key: Option<FlatPureBlock>,
-    pub body: FlatHtmlBlock,
+    pub key: Option<FlatBlock>,
+    pub body: FlatBlock,
 }
 
-impl FlatFunction {
-    pub fn function(&self) -> &IrFunction {
-        match self {
-            FlatFunction::Pure(function) => &function.function,
-            FlatFunction::Html(function) => &function.function,
-        }
-    }
-
-    pub fn parameters(&self) -> Vec<IrParameter<IrType>> {
-        match self {
-            FlatFunction::Pure(function) => function
-                .parameters
-                .iter()
-                .map(|param| param.widen())
-                .collect(),
-            FlatFunction::Html(function) => function.parameters.clone(),
-        }
-    }
-}
-
-impl FlatPureOp {
+impl FlatOp {
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
-            FlatPureOp::Data(op) => op.for_each_operand(f),
-            FlatPureOp::Call(_, args) => {
-                for arg in args {
-                    f(*arg);
-                }
+            FlatOp::Data(op) => op.for_each_operand(f),
+            FlatOp::Text(_) | FlatOp::Lambda(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
+            FlatOp::Track(name)
+            | FlatOp::CellRead(name)
+            | FlatOp::MutationPure(name)
+            | FlatOp::Escape(name) => f(*name),
+            FlatOp::CellWrite(first, second) | FlatOp::MutationBind(first, second) => {
+                f(*first);
+                f(*second);
             }
-            FlatPureOp::Match(match_) => f(match_.subject),
-            FlatPureOp::CellWrite(cell, value) => {
-                f(*cell);
-                f(*value);
-            }
-            FlatPureOp::CellRead(cell) => f(*cell),
-            FlatPureOp::MutationPure(value) => f(*value),
-            FlatPureOp::MutationBind(mutation, continuation) => {
-                f(*mutation);
-                f(*continuation);
-            }
-            FlatPureOp::Lambda(_) => {}
-            FlatPureOp::Apply(closure, args) => {
-                f(*closure);
-                for arg in args {
-                    f(*arg);
-                }
-            }
-        }
-    }
-
-    pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
-        match self {
-            FlatPureOp::Data(op) => op.for_each_operand_mut(f),
-            FlatPureOp::Call(_, args) => {
-                for arg in args {
-                    f(arg);
-                }
-            }
-            FlatPureOp::Match(match_) => f(&mut match_.subject),
-            FlatPureOp::CellWrite(cell, value) => {
-                f(cell);
-                f(value);
-            }
-            FlatPureOp::CellRead(cell) => f(cell),
-            FlatPureOp::MutationPure(value) => f(value),
-            FlatPureOp::MutationBind(mutation, continuation) => {
-                f(mutation);
-                f(continuation);
-            }
-            FlatPureOp::Lambda(_) => {}
-            FlatPureOp::Apply(closure, args) => {
-                f(closure);
-                for arg in args {
-                    f(arg);
-                }
-            }
-        }
-    }
-}
-
-impl FlatHtmlOp {
-    pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
-        match self {
-            FlatHtmlOp::Text(_) => {}
-            FlatHtmlOp::Escape(name) => f(*name),
-            FlatHtmlOp::Concat(names) => {
+            FlatOp::Call(_, names) | FlatOp::Concat(names) => {
                 for name in names {
                     f(*name);
                 }
             }
-            FlatHtmlOp::Element(element) => {
+            FlatOp::Element(element) => {
                 f(element.identity);
                 element.for_each_attribute_operand(f);
                 if let Some(children) = element.children {
@@ -221,15 +129,9 @@ impl FlatHtmlOp {
                     f(handler);
                 }
             }
-            FlatHtmlOp::Call(_, args) => {
-                for arg in args {
-                    f(*arg);
-                }
-            }
-            FlatHtmlOp::Match(match_) => f(match_.subject),
-            FlatHtmlOp::For(for_) => f(for_.array),
-            FlatHtmlOp::Lambda(_) => {}
-            FlatHtmlOp::Apply(closure, args) => {
+            FlatOp::Match(match_) => f(match_.subject),
+            FlatOp::For(for_) => f(for_.array),
+            FlatOp::Apply(closure, args) => {
                 f(*closure);
                 for arg in args {
                     f(*arg);
@@ -240,14 +142,22 @@ impl FlatHtmlOp {
 
     pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         match self {
-            FlatHtmlOp::Text(_) => {}
-            FlatHtmlOp::Escape(name) => f(name),
-            FlatHtmlOp::Concat(names) => {
+            FlatOp::Data(op) => op.for_each_operand_mut(f),
+            FlatOp::Text(_) | FlatOp::Lambda(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
+            FlatOp::Track(name)
+            | FlatOp::CellRead(name)
+            | FlatOp::MutationPure(name)
+            | FlatOp::Escape(name) => f(name),
+            FlatOp::CellWrite(first, second) | FlatOp::MutationBind(first, second) => {
+                f(first);
+                f(second);
+            }
+            FlatOp::Call(_, names) | FlatOp::Concat(names) => {
                 for name in names {
                     f(name);
                 }
             }
-            FlatHtmlOp::Element(element) => {
+            FlatOp::Element(element) => {
                 f(&mut element.identity);
                 element.for_each_attribute_operand_mut(f);
                 if let Some(children) = &mut element.children {
@@ -257,15 +167,9 @@ impl FlatHtmlOp {
                     f(handler);
                 }
             }
-            FlatHtmlOp::Call(_, args) => {
-                for arg in args {
-                    f(arg);
-                }
-            }
-            FlatHtmlOp::Match(match_) => f(&mut match_.subject),
-            FlatHtmlOp::For(for_) => f(&mut for_.array),
-            FlatHtmlOp::Lambda(_) => {}
-            FlatHtmlOp::Apply(closure, args) => {
+            FlatOp::Match(match_) => f(&mut match_.subject),
+            FlatOp::For(for_) => f(&mut for_.array),
+            FlatOp::Apply(closure, args) => {
                 f(closure);
                 for arg in args {
                     f(arg);
@@ -275,51 +179,33 @@ impl FlatHtmlOp {
     }
 }
 
-impl fmt::Display for FlatHtmlBinding {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FlatHtmlBinding::Pure(binding) => binding.fmt(f),
-            FlatHtmlBinding::Cell(binder, initial) => {
-                write!(f, "let {}: Cell[{}] = cell {{", binder.var, binder.typ)?;
-                write!(Indent::new(f), "\n{initial}")?;
-                f.write_str("\n}")
-            }
-            FlatHtmlBinding::Track(binder, cell) => write!(f, "let {binder} = track({cell})"),
-            FlatHtmlBinding::Mint(binder) => write!(f, "let {binder} = mint()"),
-            FlatHtmlBinding::Html(binding) => binding.fmt(f),
-        }
-    }
-}
-
 fn write_block(block: &impl fmt::Display, w: &mut dyn Write) -> fmt::Result {
     write!(w, "\n{block}")
 }
 
-impl fmt::Display for FlatPureOp {
+impl fmt::Display for FlatOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FlatPureOp::Data(op) => write!(f, "{op}"),
-            FlatPureOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
-            FlatPureOp::Match(match_) => match_.write(f, write_block),
-            FlatPureOp::CellWrite(cell, value) => write!(f, "{cell} := {value}"),
-            FlatPureOp::CellRead(cell) => write!(f, "read({cell})"),
-            FlatPureOp::MutationPure(value) => write!(f, "pure({value})"),
-            FlatPureOp::MutationBind(mutation, continuation) => {
+            FlatOp::Data(op) => write!(f, "{op}"),
+            FlatOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
+            FlatOp::Match(match_) => match_.write(f, write_block),
+            FlatOp::Cell(initial) => {
+                f.write_str("cell {")?;
+                write!(Indent::new(f), "\n{initial}")?;
+                f.write_str("\n}")
+            }
+            FlatOp::Track(cell) => write!(f, "track({cell})"),
+            FlatOp::Mint => f.write_str("mint()"),
+            FlatOp::CellWrite(cell, value) => write!(f, "{cell} := {value}"),
+            FlatOp::CellRead(cell) => write!(f, "read({cell})"),
+            FlatOp::MutationPure(value) => write!(f, "pure({value})"),
+            FlatOp::MutationBind(mutation, continuation) => {
                 write!(f, "bind({mutation}, {continuation})")
             }
-            FlatPureOp::Lambda(lambda) => lambda.write(f, write_block),
-            FlatPureOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),
-        }
-    }
-}
-
-impl fmt::Display for FlatHtmlOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FlatHtmlOp::Text(content) => write!(f, "text({:?})", content.as_str()),
-            FlatHtmlOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),
-            FlatHtmlOp::Escape(string) => write!(f, "escape({string})"),
-            FlatHtmlOp::Element(element) => {
+            FlatOp::Text(content) => write!(f, "text({:?})", content.as_str()),
+            FlatOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),
+            FlatOp::Escape(string) => write!(f, "escape({string})"),
+            FlatOp::Element(element) => {
                 write!(
                     f,
                     "element({}, {:?}, {{",
@@ -346,9 +232,7 @@ impl fmt::Display for FlatHtmlOp {
                 }
                 Ok(())
             }
-            FlatHtmlOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
-            FlatHtmlOp::Match(match_) => match_.write(f, write_block),
-            FlatHtmlOp::For(FlatFor {
+            FlatOp::For(FlatFor {
                 var,
                 array,
                 key,
@@ -367,18 +251,25 @@ impl fmt::Display for FlatHtmlOp {
                 write!(Indent::new(f), "\n{body}")?;
                 f.write_str("\n}")
             }
-            FlatHtmlOp::Lambda(lambda) => lambda.write(f, write_block),
-            FlatHtmlOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),
+            FlatOp::Lambda(lambda) => lambda.write(f, write_block),
+            FlatOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),
         }
     }
 }
 
 impl fmt::Display for FlatFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FlatFunction::Pure(function) => function.write(f, write_block)?,
-            FlatFunction::Html(function) => function.write(f, write_block)?,
+        if self.render_modifier {
+            f.write_str("render ")?;
         }
+        write_function(
+            f,
+            &self.function,
+            &self.parameters,
+            &self.return_type,
+            &self.body,
+            write_block,
+        )?;
         writeln!(f)
     }
 }

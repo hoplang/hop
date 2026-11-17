@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::hop::typing::{Constructor, Pattern};
 use crate::html::{HtmlElementKind, write_escaped_html};
-use crate::ir::flat_program::{FlatHtmlLambda, FlatPureLambda};
+use crate::ir::flat_program::FlatLambda;
 use crate::ir::ir_match::IrPattern;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
@@ -57,14 +57,9 @@ pub enum Mutation<'a> {
 
 #[derive(Debug)]
 pub struct Closure<'a> {
-    pub lambda: Lambda<'a>,
+    pub lambda: &'a FlatLambda,
+    pub render_modifier: bool,
     pub env: Option<Rc<Env<'a>>>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Lambda<'a> {
-    Pure(&'a FlatPureLambda),
-    Html(&'a FlatHtmlLambda),
 }
 
 #[derive(Debug, Clone)]

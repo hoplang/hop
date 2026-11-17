@@ -1,5 +1,5 @@
 use crate::hop::typing::Ty;
-use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrType};
+use crate::ir::ir_type::{IrDataType, IrType};
 use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -134,21 +134,17 @@ impl IrTypeDeclarations {
 
 fn ir_type(ty: Ty, records: &[String], enums: &[String]) -> IrType {
     match ty {
-        Ty::Html => IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)),
-        Ty::Mutation(payload) => IrType::Data(IrFunctionDataType::Mutation(data_type(
-            *payload, records, enums,
-        ))),
+        Ty::Html => IrType::Html,
+        Ty::Mutation(payload) => IrType::Mutation(data_type(*payload, records, enums)),
         Ty::Cell(payload) => IrType::Cell(data_type(*payload, records, enums)),
         Ty::Function { parameters, result } => {
             let parameters = parameters
                 .into_iter()
                 .map(|parameter| ir_type(parameter, records, enums));
-            match ir_type(*result, records, enums) {
-                IrType::Html(IrFunctionHtmlType::Html(_)) => IrType::html_function(parameters),
-                result => IrType::data_function(parameters, result),
-            }
+            let result = ir_type(*result, records, enums);
+            IrType::function(result == IrType::Html, parameters, result)
         }
-        ty => IrType::Data(IrFunctionDataType::Data(data_type(ty, records, enums))),
+        ty => IrType::Data(data_type(ty, records, enums)),
     }
 }
 
