@@ -405,12 +405,12 @@ mod tests {
                   let v10: (Int) -> Int = fn(
                     v8: Int,
                   ) {
-                    let v9: Int = add[Int](v8, v7)
+                    let v9: Int = int_add(v8, v7)
                     v9
                   }
                   let v11: Int = 1
-                  let v12: Int = Twice@f0(v10, v11)
-                  let v13: String = v12.to_string()
+                  let v12: Int = f0(v10, v11)
+                  let v13: String = int_to_string(v12)
                   let v14: Html = escape(v13)
                   v14
                 }
@@ -422,7 +422,7 @@ mod tests {
                   let v10: (Int) -> Int = fn(
                     v8: Int,
                   ) {
-                    let v9: Int = add[Int](v8, v7)
+                    let v9: Int = int_add(v8, v7)
                     v9
                   }
                   let v11: Int = 1
@@ -434,7 +434,7 @@ mod tests {
                   }
                   let v18: Int = v10(v11)
                   let v19: Int = v17(v18)
-                  let v13: String = v19.to_string()
+                  let v13: String = int_to_string(v19)
                   let v14: Html = escape(v13)
                   v14
                 }
@@ -459,14 +459,14 @@ mod tests {
                 fn double@f0(
                   x@v0: Int,
                 ) -> Int {
-                  let v1: Int = add[Int](v0, v0)
+                  let v1: Int = int_add(v0, v0)
                   v1
                 }
                 entrypoint Test@e0(
                   n@v2: Int,
                 ) -> Html {
-                  let v3: Int = double@f0(v2)
-                  let v4: String = v3.to_string()
+                  let v3: Int = f0(v2)
+                  let v4: String = int_to_string(v3)
                   let v5: Html = escape(v4)
                   v5
                 }
@@ -475,8 +475,8 @@ mod tests {
                 entrypoint Test@e0(
                   n@v2: Int,
                 ) -> Html {
-                  let v6: Int = add[Int](v2, v2)
-                  let v4: String = v6.to_string()
+                  let v6: Int = int_add(v2, v2)
+                  let v4: String = int_to_string(v6)
                   let v5: Html = escape(v4)
                   v5
                 }
@@ -505,22 +505,22 @@ mod tests {
                   x@v0: Int,
                 ) -> Int {
                   let v1: Int = 1
-                  let v2: Int = add[Int](v0, v1)
+                  let v2: Int = int_add(v0, v1)
                   v2
                 }
                 fn outer@f1(
                   y@v3: Int,
                 ) -> Int {
-                  let v4: Int = inner@f0(v3)
+                  let v4: Int = f0(v3)
                   let v5: Int = 2
-                  let v6: Int = mul[Int](v4, v5)
+                  let v6: Int = int_mul(v4, v5)
                   v6
                 }
                 entrypoint Test@e0(
                   n@v7: Int,
                 ) -> Html {
-                  let v8: Int = outer@f1(v7)
-                  let v9: String = v8.to_string()
+                  let v8: Int = f1(v7)
+                  let v9: String = int_to_string(v8)
                   let v10: Html = escape(v9)
                   v10
                 }
@@ -530,10 +530,10 @@ mod tests {
                   n@v7: Int,
                 ) -> Html {
                   let v13: Int = 1
-                  let v14: Int = add[Int](v7, v13)
+                  let v14: Int = int_add(v7, v13)
                   let v15: Int = 2
-                  let v16: Int = mul[Int](v14, v15)
-                  let v9: String = v16.to_string()
+                  let v16: Int = int_mul(v14, v15)
+                  let v9: String = int_to_string(v16)
                   let v10: Html = escape(v9)
                   v10
                 }
@@ -578,8 +578,8 @@ mod tests {
                   a@v5: Array[String],
                   b@v6: Array[String],
                 ) -> Html {
-                  let v7: Html = list@f0(v5)
-                  let v8: Html = list@f0(v6)
+                  let v7: Html = f0(v5)
+                  let v8: Html = f0(v6)
                   let v9: Html = concat(v7, v8)
                   v9
                 }
@@ -633,18 +633,18 @@ mod tests {
                   let v2: Int = track(v1)
                   let v6: () -> Mutation[Tuple[]] = fn() {
                     let v3: Int = 1
-                    let v4: Int = add[Int](v2, v3)
+                    let v4: Int = int_add(v2, v3)
                     let v5: Mutation[Tuple[]] = v1 := v4
                     v5
                   }
-                  let v7: String = v2.to_string()
+                  let v7: String = int_to_string(v2)
                   let v8: Html = escape(v7)
                   let v9: Html = element("button", {}, v8) on_click v6
                   v9
                 }
                 entrypoint Test@e0() -> Html {
-                  let v10: Html = counter@f0()
-                  let v11: Html = counter@f0()
+                  let v10: Html = f0()
+                  let v11: Html = f0()
                   let v12: Html = concat(v10, v11)
                   v12
                 }
@@ -658,11 +658,11 @@ mod tests {
                   let v15: Int = track(v14)
                   let v19: () -> Mutation[Tuple[]] = fn() {
                     let v16: Int = 1
-                    let v17: Int = add[Int](v15, v16)
+                    let v17: Int = int_add(v15, v16)
                     let v18: Mutation[Tuple[]] = v14 := v17
                     v18
                   }
-                  let v20: String = v15.to_string()
+                  let v20: String = int_to_string(v15)
                   let v21: Html = escape(v20)
                   let v22: Html = element("button", {}, v21) on_click v19
                   let v24: Cell[Int] = cell {
@@ -672,11 +672,11 @@ mod tests {
                   let v25: Int = track(v24)
                   let v29: () -> Mutation[Tuple[]] = fn() {
                     let v26: Int = 1
-                    let v27: Int = add[Int](v25, v26)
+                    let v27: Int = int_add(v25, v26)
                     let v28: Mutation[Tuple[]] = v24 := v27
                     v28
                   }
-                  let v30: String = v25.to_string()
+                  let v30: String = int_to_string(v25)
                   let v31: Html = escape(v30)
                   let v32: Html = element("button", {}, v31) on_click v29
                   let v12: Html = concat(v22, v32)
@@ -744,14 +744,14 @@ mod tests {
                   let v10: Bool = track(v8)
                   let v17: () -> Mutation[Tuple[]] = fn() {
                     let v11: Int = 1
-                    let v12: Int = add[Int](v9, v11)
+                    let v12: Int = int_add(v9, v11)
                     let v13: Mutation[Tuple[]] = v6 := v12
-                    let v14: Bool = not(v10)
+                    let v14: Bool = bool_not(v10)
                     let v15: Mutation[Tuple[]] = v8 := v14
-                    let v16: Mutation[Tuple[]] = both@f0(v13, v15)
+                    let v16: Mutation[Tuple[]] = f0(v13, v15)
                     v16
                   }
-                  let v18: String = v9.to_string()
+                  let v18: String = int_to_string(v9)
                   let v19: Html = escape(v18)
                   let v20: Html = element("button", {}, v19) on_click v17
                   v20
@@ -771,9 +771,9 @@ mod tests {
                   let v10: Bool = track(v8)
                   let v17: () -> Mutation[Tuple[]] = fn() {
                     let v11: Int = 1
-                    let v12: Int = add[Int](v9, v11)
+                    let v12: Int = int_add(v9, v11)
                     let v13: Mutation[Tuple[]] = v6 := v12
-                    let v14: Bool = not(v10)
+                    let v14: Bool = bool_not(v10)
                     let v15: Mutation[Tuple[]] = v8 := v14
                     let v22: (Tuple[]) -> Mutation[Tuple[]] = fn(
                       v21: Tuple[],
@@ -783,7 +783,7 @@ mod tests {
                     let v23: Mutation[Tuple[]] = bind(v13, v22)
                     v23
                   }
-                  let v18: String = v9.to_string()
+                  let v18: String = int_to_string(v9)
                   let v19: Html = escape(v18)
                   let v20: Html = element("button", {}, v19) on_click v17
                   v20
@@ -813,7 +813,7 @@ mod tests {
                   n@v0: Int,
                 ) -> Html {
                   let v1: Int = 1
-                  let v2: Bool = lt[Int](v0, v1)
+                  let v2: Bool = int_lt(v0, v1)
                   let v7: Html = match v2 {
                     true => {
                       let v3: Html = text(".")
@@ -821,8 +821,8 @@ mod tests {
                     }
                     false => {
                       let v4: Int = 1
-                      let v5: Int = sub[Int](v0, v4)
-                      let v6: Html = count@f0(v5)
+                      let v5: Int = int_sub(v0, v4)
+                      let v6: Html = f0(v5)
                       v6
                     }
                   }
@@ -830,7 +830,7 @@ mod tests {
                 }
                 entrypoint Test@e0() -> Html {
                   let v8: Int = 3
-                  let v9: Html = count@f0(v8)
+                  let v9: Html = f0(v8)
                   v9
                 }
 
@@ -839,7 +839,7 @@ mod tests {
                   n@v0: Int,
                 ) -> Html {
                   let v1: Int = 1
-                  let v2: Bool = lt[Int](v0, v1)
+                  let v2: Bool = int_lt(v0, v1)
                   let v7: Html = match v2 {
                     true => {
                       let v3: Html = text(".")
@@ -847,8 +847,8 @@ mod tests {
                     }
                     false => {
                       let v4: Int = 1
-                      let v5: Int = sub[Int](v0, v4)
-                      let v6: Html = count@f0(v5)
+                      let v5: Int = int_sub(v0, v4)
+                      let v6: Html = f0(v5)
                       v6
                     }
                   }
@@ -856,7 +856,7 @@ mod tests {
                 }
                 entrypoint Test@e0() -> Html {
                   let v8: Int = 3
-                  let v9: Html = count@f0(v8)
+                  let v9: Html = f0(v8)
                   v9
                 }
             "#]],
@@ -887,7 +887,7 @@ mod tests {
                   n@v0: Int,
                 ) -> Html {
                   let v2: Int = 1
-                  let v3: Bool = lt[Int](v0, v2)
+                  let v3: Bool = int_lt(v0, v2)
                   let v8: Html = match v3 {
                     true => {
                       let v4: Html = text(".")
@@ -895,8 +895,8 @@ mod tests {
                     }
                     false => {
                       let v5: Int = 1
-                      let v6: Int = sub[Int](v0, v5)
-                      let v7: Html = pong@f1(v6)
+                      let v6: Int = int_sub(v0, v5)
+                      let v7: Html = f1(v6)
                       v7
                     }
                   }
@@ -905,12 +905,12 @@ mod tests {
                 fn pong@f1(
                   n@v1: Int,
                 ) -> Html {
-                  let v9: Html = ping@f0(v1)
+                  let v9: Html = f0(v1)
                   v9
                 }
                 entrypoint Test@e0() -> Html {
                   let v10: Int = 2
-                  let v11: Html = ping@f0(v10)
+                  let v11: Html = f0(v10)
                   v11
                 }
 
@@ -919,7 +919,7 @@ mod tests {
                   n@v0: Int,
                 ) -> Html {
                   let v2: Int = 1
-                  let v3: Bool = lt[Int](v0, v2)
+                  let v3: Bool = int_lt(v0, v2)
                   let v8: Html = match v3 {
                     true => {
                       let v4: Html = text(".")
@@ -927,8 +927,8 @@ mod tests {
                     }
                     false => {
                       let v5: Int = 1
-                      let v6: Int = sub[Int](v0, v5)
-                      let v7: Html = pong@f1(v6)
+                      let v6: Int = int_sub(v0, v5)
+                      let v7: Html = f1(v6)
                       v7
                     }
                   }
@@ -937,12 +937,12 @@ mod tests {
                 fn pong@f1(
                   n@v1: Int,
                 ) -> Html {
-                  let v9: Html = ping@f0(v1)
+                  let v9: Html = f0(v1)
                   v9
                 }
                 entrypoint Test@e0() -> Html {
                   let v10: Int = 2
-                  let v11: Html = ping@f0(v10)
+                  let v11: Html = f0(v10)
                   v11
                 }
             "#]],
@@ -974,11 +974,11 @@ mod tests {
                   let v1: Int = track(v0)
                   let v5: () -> Mutation[Tuple[]] = fn() {
                     let v2: Int = 1
-                    let v3: Int = add[Int](v1, v2)
+                    let v3: Int = int_add(v1, v2)
                     let v4: Mutation[Tuple[]] = v0 := v3
                     v4
                   }
-                  let v6: String = v1.to_string()
+                  let v6: String = int_to_string(v1)
                   let v7: Html = escape(v6)
                   let v8: Html = element("button", {}, v7) on_click v5
                   v8
@@ -988,7 +988,7 @@ mod tests {
                     let v9: Int = 0
                     v9
                   }
-                  let v11: Html = Bump@f0(v10)
+                  let v11: Html = f0(v10)
                   v11
                 }
 
@@ -1001,11 +1001,11 @@ mod tests {
                   let v12: Int = track(v10)
                   let v16: () -> Mutation[Tuple[]] = fn() {
                     let v13: Int = 1
-                    let v14: Int = add[Int](v12, v13)
+                    let v14: Int = int_add(v12, v13)
                     let v15: Mutation[Tuple[]] = v10 := v14
                     v15
                   }
-                  let v17: String = v12.to_string()
+                  let v17: String = int_to_string(v12)
                   let v18: Html = escape(v17)
                   let v19: Html = element("button", {}, v18) on_click v16
                   v19

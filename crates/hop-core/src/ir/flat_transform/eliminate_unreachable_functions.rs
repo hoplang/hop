@@ -113,13 +113,13 @@ mod tests {
                 fn ping@f0(
                   n@v0: Int,
                 ) -> Int {
-                  let v2: Int = pong@f1(v0)
+                  let v2: Int = f1(v0)
                   v2
                 }
                 fn pong@f1(
                   n@v1: Int,
                 ) -> Int {
-                  let v3: Int = ping@f0(v1)
+                  let v3: Int = f0(v1)
                   v3
                 }
                 entrypoint Test@e0() -> Html {
@@ -156,7 +156,7 @@ mod tests {
                 fn row@f0(
                   n@v0: Int,
                 ) -> Html {
-                  let v1: String = v0.to_string()
+                  let v1: String = int_to_string(v0)
                   let v2: Html = escape(v1)
                   v2
                 }
@@ -172,11 +172,11 @@ mod tests {
                   items@v5: Array[Int],
                 ) -> Html {
                   let v7: () -> Html = fn() {
-                    let v6: Html = label@f1()
+                    let v6: Html = f1()
                     v6
                   }
                   let v10: Html = for v8: Int in v5 {
-                    let v9: Html = row@f0(v8)
+                    let v9: Html = f0(v8)
                     v9
                   }
                   v10
@@ -186,7 +186,7 @@ mod tests {
                 fn row@f0(
                   n@v0: Int,
                 ) -> Html {
-                  let v1: String = v0.to_string()
+                  let v1: String = int_to_string(v0)
                   let v2: Html = escape(v1)
                   v2
                 }
@@ -198,11 +198,11 @@ mod tests {
                   items@v5: Array[Int],
                 ) -> Html {
                   let v7: () -> Html = fn() {
-                    let v6: Html = label@f1()
+                    let v6: Html = f1()
                     v6
                   }
                   let v10: Html = for v8: Int in v5 {
-                    let v9: Html = row@f0(v8)
+                    let v9: Html = f0(v8)
                     v9
                   }
                   v10
@@ -233,7 +233,7 @@ mod tests {
                   items@v1: Array[Int],
                 ) -> Html {
                   let v5: Html = for v2: Int in v1 key {
-                    let v3: Int = key@f0(v2)
+                    let v3: Int = f0(v2)
                     v3
                   } {
                     let v4: Html = text("row")
@@ -252,7 +252,7 @@ mod tests {
                   items@v1: Array[Int],
                 ) -> Html {
                   let v5: Html = for v2: Int in v1 key {
-                    let v3: Int = key@f0(v2)
+                    let v3: Int = f0(v2)
                     v3
                   } {
                     let v4: Html = text("row")
@@ -283,14 +283,14 @@ mod tests {
                   n@v0: Int,
                 ) -> Int {
                   let v1: Int = 2
-                  let v2: Int = mul[Int](v0, v1)
+                  let v2: Int = int_mul(v0, v1)
                   v2
                 }
                 entrypoint Count@e0(
                   n@v3: Int,
                 ) -> Html {
-                  let v4: Int = double@f0(v3)
-                  let v5: String = v4.to_string()
+                  let v4: Int = f0(v3)
+                  let v5: String = int_to_string(v4)
                   let v6: Html = escape(v5)
                   v6
                 }
@@ -304,14 +304,14 @@ mod tests {
                   n@v0: Int,
                 ) -> Int {
                   let v1: Int = 2
-                  let v2: Int = mul[Int](v0, v1)
+                  let v2: Int = int_mul(v0, v1)
                   v2
                 }
                 entrypoint Count@e0(
                   n@v3: Int,
                 ) -> Html {
-                  let v4: Int = double@f0(v3)
-                  let v5: String = v4.to_string()
+                  let v4: Int = f0(v3)
+                  let v5: String = int_to_string(v4)
                   let v6: Html = escape(v5)
                   v6
                 }

@@ -827,7 +827,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn diverge@f0() -> Bool {
-                  let v0: Bool = diverge@f0()
+                  let v0: Bool = f0()
                   v0
                 }
                 entrypoint Test@e0(
@@ -835,7 +835,7 @@ mod tests {
                 ) -> Html {
                   let v4: Bool = match v1 {
                     true => {
-                      let v2: Bool = diverge@f0()
+                      let v2: Bool = f0()
                       v2
                     }
                     false => {
@@ -901,7 +901,7 @@ mod tests {
                       v1
                     }
                     Shape::Circle {radius@v2: Int} => {
-                      let v3: String = v2.to_string()
+                      let v3: String = int_to_string(v2)
                       v3
                     }
                   }
@@ -938,8 +938,8 @@ mod tests {
                   let v1: Holder = {nothing: v0}
                   let v2: Tuple[] = v1.nothing
                   let v3: Array[Tuple[]] = [v2]
-                  let v4: Int = v3.len()
-                  let v5: String = v4.to_string()
+                  let v4: Int = array_length(v3)
+                  let v5: String = int_to_string(v4)
                   let v6: Html = escape(v5)
                   v6
                 }
@@ -1081,8 +1081,8 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v0: Int = 2147483647
                   let v1: Int = 1
-                  let v2: Int = add[Int](v0, v1)
-                  let v3: String = v2.to_string()
+                  let v2: Int = int_add(v0, v1)
+                  let v3: String = int_to_string(v2)
                   let v4: Html = escape(v3)
                   v4
                 }
@@ -1326,7 +1326,7 @@ mod tests {
                   n@v0: Int,
                 ) -> Int {
                   let v1: Int = 0
-                  let v2: Bool = lt_eq[Int](v0, v1)
+                  let v2: Bool = int_lt_eq(v0, v1)
                   let v8: Int = match v2 {
                     true => {
                       let v3: Int = 0
@@ -1334,9 +1334,9 @@ mod tests {
                     }
                     false => {
                       let v4: Int = 1
-                      let v5: Int = sub[Int](v0, v4)
-                      let v6: Int = Sum@f0(v5)
-                      let v7: Int = add[Int](v0, v6)
+                      let v5: Int = int_sub(v0, v4)
+                      let v6: Int = f0(v5)
+                      let v7: Int = int_add(v0, v6)
                       v7
                     }
                   }
@@ -1344,8 +1344,8 @@ mod tests {
                 }
                 entrypoint Test@e0() -> Html {
                   let v9: Int = 10
-                  let v10: Int = Sum@f0(v9)
-                  let v11: String = v10.to_string()
+                  let v10: Int = f0(v9)
+                  let v11: String = int_to_string(v10)
                   let v12: Html = escape(v11)
                   v12
                 }
@@ -1383,16 +1383,16 @@ mod tests {
                   let v3: (Int) -> Int = fn(
                     v1: Int,
                   ) {
-                    let v2: Int = add[Int](v1, v0)
+                    let v2: Int = int_add(v1, v0)
                     v2
                   }
                   let v4: Int = 1
                   let v5: Int = v3(v4)
                   let v6: Int = 2
                   let v7: Int = v3(v6)
-                  let v8: String = v5.to_string()
+                  let v8: String = int_to_string(v5)
                   let v9: Html = escape(v8)
-                  let v10: String = v7.to_string()
+                  let v10: String = int_to_string(v7)
                   let v11: Html = escape(v10)
                   let v12: Html = concat(v9, v11)
                   v12
@@ -1458,7 +1458,7 @@ mod tests {
                     let v12: Html = element("li", {}, v11)
                     v12
                   }
-                  let v14: Html = Rows@f0(v6, v13)
+                  let v14: Html = f0(v6, v13)
                   v14
                 }
 

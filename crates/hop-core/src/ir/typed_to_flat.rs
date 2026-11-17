@@ -1482,7 +1482,7 @@ mod tests {
                 ) -> Html {
                   let v4: Bool = match v0 {
                     true => {
-                      let v2: Bool = not(v1)
+                      let v2: Bool = bool_not(v1)
                       v2
                     }
                     false => {
@@ -1507,7 +1507,7 @@ mod tests {
                       v9
                     }
                     false => {
-                      let v10: Bool = not(v1)
+                      let v10: Bool = bool_not(v1)
                       v10
                     }
                   }
@@ -1711,12 +1711,12 @@ mod tests {
                 }
                 entrypoint body@e0() -> Html {
                   let v0: String = "a"
-                  let v1: Html = Button@f0(v0)
+                  let v1: Html = f0(v0)
                   let v2: String = "b"
                   let v3: Bool = true
-                  let v4: Html = Button@f1(v2, v3)
+                  let v4: Html = f1(v2, v3)
                   let v5: String = "c"
-                  let v6: Html = Button@f0(v5)
+                  let v6: Html = f0(v5)
                   let v7: Html = concat(v1, v4, v6)
                   v7
                 }
@@ -1764,13 +1764,13 @@ mod tests {
                   class@v4: String,
                 ) -> Html {
                   let v5: String = "panel"
-                  let v6: Html = Card@f1(v3, v5, v4)
+                  let v6: Html = f1(v3, v5, v4)
                   v6
                 }
                 entrypoint body@e0() -> Html {
                   let v0: String = "Hi"
                   let v1: String = "wide"
-                  let v2: Html = Panel@f0(v0, v1)
+                  let v2: Html = f0(v0, v1)
                   v2
                 }
                 page Test: e0
@@ -1806,13 +1806,13 @@ mod tests {
                   id@v4: String,
                 ) -> Html {
                   let v5: Int = 0
-                  let v6: Bool = lt[Int](v5, v3)
+                  let v6: Bool = int_lt(v5, v3)
                   let v12: Html = match v6 {
                     true => {
                       let v7: Int = 1
-                      let v8: Int = sub[Int](v3, v7)
+                      let v8: Int = int_sub(v3, v7)
                       let v9: String = "inner"
-                      let v10: Html = Nest@f1(v8, v9)
+                      let v10: Html = f1(v8, v9)
                       v10
                     }
                     false => {
@@ -1829,13 +1829,13 @@ mod tests {
                   class@v16: String,
                 ) -> Html {
                   let v17: Int = 0
-                  let v18: Bool = lt[Int](v17, v15)
+                  let v18: Bool = int_lt(v17, v15)
                   let v24: Html = match v18 {
                     true => {
                       let v19: Int = 1
-                      let v20: Int = sub[Int](v15, v19)
+                      let v20: Int = int_sub(v15, v19)
                       let v21: String = "inner"
-                      let v22: Html = Nest@f1(v20, v21)
+                      let v22: Html = f1(v20, v21)
                       v22
                     }
                     false => {
@@ -1850,7 +1850,7 @@ mod tests {
                 entrypoint body@e0() -> Html {
                   let v0: Int = 2
                   let v1: String = "outer"
-                  let v2: Html = Nest@f0(v0, v1)
+                  let v2: Html = f0(v0, v1)
                   v2
                 }
                 page Test: e0
@@ -1887,7 +1887,7 @@ mod tests {
                 entrypoint body@e0() -> Html {
                   let v0: String = "1"
                   let v1: String = "go"
-                  let v2: Html = Button@f0(v0, v1)
+                  let v2: Html = f0(v0, v1)
                   v2
                 }
                 page Test: e0
@@ -1926,7 +1926,7 @@ mod tests {
                   v3
                 }
                 entrypoint body@e0() -> Html {
-                  let v0: Html = Used@f0()
+                  let v0: Html = f0()
                   v0
                 }
                 page Test: e0
@@ -1962,9 +1962,9 @@ mod tests {
                   name@v5: String,
                 ) -> String {
                   let v6: Int = 3
-                  let v7: Int = width@f1(v6)
+                  let v7: Int = f1(v6)
                   let v8: String = " "
-                  let v9: String = v7.to_string()
+                  let v9: String = int_to_string(v7)
                   let v10: String = string_concat(v5, v8, v9)
                   v10
                 }
@@ -1972,7 +1972,7 @@ mod tests {
                   n@v11: Int,
                 ) -> Int {
                   let v12: Int = 0
-                  let v13: Bool = lt_eq[Int](v11, v12)
+                  let v13: Bool = int_lt_eq(v11, v12)
                   let v20: Int = match v13 {
                     true => {
                       let v14: Int = 0
@@ -1980,10 +1980,10 @@ mod tests {
                     }
                     false => {
                       let v15: Int = 1
-                      let v16: Int = sub[Int](v11, v15)
-                      let v17: Int = width@f1(v16)
+                      let v16: Int = int_sub(v11, v15)
+                      let v17: Int = f1(v16)
                       let v18: Int = 2
-                      let v19: Int = add[Int](v17, v18)
+                      let v19: Int = int_add(v17, v18)
                       v19
                     }
                   }
@@ -1992,7 +1992,7 @@ mod tests {
                 entrypoint body@e0(
                   name@v0: String,
                 ) -> Html {
-                  let v1: String = label@f0(v0)
+                  let v1: String = f0(v0)
                   let v2: Html = escape(v1)
                   let v3: Html = concat(v2)
                   let v4: Html = element("p", {}, v3)
@@ -2044,7 +2044,7 @@ mod tests {
                   let v4: (Int) -> Int = fn(
                     v2: Int,
                   ) {
-                    let v3: Int = mul[Int](v2, v1)
+                    let v3: Int = int_mul(v2, v1)
                     v3
                   }
                   let v13: (String) -> Html = fn(
@@ -2053,13 +2053,13 @@ mod tests {
                     let v6: Html = escape(v5)
                     let v7: Int = 2
                     let v8: Int = v4(v7)
-                    let v9: String = v8.to_string()
+                    let v9: String = int_to_string(v8)
                     let v10: Html = escape(v9)
                     let v11: Html = concat(v6, v10)
                     let v12: Html = element("li", {}, v11)
                     v12
                   }
-                  let v14: Html = Rows@f0(v0, v13)
+                  let v14: Html = f0(v0, v13)
                   v14
                 }
                 page Test: e0
@@ -2091,7 +2091,7 @@ mod tests {
                   n@v11: Int,
                 ) -> Int {
                   let v12: Int = 0
-                  let v13: Bool = lt_eq[Int](v11, v12)
+                  let v13: Bool = int_lt_eq(v11, v12)
                   let v19: Int = match v13 {
                     true => {
                       let v14: Int = 2
@@ -2100,8 +2100,8 @@ mod tests {
                     }
                     false => {
                       let v16: Int = 1
-                      let v17: Int = sub[Int](v11, v16)
-                      let v18: Int = width@f0(v10, v17)
+                      let v17: Int = int_sub(v11, v16)
+                      let v18: Int = f0(v10, v17)
                       v18
                     }
                   }
@@ -2113,12 +2113,12 @@ mod tests {
                   let v3: (Int) -> Int = fn(
                     v1: Int,
                   ) {
-                    let v2: Int = add[Int](v1, v0)
+                    let v2: Int = int_add(v1, v0)
                     v2
                   }
                   let v4: Int = 3
-                  let v5: Int = width@f0(v3, v4)
-                  let v6: String = v5.to_string()
+                  let v5: Int = f0(v3, v4)
+                  let v6: String = int_to_string(v5)
                   let v7: Html = escape(v6)
                   let v8: Html = concat(v7)
                   let v9: Html = element("p", {}, v8)
@@ -2159,7 +2159,7 @@ mod tests {
                   n@v9: Int,
                 ) -> Int {
                   let v10: Int = 0
-                  let v11: Bool = lt_eq[Int](v9, v10)
+                  let v11: Bool = int_lt_eq(v9, v10)
                   let v18: Int = match v11 {
                     true => {
                       let v12: Int = 0
@@ -2167,10 +2167,10 @@ mod tests {
                     }
                     false => {
                       let v13: Int = 1
-                      let v14: Int = sub[Int](v9, v13)
-                      let v15: Int = width@f0(v14)
+                      let v14: Int = int_sub(v9, v13)
+                      let v15: Int = f0(v14)
                       let v16: Int = 2
-                      let v17: Int = add[Int](v15, v16)
+                      let v17: Int = int_add(v15, v16)
                       v17
                     }
                   }
@@ -2182,8 +2182,8 @@ mod tests {
                   let v5: String = match v0 {
                     true => {
                       let v1: Int = 1
-                      let v2: Int = width@f0(v1)
-                      let v3: String = v2.to_string()
+                      let v2: Int = f0(v1)
+                      let v3: String = int_to_string(v2)
                       v3
                     }
                     false => {
@@ -2247,7 +2247,7 @@ mod tests {
                   open@v6: Bool,
                   children@v7: Html,
                 ) -> Html {
-                  let v8: Html = Callout@f1(v6, v7)
+                  let v8: Html = f1(v6, v7)
                   v8
                 }
                 entrypoint body@e0(
@@ -2257,7 +2257,7 @@ mod tests {
                   let v2: Html = concat(v1)
                   let v3: Html = element("b", {}, v2)
                   let v4: Html = concat(v3)
-                  let v5: Html = Tip@f0(v0, v4)
+                  let v5: Html = f0(v0, v4)
                   v5
                 }
                 page Test: e0
@@ -2307,7 +2307,7 @@ mod tests {
                   let v22: Bool = track(v21)
                   let v31: () -> Mutation[Tuple[]] = fn() {
                     let v23: Int = 1
-                    let v24: Int = add[Int](v19, v23)
+                    let v24: Int = int_add(v19, v23)
                     let v25: Mutation[Tuple[]] = v18 := v24
                     let v29: (Tuple[]) -> Mutation[Tuple[]] = fn(
                       v26: Tuple[],
@@ -2321,7 +2321,7 @@ mod tests {
                   }
                   let v32: Html = escape(v16)
                   let v33: Html = text(" ")
-                  let v34: String = v19.to_string()
+                  let v34: String = int_to_string(v19)
                   let v35: Html = escape(v34)
                   let v36: Html = concat(v32, v33, v35)
                   let v37: Html = element("button", {}, v36) on_click v31
@@ -2340,7 +2340,7 @@ mod tests {
                     v8
                   } {
                     let v9: String = v7.label
-                    let v10: Html = Counter@f0(v9)
+                    let v10: Html = f0(v9)
                     let v11: Html = concat(v10)
                     let v12: Html = element("li", {}, v11)
                     v12
@@ -2386,7 +2386,7 @@ mod tests {
                   }
                   let v2: Bool = track(v1)
                   let v5: () -> Mutation[Tuple[]] = fn() {
-                    let v3: Bool = not(v2)
+                    let v3: Bool = bool_not(v2)
                     let v4: Mutation[Tuple[]] = v1 := v3
                     v4
                   }
@@ -2402,7 +2402,7 @@ mod tests {
                   }
                   let v9: Html = escape(v8)
                   let v10: Html = concat(v9)
-                  let v11: Html = Button@f0(v5, v10)
+                  let v11: Html = f0(v5, v10)
                   v11
                 }
                 page Test: e0
@@ -2433,7 +2433,7 @@ mod tests {
                   n@v17: Int,
                 ) -> Mutation[Int] {
                   let v18: Int = 1
-                  let v19: Int = add[Int](v17, v18)
+                  let v19: Int = int_add(v17, v18)
                   let v20: Mutation[Int] = pure(v19)
                   v20
                 }
@@ -2448,7 +2448,7 @@ mod tests {
                     let v10: (Int) -> Mutation[Tuple[]] = fn(
                       v4: Int,
                     ) {
-                      let v5: Mutation[Int] = bump@f0(v4)
+                      let v5: Mutation[Int] = f0(v4)
                       let v8: (Int) -> Mutation[Tuple[]] = fn(
                         v6: Int,
                       ) {
@@ -2461,7 +2461,7 @@ mod tests {
                     let v11: Mutation[Tuple[]] = bind(v3, v10)
                     v11
                   }
-                  let v13: String = v2.to_string()
+                  let v13: String = int_to_string(v2)
                   let v14: Html = escape(v13)
                   let v15: Html = concat(v14)
                   let v16: Html = element("button", {}, v15) on_click v12

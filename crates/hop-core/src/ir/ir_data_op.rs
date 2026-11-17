@@ -194,31 +194,44 @@ impl fmt::Display for IrDataOp {
             IrDataOp::OptionSome(value) => write!(f, "Some({value})"),
             IrDataOp::OptionNone => f.write_str("None"),
             IrDataOp::StringConcat(parts) => write!(f, "string_concat({})", join(parts, ", ")),
-            IrDataOp::NumericAdd(typ, left, right) => write!(f, "add[{typ:?}]({left}, {right})"),
-            IrDataOp::NumericSubtract(typ, left, right) => {
-                write!(f, "sub[{typ:?}]({left}, {right})")
+            IrDataOp::NumericAdd(NumericType::Int, l, r) => write!(f, "int_add({l}, {r})"),
+            IrDataOp::NumericAdd(NumericType::Float, l, r) => write!(f, "float_add({l}, {r})"),
+            IrDataOp::NumericSubtract(NumericType::Int, l, r) => write!(f, "int_sub({l}, {r})"),
+            IrDataOp::NumericSubtract(NumericType::Float, l, r) => {
+                write!(f, "float_sub({l}, {r})")
             }
-            IrDataOp::NumericMultiply(typ, left, right) => {
-                write!(f, "mul[{typ:?}]({left}, {right})")
+            IrDataOp::NumericMultiply(NumericType::Int, l, r) => write!(f, "int_mul({l}, {r})"),
+            IrDataOp::NumericMultiply(NumericType::Float, l, r) => {
+                write!(f, "float_mul({l}, {r})")
             }
-            IrDataOp::Equals(typ, left, right) => write!(f, "eq[{typ:?}]({left}, {right})"),
-            IrDataOp::LessThan(typ, left, right) => write!(f, "lt[{typ:?}]({left}, {right})"),
-            IrDataOp::LessThanOrEqual(typ, left, right) => {
-                write!(f, "lt_eq[{typ:?}]({left}, {right})")
+            IrDataOp::Equals(EquatableType::String, l, r) => write!(f, "string_eq({l}, {r})"),
+            IrDataOp::Equals(EquatableType::Bool, l, r) => write!(f, "bool_eq({l}, {r})"),
+            IrDataOp::Equals(EquatableType::Int, l, r) => write!(f, "int_eq({l}, {r})"),
+            IrDataOp::Equals(EquatableType::Float, l, r) => write!(f, "float_eq({l}, {r})"),
+            IrDataOp::LessThan(ComparableType::Int, l, r) => write!(f, "int_lt({l}, {r})"),
+            IrDataOp::LessThan(ComparableType::Float, l, r) => write!(f, "float_lt({l}, {r})"),
+            IrDataOp::LessThanOrEqual(ComparableType::Int, l, r) => {
+                write!(f, "int_lt_eq({l}, {r})")
             }
-            IrDataOp::ArrayFromRange(left, right) => write!(f, "{left}..={right}"),
-            IrDataOp::NumericNegation(typ, operand) => write!(f, "neg[{typ:?}]({operand})"),
-            IrDataOp::BoolNegation(operand) => write!(f, "not({operand})"),
-            IrDataOp::ArrayLength(operand) => write!(f, "{operand}.len()"),
-            IrDataOp::ArrayIsEmpty(operand) => write!(f, "{operand}.is_empty()"),
-            IrDataOp::ArrayGet(array, index) => write!(f, "{array}.get({index})"),
-            IrDataOp::ArrayEnumerate(operand) => write!(f, "{operand}.enumerate()"),
-            IrDataOp::StringIsEmpty(operand) => write!(f, "{operand}.is_empty()"),
-            IrDataOp::OptionIsSome(operand) => write!(f, "{operand}.is_some()"),
-            IrDataOp::OptionIsNone(operand) => write!(f, "{operand}.is_none()"),
-            IrDataOp::IntToString(operand) => write!(f, "{operand}.to_string()"),
-            IrDataOp::FloatToInt(operand) => write!(f, "{operand}.to_int()"),
-            IrDataOp::IntToFloat(operand) => write!(f, "{operand}.to_float()"),
+            IrDataOp::LessThanOrEqual(ComparableType::Float, l, r) => {
+                write!(f, "float_lt_eq({l}, {r})")
+            }
+            IrDataOp::ArrayFromRange(l, r) => write!(f, "array_from_range({l}, {r})"),
+            IrDataOp::NumericNegation(NumericType::Int, operand) => write!(f, "int_neg({operand})"),
+            IrDataOp::NumericNegation(NumericType::Float, operand) => {
+                write!(f, "float_neg({operand})")
+            }
+            IrDataOp::BoolNegation(operand) => write!(f, "bool_not({operand})"),
+            IrDataOp::ArrayLength(operand) => write!(f, "array_length({operand})"),
+            IrDataOp::ArrayIsEmpty(operand) => write!(f, "array_is_empty({operand})"),
+            IrDataOp::ArrayGet(array, index) => write!(f, "array_get({array}, {index})"),
+            IrDataOp::ArrayEnumerate(operand) => write!(f, "array_enumerate({operand})"),
+            IrDataOp::StringIsEmpty(operand) => write!(f, "string_is_empty({operand})"),
+            IrDataOp::OptionIsSome(operand) => write!(f, "option_is_some({operand})"),
+            IrDataOp::OptionIsNone(operand) => write!(f, "option_is_none({operand})"),
+            IrDataOp::IntToString(operand) => write!(f, "int_to_string({operand})"),
+            IrDataOp::FloatToInt(operand) => write!(f, "float_to_int({operand})"),
+            IrDataOp::IntToFloat(operand) => write!(f, "int_to_float({operand})"),
         }
     }
 }

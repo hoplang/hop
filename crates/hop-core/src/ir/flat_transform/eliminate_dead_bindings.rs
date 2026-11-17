@@ -327,7 +327,7 @@ mod tests {
                   let v5: Mutation[Tuple[]] = v3 := v4
                   let v6: Int = track(v1)
                   let v7: Int = 1
-                  let v8: Int = add[Int](v6, v7)
+                  let v8: Int = int_add(v6, v7)
                   let v9: Mutation[Tuple[]] = v1 := v8
                   let v10: () -> Mutation[Tuple[]] = fn() {
                     v9
@@ -345,7 +345,7 @@ mod tests {
                   }
                   let v6: Int = track(v1)
                   let v7: Int = 1
-                  let v8: Int = add[Int](v6, v7)
+                  let v8: Int = int_add(v6, v7)
                   let v9: Mutation[Tuple[]] = v1 := v8
                   let v10: () -> Mutation[Tuple[]] = fn() {
                     v9
@@ -402,7 +402,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 fn f@f0() -> Int {
-                  let v0: Int = f@f0()
+                  let v0: Int = f0()
                   v0
                 }
                 entrypoint Test@e0(
@@ -410,7 +410,7 @@ mod tests {
                 ) -> Html {
                   let v4: Int = match v1 {
                     true => {
-                      let v2: Int = f@f0()
+                      let v2: Int = f0()
                       v2
                     }
                     false => {
@@ -424,7 +424,7 @@ mod tests {
 
                 -- after --
                 fn f@f0() -> Int {
-                  let v0: Int = f@f0()
+                  let v0: Int = f0()
                   v0
                 }
                 entrypoint Test@e0(

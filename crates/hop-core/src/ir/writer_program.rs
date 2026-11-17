@@ -105,7 +105,7 @@ impl fmt::Display for WriterStmt {
             WriterStmt::Write(content) => write!(f, "write({content:?})"),
             WriterStmt::WriteString(name) => write!(f, "write_string({name})"),
             WriterStmt::WriteFunction(function, args) => {
-                write!(f, "write_function {function}({})", join(args, ", "))
+                write!(f, "write_function f{}({})", function.id, join(args, ", "))
             }
             WriterStmt::WriteApply(closure, args) => {
                 write!(f, "write_apply {closure}({})", join(args, ", "))
@@ -122,7 +122,7 @@ impl fmt::Display for WriterOp {
         match self {
             WriterOp::Data(op) => write!(f, "{op}"),
             WriterOp::TupleIndex(tuple, index) => write!(f, "{tuple}.{index}"),
-            WriterOp::Call(function, args) => write!(f, "{function}({})", join(args, ", ")),
+            WriterOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
             WriterOp::Match(match_) => match_.write(f, |block, w| write!(w, "\n{block}")),
             WriterOp::Lambda(lambda) => lambda.write(f, WriterFunctionBody::write),
             WriterOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),

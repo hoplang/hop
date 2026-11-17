@@ -1390,19 +1390,19 @@ mod tests {
                   on_press@v1: () -> Mutation[Tuple[]],
                 ) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq[Int](v0, v2)
+                  let v3: Bool = int_lt_eq(v0, v2)
                   let v12: Html = match v3 {
                     true => {
                       let v4: Html = concat()
                       v4
                     }
                     false => {
-                      let v5: String = v0.to_string()
+                      let v5: String = int_to_string(v0)
                       let v6: Html = escape(v5)
                       let v7: Html = element("button", {}, v6) on_click v1
                       let v8: Int = 1
-                      let v9: Int = sub[Int](v0, v8)
-                      let v10: Html = Buttons@f0(v9, v1)
+                      let v9: Int = int_sub(v0, v8)
+                      let v10: Html = f0(v9, v1)
                       let v11: Html = concat(v7, v10)
                       v11
                     }
@@ -1417,13 +1417,13 @@ mod tests {
                   let v15: Int = track(v14)
                   let v19: () -> Mutation[Tuple[]] = fn() {
                     let v16: Int = 1
-                    let v17: Int = add[Int](v15, v16)
+                    let v17: Int = int_add(v15, v16)
                     let v18: Mutation[Tuple[]] = v14 := v17
                     v18
                   }
                   let v20: Int = 2
-                  let v21: Html = Buttons@f0(v20, v19)
-                  let v22: String = v15.to_string()
+                  let v21: Html = f0(v20, v19)
+                  let v22: String = int_to_string(v15)
                   let v23: Html = escape(v22)
                   let v24: Html = concat(v23, v21)
                   v24
@@ -1435,18 +1435,18 @@ mod tests {
                   on_press@v1: () -> Tuple[],
                 ) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq[Int](v0, v2)
+                  let v3: Bool = int_lt_eq(v0, v2)
                   match v3 {
                     true => {
                     }
                     false => {
-                      let v5: String = v0.to_string()
+                      let v5: String = int_to_string(v0)
                       let v8: Int = 1
-                      let v9: Int = sub[Int](v0, v8)
+                      let v9: Int = int_sub(v0, v8)
                       write("<button>")
                       write_string(v5)
                       write("</button>")
-                      write_function Buttons@f0(v9, v1)
+                      write_function f0(v9, v1)
                     }
                   }
                 }
@@ -1454,14 +1454,14 @@ mod tests {
                   let v13: Int = 0
                   let v19: () -> Tuple[] = fn() {
                     let v16: Int = 1
-                    let v17: Int = add[Int](v13, v16)
+                    let v17: Int = int_add(v13, v16)
                     let v18: Tuple[] = ()
                     v18
                   }
                   let v20: Int = 2
-                  let v22: String = v13.to_string()
+                  let v22: String = int_to_string(v13)
                   write_string(v22)
-                  write_function Buttons@f0(v20, v19)
+                  write_function f0(v20, v19)
                 }
             "#]],
         );
@@ -1504,7 +1504,7 @@ mod tests {
                   row@v1: (Int) -> Html,
                 ) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq[Int](v0, v2)
+                  let v3: Bool = int_lt_eq(v0, v2)
                   let v10: Html = match v3 {
                     true => {
                       let v4: Html = concat()
@@ -1513,8 +1513,8 @@ mod tests {
                     false => {
                       let v5: Html = v1(v0)
                       let v6: Int = 1
-                      let v7: Int = sub[Int](v0, v6)
-                      let v8: Html = Countdown@f0(v7, v1)
+                      let v7: Int = int_sub(v0, v6)
+                      let v8: Html = f0(v7, v1)
                       let v9: Html = concat(v5, v8)
                       v9
                     }
@@ -1527,14 +1527,14 @@ mod tests {
                   let v17: (Int) -> Html = fn(
                     v12: Int,
                   ) {
-                    let v13: String = v12.to_string()
+                    let v13: String = int_to_string(v12)
                     let v14: String = string_concat(v11, v13)
                     let v15: Html = escape(v14)
                     let v16: Html = element("li", {}, v15)
                     v16
                   }
                   let v18: Int = 3
-                  let v19: Html = Countdown@f0(v18, v17)
+                  let v19: Html = f0(v18, v17)
                   let v20: Html = element("ul", {}, v19)
                   v20
                 }
@@ -1545,15 +1545,15 @@ mod tests {
                   row@v1: (Int) -> Html,
                 ) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq[Int](v0, v2)
+                  let v3: Bool = int_lt_eq(v0, v2)
                   match v3 {
                     true => {
                     }
                     false => {
                       let v6: Int = 1
-                      let v7: Int = sub[Int](v0, v6)
+                      let v7: Int = int_sub(v0, v6)
                       write_apply v1(v0)
-                      write_function Countdown@f0(v7, v1)
+                      write_function f0(v7, v1)
                     }
                   }
                 }
@@ -1562,14 +1562,14 @@ mod tests {
                   let v17: (Int) -> Html = fn(
                     v12: Int,
                   ) {
-                    let v13: String = v12.to_string()
+                    let v13: String = int_to_string(v12)
                     write("<li>")
                     write_string(v11)
                     write_string(v13)
                     write("</li>")
                   }
                   write("<ul>")
-                  write_function Countdown@f0(v18, v17)
+                  write_function f0(v18, v17)
                   write("</ul>")
                 }
             "#]],
@@ -1617,7 +1617,7 @@ mod tests {
                   scale@v1: (Int) -> Int,
                 ) -> Int {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq[Int](v0, v2)
+                  let v3: Bool = int_lt_eq(v0, v2)
                   let v10: Int = match v3 {
                     true => {
                       let v4: Int = 0
@@ -1626,9 +1626,9 @@ mod tests {
                     false => {
                       let v5: Int = v1(v0)
                       let v6: Int = 1
-                      let v7: Int = sub[Int](v0, v6)
-                      let v8: Int = Sum@f0(v7, v1)
-                      let v9: Int = add[Int](v5, v8)
+                      let v7: Int = int_sub(v0, v6)
+                      let v8: Int = f0(v7, v1)
+                      let v9: Int = int_add(v5, v8)
                       v9
                     }
                   }
@@ -1643,7 +1643,7 @@ mod tests {
                     let v15: Int = match v11 {
                       true => {
                         let v13: Int = 2
-                        let v14: Int = mul[Int](v12, v13)
+                        let v14: Int = int_mul(v12, v13)
                         v14
                       }
                       false => {
@@ -1653,8 +1653,8 @@ mod tests {
                     v15
                   }
                   let v17: Int = 3
-                  let v18: Int = Sum@f0(v17, v16)
-                  let v19: String = v18.to_string()
+                  let v18: Int = f0(v17, v16)
+                  let v19: String = int_to_string(v18)
                   let v20: Html = escape(v19)
                   v20
                 }
@@ -1665,7 +1665,7 @@ mod tests {
                   scale@v1: (Int) -> Int,
                 ) -> Int {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq[Int](v0, v2)
+                  let v3: Bool = int_lt_eq(v0, v2)
                   let v22: Int = match v3 {
                     true => {
                       let v4: Int = 0
@@ -1674,9 +1674,9 @@ mod tests {
                     false => {
                       let v5: Int = v1(v0)
                       let v6: Int = 1
-                      let v7: Int = sub[Int](v0, v6)
-                      let v8: Int = Sum@f0(v7, v1)
-                      let v9: Int = add[Int](v5, v8)
+                      let v7: Int = int_sub(v0, v6)
+                      let v8: Int = f0(v7, v1)
+                      let v9: Int = int_add(v5, v8)
                       v9
                     }
                   }
@@ -1689,7 +1689,7 @@ mod tests {
                     let v21: Int = match v11 {
                       true => {
                         let v13: Int = 2
-                        let v14: Int = mul[Int](v12, v13)
+                        let v14: Int = int_mul(v12, v13)
                         v14
                       }
                       false => {
@@ -1699,8 +1699,8 @@ mod tests {
                     v21
                   }
                   let v17: Int = 3
-                  let v18: Int = Sum@f0(v17, v16)
-                  let v19: String = v18.to_string()
+                  let v18: Int = f0(v17, v16)
+                  let v19: String = int_to_string(v18)
                   write_string(v19)
                 }
             "#]],
@@ -1741,7 +1741,7 @@ mod tests {
                   wrap@v1: (Html) -> Html,
                 ) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq[Int](v0, v2)
+                  let v3: Bool = int_lt_eq(v0, v2)
                   let v9: Html = match v3 {
                     true => {
                       let v4: Html = text("x")
@@ -1749,8 +1749,8 @@ mod tests {
                     }
                     false => {
                       let v5: Int = 1
-                      let v6: Int = sub[Int](v0, v5)
-                      let v7: Html = Wrap@f0(v6, v1)
+                      let v6: Int = int_sub(v0, v5)
+                      let v7: Html = f0(v6, v1)
                       let v8: Html = v1(v7)
                       v8
                     }
@@ -1765,7 +1765,7 @@ mod tests {
                     v11
                   }
                   let v13: Int = 2
-                  let v14: Html = Wrap@f0(v13, v12)
+                  let v14: Html = f0(v13, v12)
                   v14
                 }
 
@@ -1775,16 +1775,16 @@ mod tests {
                   wrap@v1: (() -> Html) -> Html,
                 ) -> Html {
                   let v2: Int = 0
-                  let v3: Bool = lt_eq[Int](v0, v2)
+                  let v3: Bool = int_lt_eq(v0, v2)
                   match v3 {
                     true => {
                       write("x")
                     }
                     false => {
                       let v5: Int = 1
-                      let v6: Int = sub[Int](v0, v5)
+                      let v6: Int = int_sub(v0, v5)
                       let v15: () -> Html = fn() {
-                        write_function Wrap@f0(v6, v1)
+                        write_function f0(v6, v1)
                       }
                       write_apply v1(v15)
                     }
@@ -1799,7 +1799,7 @@ mod tests {
                     write_apply v10()
                     write("</b>")
                   }
-                  write_function Wrap@f0(v13, v12)
+                  write_function f0(v13, v12)
                 }
             "#]],
         );
@@ -2275,7 +2275,7 @@ mod tests {
                       v4
                     }
                     _ => {
-                      let v5: String = v2.to_string()
+                      let v5: String = int_to_string(v2)
                       v5
                     }
                   }
@@ -2289,12 +2289,12 @@ mod tests {
                       v14
                     }
                     _ => {
-                      let v15: String = v2.to_string()
+                      let v15: String = int_to_string(v2)
                       let v16: Html = escape(v15)
                       let v17: Int = 1
-                      let v18: Array[Int] = v17..=v2
+                      let v18: Array[Int] = array_from_range(v17, v2)
                       let v24: Html = for v19: Int in v18 {
-                        let v20: String = v19.to_string()
+                        let v20: String = int_to_string(v19)
                         let v21: Html = escape(v20)
                         let v23: Html = element("b", {}, v21)
                         v23
@@ -2318,14 +2318,14 @@ mod tests {
                           v30
                         }
                         false => {
-                          let v5: String = v2.to_string()
+                          let v5: String = int_to_string(v2)
                           v5
                         }
                       }
                       v31
                     }
                     None => {
-                      let v32: String = v2.to_string()
+                      let v32: String = int_to_string(v2)
                       v32
                     }
                   }
@@ -2341,13 +2341,13 @@ mod tests {
                           write("</p>")
                         }
                         false => {
-                          let v15: String = v2.to_string()
+                          let v15: String = int_to_string(v2)
                           let v17: Int = 1
-                          let v18: Array[Int] = v17..=v2
+                          let v18: Array[Int] = array_from_range(v17, v2)
                           write("<p>")
                           write_string(v15)
                           for v19: Int in v18 {
-                            let v20: String = v19.to_string()
+                            let v20: String = int_to_string(v19)
                             write("<b>")
                             write_string(v20)
                             write("</b>")
@@ -2357,13 +2357,13 @@ mod tests {
                       }
                     }
                     None => {
-                      let v35: String = v2.to_string()
+                      let v35: String = int_to_string(v2)
                       let v36: Int = 1
-                      let v37: Array[Int] = v36..=v2
+                      let v37: Array[Int] = array_from_range(v36, v2)
                       write("<p>")
                       write_string(v35)
                       for v38: Int in v37 {
-                        let v39: String = v38.to_string()
+                        let v39: String = int_to_string(v38)
                         write("<b>")
                         write_string(v39)
                         write("</b>")
@@ -2481,7 +2481,7 @@ mod tests {
                   let v2: Tuple[Option[Int], Bool] = (v0, v1)
                   let v7: String = match v2 {
                     (Some(v3: Int), true) => {
-                      let v4: String = v3.to_string()
+                      let v4: String = int_to_string(v3)
                       v4
                     }
                     (Some(_), false) => {
@@ -2504,7 +2504,7 @@ mod tests {
                     Some(v11: Int) => {
                       let v12: String = match v1 {
                         true => {
-                          let v4: String = v11.to_string()
+                          let v4: String = int_to_string(v11)
                           v4
                         }
                         false => {
@@ -2552,12 +2552,12 @@ mod tests {
                   children@v8: Html,
                 ) -> Html {
                   let v9: Int = 0
-                  let v10: Bool = lt[Int](v9, v7)
+                  let v10: Bool = int_lt(v9, v7)
                   let v17: Html = match v10 {
                     true => {
                       let v11: Int = 1
-                      let v12: Int = sub[Int](v7, v11)
-                      let v14: Html = Nest@f0(v12, v8)
+                      let v12: Int = int_sub(v7, v11)
+                      let v14: Html = f0(v12, v8)
                       let v16: Html = element("div", {}, v14)
                       v16
                     }
@@ -2573,7 +2573,7 @@ mod tests {
                   let v1: Int = 2
                   let v2: Html = escape(v0)
                   let v4: Html = element("b", {}, v2)
-                  let v6: Html = Nest@f0(v1, v4)
+                  let v6: Html = f0(v1, v4)
                   v6
                 }
 
@@ -2583,13 +2583,13 @@ mod tests {
                   children@v8: () -> Html,
                 ) -> Html {
                   let v9: Int = 0
-                  let v10: Bool = lt[Int](v9, v7)
+                  let v10: Bool = int_lt(v9, v7)
                   match v10 {
                     true => {
                       let v11: Int = 1
-                      let v12: Int = sub[Int](v7, v11)
+                      let v12: Int = int_sub(v7, v11)
                       write("<div>")
-                      write_function Nest@f0(v12, v8)
+                      write_function f0(v12, v8)
                       write("</div>")
                     }
                     false => {
@@ -2604,7 +2604,7 @@ mod tests {
                     write_string(v0)
                     write("</b>")
                   }
-                  write_function Nest@f0(v1, v18)
+                  write_function f0(v1, v18)
                 }
             "#]],
         );
@@ -2728,8 +2728,8 @@ mod tests {
                   n@v1: Int,
                 ) -> Html {
                   let v3: Int = 1
-                  let v4: Int = add[Int](v1, v3)
-                  let v5: String = v4.to_string()
+                  let v4: Int = int_add(v1, v3)
+                  let v5: String = int_to_string(v4)
                   let v9: Html = for _ in v0 {
                     let v7: Html = text("x")
                     let v8: Html = element("li", {data-x: v5}, v7)
@@ -2742,8 +2742,8 @@ mod tests {
                 -- writer --
                 page Items(items@v0: Array[String], n@v1: Int) {
                   let v3: Int = 1
-                  let v4: Int = add[Int](v1, v3)
-                  let v5: String = v4.to_string()
+                  let v4: Int = int_add(v1, v3)
+                  let v5: String = int_to_string(v4)
                   write("<ul>")
                   for _ in v0 {
                     write("<li data-x=\"")
@@ -2828,11 +2828,11 @@ mod tests {
                   let v12: Int = track(v10)
                   let v16: () -> Mutation[Tuple[]] = fn() {
                     let v13: Int = 1
-                    let v14: Int = add[Int](v12, v13)
+                    let v14: Int = int_add(v12, v13)
                     let v15: Mutation[Tuple[]] = v10 := v14
                     v15
                   }
-                  let v17: String = v12.to_string()
+                  let v17: String = int_to_string(v12)
                   let v18: Html = escape(v17)
                   let v19: Html = element("button", {}, v18) on_click v16
                   v19
@@ -2843,11 +2843,11 @@ mod tests {
                   let v9: Int = 7
                   let v16: () -> Tuple[] = fn() {
                     let v13: Int = 1
-                    let v14: Int = add[Int](v9, v13)
+                    let v14: Int = int_add(v9, v13)
                     let v15: Tuple[] = ()
                     v15
                   }
-                  let v17: String = v9.to_string()
+                  let v17: String = int_to_string(v9)
                   write("<button>")
                   write_string(v17)
                   write("</button>")

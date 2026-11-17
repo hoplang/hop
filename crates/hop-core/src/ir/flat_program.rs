@@ -293,7 +293,7 @@ impl fmt::Display for FlatPureOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FlatPureOp::Data(op) => write!(f, "{op}"),
-            FlatPureOp::Call(function, args) => write!(f, "{function}({})", join(args, ", ")),
+            FlatPureOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
             FlatPureOp::Match(match_) => match_.write(f, write_block),
             FlatPureOp::CellWrite(cell, value) => write!(f, "{cell} := {value}"),
             FlatPureOp::CellRead(cell) => write!(f, "read({cell})"),
@@ -335,7 +335,7 @@ impl fmt::Display for FlatHtmlOp {
                 }
                 Ok(())
             }
-            FlatHtmlOp::Call(function, args) => write!(f, "{function}({})", join(args, ", ")),
+            FlatHtmlOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
             FlatHtmlOp::Match(match_) => match_.write(f, write_block),
             FlatHtmlOp::For(FlatFor {
                 var,

@@ -175,7 +175,7 @@ mod tests {
                     let v9: Html = element("li", {}, v8)
                     v9
                   }
-                  let v11: Html = Rows@f0(v6, v10)
+                  let v11: Html = f0(v6, v10)
                   v11
                 }
 
@@ -300,13 +300,13 @@ mod tests {
                 fn double@f0(
                   x@v0: Int,
                 ) -> Int {
-                  let v1: Int = add[Int](v0, v0)
+                  let v1: Int = int_add(v0, v0)
                   v1
                 }
                 entrypoint Test@e0() -> Html {
                   let v2: Int = 21
-                  let v3: Int = double@f0(v2)
-                  let v4: String = v3.to_string()
+                  let v3: Int = f0(v2)
+                  let v4: String = int_to_string(v3)
                   let v5: Html = escape(v4)
                   v5
                 }

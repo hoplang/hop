@@ -941,15 +941,15 @@ mod tests {
                   let v4: (Int) -> Int = fn(
                     v2: Int,
                   ) {
-                    let v3: Int = add[Int](v2, v1)
+                    let v3: Int = int_add(v2, v1)
                     v3
                   }
                   let v5: Int = 1
                   let v6: Int = v4(v5)
                   let v7: Int = v4(v0)
-                  let v8: String = v6.to_string()
+                  let v8: String = int_to_string(v6)
                   let v9: Html = escape(v8)
-                  let v10: String = v7.to_string()
+                  let v10: String = int_to_string(v7)
                   let v11: Html = escape(v10)
                   let v12: Html = concat(v9, v11)
                   v12
@@ -963,15 +963,15 @@ mod tests {
                   let v4: (Int) -> Int = fn(
                     v2: Int,
                   ) {
-                    let v3: Int = add[Int](v2, v1)
+                    let v3: Int = int_add(v2, v1)
                     v3
                   }
                   let v5: Int = 1
                   let v13: Int = 11
-                  let v14: Int = add[Int](v0, v1)
+                  let v14: Int = int_add(v0, v1)
                   let v8: String = "11"
                   let v9: Html = text("11")
-                  let v10: String = v14.to_string()
+                  let v10: String = int_to_string(v14)
                   let v11: Html = escape(v10)
                   let v12: Html = concat(v9, v11)
                   v12
@@ -1124,7 +1124,7 @@ mod tests {
                 fn wrap@f0() -> Int {
                   let v0: Int = 2147483647
                   let v1: Int = 1
-                  let v2: Int = add[Int](v0, v1)
+                  let v2: Int = int_add(v0, v1)
                   v2
                 }
 
@@ -1155,7 +1155,7 @@ mod tests {
                 -- before --
                 entrypoint Test@e0() -> Html {
                   let v0: Bool = true
-                  let v1: Bool = not(v0)
+                  let v1: Bool = bool_not(v0)
                   let v4: Html = match v1 {
                     true => {
                       let v2: Html = text("yes")
@@ -1256,7 +1256,7 @@ mod tests {
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
                   let v3: Int = v2.x
-                  let v4: String = v3.to_string()
+                  let v4: String = int_to_string(v3)
                   let v5: Html = escape(v4)
                   v5
                 }
@@ -1267,7 +1267,7 @@ mod tests {
                 ) -> Html {
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
-                  let v4: String = v0.to_string()
+                  let v4: String = int_to_string(v0)
                   let v5: Html = escape(v4)
                   v5
                 }
@@ -1560,7 +1560,7 @@ mod tests {
                       v2
                     }
                     Shape::Circle {radius@v3: Int} => {
-                      let v4: Int = mul[Int](v3, v3)
+                      let v4: Int = int_mul(v3, v3)
                       v4
                     }
                   }
@@ -1572,7 +1572,7 @@ mod tests {
                   n@v0: Int,
                 ) -> Int {
                   let v1: Shape = Circle {radius: v0}
-                  let v4: Int = mul[Int](v0, v0)
+                  let v4: Int = int_mul(v0, v0)
                   v4
                 }
             "#]],
@@ -1633,7 +1633,7 @@ mod tests {
                 -- before --
                 fn big@f0() -> Int {
                   let v0: Float = 10000000000
-                  let v1: Int = v0.to_int()
+                  let v1: Int = float_to_int(v0)
                   v1
                 }
 
@@ -1664,7 +1664,7 @@ mod tests {
                 entrypoint Test@e0() -> Html {
                   let v0: String = "a"
                   let v1: String = "a"
-                  let v2: Bool = eq[String](v0, v1)
+                  let v2: Bool = string_eq(v0, v1)
                   let v5: Html = match v2 {
                     true => {
                       let v3: Html = text("same")
