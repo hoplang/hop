@@ -15062,6 +15062,31 @@ mod tests {
     }
 
     #[test]
+    fn rejects_a_cell_in_a_block_that_returns_a_lambda_that_renders_html() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let row = {
+                    let mut open = false;
+                    fn(label: String) {
+                      <li on:click={fn() { open.set(!open) }}>{label}</li>
+                    }
+                  };
+                  <ul>{row("a")}{row("b")}</ul>
+                }
+            "#},
+            expect![[r#"
+                error: A cell can only be bound in a block that returns Html
+                  --> main.hop (line 3, col 13)
+                2 |   let row = {
+                3 |     let mut open = false;
+                  |             ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_a_cell_in_an_arm_of_a_match_that_renders_html() {
         accept(
             indoc! {r#"

@@ -1112,7 +1112,7 @@ pub fn typecheck_expr(
             }
             let typed_body = typed_body?;
             let typ = typed_body.typ();
-            if binding.mutable && !typ.renders_html() {
+            if binding.mutable && typ != Type::HTML {
                 errors.push(TypeError::new(
                     TypeErrorKind::CellOutsideHtml,
                     binding.var_name_range.clone(),
