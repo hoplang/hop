@@ -26,8 +26,8 @@ use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrResultType, IrSignature,
-    IrType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrIdType, IrResultType,
+    IrSignature, IrType,
 };
 use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
@@ -357,7 +357,9 @@ impl<'a> Compiler<'a> {
                 FlatHtmlBinding::Cell(..) | FlatHtmlBinding::Track(..) => {
                     unreachable!("the typechecker rejects a cell in a block that computes a value")
                 }
-                FlatHtmlBinding::Html(_) => panic!("a block that computes a value binds Html"),
+                FlatHtmlBinding::Mint(_) | FlatHtmlBinding::Html(_) => {
+                    panic!("a block that computes a value binds Html")
+                }
             })
             .collect();
         IrBlock { bindings, result }
@@ -783,7 +785,13 @@ impl<'a> Compiler<'a> {
                 } else {
                     Some(self.compile_expr(children))
                 };
+                let identity = self.value_id_counter.next();
+                self.bindings.push(FlatHtmlBinding::Mint(IrBinder {
+                    var: identity,
+                    typ: IrIdType,
+                }));
                 return self.push_html(FlatHtmlOp::Element(IrHtmlElement {
+                    identity,
                     element: element.clone(),
                     attributes,
                     children,
@@ -1142,7 +1150,7 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
                         .iter()
                         .map(|parameter| match lower_type(registry, parameter) {
                             IrType::Data(parameter) => parameter,
-                            IrType::Html(_) => {
+                            IrType::Html(_) | IrType::Id(_) => {
                                 unreachable!("a function that returns a value takes no Html")
                             }
                         })
@@ -1226,13 +1234,14 @@ mod tests {
                 entrypoint head@e0() -> Html {
                   let v0: Html = text("Hi")
                   let v1: Html = concat(v0)
-                  let v2: Html = element("title", {}, v1)
-                  v2
+                  let v2: Id = mint()
+                  let v3: Html = element(v2, "title", {}, v1)
+                  v3
                 }
                 entrypoint body@e1() -> Html {
-                  let v3: Html = text("Hello World")
-                  let v4: Html = concat(v3)
-                  v4
+                  let v4: Html = text("Hello World")
+                  let v5: Html = concat(v4)
+                  v5
                 }
                 page Test: e0, e1
             "#]],
@@ -1277,8 +1286,9 @@ mod tests {
                 entrypoint body@e0() -> Html {
                   let v0: Html = text("Content")
                   let v1: Html = concat(v0)
-                  let v2: Html = element("div", {}, v1)
-                  v2
+                  let v2: Id = mint()
+                  let v3: Html = element(v2, "div", {}, v1)
+                  v3
                 }
                 page Test: e0
             "#]],
@@ -1303,15 +1313,17 @@ mod tests {
                 entrypoint body@e0(
                   items@v0: Array[String],
                 ) -> Html {
-                  let v5: Html = for v1: String in v0 {
+                  let v6: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
                     let v3: Html = concat(v2)
-                    let v4: Html = element("li", {}, v3)
-                    v4
+                    let v4: Id = mint()
+                    let v5: Html = element(v4, "li", {}, v3)
+                    v5
                   }
-                  let v6: Html = concat(v5)
-                  let v7: Html = element("ul", {}, v6)
-                  v7
+                  let v7: Html = concat(v6)
+                  let v8: Id = mint()
+                  let v9: Html = element(v8, "ul", {}, v7)
+                  v9
                 }
                 page Test: e0
             "#]],
@@ -1342,29 +1354,33 @@ mod tests {
                   items@v0: Array[String],
                   name@v1: Option[String],
                 ) -> Html {
-                  let v6: Html = for v2: String in v0 {
+                  let v7: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
                     let v4: Html = concat(v3)
-                    let v5: Html = element("li", {}, v4)
-                    v5
+                    let v5: Id = mint()
+                    let v6: Html = element(v5, "li", {}, v4)
+                    v6
                   }
-                  let v14: Html = match v1 {
-                    Some(v7: String) => {
-                      let v8: Html = escape(v7)
-                      let v9: Html = concat(v8)
-                      let v10: Html = element("b", {}, v9)
-                      v10
+                  let v17: Html = match v1 {
+                    Some(v8: String) => {
+                      let v9: Html = escape(v8)
+                      let v10: Html = concat(v9)
+                      let v11: Id = mint()
+                      let v12: Html = element(v11, "b", {}, v10)
+                      v12
                     }
                     None => {
-                      let v11: Html = text("anonymous")
-                      let v12: Html = concat(v11)
-                      let v13: Html = element("i", {}, v12)
-                      v13
+                      let v13: Html = text("anonymous")
+                      let v14: Html = concat(v13)
+                      let v15: Id = mint()
+                      let v16: Html = element(v15, "i", {}, v14)
+                      v16
                     }
                   }
-                  let v15: Html = concat(v6, v14)
-                  let v16: Html = element("ul", {}, v15)
-                  v16
+                  let v18: Html = concat(v7, v17)
+                  let v19: Id = mint()
+                  let v20: Html = element(v19, "ul", {}, v18)
+                  v20
                 }
                 page Test: e0
             "#]],
@@ -1387,8 +1403,9 @@ mod tests {
                   let v1: String = "test"
                   let v2: Html = text("Content")
                   let v3: Html = concat(v2)
-                  let v4: Html = element("div", {class: v0, id: v1}, v3)
-                  v4
+                  let v4: Id = mint()
+                  let v5: Html = element(v4, "div", {class: v0, id: v1}, v3)
+                  v5
                 }
                 page Test: e0
             "#]],
@@ -1412,8 +1429,9 @@ mod tests {
                   let v1: String = "base"
                   let v2: Html = text("Content")
                   let v3: Html = concat(v2)
-                  let v4: Html = element("div", {class: v1, data-value: v0}, v3)
-                  v4
+                  let v4: Id = mint()
+                  let v5: Html = element(v4, "div", {class: v1, data-value: v0}, v3)
+                  v5
                 }
                 page Test: e0
             "#]],
@@ -1555,27 +1573,30 @@ mod tests {
                   status@v1: Status,
                 ) -> Html {
                   let v2: Tuple[Bool, Status] = (v0, v1)
-                  let v13: Html = match v2 {
+                  let v16: Html = match v2 {
                     (true, Status::Away {since@v3: String}) => {
                       let v4: Html = escape(v3)
                       let v5: Html = concat(v4)
-                      let v6: Html = element("p", {}, v5)
-                      v6
+                      let v6: Id = mint()
+                      let v7: Html = element(v6, "p", {}, v5)
+                      v7
                     }
                     (true, _) => {
-                      let v7: Html = text("here")
-                      let v8: Html = concat(v7)
-                      let v9: Html = element("p", {}, v8)
-                      v9
+                      let v8: Html = text("here")
+                      let v9: Html = concat(v8)
+                      let v10: Id = mint()
+                      let v11: Html = element(v10, "p", {}, v9)
+                      v11
                     }
                     (false, _) => {
-                      let v10: Html = text("guest")
-                      let v11: Html = concat(v10)
-                      let v12: Html = element("p", {}, v11)
-                      v12
+                      let v12: Html = text("guest")
+                      let v13: Html = concat(v12)
+                      let v14: Id = mint()
+                      let v15: Html = element(v14, "p", {}, v13)
+                      v15
                     }
                   }
-                  v13
+                  v16
                 }
                 page Test: e0
             "#]],
@@ -1594,8 +1615,9 @@ mod tests {
             "#},
             expect![[r#"
                 entrypoint body@e0() -> Html {
-                  let v0: Html = element("br", {})
-                  v0
+                  let v0: Id = mint()
+                  let v1: Html = element(v0, "br", {})
+                  v1
                 }
                 page Test: e0
             "#]],
@@ -1697,17 +1719,19 @@ mod tests {
                 ) -> Html {
                   let v9: Html = text("Go")
                   let v10: Html = concat(v9)
-                  let v11: Html = element("button", {id: v8}, v10)
-                  v11
+                  let v11: Id = mint()
+                  let v12: Html = element(v11, "button", {id: v8}, v10)
+                  v12
                 }
                 fn Button@f1(
-                  class@v12: String,
-                  disabled@v13: Bool,
+                  class@v13: String,
+                  disabled@v14: Bool,
                 ) -> Html {
-                  let v14: Html = text("Go")
-                  let v15: Html = concat(v14)
-                  let v16: Html = element("button", {class: v12, disabled: v13}, v15)
-                  v16
+                  let v15: Html = text("Go")
+                  let v16: Html = concat(v15)
+                  let v17: Id = mint()
+                  let v18: Html = element(v17, "button", {class: v13, disabled: v14}, v16)
+                  v18
                 }
                 entrypoint body@e0() -> Html {
                   let v0: String = "a"
@@ -1756,8 +1780,9 @@ mod tests {
                 ) -> Html {
                   let v10: Html = escape(v7)
                   let v11: Html = concat(v10)
-                  let v12: Html = element("div", {id: v8, class: v9}, v11)
-                  v12
+                  let v12: Id = mint()
+                  let v13: Html = element(v12, "div", {id: v8, class: v9}, v11)
+                  v13
                 }
                 fn Panel@f0(
                   title@v3: String,
@@ -1821,31 +1846,33 @@ mod tests {
                     }
                   }
                   let v13: Html = concat(v12)
-                  let v14: Html = element("div", {id: v4}, v13)
-                  v14
+                  let v14: Id = mint()
+                  let v15: Html = element(v14, "div", {id: v4}, v13)
+                  v15
                 }
                 fn Nest@f1(
-                  depth@v15: Int,
-                  class@v16: String,
+                  depth@v16: Int,
+                  class@v17: String,
                 ) -> Html {
-                  let v17: Int = 0
-                  let v18: Bool = int_lt(v17, v15)
-                  let v24: Html = match v18 {
+                  let v18: Int = 0
+                  let v19: Bool = int_lt(v18, v16)
+                  let v25: Html = match v19 {
                     true => {
-                      let v19: Int = 1
-                      let v20: Int = int_sub(v15, v19)
-                      let v21: String = "inner"
-                      let v22: Html = f1(v20, v21)
-                      v22
-                    }
-                    false => {
-                      let v23: Html = concat()
+                      let v20: Int = 1
+                      let v21: Int = int_sub(v16, v20)
+                      let v22: String = "inner"
+                      let v23: Html = f1(v21, v22)
                       v23
                     }
+                    false => {
+                      let v24: Html = concat()
+                      v24
+                    }
                   }
-                  let v25: Html = concat(v24)
-                  let v26: Html = element("div", {class: v16}, v25)
-                  v26
+                  let v26: Html = concat(v25)
+                  let v27: Id = mint()
+                  let v28: Html = element(v27, "div", {class: v17}, v26)
+                  v28
                 }
                 entrypoint body@e0() -> Html {
                   let v0: Int = 2
@@ -1881,8 +1908,9 @@ mod tests {
                 ) -> Html {
                   let v5: Html = text("Go")
                   let v6: Html = concat(v5)
-                  let v7: Html = element("button", {data-x: v3, aria-label: v4}, v6)
-                  v7
+                  let v7: Id = mint()
+                  let v8: Html = element(v7, "button", {data-x: v3, aria-label: v4}, v6)
+                  v8
                 }
                 entrypoint body@e0() -> Html {
                   let v0: String = "1"
@@ -1922,8 +1950,9 @@ mod tests {
                 fn Used@f0() -> Html {
                   let v1: Html = text("used")
                   let v2: Html = concat(v1)
-                  let v3: Html = element("p", {}, v2)
-                  v3
+                  let v3: Id = mint()
+                  let v4: Html = element(v3, "p", {}, v2)
+                  v4
                 }
                 entrypoint body@e0() -> Html {
                   let v0: Html = f0()
@@ -1959,35 +1988,35 @@ mod tests {
             "#},
             expect![[r#"
                 fn label@f0(
-                  name@v5: String,
+                  name@v6: String,
                 ) -> String {
-                  let v6: Int = 3
-                  let v7: Int = f1(v6)
-                  let v8: String = " "
-                  let v9: String = int_to_string(v7)
-                  let v10: String = string_concat(v5, v8, v9)
-                  v10
+                  let v7: Int = 3
+                  let v8: Int = f1(v7)
+                  let v9: String = " "
+                  let v10: String = int_to_string(v8)
+                  let v11: String = string_concat(v6, v9, v10)
+                  v11
                 }
                 fn width@f1(
-                  n@v11: Int,
+                  n@v12: Int,
                 ) -> Int {
-                  let v12: Int = 0
-                  let v13: Bool = int_lt_eq(v11, v12)
-                  let v20: Int = match v13 {
+                  let v13: Int = 0
+                  let v14: Bool = int_lt_eq(v12, v13)
+                  let v21: Int = match v14 {
                     true => {
-                      let v14: Int = 0
-                      v14
+                      let v15: Int = 0
+                      v15
                     }
                     false => {
-                      let v15: Int = 1
-                      let v16: Int = int_sub(v11, v15)
-                      let v17: Int = f1(v16)
-                      let v18: Int = 2
-                      let v19: Int = int_add(v17, v18)
-                      v19
+                      let v16: Int = 1
+                      let v17: Int = int_sub(v12, v16)
+                      let v18: Int = f1(v17)
+                      let v19: Int = 2
+                      let v20: Int = int_add(v18, v19)
+                      v20
                     }
                   }
-                  v20
+                  v21
                 }
                 entrypoint body@e0(
                   name@v0: String,
@@ -1995,8 +2024,9 @@ mod tests {
                   let v1: String = f0(v0)
                   let v2: Html = escape(v1)
                   let v3: Html = concat(v2)
-                  let v4: Html = element("p", {}, v3)
-                  v4
+                  let v4: Id = mint()
+                  let v5: Html = element(v4, "p", {}, v3)
+                  v5
                 }
                 page Test: e0
             "#]],
@@ -2026,16 +2056,17 @@ mod tests {
             "#},
             expect![[r#"
                 fn Rows@f0(
-                  labels@v15: Array[String],
-                  row@v16: (String) -> Html,
+                  labels@v16: Array[String],
+                  row@v17: (String) -> Html,
                 ) -> Html {
-                  let v19: Html = for v17: String in v15 {
-                    let v18: Html = v16(v17)
-                    v18
+                  let v20: Html = for v18: String in v16 {
+                    let v19: Html = v17(v18)
+                    v19
                   }
-                  let v20: Html = concat(v19)
-                  let v21: Html = element("ul", {}, v20)
-                  v21
+                  let v21: Html = concat(v20)
+                  let v22: Id = mint()
+                  let v23: Html = element(v22, "ul", {}, v21)
+                  v23
                 }
                 entrypoint body@e0(
                   labels@v0: Array[String],
@@ -2047,7 +2078,7 @@ mod tests {
                     let v3: Int = int_mul(v2, v1)
                     v3
                   }
-                  let v13: (String) -> Html = fn(
+                  let v14: (String) -> Html = fn(
                     v5: String,
                   ) {
                     let v6: Html = escape(v5)
@@ -2056,11 +2087,12 @@ mod tests {
                     let v9: String = int_to_string(v8)
                     let v10: Html = escape(v9)
                     let v11: Html = concat(v6, v10)
-                    let v12: Html = element("li", {}, v11)
-                    v12
+                    let v12: Id = mint()
+                    let v13: Html = element(v12, "li", {}, v11)
+                    v13
                   }
-                  let v14: Html = f0(v0, v13)
-                  v14
+                  let v15: Html = f0(v0, v14)
+                  v15
                 }
                 page Test: e0
             "#]],
@@ -2087,25 +2119,25 @@ mod tests {
             "#},
             expect![[r#"
                 fn width@f0(
-                  scale@v10: (Int) -> Int,
-                  n@v11: Int,
+                  scale@v11: (Int) -> Int,
+                  n@v12: Int,
                 ) -> Int {
-                  let v12: Int = 0
-                  let v13: Bool = int_lt_eq(v11, v12)
-                  let v19: Int = match v13 {
+                  let v13: Int = 0
+                  let v14: Bool = int_lt_eq(v12, v13)
+                  let v20: Int = match v14 {
                     true => {
-                      let v14: Int = 2
-                      let v15: Int = v10(v14)
-                      v15
+                      let v15: Int = 2
+                      let v16: Int = v11(v15)
+                      v16
                     }
                     false => {
-                      let v16: Int = 1
-                      let v17: Int = int_sub(v11, v16)
-                      let v18: Int = f0(v10, v17)
-                      v18
+                      let v17: Int = 1
+                      let v18: Int = int_sub(v12, v17)
+                      let v19: Int = f0(v11, v18)
+                      v19
                     }
                   }
-                  v19
+                  v20
                 }
                 entrypoint body@e0(
                   n@v0: Int,
@@ -2121,8 +2153,9 @@ mod tests {
                   let v6: String = int_to_string(v5)
                   let v7: Html = escape(v6)
                   let v8: Html = concat(v7)
-                  let v9: Html = element("p", {}, v8)
-                  v9
+                  let v9: Id = mint()
+                  let v10: Html = element(v9, "p", {}, v8)
+                  v10
                 }
                 page Test: e0
             "#]],
@@ -2156,25 +2189,25 @@ mod tests {
             "#},
             expect![[r#"
                 fn width@f0(
-                  n@v9: Int,
+                  n@v10: Int,
                 ) -> Int {
-                  let v10: Int = 0
-                  let v11: Bool = int_lt_eq(v9, v10)
-                  let v18: Int = match v11 {
+                  let v11: Int = 0
+                  let v12: Bool = int_lt_eq(v10, v11)
+                  let v19: Int = match v12 {
                     true => {
-                      let v12: Int = 0
-                      v12
+                      let v13: Int = 0
+                      v13
                     }
                     false => {
-                      let v13: Int = 1
-                      let v14: Int = int_sub(v9, v13)
-                      let v15: Int = f0(v14)
-                      let v16: Int = 2
-                      let v17: Int = int_add(v15, v16)
-                      v17
+                      let v14: Int = 1
+                      let v15: Int = int_sub(v10, v14)
+                      let v16: Int = f0(v15)
+                      let v17: Int = 2
+                      let v18: Int = int_add(v16, v17)
+                      v18
                     }
                   }
-                  v18
+                  v19
                 }
                 entrypoint body@e0(
                   flag@v0: Bool,
@@ -2193,8 +2226,9 @@ mod tests {
                   }
                   let v6: Html = escape(v5)
                   let v7: Html = concat(v6)
-                  let v8: Html = element("p", {}, v7)
-                  v8
+                  let v8: Id = mint()
+                  let v9: Html = element(v8, "p", {}, v7)
+                  v9
                 }
                 page Test: e0
             "#]],
@@ -2226,39 +2260,42 @@ mod tests {
             "#},
             expect![[r#"
                 fn Callout@f1(
-                  open@v9: Bool,
-                  children@v10: Html,
+                  open@v10: Bool,
+                  children@v11: Html,
                 ) -> Html {
-                  let v15: Html = match v9 {
+                  let v18: Html = match v10 {
                     true => {
-                      let v11: Html = concat(v10)
-                      let v12: Html = element("aside", {}, v11)
-                      v12
-                    }
-                    false => {
-                      let v13: Html = concat(v10)
-                      let v14: Html = element("details", {}, v13)
+                      let v12: Html = concat(v11)
+                      let v13: Id = mint()
+                      let v14: Html = element(v13, "aside", {}, v12)
                       v14
                     }
+                    false => {
+                      let v15: Html = concat(v11)
+                      let v16: Id = mint()
+                      let v17: Html = element(v16, "details", {}, v15)
+                      v17
+                    }
                   }
-                  v15
+                  v18
                 }
                 fn Tip@f0(
-                  open@v6: Bool,
-                  children@v7: Html,
+                  open@v7: Bool,
+                  children@v8: Html,
                 ) -> Html {
-                  let v8: Html = f1(v6, v7)
-                  v8
+                  let v9: Html = f1(v7, v8)
+                  v9
                 }
                 entrypoint body@e0(
                   open@v0: Bool,
                 ) -> Html {
                   let v1: Html = text("x")
                   let v2: Html = concat(v1)
-                  let v3: Html = element("b", {}, v2)
-                  let v4: Html = concat(v3)
-                  let v5: Html = f0(v0, v4)
-                  v5
+                  let v3: Id = mint()
+                  let v4: Html = element(v3, "b", {}, v2)
+                  let v5: Html = concat(v4)
+                  let v6: Html = f0(v0, v5)
+                  v6
                 }
                 page Test: e0
             "#]],
@@ -2293,39 +2330,40 @@ mod tests {
             "#},
             expect![[r#"
                 fn Counter@f0(
-                  label@v16: String,
+                  label@v18: String,
                 ) -> Html {
-                  let v18: Cell[Int] = cell {
-                    let v17: Int = 0
-                    v17
+                  let v20: Cell[Int] = cell {
+                    let v19: Int = 0
+                    v19
                   }
-                  let v19: Int = track(v18)
-                  let v21: Cell[Bool] = cell {
-                    let v20: Bool = false
-                    v20
+                  let v21: Int = track(v20)
+                  let v23: Cell[Bool] = cell {
+                    let v22: Bool = false
+                    v22
                   }
-                  let v22: Bool = track(v21)
-                  let v31: () -> Mutation[Tuple[]] = fn() {
-                    let v23: Int = 1
-                    let v24: Int = int_add(v19, v23)
-                    let v25: Mutation[Tuple[]] = v18 := v24
-                    let v29: (Tuple[]) -> Mutation[Tuple[]] = fn(
-                      v26: Tuple[],
+                  let v24: Bool = track(v23)
+                  let v33: () -> Mutation[Tuple[]] = fn() {
+                    let v25: Int = 1
+                    let v26: Int = int_add(v21, v25)
+                    let v27: Mutation[Tuple[]] = v20 := v26
+                    let v31: (Tuple[]) -> Mutation[Tuple[]] = fn(
+                      v28: Tuple[],
                     ) {
-                      let v27: Bool = true
-                      let v28: Mutation[Tuple[]] = v21 := v27
-                      v28
+                      let v29: Bool = true
+                      let v30: Mutation[Tuple[]] = v23 := v29
+                      v30
                     }
-                    let v30: Mutation[Tuple[]] = bind(v25, v29)
-                    v30
+                    let v32: Mutation[Tuple[]] = bind(v27, v31)
+                    v32
                   }
-                  let v32: Html = escape(v16)
-                  let v33: Html = text(" ")
-                  let v34: String = int_to_string(v19)
-                  let v35: Html = escape(v34)
-                  let v36: Html = concat(v32, v33, v35)
-                  let v37: Html = element("button", {}, v36) on_click v31
-                  v37
+                  let v34: Html = escape(v18)
+                  let v35: Html = text(" ")
+                  let v36: String = int_to_string(v21)
+                  let v37: Html = escape(v36)
+                  let v38: Html = concat(v34, v35, v37)
+                  let v39: Id = mint()
+                  let v40: Html = element(v39, "button", {}, v38) on_click v33
+                  v40
                 }
                 entrypoint body@e0() -> Html {
                   let v0: Int = 1
@@ -2335,19 +2373,21 @@ mod tests {
                   let v4: String = "b"
                   let v5: Item = {id: v3, label: v4}
                   let v6: Array[Item] = [v2, v5]
-                  let v13: Html = for v7: Item in v6 key {
+                  let v14: Html = for v7: Item in v6 key {
                     let v8: Int = v7.id
                     v8
                   } {
                     let v9: String = v7.label
                     let v10: Html = f0(v9)
                     let v11: Html = concat(v10)
-                    let v12: Html = element("li", {}, v11)
-                    v12
+                    let v12: Id = mint()
+                    let v13: Html = element(v12, "li", {}, v11)
+                    v13
                   }
-                  let v14: Html = concat(v13)
-                  let v15: Html = element("ul", {}, v14)
-                  v15
+                  let v15: Html = concat(v14)
+                  let v16: Id = mint()
+                  let v17: Html = element(v16, "ul", {}, v15)
+                  v17
                 }
                 page Test: e0
             "#]],
@@ -2376,8 +2416,9 @@ mod tests {
                   children@v13: Html,
                 ) -> Html {
                   let v14: Html = concat(v13)
-                  let v15: Html = element("button", {}, v14) on_click v12
-                  v15
+                  let v15: Id = mint()
+                  let v16: Html = element(v15, "button", {}, v14) on_click v12
+                  v16
                 }
                 entrypoint body@e0() -> Html {
                   let v1: Cell[Bool] = cell {
@@ -2430,12 +2471,12 @@ mod tests {
             "#},
             expect![[r#"
                 fn bump@f0(
-                  n@v17: Int,
+                  n@v18: Int,
                 ) -> Mutation[Int] {
-                  let v18: Int = 1
-                  let v19: Int = int_add(v17, v18)
-                  let v20: Mutation[Int] = pure(v19)
-                  v20
+                  let v19: Int = 1
+                  let v20: Int = int_add(v18, v19)
+                  let v21: Mutation[Int] = pure(v20)
+                  v21
                 }
                 entrypoint body@e0() -> Html {
                   let v1: Cell[Int] = cell {
@@ -2464,8 +2505,9 @@ mod tests {
                   let v13: String = int_to_string(v2)
                   let v14: Html = escape(v13)
                   let v15: Html = concat(v14)
-                  let v16: Html = element("button", {}, v15) on_click v12
-                  v16
+                  let v16: Id = mint()
+                  let v17: Html = element(v16, "button", {}, v15) on_click v12
+                  v17
                 }
                 page Test: e0
             "#]],

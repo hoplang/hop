@@ -240,6 +240,10 @@ fn evaluate_html_block<'a>(
                 let value = render.read(env[cell].as_cell()).clone();
                 env.bindings.push((binder.var, value));
             }
+            FlatHtmlBinding::Mint(binder) => {
+                let id = render.bind_element(binder.var);
+                env.bindings.push((binder.var, Value::Id(id)));
+            }
             FlatHtmlBinding::Html(binding) => {
                 let value = evaluate_html_op(
                     &binding.op,
@@ -441,6 +445,7 @@ fn evaluate_html_op<'a>(
         ))?),
 
         FlatHtmlOp::Element(IrHtmlElement {
+            identity,
             element,
             attributes,
             children,
@@ -472,13 +477,12 @@ fn evaluate_html_op<'a>(
                 None => Html::new(HtmlNode::Concat(Vec::new()))?,
             };
             let on_click = on_click.map(|handler| env[&handler].as_closure().clone());
-            let identity = render.bind_element(var);
             Value::Html(Html::new(HtmlNode::Element {
                 element: element.clone(),
                 attributes: rendered,
                 children,
                 on_click,
-                identity,
+                identity: env[identity].as_id(),
             })?)
         }
 
@@ -747,8 +751,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 1564790 allocations
-            program evaluation: 41571 allocations
+            program generation: 1680090 allocations
+            program evaluation: 31060 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -776,10 +780,11 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Items", [("items", Ty::array(Ty::String))], |t| {
                     t.element(
+                        t.mint(),
                         "ul",
                         [],
                         Some(t.html_for(t.param("items"), |t, item| {
-                            t.element("li", vec![], Some(t.escape(item)))
+                            t.element(t.mint(), "li", vec![], Some(t.escape(item)))
                         })),
                     )
                 })
@@ -791,13 +796,15 @@ mod tests {
                 entrypoint Items@e0(
                   items@v0: Array[String],
                 ) -> Html {
-                  let v4: Html = for v1: String in v0 {
-                    let v2: Html = escape(v1)
-                    let v3: Html = element("li", {}, v2)
-                    v3
+                  let v1: Id = mint()
+                  let v6: Html = for v2: String in v0 {
+                    let v3: Id = mint()
+                    let v4: Html = escape(v2)
+                    let v5: Html = element(v3, "li", {}, v4)
+                    v5
                   }
-                  let v5: Html = element("ul", {}, v4)
-                  v5
+                  let v7: Html = element(v1, "ul", {}, v6)
+                  v7
                 }
 
                 -- after --
@@ -1098,7 +1105,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
-                    t.element("div", [], Some(t.text("Hello World")))
+                    t.element(t.mint(), "div", [], Some(t.text("Hello World")))
                 })
                 .build()
                 .unwrap(),
@@ -1106,9 +1113,10 @@ mod tests {
             expect![[r#"
                 -- before --
                 entrypoint Test@e0() -> Html {
-                  let v0: Html = text("Hello World")
-                  let v1: Html = element("div", {}, v0)
-                  v1
+                  let v0: Id = mint()
+                  let v1: Html = text("Hello World")
+                  let v2: Html = element(v0, "div", {}, v1)
+                  v2
                 }
 
                 -- after --
@@ -1123,6 +1131,7 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("cls", Ty::String), ("flag", Ty::Bool)], |t| {
                     t.element(
+                        t.mint(),
                         "input",
                         [
                             t.attr_value("class", t.param("cls")),
@@ -1141,9 +1150,10 @@ mod tests {
                   cls@v0: String,
                   flag@v1: Bool,
                 ) -> Html {
-                  let v2: Bool = false
-                  let v3: Html = element("input", {class: v0, disabled: v1, checked: v2})
-                  v3
+                  let v2: Id = mint()
+                  let v3: Bool = false
+                  let v4: Html = element(v2, "input", {class: v0, disabled: v1, checked: v3})
+                  v4
                 }
 
                 -- after --
@@ -1184,7 +1194,7 @@ mod tests {
                 .entrypoint("Test", [("show", Ty::Bool)], |t| {
                     t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| {
-                            t.element("div", [], Some(t.text("Visible")))
+                            t.element(t.mint(), "div", [], Some(t.text("Visible")))
                         });
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
@@ -1197,18 +1207,19 @@ mod tests {
                 entrypoint Test@e0(
                   show@v0: Bool,
                 ) -> Html {
-                  let v4: Html = match v0 {
+                  let v5: Html = match v0 {
                     true => {
-                      let v1: Html = text("Visible")
-                      let v2: Html = element("div", {}, v1)
-                      v2
-                    }
-                    false => {
-                      let v3: Html = concat()
+                      let v1: Id = mint()
+                      let v2: Html = text("Visible")
+                      let v3: Html = element(v1, "div", {}, v2)
                       v3
                     }
+                    false => {
+                      let v4: Html = concat()
+                      v4
+                    }
                   }
-                  v4
+                  v5
                 }
 
                 -- after --
@@ -1224,7 +1235,7 @@ mod tests {
                 .entrypoint("Test", [("show", Ty::Bool)], |t| {
                     t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| {
-                            t.element("div", [], Some(t.text("Hidden")))
+                            t.element(t.mint(), "div", [], Some(t.text("Hidden")))
                         });
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
@@ -1237,18 +1248,19 @@ mod tests {
                 entrypoint Test@e0(
                   show@v0: Bool,
                 ) -> Html {
-                  let v4: Html = match v0 {
+                  let v5: Html = match v0 {
                     true => {
-                      let v1: Html = text("Hidden")
-                      let v2: Html = element("div", {}, v1)
-                      v2
-                    }
-                    false => {
-                      let v3: Html = concat()
+                      let v1: Id = mint()
+                      let v2: Html = text("Hidden")
+                      let v3: Html = element(v1, "div", {}, v2)
                       v3
                     }
+                    false => {
+                      let v4: Html = concat()
+                      v4
+                    }
                   }
-                  v4
+                  v5
                 }
 
                 -- after --
@@ -1263,7 +1275,10 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     t.html_for(t.param("items"), |t, item| {
-                        t.html_concat([t.element("li", vec![], Some(t.escape(item))), t.text("\n")])
+                        t.html_concat([
+                            t.element(t.mint(), "li", vec![], Some(t.escape(item))),
+                            t.text("\n"),
+                        ])
                     })
                 })
                 .build()
@@ -1279,14 +1294,15 @@ mod tests {
                 entrypoint Test@e0(
                   items@v0: Array[String],
                 ) -> Html {
-                  let v6: Html = for v1: String in v0 {
-                    let v2: Html = escape(v1)
-                    let v3: Html = element("li", {}, v2)
-                    let v4: Html = text("\n")
-                    let v5: Html = concat(v3, v4)
-                    v5
+                  let v7: Html = for v1: String in v0 {
+                    let v2: Id = mint()
+                    let v3: Html = escape(v1)
+                    let v4: Html = element(v2, "li", {}, v3)
+                    let v5: Html = text("\n")
+                    let v6: Html = concat(v4, v5)
+                    v6
                   }
-                  v6
+                  v7
                 }
 
                 -- after --
@@ -1418,14 +1434,14 @@ mod tests {
                     |t| {
                         let rows =
                             t.html_for(t.param("items"), |t, item| t.apply(t.param("row"), [item]));
-                        t.element("ul", [], Some(rows))
+                        t.element(t.mint(), "ul", [], Some(rows))
                     },
                 )
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     let prefix = t.str("- ");
                     let row = t.lambda([IrType::STRING], |t, params| {
                         let text = t.html_concat([t.escape(prefix), t.escape(params[0])]);
-                        t.element("li", [], Some(text))
+                        t.element(t.mint(), "li", [], Some(text))
                     });
                     t.call("Rows", [t.param("items"), row])
                 })
@@ -1442,24 +1458,26 @@ mod tests {
                     let v3: Html = v1(v2)
                     v3
                   }
-                  let v5: Html = element("ul", {}, v4)
-                  v5
+                  let v5: Id = mint()
+                  let v6: Html = element(v5, "ul", {}, v4)
+                  v6
                 }
                 entrypoint Test@e0(
-                  items@v6: Array[String],
+                  items@v7: Array[String],
                 ) -> Html {
-                  let v7: String = "- "
-                  let v13: (String) -> Html = fn(
-                    v8: String,
+                  let v8: String = "- "
+                  let v15: (String) -> Html = fn(
+                    v9: String,
                   ) {
-                    let v9: Html = escape(v7)
                     let v10: Html = escape(v8)
-                    let v11: Html = concat(v9, v10)
-                    let v12: Html = element("li", {}, v11)
-                    v12
+                    let v11: Html = escape(v9)
+                    let v12: Html = concat(v10, v11)
+                    let v13: Id = mint()
+                    let v14: Html = element(v13, "li", {}, v12)
+                    v14
                   }
-                  let v14: Html = f0(v6, v13)
-                  v14
+                  let v16: Html = f0(v7, v15)
+                  v16
                 }
 
                 -- after --
@@ -2005,22 +2023,22 @@ mod tests {
             program: _,
         } = stats;
         expect![[r#"
-            3344 invocations
-            26 invocations hit the call depth limit
+            3517 invocations
+            40 invocations hit the call depth limit
             0 invocations hit the array length limit
             0 invocations hit the string length limit
             0 invocations hit the Html size limit
-            12 invocations hit the op count limit
-            55727 cells bound
+            16 invocations hit the op count limit
+            30189 cells bound
 
-            16105 clicks
-            62 programs have a click
-            33 programs have a click that changes a cell
-            28 programs have a click that changes the page
-            9 programs have a click that switches an arm of a match
-            9 programs have a click that switches an arm of a match that binds cells
-            9 programs have a click that changes the iterations of a loop
-            4 programs have a click that changes an array cell
+            14443 clicks
+            65 programs have a click
+            38 programs have a click that changes a cell
+            21 programs have a click that changes the page
+            12 programs have a click that switches an arm of a match
+            10 programs have a click that switches an arm of a match that binds cells
+            13 programs have a click that changes the iterations of a loop
+            6 programs have a click that changes an array cell
         "#]].assert_eq(&format!(
             "{invocations} invocations\n\
              {call_depth_limit} invocations hit the call depth limit\n\

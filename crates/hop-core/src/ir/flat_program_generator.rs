@@ -47,6 +47,10 @@ const CLICK_ODDS: u8 = 204;
 /// How often a loop that binds its variable has a key.
 const KEY_ODDS: u8 = 204;
 
+/// How often a block that renders Html mints an identity before the ops
+/// that may take it, so that an element in each arm of a match can share it.
+const EARLY_MINT_ODDS: u8 = 64;
+
 /// How often an op that renders Html may be a toggle: a cell, a match on
 /// it and a click that writes it.
 const TOGGLE_ODDS: u8 = 64;
@@ -117,7 +121,7 @@ const STRING_LITERALS: &[&str] = &[
 #[derive(Clone, Copy)]
 struct Name {
     var: ValueId,
-    /// Whether the path has used the Html.
+    /// Whether the path has used the Html or the identity.
     used: bool,
 }
 
@@ -143,7 +147,7 @@ impl Scope {
     fn inner(&self, types: &[IrType], html: bool) -> Scope {
         Scope {
             names: (self.names.iter().copied())
-                .filter(|name| types[name.var.index()] != IrType::HTML)
+                .filter(|name| !matches!(types[name.var.index()], IrType::Html(_) | IrType::Id(_)))
                 .collect(),
             html,
         }
@@ -781,6 +785,9 @@ impl FlatGenerator<'_, '_> {
 
     fn html_block(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
         scope.html = true;
+        if self.chance(EARLY_MINT_ODDS) {
+            scope.push(b.mint());
+        }
         if self.chance(DEAD_BINDING_ODDS) {
             let ty = self.random_type(1);
             let typ = self.ir_type(ty);
@@ -820,6 +827,7 @@ impl FlatGenerator<'_, '_> {
             IrType::Html(IrFunctionHtmlType::Html(IrHtmlType)) => self.html_block(b, scope, depth),
             IrType::Data(IrFunctionDataType::Mutation(_)) => self.mutation_block(b, scope, depth),
             IrType::Data(IrFunctionDataType::Cell(_)) => unreachable!("a block produces no cell"),
+            IrType::Id(_) => unreachable!("a block produces no identity"),
             IrType::Data(IrFunctionDataType::Function(_))
             | IrType::Html(IrFunctionHtmlType::Function(_)) => {
                 unreachable!("a block produces no closure")
@@ -848,6 +856,7 @@ impl FlatGenerator<'_, '_> {
             IrType::Data(IrFunctionDataType::Cell(target)) => {
                 self.cell_op(b, scope, target, depth, nesting)
             }
+            IrType::Id(_) => unreachable!("an identity is minted for an element, not asked for"),
             IrType::Data(IrFunctionDataType::Function(_))
             | IrType::Html(IrFunctionHtmlType::Function(_)) => {
                 self.closure_op(b, scope, typ, depth, nesting)
@@ -1034,12 +1043,19 @@ impl FlatGenerator<'_, '_> {
         depth: usize,
         nesting: usize,
     ) -> ValueId {
+        let identity = match self.name_in_scope(b, scope, &IrType::ID) {
+            Some(early) => {
+                scope.set_used(early, true);
+                early
+            }
+            None => b.mint(),
+        };
         if !self.chance(CLICK_ODDS) {
-            return b.element(tag, attributes, children);
+            return b.element(identity, tag, attributes, children);
         }
         let handler_type = IrType::data_function([], IrType::MUTATION);
         let handler = self.op_of_type(b, scope, &handler_type, depth, nesting);
-        b.element_on_click(tag, attributes, handler, children)
+        b.element_on_click(identity, tag, attributes, handler, children)
     }
 
     fn data_leaf(
@@ -1429,6 +1445,7 @@ impl FlatGenerator<'_, '_> {
             .map(|(tag, _)| *tag)
             .collect();
         b.element_on_click(
+            b.mint(),
             self.u.choose(&tags).unwrap(),
             Vec::new(),
             handler,
@@ -1938,6 +1955,7 @@ mod tests {
         Pure(&'a IrBinding<IrFunctionDataType, FlatPureOp>),
         Cell(&'a IrBinder<IrFunctionDataType>, &'a FlatPureBlock),
         Track(&'a IrBinder<IrDataType>, ValueId),
+        Mint(ValueId),
         Html(&'a IrBinding<IrFunctionHtmlType, FlatHtmlOp>),
     }
 
@@ -1964,6 +1982,7 @@ mod tests {
                         FlatHtmlBinding::Pure(binding) => Binding::Pure(binding),
                         FlatHtmlBinding::Cell(binder, initial) => Binding::Cell(binder, initial),
                         FlatHtmlBinding::Track(binder, cell) => Binding::Track(binder, *cell),
+                        FlatHtmlBinding::Mint(binder) => Binding::Mint(binder.var),
                         FlatHtmlBinding::Html(binding) => Binding::Html(binding),
                     })
                     .collect(),
@@ -1977,6 +1996,7 @@ mod tests {
                 Binding::Pure(binding) => binding.binder.var,
                 Binding::Cell(binder, _) => binder.var,
                 Binding::Track(binder, _) => binder.var,
+                Binding::Mint(var) => var,
                 Binding::Html(binding) => binding.binder.var,
             }
         }
@@ -1984,7 +2004,7 @@ mod tests {
         fn for_each_operand(self, f: &mut impl FnMut(ValueId)) {
             match self {
                 Binding::Pure(binding) => binding.op.for_each_operand(f),
-                Binding::Cell(..) => {}
+                Binding::Cell(..) | Binding::Mint(_) => {}
                 Binding::Track(_, cell) => f(cell),
                 Binding::Html(binding) => binding.op.for_each_operand(f),
             }
@@ -1995,6 +2015,7 @@ mod tests {
                 Binding::Pure(binding) => format!("{:?}", binding.op),
                 Binding::Cell(..) => return "Cell".to_string(),
                 Binding::Track(..) => return "Track".to_string(),
+                Binding::Mint(_) => return "Mint".to_string(),
                 Binding::Html(binding) => format!("{:?}", binding.op),
             };
             let kind = debug
@@ -2147,20 +2168,27 @@ mod tests {
         }
     }
 
-    fn count_html_references(
+    fn count_references(
         block: Block<'_>,
         references: &mut HashMap<ValueId, usize>,
         html: &mut HashSet<ValueId>,
+        ids: &mut HashSet<ValueId>,
     ) {
         for binding in block.bindings() {
-            if let Binding::Html(binding) = binding {
-                html.insert(binding.binder.var);
+            match binding {
+                Binding::Html(binding) => {
+                    html.insert(binding.binder.var);
+                }
+                Binding::Mint(var) => {
+                    ids.insert(var);
+                }
+                _ => {}
             }
             binding.for_each_operand(&mut |operand| {
                 *references.entry(operand).or_default() += 1;
             });
             for (_, body) in binding.nested() {
-                count_html_references(body, references, html);
+                count_references(body, references, html, ids);
             }
         }
         *references.entry(block.result()).or_default() += 1;
@@ -2317,6 +2345,8 @@ mod tests {
         let mut sizes = [0usize; SIZE_EDGES.len() + 1];
         let mut html_bindings = 0;
         let mut shared_html = 0;
+        let mut id_bindings = 0;
+        let mut shared_ids = 0;
         let mut shape_stats = ShapeStats::default();
         for _ in 0..SAMPLES {
             let bytes: Vec<u8> = (0..INPUT_LEN).map(|_| rng.random()).collect();
@@ -2379,9 +2409,15 @@ mod tests {
             }
             let mut references = HashMap::new();
             let mut html = HashSet::new();
+            let mut ids = HashSet::new();
             for body in &bodies {
-                count_html_references(*body, &mut references, &mut html);
+                count_references(*body, &mut references, &mut html, &mut ids);
             }
+            id_bindings += ids.len();
+            shared_ids += ids
+                .iter()
+                .filter(|name| references.get(name).copied().unwrap_or(0) > 1)
+                .count();
             html_bindings += html.len();
             shared_html += html
                 .iter()
@@ -2434,6 +2470,7 @@ mod tests {
              {sizes}\n\
              -- programs --\n\
              {shared_html} of {html_bindings} Html bindings have more than one reference\n\
+             {shared_ids} of {id_bindings} mints have more than one reference\n\
              {:.1} arms per match on average, at least {fewest_arms} and at most {most_arms}\n\
              {binding_arms} of {arms} match arms bind names\n\
              {cells} cells\n\
@@ -2464,81 +2501,83 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            18764 of 65536 input bytes consumed per program on average, at most 65536
-            9 of 100 programs exhaust the input
+            16218 of 65536 input bytes consumed per program on average, at most 65536
+            5 of 100 programs exhaust the input
 
             -- sizes --
-            under 256    11  #############
-            under 1K      1  #
-            under 4K     15  ##################
-            under 16K    33  ########################################
-            under 64K    31  #####################################
-            at 64K        9  ##########
+            under 256     7  #######
+            under 1K     11  ###########
+            under 4K      9  #########
+            under 16K    39  ########################################
+            under 64K    29  #############################
+            at 64K        5  #####
 
             -- programs --
-            126 of 13707 Html bindings have more than one reference
-            2.7 arms per match on average, at least 2 and at most 27
-            29620 of 72518 match arms bind names
-            10414 cells
-            951 parameters take a cell, and 615 arguments pass one
-            537 of 916 loops have a key
-            2489 of 3112 elements have a click
-            413 handlers have more than one click
-            741 clicks apply a handler bound outside their block, 7 of them a parameter
+            105 of 10903 Html bindings have more than one reference
+            8 of 2869 mints have more than one reference
+            2.6 arms per match on average, at least 2 and at most 27
+            24114 of 62296 match arms bind names
+            7110 cells
+            938 parameters take a cell, and 509 arguments pass one
+            520 of 825 loops have a key
+            1928 of 2403 elements have a click
+            321 handlers have more than one click
+            606 clicks apply a handler bound outside their block, 43 of them a parameter
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      249.8    93.0    88.1    67.1
-            Array                      328.0    91.0    84.4    24.2
-            ArrayEnumerate               1.1    51.0    98.1    58.3
-            ArrayFromRange              17.8    89.0    86.8     0.0
-            ArrayGet                    80.2    89.0    82.3    45.1
-            ArrayIsEmpty                 4.7    75.0    86.9    50.2
-            ArrayLength                154.5    90.0    86.4    53.3
-            BoolLiteral                 92.3    91.0    82.7     0.0
-            BoolNegation                 5.0    65.0    85.6    46.9
-            Call                        44.1    52.0    85.9    81.5
-            Cell                       104.1    85.0    92.3    45.8
-            CellRead                    20.8    75.0    86.1    47.9
-            CellWrite                   50.4    87.0    88.0    57.4
-            Enum                       184.5    73.0    84.3    23.5
-            Equals                       5.1    68.0    86.2    61.9
-            FieldAccess                 11.6    49.0    81.0    69.3
-            FloatLiteral               151.7    89.0    84.6     0.0
-            FloatToInt                 148.8    89.0    86.9    48.4
-            HtmlApply                    4.6    64.0    97.8    84.7
-            HtmlConcat                  42.5    84.0    92.0    44.8
-            HtmlElement                 31.1    84.0    92.3    66.3
-            HtmlEscape                  19.7    80.0    92.2    52.4
-            HtmlFor                      9.2    81.0    96.6    74.1
-            HtmlLambda                   5.7    65.0    97.2    62.0
-            HtmlText                    10.0    77.0    92.9     0.0
-            IntLiteral                 206.0    93.0    82.6     0.0
-            IntToFloat                 191.0    88.0    86.8    50.0
-            IntToString                 63.0    90.0    90.2    51.3
-            Lambda                     908.2    97.0    92.4    31.0
-            LessThan                     4.8    67.0    84.1    59.4
-            LessThanOrEqual              5.2    73.0    85.2    57.9
-            Match                      256.3    93.0    87.8    79.5
-            MutationApply               16.8    84.0    93.5    69.4
-            MutationBind               589.9    86.0    94.5    29.9
-            MutationCall                 9.8    12.0    81.4    50.7
-            MutationMatch               17.0    81.0    93.6    86.2
-            MutationPure               344.1    91.0    94.9     0.0
-            NumericAdd                 344.6    90.0    86.9    64.8
-            NumericMultiply            340.3    90.0    86.5    64.3
-            NumericNegation            348.2    90.0    86.5    51.1
-            NumericSubtract            346.8    90.0    86.6    64.5
-            OptionIsNone                 4.3    68.0    82.3    47.9
-            OptionIsSome                 4.6    70.0    86.1    52.9
-            OptionNone                  98.8    89.0    87.4     0.0
-            OptionSome                  89.1    90.0    87.2    28.2
-            Record                     114.3    69.0    79.7    28.8
-            StringConcat                62.7    91.0    90.0    47.8
-            StringIsEmpty                5.1    72.0    85.3    38.7
-            StringLiteral               77.7    94.0    88.0     0.0
-            Track                      104.1    85.0    90.8    44.9
-            Tuple                      596.5    94.0    90.9    14.3
+            Apply                      218.1    93.0    92.1    68.3
+            Array                      278.0    95.0    89.6    24.3
+            ArrayEnumerate               1.4    42.0    96.4    55.4
+            ArrayFromRange              14.3    90.0    90.4     0.0
+            ArrayGet                    66.4    91.0    85.7    46.9
+            ArrayIsEmpty                 4.1    66.0    87.8    51.6
+            ArrayLength                127.8    92.0    90.3    50.3
+            BoolLiteral                 78.5    97.0    89.8     0.0
+            BoolNegation                 4.3    65.0    89.7    49.2
+            Call                        42.8    53.0    85.9    74.0
+            Cell                        71.1    93.0    98.9    44.6
+            CellRead                    15.8    72.0    94.3    51.5
+            CellWrite                   38.9    89.0    95.1    60.7
+            Enum                       158.2    75.0    89.4    22.7
+            Equals                       4.3    65.0    85.5    57.6
+            FieldAccess                 11.1    45.0    89.1    72.5
+            FloatLiteral               124.4    93.0    89.5     0.0
+            FloatToInt                 126.2    90.0    90.4    47.9
+            HtmlApply                    4.2    66.0    99.3    81.4
+            HtmlConcat                  31.7    83.0    99.7    46.1
+            HtmlElement                 24.0    86.0    99.5    66.8
+            HtmlEscape                  15.5    80.0    99.4    52.2
+            HtmlFor                      8.2    79.0    99.3    75.5
+            HtmlLambda                   6.8    65.0    99.6    60.9
+            HtmlText                     7.6    65.0    99.6     0.0
+            IntLiteral                 164.0    94.0    89.7     0.0
+            IntToFloat                 168.3    87.0    90.3    50.5
+            IntToString                 50.9    89.0    94.9    48.5
+            Lambda                     858.2    99.0    94.1    31.4
+            LessThan                     3.9    65.0    83.9    56.1
+            LessThanOrEqual              4.1    56.0    87.8    57.2
+            Match                      224.1    95.0    92.3    81.6
+            Mint                        28.7    97.0    83.0     0.0
+            MutationApply               14.3    83.0    95.9    70.7
+            MutationBind               587.3    87.0    95.0    32.6
+            MutationCall                 6.9    11.0    75.9    41.4
+            MutationMatch               14.1    83.0    95.6    84.8
+            MutationPure               339.7    93.0    94.7     0.0
+            NumericAdd                 301.1    90.0    90.0    64.8
+            NumericMultiply            294.4    88.0    90.0    65.1
+            NumericNegation            303.8    90.0    90.0    51.0
+            NumericSubtract            299.9    88.0    89.7    64.8
+            OptionIsNone                 4.0    69.0    83.9    43.7
+            OptionIsSome                 4.1    68.0    88.8    50.0
+            OptionNone                  90.5    93.0    89.3     0.0
+            OptionSome                  79.3    93.0    88.8    26.8
+            Record                     103.7    74.0    87.5    26.8
+            StringConcat                49.7    84.0    95.8    47.7
+            StringIsEmpty                4.2    63.0    87.5    40.1
+            StringLiteral               66.3    96.0    90.2     0.0
+            Track                       71.1    93.0    97.1    43.6
+            Tuple                      552.6   100.0    92.2    13.3
         "#]]
         .assert_eq(&report);
     }
@@ -2551,13 +2590,14 @@ mod tests {
             expect![[r#"
 
                 entrypoint V0@e0() -> Html {
-                  let v0: Int = -2147483648
-                  let v1: Cell[Int] = cell {
-                    v0
+                  let v0: Id = mint()
+                  let v1: Int = -2147483648
+                  let v2: Cell[Int] = cell {
+                    v1
                   }
-                  let v2: Int = track(v1)
-                  let v3: Html = concat()
-                  v3
+                  let v3: Int = track(v2)
+                  let v4: Html = concat()
+                  v4
                 }
             "#]],
         );
@@ -2598,33 +2638,36 @@ mod tests {
                   p4@v4: Option[String],
                   p5@v5: Option[Float],
                 ) -> Html {
-                  let v8: Int = -2147483648
-                  let v9: Cell[Int] = cell {
-                    v8
+                  let v8: Id = mint()
+                  let v9: Int = -2147483648
+                  let v10: Cell[Int] = cell {
+                    v9
                   }
-                  let v10: Int = track(v9)
-                  let v11: Html = concat()
-                  v11
+                  let v11: Int = track(v10)
+                  let v12: Html = concat()
+                  v12
                 }
                 fn C1@f1(
                   p0@v6: Html,
                   p1@v7: Mutation[Tuple[]],
                 ) -> Html {
-                  let v12: Int = -2147483648
-                  let v13: Cell[Int] = cell {
-                    v12
+                  let v13: Id = mint()
+                  let v14: Int = -2147483648
+                  let v15: Cell[Int] = cell {
+                    v14
                   }
-                  let v14: Int = track(v13)
+                  let v16: Int = track(v15)
                   v6
                 }
                 entrypoint V0@e0() -> Html {
-                  let v15: Int = -2147483648
-                  let v16: Cell[Int] = cell {
-                    v15
+                  let v17: Id = mint()
+                  let v18: Int = -2147483648
+                  let v19: Cell[Int] = cell {
+                    v18
                   }
-                  let v17: Int = track(v16)
-                  let v18: Html = concat()
-                  v18
+                  let v20: Int = track(v19)
+                  let v21: Html = concat()
+                  v21
                 }
             "#]],
         );
@@ -2650,18 +2693,22 @@ mod tests {
                   p0@v0: Option[Int],
                   p1@v1: Option[Array[Int]],
                 ) -> Html {
-                  let v2: Html = text("a\"b'c")
-                  v2
+                  let v2: Int = -1
+                  let v3: Int = 2
+                  let v4: Array[Int] = array_from_range(v2, v3)
+                  let v8: Html = for v5: Int in v4 key {
+                    v5
+                  } {
+                    let v6: String = "`${x}`"
+                    let v7: Html = escape(v6)
+                    v7
+                  }
+                  v8
                 }
                 entrypoint V1@e1() -> Html {
-                  let v3: Html = concat()
-                  let v6: () -> Mutation[Tuple[]] = fn() {
-                    let v4: Tuple[] = ()
-                    let v5: Mutation[Tuple[]] = pure(v4)
-                    v5
-                  }
-                  let v7: Html = element("section", {}, v3) on_click v6
-                  v7
+                  let v9: String = "&amp;"
+                  let v10: Html = escape(v9)
+                  v10
                 }
             "#]],
         );

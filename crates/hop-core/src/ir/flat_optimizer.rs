@@ -141,12 +141,12 @@ mod tests {
                     |t| {
                         let rows =
                             t.html_for(t.param("items"), |t, item| t.apply(t.param("row"), [item]));
-                        t.element("ul", [], Some(rows))
+                        t.element(t.mint(), "ul", [], Some(rows))
                     },
                 )
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     let row = t.lambda([IrType::STRING], |t, params| {
-                        t.element("li", [], Some(t.escape(params[0])))
+                        t.element(t.mint(), "li", [], Some(t.escape(params[0])))
                     });
                     t.call("Rows", [t.param("items"), row])
                 })
@@ -162,34 +162,38 @@ mod tests {
                     let v3: Html = v1(v2)
                     v3
                   }
-                  let v5: Html = element("ul", {}, v4)
-                  v5
+                  let v5: Id = mint()
+                  let v6: Html = element(v5, "ul", {}, v4)
+                  v6
                 }
                 entrypoint Test@e0(
-                  items@v6: Array[String],
+                  items@v7: Array[String],
                 ) -> Html {
-                  let v10: (String) -> Html = fn(
-                    v7: String,
+                  let v12: (String) -> Html = fn(
+                    v8: String,
                   ) {
-                    let v8: Html = escape(v7)
-                    let v9: Html = element("li", {}, v8)
-                    v9
+                    let v9: Id = mint()
+                    let v10: Html = escape(v8)
+                    let v11: Html = element(v9, "li", {}, v10)
+                    v11
                   }
-                  let v11: Html = f0(v6, v10)
-                  v11
+                  let v13: Html = f0(v7, v12)
+                  v13
                 }
 
                 -- after --
                 entrypoint Test@e0(
-                  items@v6: Array[String],
+                  items@v7: Array[String],
                 ) -> Html {
-                  let v14: Html = for v12: String in v6 {
-                    let v16: Html = escape(v12)
-                    let v17: Html = element("li", {}, v16)
-                    v17
+                  let v16: Html = for v14: String in v7 {
+                    let v19: Id = mint()
+                    let v20: Html = escape(v14)
+                    let v21: Html = element(v19, "li", {}, v20)
+                    v21
                   }
-                  let v15: Html = element("ul", {}, v14)
-                  v15
+                  let v17: Id = mint()
+                  let v18: Html = element(v17, "ul", {}, v16)
+                  v18
                 }
             "#]],
         );
@@ -202,10 +206,11 @@ mod tests {
                 .entrypoint("Items", [("items", Ty::array(Ty::String))], |t| {
                     let _unused = t.str("value");
                     t.element(
+                        t.mint(),
                         "ul",
                         [],
                         Some(t.html_for(t.param("items"), |t, item| {
-                            t.element("li", vec![], Some(t.escape(item)))
+                            t.element(t.mint(), "li", vec![], Some(t.escape(item)))
                         })),
                     )
                 })
@@ -217,26 +222,30 @@ mod tests {
                   items@v0: Array[String],
                 ) -> Html {
                   let v1: String = "value"
-                  let v5: Html = for v2: String in v0 {
-                    let v3: Html = escape(v2)
-                    let v4: Html = element("li", {}, v3)
-                    v4
+                  let v2: Id = mint()
+                  let v7: Html = for v3: String in v0 {
+                    let v4: Id = mint()
+                    let v5: Html = escape(v3)
+                    let v6: Html = element(v4, "li", {}, v5)
+                    v6
                   }
-                  let v6: Html = element("ul", {}, v5)
-                  v6
+                  let v8: Html = element(v2, "ul", {}, v7)
+                  v8
                 }
 
                 -- after --
                 entrypoint Items@e0(
                   items@v0: Array[String],
                 ) -> Html {
-                  let v5: Html = for v2: String in v0 {
-                    let v3: Html = escape(v2)
-                    let v4: Html = element("li", {}, v3)
-                    v4
+                  let v2: Id = mint()
+                  let v7: Html = for v3: String in v0 {
+                    let v4: Id = mint()
+                    let v5: Html = escape(v3)
+                    let v6: Html = element(v4, "li", {}, v5)
+                    v6
                   }
-                  let v6: Html = element("ul", {}, v5)
-                  v6
+                  let v8: Html = element(v2, "ul", {}, v7)
+                  v8
                 }
             "#]],
         );

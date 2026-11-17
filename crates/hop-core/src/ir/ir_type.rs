@@ -7,6 +7,8 @@ use crate::symbols::type_name::TypeName;
 pub enum IrType {
     Data(IrFunctionDataType),
     Html(IrFunctionHtmlType),
+    #[cfg_attr(not(test), allow(dead_code))]
+    Id(IrIdType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +34,10 @@ pub enum IrFunctionHtmlType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IrHtmlType;
 
+/// The type of an identity, which a mint binds and an element takes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IrIdType;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IrDataType {
     String,
@@ -55,6 +61,7 @@ pub struct IrSignature<Param, Result> {
 #[cfg(test)]
 impl IrType {
     pub const MUTATION: IrType = IrType::Data(IrFunctionDataType::Mutation(IrDataType::UNIT));
+    pub const ID: IrType = IrType::Id(IrIdType);
 
     pub fn cell(data: IrDataType) -> IrType {
         IrType::Data(IrFunctionDataType::Cell(data))
@@ -67,7 +74,7 @@ impl IrType {
     pub fn as_result(&self) -> Option<IrResultType> {
         match self {
             IrType::Data(data) => data.as_result(),
-            IrType::Html(_) => None,
+            IrType::Html(_) | IrType::Id(_) => None,
         }
     }
 
@@ -88,7 +95,9 @@ impl IrType {
             .into_iter()
             .map(|parameter| match parameter {
                 IrType::Data(data) => data,
-                IrType::Html(_) => panic!("a closure that computes a value takes {parameter}"),
+                IrType::Html(_) | IrType::Id(_) => {
+                    panic!("a closure that computes a value takes {parameter}")
+                }
             })
             .collect();
         let Some(result) = result.as_result() else {
@@ -123,7 +132,8 @@ impl IrType {
                 | IrFunctionDataType::Cell(_)
                 | IrFunctionDataType::Function(_),
             )
-            | IrType::Html(_) => None,
+            | IrType::Html(_)
+            | IrType::Id(_) => None,
         }
     }
 }
@@ -155,6 +165,7 @@ impl fmt::Display for IrType {
         match self {
             IrType::Data(data) => data.fmt(f),
             IrType::Html(html) => html.fmt(f),
+            IrType::Id(id) => id.fmt(f),
         }
     }
 }
@@ -191,6 +202,12 @@ impl fmt::Display for IrResultType {
 impl fmt::Display for IrHtmlType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Html")
+    }
+}
+
+impl fmt::Display for IrIdType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Id")
     }
 }
 

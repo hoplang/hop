@@ -22,7 +22,7 @@ pub fn collect_html_callees(block: &FlatHtmlBlock, out: &mut BTreeSet<FunctionId
                 collect_pure_callees(initial, out);
                 continue;
             }
-            FlatHtmlBinding::Track(..) => continue,
+            FlatHtmlBinding::Track(..) | FlatHtmlBinding::Mint(_) => continue,
             FlatHtmlBinding::Html(binding) => binding,
         };
         match &binding.op {

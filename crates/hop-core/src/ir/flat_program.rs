@@ -15,7 +15,7 @@ use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_type::{
-    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrResultType, IrType,
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrIdType, IrResultType, IrType,
 };
 use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
@@ -45,7 +45,7 @@ pub enum FlatFunction {
 pub type FlatPureBlock = IrBlock<IrBinding<IrFunctionDataType, FlatPureOp>>;
 pub type FlatHtmlBlock = IrBlock<FlatHtmlBinding>;
 
-/// A binding of a block that renders Html. The cells and elements a render
+/// A binding of a block that renders Html. The cells and identities a render
 /// binds are retained across renders by path: the binding names and loop
 /// iterations that reach them.
 #[derive(Debug, Clone)]
@@ -57,6 +57,9 @@ pub enum FlatHtmlBinding {
     Cell(IrBinder<IrFunctionDataType>, FlatPureBlock),
     /// Bind the value a cell has at this render. `Cell[T] -> T`.
     Track(IrBinder<IrDataType>, ValueId),
+    /// Bind an identity, which the node of the element that takes it keeps
+    /// across renders. `Id`.
+    Mint(IrBinder<IrIdType>),
 }
 
 pub type FlatPureLambda = IrLambda<IrFunctionDataType, FlatPureBlock>;
@@ -96,9 +99,9 @@ pub enum FlatHtmlOp {
     Escape(ValueId),
     /// Concatenate Html. `(Html, ..., Html) -> Html`.
     Concat(Vec<ValueId>),
-    /// Bind a Html element, whose node its path keeps across renders. A void
-    /// element has no children, and every other element has them.
-    /// `Html -> Html`, or `Html` for a void element.
+    /// Bind a Html element, whose node its identity keeps across renders. A
+    /// void element has no children, and every other element has them.
+    /// `(Id, Html) -> Html`, or `Id -> Html` for a void element.
     Element(IrHtmlElement<Option<ValueId>>),
     /// Run a fold-map over an array, where each iteration produces a Html value.
     /// The key, when there is one, gives each element the identity its
@@ -209,6 +212,7 @@ impl FlatHtmlOp {
                 }
             }
             FlatHtmlOp::Element(element) => {
+                f(element.identity);
                 element.for_each_attribute_operand(f);
                 if let Some(children) = element.children {
                     f(children);
@@ -244,6 +248,7 @@ impl FlatHtmlOp {
                 }
             }
             FlatHtmlOp::Element(element) => {
+                f(&mut element.identity);
                 element.for_each_attribute_operand_mut(f);
                 if let Some(children) = &mut element.children {
                     f(children);
@@ -280,6 +285,7 @@ impl fmt::Display for FlatHtmlBinding {
                 f.write_str("\n}")
             }
             FlatHtmlBinding::Track(binder, cell) => write!(f, "let {binder} = track({cell})"),
+            FlatHtmlBinding::Mint(binder) => write!(f, "let {binder} = mint()"),
             FlatHtmlBinding::Html(binding) => binding.fmt(f),
         }
     }
@@ -314,7 +320,12 @@ impl fmt::Display for FlatHtmlOp {
             FlatHtmlOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),
             FlatHtmlOp::Escape(string) => write!(f, "escape({string})"),
             FlatHtmlOp::Element(element) => {
-                write!(f, "element({:?}, {{", element.element.as_str())?;
+                write!(
+                    f,
+                    "element({}, {:?}, {{",
+                    element.identity,
+                    element.element.as_str()
+                )?;
                 for (i, (name, attribute)) in element.attributes.iter().enumerate() {
                     let sep = if i > 0 { ", " } else { "" };
                     write!(f, "{sep}{}", name.as_str())?;

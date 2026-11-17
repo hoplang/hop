@@ -114,6 +114,7 @@ impl<'a> Freshener<'a> {
                     let cell = self.name(*cell);
                     FlatHtmlBinding::Track(self.fresh_binder(binder), cell)
                 }
+                FlatHtmlBinding::Mint(binder) => FlatHtmlBinding::Mint(self.fresh_binder(binder)),
                 FlatHtmlBinding::Html(binding) => {
                     FlatHtmlBinding::Html(self.freshen_html_binding(binding))
                 }

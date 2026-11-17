@@ -7,6 +7,9 @@ use crate::symbols::attribute_name::AttributeName;
 
 #[derive(Debug, Clone)]
 pub struct IrHtmlElement<Children> {
+    /// Must name a mint of the block the element is bound in, which no other
+    /// element takes.
+    pub identity: ValueId,
     pub element: HtmlElementKind,
     pub attributes: IndexMap<AttributeName, IrAttribute>,
     pub children: Children,

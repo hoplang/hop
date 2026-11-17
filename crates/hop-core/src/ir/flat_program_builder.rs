@@ -21,7 +21,9 @@ use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_parameter::IrParameter;
-use crate::ir::ir_type::{IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrType};
+use crate::ir::ir_type::{
+    IrDataType, IrFunctionDataType, IrFunctionHtmlType, IrHtmlType, IrIdType, IrType,
+};
 use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::attribute_name::AttributeName;
@@ -206,6 +208,7 @@ impl FlatProgramBuilder {
                 | IrType::Html(IrFunctionHtmlType::Function(_)) => {
                     panic!("{} returns a closure", declared.function)
                 }
+                IrType::Id(_) => panic!("{} returns an identity", declared.function),
                 IrType::Data(IrFunctionDataType::Cell(_)) => {
                     panic!("{} returns a cell", declared.function)
                 }
@@ -243,6 +246,7 @@ impl BuiltBlock {
                     FlatHtmlBinding::Pure(binding) => binding,
                     FlatHtmlBinding::Cell(..) => panic!("a Pure block binds a cell"),
                     FlatHtmlBinding::Track(..) => panic!("a Pure block tracks a cell"),
+                    FlatHtmlBinding::Mint(_) => panic!("a Pure block mints an identity"),
                     FlatHtmlBinding::Html(_) => panic!("a Pure block binds Html"),
                 })
                 .collect(),
@@ -776,33 +780,48 @@ impl<'a> FlatBlockBuilder<'a> {
         self.push_html(FlatHtmlOp::Text(CheapString::new(content.to_string())))
     }
 
+    pub fn mint(&self) -> ValueId {
+        let name = self.program.binder(IrType::ID);
+        self.bindings
+            .borrow_mut()
+            .push(FlatHtmlBinding::Mint(IrBinder {
+                var: name,
+                typ: IrIdType,
+            }));
+        name
+    }
+
     pub fn element(
         &self,
+        identity: ValueId,
         tag: &str,
         attributes: impl IntoIterator<Item = (AttributeName, IrAttribute)>,
         children: Option<ValueId>,
     ) -> ValueId {
-        self.push_element(tag, attributes, children, None)
+        self.push_element(identity, tag, attributes, children, None)
     }
 
     pub fn element_on_click(
         &self,
+        identity: ValueId,
         tag: &str,
         attributes: impl IntoIterator<Item = (AttributeName, IrAttribute)>,
         event_handler: ValueId,
         children: Option<ValueId>,
     ) -> ValueId {
-        self.push_element(tag, attributes, children, Some(event_handler))
+        self.push_element(identity, tag, attributes, children, Some(event_handler))
     }
 
     fn push_element(
         &self,
+        identity: ValueId,
         tag: &str,
         attributes: impl IntoIterator<Item = (AttributeName, IrAttribute)>,
         children: Option<ValueId>,
         on_click: Option<ValueId>,
     ) -> ValueId {
         self.push_html(FlatHtmlOp::Element(IrHtmlElement {
+            identity,
             element: HtmlElementKind::parse(tag).unwrap(),
             attributes: attributes.into_iter().collect(),
             children,
@@ -1001,7 +1020,9 @@ impl<'a> FlatBlockBuilder<'a> {
                             var: param.var,
                             typ,
                         },
-                        IrType::Html(_) => unreachable!("data_function takes values"),
+                        IrType::Html(_) | IrType::Id(_) => {
+                            unreachable!("data_function takes values")
+                        }
                     })
                     .collect();
                 let lambda = IrLambda {

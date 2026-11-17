@@ -42,6 +42,7 @@ pub enum Value<'a> {
     Closure(Rc<Closure<'a>>),
     Mutation(Rc<Mutation<'a>>),
     Cell(CellId),
+    Id(ElementId),
 }
 
 #[derive(Debug)]
@@ -131,7 +132,7 @@ impl<'a> Value<'a> {
     /// is an equivalence relation, so values that share an allocation are
     /// equal without looking inside, as a value that nests a shared part in
     /// itself can be exponentially larger as a tree than in memory. Panics
-    /// on Html, a closure, a Mutation or a cell.
+    /// on Html, a closure, a Mutation, a cell or an identity.
     #[cfg(test)]
     pub fn total_eq(&self, other: &Value<'_>) -> bool {
         fn all(a: &[Value<'_>], b: &[Value<'_>]) -> bool {
@@ -143,8 +144,22 @@ impl<'a> Value<'a> {
                     .all(|((a_name, a), (b_name, b))| a_name == b_name && a.total_eq(b))
         }
         match (self, other) {
-            (Value::Html(_) | Value::Closure(_) | Value::Mutation(_) | Value::Cell(_), _)
-            | (_, Value::Html(_) | Value::Closure(_) | Value::Mutation(_) | Value::Cell(_)) => {
+            (
+                Value::Html(_)
+                | Value::Closure(_)
+                | Value::Mutation(_)
+                | Value::Cell(_)
+                | Value::Id(_),
+                _,
+            )
+            | (
+                _,
+                Value::Html(_)
+                | Value::Closure(_)
+                | Value::Mutation(_)
+                | Value::Cell(_)
+                | Value::Id(_),
+            ) => {
                 panic!("total_eq compares data, not {self:?} and {other:?}")
             }
             (Value::String(a), Value::String(b)) => a == b,
@@ -240,6 +255,14 @@ impl<'a> Value<'a> {
         match self {
             Value::Cell(cell) => *cell,
             _ => panic!("expected a Cell value, found {self:?}"),
+        }
+    }
+
+    /// Panics if the value is not an identity.
+    pub fn as_id(&self) -> ElementId {
+        match self {
+            Value::Id(id) => *id,
+            _ => panic!("expected an Id value, found {self:?}"),
         }
     }
 

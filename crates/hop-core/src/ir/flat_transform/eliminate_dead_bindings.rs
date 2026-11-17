@@ -87,6 +87,12 @@ fn eliminate_html(block: FlatHtmlBlock, live: &mut HashSet<ValueId>) -> FlatHtml
                 live.insert(cell);
                 Some(FlatHtmlBinding::Track(binder, cell))
             }
+            FlatHtmlBinding::Mint(binder) => {
+                if !live.contains(&binder.var) {
+                    continue;
+                }
+                Some(FlatHtmlBinding::Mint(binder))
+            }
             FlatHtmlBinding::Html(binding) => {
                 eliminate_html_binding(binding, live).map(FlatHtmlBinding::Html)
             }
@@ -258,7 +264,7 @@ mod tests {
                 .entrypoint("Test", [], |t| {
                     let n = t.cell(|t| t.int(0));
                     let set = t.event_handler(|t| t.cell_write(n, t.int(1)));
-                    t.element_on_click("button", [], set, Some(t.text("x")))
+                    t.element_on_click(t.mint(), "button", [], set, Some(t.text("x")))
                 })
                 .build()
                 .unwrap(),
@@ -274,9 +280,10 @@ mod tests {
                     let v3: Mutation[Tuple[]] = v1 := v2
                     v3
                   }
-                  let v5: Html = text("x")
-                  let v6: Html = element("button", {}, v5) on_click v4
-                  v6
+                  let v5: Id = mint()
+                  let v6: Html = text("x")
+                  let v7: Html = element(v5, "button", {}, v6) on_click v4
+                  v7
                 }
 
                 -- after --
@@ -290,9 +297,10 @@ mod tests {
                     let v3: Mutation[Tuple[]] = v1 := v2
                     v3
                   }
-                  let v5: Html = text("x")
-                  let v6: Html = element("button", {}, v5) on_click v4
-                  v6
+                  let v5: Id = mint()
+                  let v6: Html = text("x")
+                  let v7: Html = element(v5, "button", {}, v6) on_click v4
+                  v7
                 }
             "#]],
         );
@@ -308,7 +316,7 @@ mod tests {
                     let _idle = t.cell_write(unseen, t.int(1));
                     let bump = t.cell_write(n, t.add(NumericType::Int, t.track(n), t.int(1)));
                     let bump = t.event_handler(|_| bump);
-                    t.element_on_click("button", [], bump, Some(t.text("x")))
+                    t.element_on_click(t.mint(), "button", [], bump, Some(t.text("x")))
                 })
                 .build()
                 .unwrap(),
@@ -332,9 +340,10 @@ mod tests {
                   let v10: () -> Mutation[Tuple[]] = fn() {
                     v9
                   }
-                  let v11: Html = text("x")
-                  let v12: Html = element("button", {}, v11) on_click v10
-                  v12
+                  let v11: Id = mint()
+                  let v12: Html = text("x")
+                  let v13: Html = element(v11, "button", {}, v12) on_click v10
+                  v13
                 }
 
                 -- after --
@@ -350,9 +359,10 @@ mod tests {
                   let v10: () -> Mutation[Tuple[]] = fn() {
                     v9
                   }
-                  let v11: Html = text("x")
-                  let v12: Html = element("button", {}, v11) on_click v10
-                  v12
+                  let v11: Id = mint()
+                  let v12: Html = text("x")
+                  let v13: Html = element(v11, "button", {}, v12) on_click v10
+                  v13
                 }
             "#]],
         );
