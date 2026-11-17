@@ -638,8 +638,7 @@ fn typecheck_page_declaration(
 
     let typed_head = head.as_ref().and_then(|head| {
         typecheck_block(
-            &head.body.bindings,
-            &head.body.tail,
+            &head.body,
             None,
             &[],
             var_env,
@@ -652,8 +651,7 @@ fn typecheck_page_declaration(
         )
     });
     let typed_body = typecheck_block(
-        &body.body.bindings,
-        &body.body.tail,
+        &body.body,
         None,
         &[],
         var_env,
@@ -838,8 +836,7 @@ fn typecheck_function_body(
     let forwarded_names: Vec<VarName> = forwarded.iter().map(|p| p.name.clone()).collect();
 
     let typed_body = typecheck_block(
-        &body.bindings,
-        &body.tail,
+        body,
         Some(&return_type),
         &forwarded_names,
         var_env,
@@ -1633,6 +1630,50 @@ mod tests {
                 3 |   let y = 30;
                 4 |   x + y
                   |   ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_cell_in_a_block_whose_tail_is_not_html_after_a_failed_let() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn missing_value() -> Int {
+                  let mut a = 0;
+                  let b: Int = missing;
+                  a + b
+                }
+                fn clash() -> Int {
+                  let mut c = 0;
+                  let c = 1;
+                  c
+                }
+            "#},
+            expect![[r#"
+                error: A cell can only be bound in a block that returns Html
+                  --> main.hop (line 2, col 11)
+                 1 | fn missing_value() -> Int {
+                 2 |   let mut a = 0;
+                   |           ^
+
+                error: Undefined variable: missing
+                  --> main.hop (line 3, col 16)
+                 2 |   let mut a = 0;
+                 3 |   let b: Int = missing;
+                   |                ^^^^^^^
+
+                error: A cell can only be bound in a block that returns Html
+                  --> main.hop (line 7, col 11)
+                 6 | fn clash() -> Int {
+                 7 |   let mut c = 0;
+                   |           ^
+
+                error: Variable c is already defined
+                  --> main.hop (line 8, col 7)
+                 7 |   let mut c = 0;
+                 8 |   let c = 1;
+                   |       ^
             "#]],
         );
     }

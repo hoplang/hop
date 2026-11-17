@@ -29,7 +29,7 @@ pub use type_error::TypeError;
 pub use type_registry::{RecordField, ResolvedType, TypeRegistry};
 pub use typecheck::typecheck;
 pub use typed_expr::{
-    TypedAttribute, TypedAttrs, TypedExpr, TypedLoopSource, TypedRecordUpdateField,
+    TypedAttribute, TypedAttrs, TypedExpr, TypedLetBinding, TypedLoopSource, TypedRecordUpdateField,
 };
 pub use typed_module::{
     TypedFunctionDeclaration, TypedModule, TypedPageDeclaration, TypedParameter,

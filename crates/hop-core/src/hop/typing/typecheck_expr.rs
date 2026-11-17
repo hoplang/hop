@@ -14,12 +14,12 @@ use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
 use crate::hop::parsing::{
-    ParsedArguments, ParsedBinaryOp, ParsedExpr, ParsedLetBinding, ParsedLoopSource,
+    ParsedArguments, ParsedBinaryOp, ParsedBlock, ParsedExpr, ParsedLoopSource,
     ParsedNamedArgument, ParsedUnaryOp,
 };
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
-use crate::hop::typing::{TypedExpr, TypedLoopSource, TypedRecordUpdateField};
+use crate::hop::typing::{TypedExpr, TypedLetBinding, TypedLoopSource, TypedRecordUpdateField};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::var_name::VarName;
@@ -1016,8 +1016,7 @@ pub fn typecheck_expr(
             }
         },
         ParsedExpr::Block { block } => typecheck_block(
-            &block.bindings,
-            &block.tail,
+            block,
             expected_type,
             forwarded_params,
             var_env,
@@ -1187,8 +1186,7 @@ pub fn typecheck_expr(
             });
             var_env.enter(RepeatedBody::Loop);
             let typed_body = typecheck_block(
-                &body.bindings,
-                &body.tail,
+                body,
                 Some(&Type::HTML),
                 forwarded_params,
                 var_env,
@@ -1695,11 +1693,11 @@ pub fn typecheck_expr(
 }
 
 /// Typecheck a block: its `let` statements in order, each in scope for
-/// the ones after it and for the tail. The typed block is a chain of
-/// nested lets.
+/// the ones after it and for the tail. A statement whose type is unknown
+/// ends the check, and the statements after it and the tail are not
+/// checked. A block without statements is its tail.
 pub fn typecheck_block(
-    bindings: &[ParsedLetBinding],
-    tail: &ParsedExpr,
+    block: &ParsedBlock,
     expected_type: Option<&Type>,
     forwarded_params: &[VarName],
     var_env: &mut VariableScope,
@@ -1710,10 +1708,28 @@ pub fn typecheck_block(
     asset_references: &mut Vec<AssetReference>,
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
-    let Some((binding, rest)) = bindings.split_first() else {
-        return typecheck_expr(
-            tail,
-            expected_type,
+    // Each checked statement, with its typed value and whether its name
+    // was pushed. On a clash the rest is still typechecked, with the name
+    // resolving to the existing binding, so that its errors surface and
+    // the existing binding is not reported unused.
+    let mut checked = Vec::new();
+    let mut complete = true;
+    for binding in &block.bindings {
+        let declared_type = match &binding.var_type {
+            Some(parsed_type) => {
+                match resolve_type(parsed_type, &type_env.names, definition_links, errors) {
+                    Some(declared) => Some(declared),
+                    None => {
+                        complete = false;
+                        break;
+                    }
+                }
+            }
+            None => None,
+        };
+        let typed_value = typecheck_expr(
+            &binding.value_expr,
+            declared_type.as_ref(),
             forwarded_params,
             var_env,
             type_env,
@@ -1723,116 +1739,114 @@ pub fn typecheck_block(
             asset_references,
             errors,
         );
-    };
-    let declared_type = match &binding.var_type {
-        Some(parsed_type) => Some(resolve_type(
-            parsed_type,
-            &type_env.names,
-            definition_links,
-            errors,
-        )?),
-        None => None,
-    };
-    let typed_value = typecheck_expr(
-        &binding.value_expr,
-        declared_type.as_ref(),
-        forwarded_params,
-        var_env,
-        type_env,
-        registry,
-        annotations,
-        definition_links,
-        asset_references,
-        errors,
-    );
-    let binding_type = match (&declared_type, &typed_value) {
-        (Some(declared), _) => declared.clone(),
-        (None, Some(typed_value)) => typed_value.typ(),
-        (None, None) => return None,
-    };
-    if binding.mutable && binding_type.as_data().is_none() {
-        errors.push(TypeError::new(
-            TypeErrorKind::CellNotData {
-                typ: binding_type.clone(),
-            },
-            binding.value_expr.range().clone(),
-        ));
-    }
-    // On a clash the body is still typechecked, with the name
-    // resolving to the existing binding, so that its errors surface
-    // and the existing binding is not reported unused.
-    let pushed = var_env
-        .bind(
-            binding.var_name.clone(),
-            binding_type.clone(),
-            binding.var_name_range.clone(),
-            binding.mutable,
-        )
-        .is_ok();
-    if pushed {
-        annotations.push(HoverAnnotation::VarName {
-            range: binding.var_name_range.clone(),
-            typ: binding_type,
-            var_name: binding.var_name.clone(),
-        });
-    } else {
-        errors.push(TypeError::new(
-            TypeErrorKind::VariableAlreadyDefined {
-                name: binding.var_name.clone(),
-            },
-            binding.var_name_range.clone(),
-        ));
-    }
-    if let (Some(declared), Some(typed_value)) = (&declared_type, &typed_value) {
-        let value_type = typed_value.typ();
-        if value_type != *declared {
+        let binding_type = match (&declared_type, &typed_value) {
+            (Some(declared), _) => declared.clone(),
+            (None, Some(typed_value)) => typed_value.typ(),
+            (None, None) => {
+                complete = false;
+                break;
+            }
+        };
+        if binding.mutable && binding_type.as_data().is_none() {
             errors.push(TypeError::new(
-                TypeErrorKind::TypeMismatch {
-                    context: TypeMismatchContext::LetBinding,
-                    expected: declared.clone(),
-                    found: value_type,
+                TypeErrorKind::CellNotData {
+                    typ: binding_type.clone(),
                 },
                 binding.value_expr.range().clone(),
             ));
         }
+        let pushed = var_env
+            .bind(
+                binding.var_name.clone(),
+                binding_type.clone(),
+                binding.var_name_range.clone(),
+                binding.mutable,
+            )
+            .is_ok();
+        if pushed {
+            annotations.push(HoverAnnotation::VarName {
+                range: binding.var_name_range.clone(),
+                typ: binding_type,
+                var_name: binding.var_name.clone(),
+            });
+        } else {
+            errors.push(TypeError::new(
+                TypeErrorKind::VariableAlreadyDefined {
+                    name: binding.var_name.clone(),
+                },
+                binding.var_name_range.clone(),
+            ));
+        }
+        if let (Some(declared), Some(typed_value)) = (&declared_type, &typed_value) {
+            let value_type = typed_value.typ();
+            if value_type != *declared {
+                errors.push(TypeError::new(
+                    TypeErrorKind::TypeMismatch {
+                        context: TypeMismatchContext::LetBinding,
+                        expected: declared.clone(),
+                        found: value_type,
+                    },
+                    binding.value_expr.range().clone(),
+                ));
+            }
+        }
+        checked.push((binding, typed_value, pushed));
     }
-    let typed_body = typecheck_block(
-        rest,
-        tail,
-        expected_type,
-        forwarded_params,
-        var_env,
-        type_env,
-        registry,
-        annotations,
-        definition_links,
-        asset_references,
-        errors,
-    );
-    if !pushed {
+    let typed_tail = if complete {
+        typecheck_expr(
+            &block.tail,
+            expected_type,
+            forwarded_params,
+            var_env,
+            type_env,
+            registry,
+            annotations,
+            definition_links,
+            asset_references,
+            errors,
+        )
+    } else {
+        None
+    };
+    // Pop the names, the last first. A cell is checked against the type of
+    // the tail whenever the tail typechecked.
+    let tail_type = typed_tail.as_ref().map(TypedExpr::typ);
+    for (binding, _, pushed) in checked.iter().rev() {
+        if *pushed {
+            let (name, entry) = var_env.pop();
+            if !entry.accessed {
+                errors.push(TypeError::new(
+                    TypeErrorKind::UnusedVariable { var_name: name },
+                    entry.range,
+                ));
+            }
+        }
+        if binding.mutable && tail_type.as_ref().is_some_and(|typ| *typ != Type::HTML) {
+            errors.push(TypeError::new(
+                TypeErrorKind::CellOutsideHtml,
+                binding.var_name_range.clone(),
+            ));
+        }
+    }
+    if checked.iter().any(|(_, _, pushed)| !pushed) {
         return None;
     }
-    let (name, entry) = var_env.pop();
-    if !entry.accessed {
-        errors.push(TypeError::new(
-            TypeErrorKind::UnusedVariable { var_name: name },
-            entry.range,
-        ));
+    let tail = typed_tail?;
+    if checked.is_empty() {
+        return Some(tail);
     }
-    let typed_body = typed_body?;
-    let typ = typed_body.typ();
-    if binding.mutable && typ != Type::HTML {
-        errors.push(TypeError::new(
-            TypeErrorKind::CellOutsideHtml,
-            binding.var_name_range.clone(),
-        ));
-    }
-    Some(TypedExpr::Let {
-        var: binding.var_name.clone(),
-        cell: binding.mutable,
-        value: Box::new(typed_value?),
-        body: Box::new(typed_body),
-        typ,
+    Some(TypedExpr::Block {
+        bindings: checked
+            .into_iter()
+            .map(|(binding, typed_value, _)| {
+                Some(TypedLetBinding {
+                    var: binding.var_name.clone(),
+                    cell: binding.mutable,
+                    value: typed_value?,
+                })
+            })
+            .collect::<Option<_>>()?,
+        tail: Box::new(tail),
     })
 }
 

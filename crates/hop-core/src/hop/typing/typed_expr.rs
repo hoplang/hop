@@ -204,13 +204,11 @@ pub enum TypedExpr {
         operand_type: ComparableType,
     },
 
-    /// A let binding expression.
-    Let {
-        var: VarName,
-        cell: bool,
-        value: Box<Self>,
-        body: Box<Self>,
-        typ: Type,
+    /// A block of one or more let bindings, each in scope for the ones
+    /// after it and for the tail, whose value is the block's.
+    Block {
+        bindings: Vec<TypedLetBinding>,
+        tail: Box<Self>,
     },
 
     /// FoldMap over a monoid
@@ -392,6 +390,15 @@ pub enum TypedAttribute {
 /// The attributes an element or a rest parameter receives: those written at
 /// the site, by name in the order they are written, followed by those
 /// forwarded through a `...rest` spread.
+/// A let binding in a block. A `let mut` binding binds a cell, whose
+/// initial value is the value.
+#[derive(Debug, Clone)]
+pub struct TypedLetBinding {
+    pub var: VarName,
+    pub cell: bool,
+    pub value: TypedExpr,
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedAttrs {
     pub attributes: IndexMap<AttributeName, TypedAttribute>,
@@ -411,7 +418,6 @@ impl TypedExpr {
             | TypedExpr::Enum { typ, .. }
             | TypedExpr::Option { typ, .. }
             | TypedExpr::Match { typ, .. }
-            | TypedExpr::Let { typ, .. }
             | TypedExpr::For { typ, .. }
             | TypedExpr::OptionUnwrapOr { typ, .. }
             | TypedExpr::ArrayGet { typ, .. }
@@ -422,6 +428,8 @@ impl TypedExpr {
             | TypedExpr::MutationPure { typ, .. }
             | TypedExpr::MutationBind { typ, .. }
             | TypedExpr::Call { typ, .. } => typ.clone(),
+
+            TypedExpr::Block { tail, .. } => tail.typ(),
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Type::FLOAT,
             TypedExpr::IntLiteral { .. } => Type::INT,
@@ -580,15 +588,17 @@ impl Display for TypedExpr {
                 }
                 f.write_str(if arms.is_empty() { "}" } else { "\n}" })
             }
-            TypedExpr::Let {
-                var,
-                cell,
-                value,
-                body,
-                ..
-            } => {
-                let mutable = if *cell { "mut " } else { "" };
-                write!(f, "let {mutable}{} = {value} in {body}", var.as_str())
+            TypedExpr::Block { bindings, tail } => {
+                for binding in bindings {
+                    let mutable = if binding.cell { "mut " } else { "" };
+                    write!(
+                        f,
+                        "let {mutable}{} = {} in ",
+                        binding.var.as_str(),
+                        binding.value
+                    )?;
+                }
+                write!(f, "{tail}")
             }
             TypedExpr::CellWrite { cell, value } => write!(f, "write({}, {value})", cell.as_str()),
             TypedExpr::CellRead { cell, .. } => write!(f, "{}.get()", cell.as_str()),

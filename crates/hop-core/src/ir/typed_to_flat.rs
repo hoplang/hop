@@ -861,49 +861,49 @@ impl<'a> Compiler<'a> {
                 }
                 FlatPureOp::Call(function, compiled_args)
             }
-            TypedExpr::Let { value, body, .. }
-                if !typ.renders_html() && value.typ().renders_html() =>
-            {
-                return self.compile_expr(body);
-            }
-            // A let binds nothing. Its variable is the name of its value,
-            // in a scope of its own that holds the body. A let mut binds a
-            // cell, whose initial value is the value, compiled as a block of
-            // its own, and its variable is the name that tracks the cell, from
-            // which a write or a read of the variable finds the cell.
-            TypedExpr::Let {
-                var,
-                cell,
-                value,
-                body,
-                ..
-            } => {
-                let value = if *cell {
-                    let Type::Data(typ) = value.typ() else {
-                        unreachable!("a cell holds data");
+            // A let binds nothing. Its variable is the name of its value, in
+            // a scope that the block's lets share and that holds the tail. A
+            // let mut binds a cell, whose initial value is the value, compiled
+            // as a block of its own, and its variable is the name that tracks
+            // the cell, from which a write or a read of the variable finds the
+            // cell. A let of Html in a block that does not render Html is
+            // erased.
+            TypedExpr::Block { bindings, tail } => {
+                self.push_scope();
+                for binding in bindings {
+                    if !typ.renders_html() && binding.value.typ().renders_html() {
+                        continue;
+                    }
+                    let value = if binding.cell {
+                        let Type::Data(typ) = binding.value.typ() else {
+                            unreachable!("a cell holds data");
+                        };
+                        let typ = lower_data_type(self.registry, &typ);
+                        let initial = self.compile_pure_block(&binding.value);
+                        let cell = self.value_id_counter.next();
+                        self.bindings.push(FlatHtmlBinding::Cell(
+                            IrBinder {
+                                var: cell,
+                                typ: IrFunctionDataType::Cell(typ.clone()),
+                            },
+                            initial,
+                        ));
+                        let name = self.value_id_counter.next();
+                        self.bindings
+                            .push(FlatHtmlBinding::Track(IrBinder { var: name, typ }, cell));
+                        self.cells.insert(name, cell);
+                        name
+                    } else {
+                        self.compile_expr(&binding.value)
                     };
-                    let typ = lower_data_type(self.registry, &typ);
-                    let initial = self.compile_pure_block(value);
-                    let cell = self.value_id_counter.next();
-                    self.bindings.push(FlatHtmlBinding::Cell(
-                        IrBinder {
-                            var: cell,
-                            typ: IrFunctionDataType::Cell(typ.clone()),
-                        },
-                        initial,
-                    ));
-                    let name = self.value_id_counter.next();
-                    self.bindings
-                        .push(FlatHtmlBinding::Track(IrBinder { var: name, typ }, cell));
-                    self.cells.insert(name, cell);
-                    name
-                } else {
-                    self.compile_expr(value)
-                };
-                self.scopes.push(vec![(var.clone(), value)]);
-                let body = self.compile_expr(body);
+                    self.scopes
+                        .last_mut()
+                        .expect("scope stack should not be empty")
+                        .push((binding.var.clone(), value));
+                }
+                let tail = self.compile_expr(tail);
                 self.pop_scope();
-                return body;
+                return tail;
             }
             TypedExpr::CellWrite { cell, value } => {
                 let cell = self.cell(cell);

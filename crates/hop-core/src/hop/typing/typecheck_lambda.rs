@@ -141,8 +141,7 @@ pub fn typecheck_lambda(
         }
     }
     let typed_body = typecheck_block(
-        &body.bindings,
-        &body.tail,
+        body,
         expected_result,
         forwarded_params,
         var_env,
