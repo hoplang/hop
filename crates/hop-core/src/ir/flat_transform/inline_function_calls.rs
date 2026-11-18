@@ -551,11 +551,11 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v2: Int = read(v1)
+                  let v2: Int = cell_read(v1)
                   let v6: mut () -> Tuple[] = fn() {
                     let v3: Int = 1
                     let v4: Int = int_add(v2, v3)
-                    let v5: Tuple[] = v1 := v4
+                    let v5: Tuple[] = cell_write(v1, v4)
                     v5
                   }
                   let v7: Id = mint()
@@ -577,11 +577,11 @@ mod tests {
                     let v14: Int = 0
                     v14
                   }
-                  let v16: Int = read(v15)
+                  let v16: Int = cell_read(v15)
                   let v20: mut () -> Tuple[] = fn() {
                     let v17: Int = 1
                     let v18: Int = int_add(v16, v17)
-                    let v19: Tuple[] = v15 := v18
+                    let v19: Tuple[] = cell_write(v15, v18)
                     v19
                   }
                   let v21: Id = mint()
@@ -592,11 +592,11 @@ mod tests {
                     let v25: Int = 0
                     v25
                   }
-                  let v27: Int = read(v26)
+                  let v27: Int = cell_read(v26)
                   let v31: mut () -> Tuple[] = fn() {
                     let v28: Int = 1
                     let v29: Int = int_add(v27, v28)
-                    let v30: Tuple[] = v26 := v29
+                    let v30: Tuple[] = cell_write(v26, v29)
                     v30
                   }
                   let v32: Id = mint()
@@ -667,18 +667,18 @@ mod tests {
                     let v6: Bool = false
                     v6
                   }
-                  let v8: Int = read(v5)
-                  let v9: Bool = read(v7)
+                  let v8: Int = cell_read(v5)
+                  let v9: Bool = cell_read(v7)
                   let v18: mut () -> Tuple[] = fn() {
                     let v13: mut () -> Tuple[] = fn() {
                       let v10: Int = 1
                       let v11: Int = int_add(v8, v10)
-                      let v12: Tuple[] = v5 := v11
+                      let v12: Tuple[] = cell_write(v5, v11)
                       v12
                     }
                     let v16: mut () -> Tuple[] = fn() {
                       let v14: Bool = bool_not(v9)
-                      let v15: Tuple[] = v7 := v14
+                      let v15: Tuple[] = cell_write(v7, v14)
                       v15
                     }
                     let v17: Tuple[] = f0(v13, v16)
@@ -701,18 +701,18 @@ mod tests {
                     let v6: Bool = false
                     v6
                   }
-                  let v8: Int = read(v5)
-                  let v9: Bool = read(v7)
+                  let v8: Int = cell_read(v5)
+                  let v9: Bool = cell_read(v7)
                   let v18: mut () -> Tuple[] = fn() {
                     let v13: mut () -> Tuple[] = fn() {
                       let v10: Int = 1
                       let v11: Int = int_add(v8, v10)
-                      let v12: Tuple[] = v5 := v11
+                      let v12: Tuple[] = cell_write(v5, v11)
                       v12
                     }
                     let v16: mut () -> Tuple[] = fn() {
                       let v14: Bool = bool_not(v9)
-                      let v15: Tuple[] = v7 := v14
+                      let v15: Tuple[] = cell_write(v7, v14)
                       v15
                     }
                     let v23: Tuple[] = v13()

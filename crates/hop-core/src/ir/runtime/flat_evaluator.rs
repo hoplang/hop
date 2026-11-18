@@ -1389,7 +1389,7 @@ mod tests {
                     let v1: Cell[Int] = cell {
                       v0
                     }
-                    let v2: Int = read(v1)
+                    let v2: Int = cell_read(v1)
                     v2
                   }
                   let v4: Int = 1

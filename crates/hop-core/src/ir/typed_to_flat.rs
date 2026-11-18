@@ -2316,19 +2316,19 @@ mod tests {
                     let v19: Int = 0
                     v19
                   }
-                  let v21: Int = read(v20)
+                  let v21: Int = cell_read(v20)
                   let v23: Cell[Bool] = cell {
                     let v22: Bool = false
                     v22
                   }
-                  let v24: Bool = read(v23)
+                  let v24: Bool = cell_read(v23)
                   let v31: mut () -> Tuple[] = fn() {
-                    let v25: Int = read(v20)
+                    let v25: Int = cell_read(v20)
                     let v26: Int = 1
                     let v27: Int = int_add(v25, v26)
-                    let v28: Tuple[] = v20 := v27
+                    let v28: Tuple[] = cell_write(v20, v27)
                     let v29: Bool = true
-                    let v30: Tuple[] = v23 := v29
+                    let v30: Tuple[] = cell_write(v23, v29)
                     v30
                   }
                   let v32: Html = escape(v18)
@@ -2400,11 +2400,11 @@ mod tests {
                     let v0: Bool = false
                     v0
                   }
-                  let v2: Bool = read(v1)
+                  let v2: Bool = cell_read(v1)
                   let v6: mut () -> Tuple[] = fn() {
-                    let v3: Bool = read(v1)
+                    let v3: Bool = cell_read(v1)
                     let v4: Bool = bool_not(v3)
-                    let v5: Tuple[] = v1 := v4
+                    let v5: Tuple[] = cell_write(v1, v4)
                     v5
                   }
                   let v9: String = match v2 {
@@ -2452,7 +2452,7 @@ mod tests {
                   let v14: Cell[Int] = cell {
                     v13
                   }
-                  let v15: Int = read(v14)
+                  let v15: Int = cell_read(v14)
                   v15
                 }
                 entrypoint body@e0(
@@ -2462,7 +2462,7 @@ mod tests {
                     let v1: Cell[Int] = cell {
                       v0
                     }
-                    let v2: Int = read(v1)
+                    let v2: Int = cell_read(v1)
                     v2
                   }
                   let v4: Int = f0(v0)
@@ -2509,9 +2509,9 @@ mod tests {
                   let v1: Cell[Int] = cell {
                     v0
                   }
-                  let v2: Int = read(v1)
+                  let v2: Int = cell_read(v1)
                   let v5: read () -> Int = fn() {
-                    let v3: Int = read(v1)
+                    let v3: Int = cell_read(v1)
                     let v4: Int = f0(v3)
                     v4
                   }
@@ -2565,7 +2565,7 @@ mod tests {
                         let v1: Int = 0
                         v1
                       }
-                      let v3: Int = read(v2)
+                      let v3: Int = cell_read(v2)
                       let v4: Int = 1
                       let v5: Int = int_add(v3, v4)
                       v5
@@ -2581,7 +2581,7 @@ mod tests {
                         let v8: Bool = true
                         v8
                       }
-                      let v10: Bool = read(v9)
+                      let v10: Bool = cell_read(v9)
                       v10
                     }
                     false => {
@@ -2593,14 +2593,14 @@ mod tests {
                     let v13: Bool = false
                     v13
                   }
-                  let v15: Bool = read(v14)
+                  let v15: Bool = cell_read(v14)
                   let v25: render (String) -> Html = fn(
                     v16: String,
                   ) {
                     let v20: mut () -> Tuple[] = fn() {
-                      let v17: Bool = read(v14)
+                      let v17: Bool = cell_read(v14)
                       let v18: Bool = bool_not(v17)
-                      let v19: Tuple[] = v14 := v18
+                      let v19: Tuple[] = cell_write(v14, v18)
                       v19
                     }
                     let v21: Html = escape(v16)
@@ -2660,22 +2660,22 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v2: Int = read(v1)
+                  let v2: Int = cell_read(v1)
                   let v15: mut () -> Tuple[] = fn() {
                     let v6: mut () -> Tuple[] = fn() {
-                      let v3: Int = read(v1)
+                      let v3: Int = cell_read(v1)
                       let v4: Int = int_add(v3, v2)
-                      let v5: Tuple[] = v1 := v4
+                      let v5: Tuple[] = cell_write(v1, v4)
                       v5
                     }
                     let v7: Tuple[] = f0(v6)
-                    let v8: Int = read(v1)
+                    let v8: Int = cell_read(v1)
                     let v9: Int = 9
                     let v10: Bool = int_lt(v9, v8)
                     let v14: Tuple[] = match v10 {
                       true => {
                         let v11: Int = 0
-                        let v12: Tuple[] = v1 := v11
+                        let v12: Tuple[] = cell_write(v1, v11)
                         v12
                       }
                       false => {

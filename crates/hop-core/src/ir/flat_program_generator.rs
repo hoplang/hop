@@ -2304,7 +2304,7 @@ mod tests {
                   let v2: Cell[Int] = cell {
                     v1
                   }
-                  let v3: Int = read(v2)
+                  let v3: Int = cell_read(v2)
                   let v4: Html = concat()
                   v4
                 }
@@ -2352,7 +2352,7 @@ mod tests {
                   let v8: Cell[Int] = cell {
                     v7
                   }
-                  let v9: Int = read(v8)
+                  let v9: Int = cell_read(v8)
                   v2
                 }
                 render fn C1@f1() -> Html {
@@ -2361,7 +2361,7 @@ mod tests {
                   let v12: Cell[Int] = cell {
                     v11
                   }
-                  let v13: Int = read(v12)
+                  let v13: Int = cell_read(v12)
                   let v14: Html = concat()
                   v14
                 }
@@ -2371,7 +2371,7 @@ mod tests {
                   let v17: Cell[Int] = cell {
                     v16
                   }
-                  let v18: Int = read(v17)
+                  let v18: Int = cell_read(v17)
                   let v19: Html = concat()
                   v19
                 }
@@ -2386,7 +2386,7 @@ mod tests {
                   let v26: Cell[Int] = cell {
                     v25
                   }
-                  let v27: Int = read(v26)
+                  let v27: Int = cell_read(v26)
                   let v28: Html = concat()
                   v28
                 }
@@ -2398,7 +2398,7 @@ mod tests {
                   let v32: Cell[Int] = cell {
                     v30
                   }
-                  let v33: Int = read(v32)
+                  let v33: Int = cell_read(v32)
                   let v34: Html = concat()
                   v34
                 }

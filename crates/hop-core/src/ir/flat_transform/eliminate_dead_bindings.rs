@@ -216,7 +216,7 @@ mod tests {
                   }
                   let v4: mut () -> Tuple[] = fn() {
                     let v2: Int = 1
-                    let v3: Tuple[] = v1 := v2
+                    let v3: Tuple[] = cell_write(v1, v2)
                     v3
                   }
                   let v5: Id = mint()
@@ -233,7 +233,7 @@ mod tests {
                   }
                   let v4: mut () -> Tuple[] = fn() {
                     let v2: Int = 1
-                    let v3: Tuple[] = v1 := v2
+                    let v3: Tuple[] = cell_write(v1, v2)
                     v3
                   }
                   let v5: Id = mint()
@@ -274,14 +274,14 @@ mod tests {
                   }
                   let v6: mut () -> Tuple[] = fn() {
                     let v4: Int = 1
-                    let v5: Tuple[] = v3 := v4
+                    let v5: Tuple[] = cell_write(v3, v4)
                     v5
                   }
-                  let v7: Int = read(v1)
+                  let v7: Int = cell_read(v1)
                   let v11: mut () -> Tuple[] = fn() {
                     let v8: Int = 1
                     let v9: Int = int_add(v7, v8)
-                    let v10: Tuple[] = v1 := v9
+                    let v10: Tuple[] = cell_write(v1, v9)
                     v10
                   }
                   let v12: Id = mint()
@@ -296,11 +296,11 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v7: Int = read(v1)
+                  let v7: Int = cell_read(v1)
                   let v11: mut () -> Tuple[] = fn() {
                     let v8: Int = 1
                     let v9: Int = int_add(v7, v8)
-                    let v10: Tuple[] = v1 := v9
+                    let v10: Tuple[] = cell_write(v1, v9)
                     v10
                   }
                   let v12: Id = mint()

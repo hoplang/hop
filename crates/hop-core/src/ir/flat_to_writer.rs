@@ -1423,11 +1423,11 @@ mod tests {
                     let v14: Int = 0
                     v14
                   }
-                  let v16: Int = read(v15)
+                  let v16: Int = cell_read(v15)
                   let v20: mut () -> Tuple[] = fn() {
                     let v17: Int = 1
                     let v18: Int = int_add(v16, v17)
-                    let v19: Tuple[] = v15 := v18
+                    let v19: Tuple[] = cell_write(v15, v18)
                     v19
                   }
                   let v21: Int = 2

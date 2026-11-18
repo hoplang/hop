@@ -182,8 +182,8 @@ impl fmt::Display for FlatOp {
                 f.write_str("\n}")
             }
             FlatOp::Mint => f.write_str("mint()"),
-            FlatOp::CellWrite(cell, value) => write!(f, "{cell} := {value}"),
-            FlatOp::CellRead(cell) => write!(f, "read({cell})"),
+            FlatOp::CellWrite(cell, value) => write!(f, "cell_write({cell}, {value})"),
+            FlatOp::CellRead(cell) => write!(f, "cell_read({cell})"),
             FlatOp::Text(content) => write!(f, "text({:?})", content.as_str()),
             FlatOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),
             FlatOp::Escape(string) => write!(f, "escape({string})"),
