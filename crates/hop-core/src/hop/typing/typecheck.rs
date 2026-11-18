@@ -15360,7 +15360,7 @@ mod tests {
                 4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
                   |                       ^^^^^^^^^^^^^^^^^^
 
-                error: Only a render fn or mut fn can capture the mutable variable count
+                error: Only a render fn or mut fn can capture a mutable variable
                   --> main.hop (line 4, col 30)
                 3 |   <>
                 4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
@@ -15732,19 +15732,19 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Only a render fn or mut fn can capture the mutable variable count
+                error: Only a render fn or mut fn can capture a mutable variable
                   --> main.hop (line 4, col 33)
                  3 |   let mut label = "";
                  4 |   let annotated = fn() -> Int { count };
                    |                                 ^^^^^
 
-                error: Only a render fn or mut fn can capture the mutable variable count
+                error: Only a render fn or mut fn can capture a mutable variable
                   --> main.hop (line 5, col 25)
                  4 |   let annotated = fn() -> Int { count };
                  5 |   let inferred = fn() { count };
                    |                         ^^^^^
 
-                error: Only a render fn or mut fn can capture the mutable variable count
+                error: Only a render fn or mut fn can capture a mutable variable
                   --> main.hop (line 7, col 31)
                  6 |   let nested = fn() {
                  7 |     let inner = fn() -> Int { count };
@@ -15756,13 +15756,13 @@ mod tests {
                 11 |     let row = fn() { <p>{count.to_string()}</p> };
                    |         ^^^
 
-                error: Only a render fn or mut fn can capture the mutable variable count
+                error: Only a render fn or mut fn can capture a mutable variable
                   --> main.hop (line 11, col 26)
                 10 |   let around = fn() -> Int {
                 11 |     let row = fn() { <p>{count.to_string()}</p> };
                    |                          ^^^^^
 
-                error: Only a render fn or mut fn can capture the mutable variable count
+                error: Only a render fn or mut fn can capture a mutable variable
                   --> main.hop (line 19, col 25)
                 18 |   <button on:click={mut fn() {
                 19 |     let inside = fn() { count };

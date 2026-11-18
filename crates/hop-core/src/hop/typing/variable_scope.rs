@@ -311,10 +311,7 @@ impl VariableScope {
         };
         assert!(entry.cell, "{name} is not a cell");
         let bodies = entry.bodies;
-        let error = TypeError::new(
-            TypeErrorKind::MutableCaptureInPlainFn { name: name.clone() },
-            range.clone(),
-        );
+        let error = TypeError::new(TypeErrorKind::MutableCaptureInPlainFn, range.clone());
         self.read_cell_from(bodies, error, errors);
     }
 
