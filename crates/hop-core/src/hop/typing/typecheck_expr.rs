@@ -9,9 +9,7 @@ use super::typecheck_lambda::typecheck_lambda;
 use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join};
 use super::typecheck_markup::typecheck_markup;
 use super::typecheck_match::typecheck_match;
-use super::variable_scope::{
-    Context, HtmlMisuse, Position, RepeatedBody, ScopeEntry, VariableScope,
-};
+use super::variable_scope::{Context, HtmlMisuse, Position, ScopeEntry, VariableScope};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
@@ -153,6 +151,7 @@ pub fn typecheck_expr(
         } => match var_env.lookup(var_name.as_str()) {
             Some(ScopeEntry::Variable(entry)) => {
                 let typ = entry.typ.clone();
+                let cell = entry.cell;
                 annotations.push(HoverAnnotation::VarName {
                     range: parsed_expr.range().clone(),
                     typ: typ.clone(),
@@ -162,6 +161,9 @@ pub fn typecheck_expr(
                     use_range: parsed_expr.range().clone(),
                     definition_range: entry.range.clone(),
                 });
+                if cell {
+                    var_env.read_cell(var_name, parsed_expr.range(), errors);
+                }
                 if typ == Type::HTML
                     && let Err(misuse) = var_env.use_html(var_name)
                 {
@@ -1262,7 +1264,7 @@ pub fn typecheck_expr(
                 }
                 Some(typed_key)
             });
-            var_env.enter(RepeatedBody::Loop);
+            var_env.enter_loop();
             let typed_body = typecheck_block(
                 body,
                 Some(&Type::HTML),
@@ -1275,7 +1277,7 @@ pub fn typecheck_expr(
                 asset_references,
                 errors,
             );
-            var_env.exit();
+            var_env.exit_loop();
             if pushed {
                 let (name, entry) = var_env.pop();
                 if !entry.accessed {

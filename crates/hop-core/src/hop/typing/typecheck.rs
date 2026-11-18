@@ -15360,6 +15360,12 @@ mod tests {
                 4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
                   |                       ^^^^^^^^^^^^^^^^^^
 
+                error: Only a render fn or mut fn can capture the mutable variable count
+                  --> main.hop (line 4, col 30)
+                3 |   <>
+                4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
+                  |                              ^^^^^
+
                 error: Expected mut fn() -> Tuple[] got String
                   --> main.hop (line 5, col 22)
                 4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
@@ -15693,6 +15699,106 @@ mod tests {
                 4 | fn Main() -> Html {
                 5 |   <Show count={fn() -> Int { 1 }}/>
                   |                ^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_reads_of_cells_in_plain_lambdas() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let mut count = 0;
+                  let mut label = "";
+                  let annotated = fn() -> Int { count };
+                  let inferred = fn() { count };
+                  let nested = fn() {
+                    let inner = fn() -> Int { count };
+                    inner()
+                  };
+                  let around = fn() -> Int {
+                    let row = fn() { <p>{count.to_string()}</p> };
+                    1
+                  };
+                  let rows = fn() {
+                    let row = fn() { <p>{count.to_string()}</p> };
+                    row()
+                  };
+                  <button on:click={mut fn() {
+                    let inside = fn() { count };
+                    label = (annotated() + inferred() + nested() + around() + inside()).to_string()
+                  }}>{label}{rows()}</button>
+                }
+            "#},
+            expect![[r#"
+                error: Only a render fn or mut fn can capture the mutable variable count
+                  --> main.hop (line 4, col 33)
+                 3 |   let mut label = "";
+                 4 |   let annotated = fn() -> Int { count };
+                   |                                 ^^^^^
+
+                error: Only a render fn or mut fn can capture the mutable variable count
+                  --> main.hop (line 5, col 25)
+                 4 |   let annotated = fn() -> Int { count };
+                 5 |   let inferred = fn() { count };
+                   |                         ^^^^^
+
+                error: Only a render fn or mut fn can capture the mutable variable count
+                  --> main.hop (line 7, col 31)
+                 6 |   let nested = fn() {
+                 7 |     let inner = fn() -> Int { count };
+                   |                               ^^^^^
+
+                warning: Unused variable row
+                  --> main.hop (line 11, col 9)
+                10 |   let around = fn() -> Int {
+                11 |     let row = fn() { <p>{count.to_string()}</p> };
+                   |         ^^^
+
+                error: Only a render fn or mut fn can capture the mutable variable count
+                  --> main.hop (line 11, col 26)
+                10 |   let around = fn() -> Int {
+                11 |     let row = fn() { <p>{count.to_string()}</p> };
+                   |                          ^^^^^
+
+                error: Only a render fn or mut fn can capture the mutable variable count
+                  --> main.hop (line 19, col 25)
+                18 |   <button on:click={mut fn() {
+                19 |     let inside = fn() { count };
+                   |                         ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_let_mut_in_a_loop_of_a_lambda_only_if_the_lambda_returns_a_value() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let rows = fn() {
+                    <>{for i in [1] { let mut c = i; <p>{c.to_string()}</p> }}</>
+                  };
+                  let count = fn() {
+                    let shown = <>{for i in [1] { let mut c = i; <p>{c.to_string()}</p> }}</>;
+                    1
+                  };
+                  <>{rows()}{count().to_string()}</>
+                }
+            "#},
+            expect![[r#"
+                warning: Unused variable shown
+                  --> main.hop (line 6, col 9)
+                 5 |   let count = fn() {
+                 6 |     let shown = <>{for i in [1] { let mut c = i; <p>{c.to_string()}</p> }}</>;
+                   |         ^^^^^
+
+                error: let mut needs a render fn
+                  --> main.hop (line 6, col 43)
+                 5 |   let count = fn() {
+                 6 |     let shown = <>{for i in [1] { let mut c = i; <p>{c.to_string()}</p> }}</>;
+                   |                                           ^
             "#]],
         );
     }

@@ -7,7 +7,7 @@ use super::type_registry::TypeRegistry;
 use super::typecheck_call::CallArguments;
 use super::typecheck_expr::{typecheck_block, typecheck_expr};
 use super::typed_expr::TypedExpr;
-use super::variable_scope::{Context, Position, RepeatedBody, VariableScope};
+use super::variable_scope::{Context, Position, VariableScope};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
@@ -110,13 +110,12 @@ pub fn typecheck_lambda(
     };
     let expected_result = declared_result.as_ref().or(expected_result);
 
-    var_env.enter(RepeatedBody::Lambda);
-    let outer = var_env.set_context(match (declared, expected_result) {
+    let outer = var_env.enter_lambda(match (declared, expected_result) {
         (Some(ParsedModifier::Mut), _) => Context::Outside(Position::MutFn),
         (Some(ParsedModifier::Render), _) => Context::Render,
         (None, Some(result)) if result.renders_html() => Context::Render,
         (None, Some(_)) => Context::Outside(Position::PureFn),
-        (None, None) => Context::Undecided(Vec::new()),
+        (None, None) => Context::Undecided,
     });
     let mut pushed = 0;
     for (param, typ) in &typed_params {
@@ -162,19 +161,17 @@ pub fn typecheck_lambda(
             ));
         }
     }
-    let undecided = var_env.set_context(outer);
-    var_env.exit();
+    let renders_html = match (&typed_body, failed) {
+        (Some(typed_body), false) => Some(typed_body.typ().renders_html()),
+        _ => None,
+    };
+    var_env.exit_lambda(outer, renders_html, errors);
 
     let typed_body = typed_body?;
     if failed {
         return None;
     }
     let body_type = typed_body.typ();
-    if let Context::Undecided(pending) = undecided
-        && !body_type.renders_html()
-    {
-        errors.extend(pending);
-    }
     if let Some(declared) = &declared_result
         && body_type != *declared
     {

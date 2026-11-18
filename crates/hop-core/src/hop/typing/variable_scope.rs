@@ -14,15 +14,42 @@ pub struct VariableScope {
     operations: Vec<VarName>,
     /// The loop and lambda bodies around the code being checked, outermost
     /// first.
-    bodies: Vec<RepeatedBody>,
+    bodies: Vec<Body>,
     context: Context,
 }
 
+/// A loop or lambda body around the code being checked.
 #[derive(Debug, Clone)]
+enum Body {
+    Loop,
+    Lambda(Lambda),
+}
+
+/// What the modifier of a lambda lets its body do with the cells bound
+/// outside it.
+#[derive(Debug, Clone)]
+enum Lambda {
+    /// A render or a mut lambda, which may read them.
+    Reads,
+    /// A plain lambda, which may not: it would read the value the render
+    /// gave, even when a mut fn applies it after a write.
+    Plain,
+    /// A lambda whose modifier waits on the type of its body. It renders if
+    /// its body renders Html, and is plain otherwise. It holds the errors of
+    /// what needs it to render, and the reads of cells, each with the number
+    /// of bodies around the binding of the cell it reads.
+    Undecided {
+        needs_render: Vec<TypeError>,
+        reads: Vec<(TypeError, usize)>,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum Context {
     Render,
     Outside(Position),
-    Undecided(Vec<TypeError>),
+    /// The body of an undecided lambda, which holds what needs it to render.
+    Undecided,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,13 +144,22 @@ impl VariableScope {
         range: &DocumentRange,
         errors: &mut Vec<TypeError>,
     ) {
-        match &mut self.context {
+        match self.context {
             Context::Render => {}
             Context::Outside(position) => {
-                errors.push(TypeError::new(error(*position), range.clone()));
+                errors.push(TypeError::new(error(position), range.clone()));
             }
-            Context::Undecided(pending) => {
-                pending.push(TypeError::new(error(Position::PureFn), range.clone()));
+            Context::Undecided => {
+                // A loop body may lie between the code and its lambda.
+                let Some(Body::Lambda(Lambda::Undecided { needs_render, .. })) = self
+                    .bodies
+                    .iter_mut()
+                    .rev()
+                    .find(|body| matches!(body, Body::Lambda(_)))
+                else {
+                    unreachable!("an undecided context is the body of an undecided lambda");
+                };
+                needs_render.push(TypeError::new(error(Position::PureFn), range.clone()));
             }
         }
     }
@@ -197,21 +233,119 @@ impl VariableScope {
         }
     }
 
-    /// Check the code from here up to the matching `exit` as a body that
-    /// runs any number of times.
-    pub fn enter(&mut self, body: RepeatedBody) {
-        self.bodies.push(body);
+    /// Check the code from here up to the matching `exit_loop` as a loop
+    /// body, which runs any number of times.
+    pub fn enter_loop(&mut self) {
+        self.bodies.push(Body::Loop);
     }
 
-    pub fn exit(&mut self) {
-        self.bodies.pop().expect("exit without a matching enter");
+    pub fn exit_loop(&mut self) {
+        let Some(Body::Loop) = self.bodies.pop() else {
+            panic!("exit_loop without a matching enter_loop");
+        };
+    }
+
+    /// Check the code from here up to the matching `exit_lambda` as the body
+    /// of a lambda, which runs any number of times, in `context`. Returns
+    /// the context around the lambda.
+    pub fn enter_lambda(&mut self, context: Context) -> Context {
+        self.bodies.push(Body::Lambda(match context {
+            Context::Render | Context::Outside(Position::MutFn) => Lambda::Reads,
+            Context::Outside(_) => Lambda::Plain,
+            Context::Undecided => Lambda::Undecided {
+                needs_render: Vec::new(),
+                reads: Vec::new(),
+            },
+        }));
+        self.set_context(context)
+    }
+
+    /// Leave the body of a lambda, back to the context `outer` around it.
+    /// `renders_html` is whether the body renders Html, or None if it did
+    /// not typecheck. An undecided lambda whose body does not render Html is
+    /// plain, which makes the errors it holds errors.
+    pub fn exit_lambda(
+        &mut self,
+        outer: Context,
+        renders_html: Option<bool>,
+        errors: &mut Vec<TypeError>,
+    ) {
+        self.context = outer;
+        let Some(Body::Lambda(lambda)) = self.bodies.pop() else {
+            panic!("exit_lambda without a matching enter_lambda");
+        };
+        let Lambda::Undecided {
+            needs_render,
+            reads,
+        } = lambda
+        else {
+            return;
+        };
+        match renders_html {
+            // A read may still cross a lambda further out that does not
+            // render.
+            Some(true) => {
+                for (error, bodies) in reads {
+                    self.read_cell_from(bodies, error, errors);
+                }
+            }
+            Some(false) => {
+                errors.extend(needs_render);
+                errors.extend(reads.into_iter().map(|(error, _)| error));
+            }
+            None => {}
+        }
+    }
+
+    /// Record a read of the cell bound to `name` at `range`. Only a render
+    /// or a mut lambda may read a cell bound outside it, so the read is an
+    /// error if a plain lambda lies between it and the binding.
+    pub fn read_cell(
+        &mut self,
+        name: &VarName,
+        range: &DocumentRange,
+        errors: &mut Vec<TypeError>,
+    ) {
+        let Some(ScopeEntry::Variable(entry)) = self.entries.get(name.as_str()) else {
+            unreachable!("{name} is not a variable");
+        };
+        assert!(entry.cell, "{name} is not a cell");
+        let bodies = entry.bodies;
+        let error = TypeError::new(
+            TypeErrorKind::MutableCaptureInPlainFn { name: name.clone() },
+            range.clone(),
+        );
+        self.read_cell_from(bodies, error, errors);
+    }
+
+    /// Check a read of a cell bound inside `bodies` loop and lambda bodies
+    /// against the lambdas between it and the binding, innermost first.
+    /// An undecided lambda holds the read, and checks it against the lambdas
+    /// further out once it is known to render.
+    fn read_cell_from(&mut self, bodies: usize, error: TypeError, errors: &mut Vec<TypeError>) {
+        for body in self.bodies[bodies..].iter_mut().rev() {
+            match body {
+                Body::Loop | Body::Lambda(Lambda::Reads) => {}
+                Body::Lambda(Lambda::Plain) => {
+                    errors.push(error);
+                    return;
+                }
+                Body::Lambda(Lambda::Undecided { reads, .. }) => {
+                    reads.push((error, bodies));
+                    return;
+                }
+            }
+        }
     }
 
     /// The outermost loop or lambda body around the code being checked, in
     /// which a rest spread would pass on the Html of the parameters it adds
     /// in every run.
     pub fn outermost_body(&self) -> Option<RepeatedBody> {
-        self.bodies.first().copied()
+        self.bodies.first().map(|body| match body {
+            Body::Loop => RepeatedBody::Loop,
+            Body::Lambda(_) => RepeatedBody::Lambda,
+        })
     }
 
     /// Record a use of the Html value bound to `name` on the path being
@@ -221,7 +355,10 @@ impl VariableScope {
             unreachable!("{name} is not a variable");
         };
         if let Some(body) = self.bodies.get(entry.bodies) {
-            return Err(HtmlMisuse::Outside(*body));
+            return Err(HtmlMisuse::Outside(match body {
+                Body::Loop => RepeatedBody::Loop,
+                Body::Lambda(_) => RepeatedBody::Lambda,
+            }));
         }
         if entry.used {
             return Err(HtmlMisuse::Again);

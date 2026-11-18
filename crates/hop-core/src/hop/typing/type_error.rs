@@ -407,6 +407,9 @@ pub enum TypeErrorKind {
     )]
     RenderCallNotAllowed { position: Position },
 
+    #[error("Only a render fn or mut fn can capture the mutable variable {name}")]
+    MutableCaptureInPlainFn { name: VarName },
+
     #[error("Only a mut fn can assign")]
     AssignmentOutsideMut,
 

@@ -1267,3 +1267,44 @@ fn a_render_lambda_that_returns_a_value_keeps_its_cells_per_application() {
         "#]],
     );
 }
+
+#[test]
+fn render_and_mut_lambdas_read_cells_and_plain_lambdas_take_their_values_as_arguments() {
+    check(
+        indoc! {r#"
+            render fn first(start: Int) -> Int {
+              let mut seen = start;
+              let get = render fn() -> Int { seen };
+              get()
+            }
+            page Test {
+              fn body() -> Html {
+                let mut count = 1;
+                let mut step = count * 10;
+                let scaled = fn(n: Int, by: Int) { n * by };
+                let row = fn(n: Int) { <i>{scaled(n, count).to_string()}</i> };
+                let bump = mut fn() { count = count + step };
+                <>
+                  <button on:click={bump}>{first(count).to_string()}/{count.to_string()}</button>
+                  {for n in [1, 2] key n + count { row(n) }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>1/1</button>
+            <i@e2>1</i>
+            <i@e3>2</i>
+            -- click button@e1 --
+            <button@e1>1/11</button>
+            <i@e4>11</i>
+            <i@e5>22</i>
+            -- click button@e1 --
+            <button@e1>1/21</button>
+            <i@e6>21</i>
+            <i@e7>42</i>
+        "#]],
+    );
+}
