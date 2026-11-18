@@ -112,10 +112,13 @@ pub fn check_function_type(function: &FunctionType) -> Option<TypeErrorKind> {
             result: function.result.as_ref().clone(),
         });
     }
-    if function.modifier == Modifier::Mut && function.result.as_data().is_none() {
-        return Some(TypeErrorKind::MutFunctionReturnsNonData {
-            result: function.result.as_ref().clone(),
-        });
+    if function.result.as_data().is_none() {
+        let result = function.result.as_ref().clone();
+        match function.modifier {
+            Modifier::Mut => return Some(TypeErrorKind::MutFunctionReturnsNonData { result }),
+            Modifier::Read => return Some(TypeErrorKind::ReadFunctionReturnsNonData { result }),
+            Modifier::Pure | Modifier::Render => {}
+        }
     }
     if function.result.renders_html() {
         return None;

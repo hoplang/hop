@@ -102,7 +102,7 @@ module.exports = grammar({
     function_declaration: ($) =>
       seq(
         optional($.visibility_modifier),
-        optional(choice($.mutable_specifier, $.render_modifier)),
+        optional(choice($.mutable_specifier, $.read_modifier, $.render_modifier)),
         "fn",
         // A function with a capitalised name, e.g. `fn Card(...)`, can also be
         // called from markup.
@@ -154,7 +154,7 @@ module.exports = grammar({
 
     function_type: ($) =>
       seq(
-        optional(choice($.mutable_specifier, $.render_modifier)),
+        optional(choice($.mutable_specifier, $.read_modifier, $.render_modifier)),
         "fn",
         field("parameters", $.parameter_types),
         "->",
@@ -186,6 +186,8 @@ module.exports = grammar({
       ),
 
     mutable_specifier: (_) => "mut",
+
+    read_modifier: (_) => "read",
 
     render_modifier: (_) => "render",
 
@@ -346,7 +348,7 @@ module.exports = grammar({
 
     lambda_expression: ($) =>
       seq(
-        optional(choice($.mutable_specifier, $.render_modifier)),
+        optional(choice($.mutable_specifier, $.read_modifier, $.render_modifier)),
         "fn",
         field("parameters", $.lambda_parameters),
         optional(seq("->", field("return_type", $._type))),

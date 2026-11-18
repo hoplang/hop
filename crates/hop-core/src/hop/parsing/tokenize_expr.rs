@@ -143,6 +143,7 @@ pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
                 "mut" => LangToken::Mut,
                 "page" => LangToken::Page,
                 "pub" => LangToken::Pub,
+                "read" => LangToken::Read,
                 "render" => LangToken::Render,
                 "record" => LangToken::Record,
                 "true" => LangToken::True,

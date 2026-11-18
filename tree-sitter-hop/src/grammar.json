@@ -372,6 +372,10 @@
                 },
                 {
                   "type": "SYMBOL",
+                  "name": "read_modifier"
+                },
+                {
+                  "type": "SYMBOL",
                   "name": "render_modifier"
                 }
               ]
@@ -856,6 +860,10 @@
                 },
                 {
                   "type": "SYMBOL",
+                  "name": "read_modifier"
+                },
+                {
+                  "type": "SYMBOL",
                   "name": "render_modifier"
                 }
               ]
@@ -1018,6 +1026,10 @@
     "mutable_specifier": {
       "type": "STRING",
       "value": "mut"
+    },
+    "read_modifier": {
+      "type": "STRING",
+      "value": "read"
     },
     "render_modifier": {
       "type": "STRING",
@@ -2276,6 +2288,10 @@
                 {
                   "type": "SYMBOL",
                   "name": "mutable_specifier"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "read_modifier"
                 },
                 {
                   "type": "SYMBOL",

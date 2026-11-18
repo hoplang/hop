@@ -641,3 +641,72 @@ pub render fn Card() -> Html {
             (arguments)))
         (end_tag
           (tag_name))))))
+
+================================================================================
+read functions
+================================================================================
+
+read fn double(n: Int, f: read fn(Int) -> Int) -> Int {
+  f(n) + f(n)
+}
+
+pub fn Card() -> Html {
+  let get = read fn() -> Int { 0 };
+  <p>{get().to_string()}</p>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (read_modifier)
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (function_type
+          (read_modifier)
+          (parameter_types
+            (type_identifier))
+          (type_identifier))))
+    (type_identifier)
+    (block
+      (binary_expression
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier)))
+        (call_expression
+          (identifier)
+          (arguments
+            (identifier))))))
+  (function_declaration
+    (visibility_modifier)
+    (type_identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (let_statement
+        (identifier)
+        (lambda_expression
+          (read_modifier)
+          (lambda_parameters)
+          (type_identifier)
+          (block
+            (integer_literal))))
+      (element
+        (start_tag
+          (tag_name))
+        (interpolation
+          (call_expression
+            (field_expression
+              (call_expression
+                (identifier)
+                (arguments))
+              (field_identifier))
+            (arguments)))
+        (end_tag
+          (tag_name))))))

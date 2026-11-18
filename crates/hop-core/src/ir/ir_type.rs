@@ -30,6 +30,7 @@ pub enum IrDataType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IrModifier {
     Pure,
+    Read,
     Render,
     Mut,
 }
@@ -119,6 +120,7 @@ impl fmt::Display for IrModifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             IrModifier::Pure => Ok(()),
+            IrModifier::Read => f.write_str("read "),
             IrModifier::Render => f.write_str("render "),
             IrModifier::Mut => f.write_str("mut "),
         }

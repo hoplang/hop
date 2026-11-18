@@ -1687,7 +1687,8 @@ pub fn typecheck_block(
             None => None,
         };
         let outer = binding.mutable.then(|| {
-            var_env.require_render(
+            var_env.require(
+                |_| false,
                 |position| TypeErrorKind::LetMutNotAllowed { position },
                 &binding.var_name_range,
                 errors,

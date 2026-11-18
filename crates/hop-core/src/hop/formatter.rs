@@ -909,6 +909,7 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
             ..
         } => arena
             .text(match modifier {
+                Some((ParsedModifier::Read, _)) => "read fn(",
                 Some((ParsedModifier::Render, _)) => "render fn(",
                 Some((ParsedModifier::Mut, _)) => "mut fn(",
                 None => "fn(",
@@ -1028,6 +1029,7 @@ fn format_expr<'a>(
             ..
         } => arena
             .text(match modifier {
+                Some((ParsedModifier::Read, _)) => "read fn(",
                 Some((ParsedModifier::Render, _)) => "render fn(",
                 Some((ParsedModifier::Mut, _)) => "mut fn(",
                 None => "fn(",
@@ -2289,6 +2291,38 @@ mod tests {
                   };
                   <p>
                     {count().to_string()}
+                  </p>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn read_functions() {
+        check(
+            indoc! {r#"
+                read fn double(n: Int, f: read fn(Int) -> Int) -> Int {
+                  f(n) + f(n)
+                }
+                pub fn Card() -> Html {
+                  let get = read fn() -> Int { 0 };
+                  <p>{get().to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                read fn double(
+                  n: Int,
+                  f: read fn(Int) -> Int,
+                ) -> Int {
+                  f(n) + f(n)
+                }
+
+                pub fn Card() -> Html {
+                  let get = read fn() -> Int {
+                    0
+                  };
+                  <p>
+                    {get().to_string()}
                   </p>
                 }
             "#]],

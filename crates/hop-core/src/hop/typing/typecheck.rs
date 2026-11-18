@@ -768,14 +768,20 @@ fn create_function_signature<'a>(
         return None;
     }
     let modifier = Modifier::of(function.modifier.as_ref().map(|(m, _)| *m), &return_type);
-    if modifier == Modifier::Mut && return_type.as_data().is_none() {
-        errors.push(TypeError::new(
-            TypeErrorKind::MutFunctionReturnsNonData {
-                result: return_type,
-            },
-            function.return_type.range().clone(),
-        ));
-        return None;
+    if return_type.as_data().is_none() {
+        let error = match modifier {
+            Modifier::Mut => Some(TypeErrorKind::MutFunctionReturnsNonData {
+                result: return_type.clone(),
+            }),
+            Modifier::Read => Some(TypeErrorKind::ReadFunctionReturnsNonData {
+                result: return_type.clone(),
+            }),
+            Modifier::Pure | Modifier::Render => None,
+        };
+        if let Some(error) = error {
+            errors.push(TypeError::new(error, function.return_type.range().clone()));
+            return None;
+        }
     }
 
     Some(PendingFunction {
@@ -853,6 +859,7 @@ fn typecheck_function_body(
 
     let outer = var_env.set_context(match modifier {
         Modifier::Pure => Context::Outside(Position::PureFn),
+        Modifier::Read => Context::Outside(Position::ReadFn),
         Modifier::Render => Context::Render,
         Modifier::Mut => Context::Outside(Position::MutFn),
     });
@@ -15360,7 +15367,7 @@ mod tests {
                 4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
                   |                       ^^^^^^^^^^^^^^^^^^
 
-                error: Only a render fn or mut fn can capture a mutable variable
+                error: Only a read, render or mut fn can capture a mutable variable
                   --> main.hop (line 4, col 30)
                 3 |   <>
                 4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
@@ -15732,19 +15739,19 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Only a render fn or mut fn can capture a mutable variable
+                error: Only a read, render or mut fn can capture a mutable variable
                   --> main.hop (line 4, col 33)
                  3 |   let mut label = "";
                  4 |   let annotated = fn() -> Int { count };
                    |                                 ^^^^^
 
-                error: Only a render fn or mut fn can capture a mutable variable
+                error: Only a read, render or mut fn can capture a mutable variable
                   --> main.hop (line 5, col 25)
                  4 |   let annotated = fn() -> Int { count };
                  5 |   let inferred = fn() { count };
                    |                         ^^^^^
 
-                error: Only a render fn or mut fn can capture a mutable variable
+                error: Only a read, render or mut fn can capture a mutable variable
                   --> main.hop (line 7, col 31)
                  6 |   let nested = fn() {
                  7 |     let inner = fn() -> Int { count };
@@ -15756,13 +15763,13 @@ mod tests {
                 11 |     let row = fn() { <p>{count.to_string()}</p> };
                    |         ^^^
 
-                error: Only a render fn or mut fn can capture a mutable variable
+                error: Only a read, render or mut fn can capture a mutable variable
                   --> main.hop (line 11, col 26)
                 10 |   let around = fn() -> Int {
                 11 |     let row = fn() { <p>{count.to_string()}</p> };
                    |                          ^^^^^
 
-                error: Only a render fn or mut fn can capture a mutable variable
+                error: Only a read, render or mut fn can capture a mutable variable
                   --> main.hop (line 19, col 25)
                 18 |   <button on:click={mut fn() {
                 19 |     let inside = fn() { count };
@@ -15799,6 +15806,185 @@ mod tests {
                  5 |   let count = fn() {
                  6 |     let shown = <>{for i in [1] { let mut c = i; <p>{c.to_string()}</p> }}</>;
                    |                                           ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_read_functions_where_cells_can_be_read() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                read fn double(n: Int) -> Int {
+                  n + n
+                }
+                read fn quadruple(n: Int) -> Int {
+                  double(double(n))
+                }
+                fn Main(items: Array[Int]) -> Html {
+                  let mut count = 1;
+                  let get = read fn() -> Int { quadruple(count) };
+                  let mut step = get();
+                  let bump = mut fn() { count = get() + step };
+                  let row = fn(item: Int) { <i>{(item + get()).to_string()}</i> };
+                  <>
+                    <button on:click={bump}>{get().to_string()}</button>
+                    {for item in items key item + get() { row(item) }}
+                  </>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(items: Array[Int]) -> Html {
+                  let mut count = 1 in let get = read fn() -> Int {
+                    quadruple(n: count)
+                  } in let mut step = get() in let bump = mut fn() -> Tuple[] {
+                    count = add(get(), step)
+                  } in let row = fn(item: Int) -> Html {
+                    element(
+                      tag: "i",
+                      attrs: [],
+                      children: concat(
+                        escape(add(item, get()).to_string()),
+                      ),
+                    )
+                  } in concat(
+                    element(
+                      tag: "button",
+                      attrs: [],
+                      children: concat(
+                        escape(get().to_string()),
+                      ),
+                      on_click: bump,
+                    ),
+                    for item in items key add(item, get()) {
+                      row(item)
+                    },
+                  )
+                }
+
+                read fn double(n: Int) -> Int {
+                  add(n, n)
+                }
+
+                read fn quadruple(n: Int) -> Int {
+                  double(n: double(n: n))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_what_a_read_function_cannot_do_and_calls_of_it_from_plain_functions() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                read fn first() -> Int {
+                  1
+                }
+                fn plain() -> Int {
+                  first()
+                }
+                read fn counter() -> Int {
+                  let mut c = 0;
+                  c
+                }
+                render fn rendered() -> Int {
+                  let mut c = 0;
+                  c
+                }
+                read fn calls_render() -> Int {
+                  rendered()
+                }
+                mut fn bump() -> Int {
+                  1
+                }
+                read fn calls_mut() -> Int {
+                  bump()
+                }
+                read fn label() -> Html {
+                  <p>x</p>
+                }
+                fn Main() -> Html {
+                  let count = 0;
+                  let f = fn() -> Int { first() };
+                  let g = fn() { first() };
+                  let h = fn() { <p>{first().to_string()}</p> };
+                  <p>{f().to_string()}{g().to_string()}{h()}{count.to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                error: Read fn called from a plain fn
+                  --> main.hop (line 5, col 3)
+                 4 | fn plain() -> Int {
+                 5 |   first()
+                   |   ^^^^^^^
+
+                error: let mut in a read fn
+                  --> main.hop (line 8, col 11)
+                 7 | read fn counter() -> Int {
+                 8 |   let mut c = 0;
+                   |           ^
+
+                error: Render fn called from a read fn
+                  --> main.hop (line 16, col 3)
+                15 | read fn calls_render() -> Int {
+                16 |   rendered()
+                   |   ^^^^^^^^^^
+
+                error: Call to a mut fn from a non-mut fn
+                  --> main.hop (line 22, col 3)
+                21 | read fn calls_mut() -> Int {
+                22 |   bump()
+                   |   ^^^^^^
+
+                error: A read fn can not return Html
+                  --> main.hop (line 24, col 20)
+                23 | }
+                24 | read fn label() -> Html {
+                   |                    ^^^^
+
+                error: Read fn called from a plain fn
+                  --> main.hop (line 29, col 25)
+                28 |   let count = 0;
+                29 |   let f = fn() -> Int { first() };
+                   |                         ^^^^^^^
+
+                error: Read fn called from a plain fn
+                  --> main.hop (line 30, col 18)
+                29 |   let f = fn() -> Int { first() };
+                30 |   let g = fn() { first() };
+                   |                  ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_an_assignment_in_a_read_lambda() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let mut count = 0;
+                  let set = read fn() -> Int {
+                    count = 1;
+                    count
+                  };
+                  <p>{set().to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                error: Only a mut fn can assign
+                  --> main.hop (line 4, col 5)
+                3 |   let set = read fn() -> Int {
+                4 |     count = 1;
+                  |     ^^^^^^^^^
+
+                error: A statement has no effect outside a mut fn
+                  --> main.hop (line 4, col 5)
+                3 |   let set = read fn() -> Int {
+                4 |     count = 1;
+                  |     ^^^^^^^^^^
             "#]],
         );
     }

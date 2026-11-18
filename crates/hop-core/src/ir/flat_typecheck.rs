@@ -60,7 +60,8 @@ pub enum FlatTypeError {
     CellOrIdParameter,
     /// A pure block binds what only a block that renders binds: a cell, a
     /// read of a cell, a mint, Html, a closure that renders it or a call of a
-    /// function that renders. A block that mutates reads cells too.
+    /// function that renders. A block that reads or mutates reads cells and
+    /// calls functions that read too.
     RenderInPureBlock,
     /// A function returns something other than Html or a value: a closure,
     /// a cell or an identity.
@@ -182,7 +183,7 @@ fn is_well_formed(signature: &IrSignature) -> bool {
             _ => true,
         });
     let result = match *signature.result {
-        IrType::Html => signature.modifier != IrModifier::Mut,
+        IrType::Html => !matches!(signature.modifier, IrModifier::Read | IrModifier::Mut),
         IrType::Data(_) => (signature.parameters.iter()).all(IrType::is_value_or_value_closure),
         IrType::Function(_) | IrType::Cell(_) | IrType::Id => false,
     };
@@ -284,11 +285,12 @@ impl<'a> Checker<'a> {
     ) -> Result<(), FlatTypeError> {
         let render = modifier == IrModifier::Render;
         let mutates = modifier == IrModifier::Mut;
+        let reads = modifier != IrModifier::Pure;
         // A pure block binds values and closures that compute them, and
         // nothing that renders.
         let renders = match binding.op {
             FlatOp::Cell(_) | FlatOp::Mint => true,
-            FlatOp::CellRead(_) => !mutates,
+            FlatOp::CellRead(_) => !reads,
             _ => false,
         };
         if !render && (renders || !binding.binder.typ.is_value_or_value_closure()) {
@@ -303,7 +305,9 @@ impl<'a> Checker<'a> {
             },
             FlatOp::Call(callee, args) => {
                 let callee = self.callee(callee)?;
-                if callee.modifier == IrModifier::Render && !render {
+                if callee.modifier == IrModifier::Render && !render
+                    || callee.modifier == IrModifier::Read && !reads
+                {
                     return Err(FlatTypeError::RenderInPureBlock);
                 }
                 if callee.modifier == IrModifier::Mut && !mutates {
@@ -341,7 +345,7 @@ impl<'a> Checker<'a> {
             FlatOp::Cell(initial) => match declared {
                 BoundType::Cell(data) => {
                     self.scoped(|checker| {
-                        checker.block(initial, BoundType::Data(data), IrModifier::Pure)
+                        checker.block(initial, BoundType::Data(data), IrModifier::Read)
                     })?;
                     true
                 }
@@ -415,7 +419,7 @@ impl<'a> Checker<'a> {
                     }
                     if let Some(key) = &for_.key {
                         checker.scoped(|checker| {
-                            checker.bindings(&key.bindings, false, IrModifier::Pure)?;
+                            checker.bindings(&key.bindings, false, IrModifier::Read)?;
                             let typ = checker.read(key.result)?;
                             if !typ.is(&IrType::INT) && !typ.is(&IrType::STRING) {
                                 return Err(FlatTypeError::KeyNotIntOrString);
@@ -453,7 +457,9 @@ impl<'a> Checker<'a> {
                 let BoundType::Function(signature) = self.read(*closure)? else {
                     return Err(FlatTypeError::IllTypedBinding);
                 };
-                if signature.modifier == IrModifier::Render && !render {
+                if signature.modifier == IrModifier::Render && !render
+                    || signature.modifier == IrModifier::Read && !reads
+                {
                     return Err(FlatTypeError::RenderInPureBlock);
                 }
                 if signature.modifier == IrModifier::Mut && !mutates {
@@ -1693,5 +1699,141 @@ mod tests {
             .build()
             .unwrap_err();
         assert_eq!(error, FlatTypeError::RenderInPureBlock);
+    }
+
+    #[test]
+    fn should_accept_a_closure_that_reads_a_cell_where_it_renders_mutates_and_keys() {
+        FlatProgramBuilder::new()
+            .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
+                let count = t.cell(|t| t.int(0));
+                let get = t.read_lambda([], |t, _| t.cell_read(count));
+                let step = t.cell(|t| t.apply(get, []));
+                let handler = t.event_handler(|t| {
+                    let next = t.add(NumericType::Int, t.apply(get, []), t.cell_read(step));
+                    t.cell_write(count, next)
+                });
+                let shown = t.escape(t.int_to_string(t.apply(get, [])));
+                let rows = t
+                    .html_for_keyed(t.param("items"), |t, _| t.apply(get, []))
+                    .body(|t, _| t.text("item"));
+                let children = t.html_concat([shown, rows]);
+                t.element_on_click(t.mint(), "button", vec![], handler, Some(children))
+            })
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    fn should_accept_a_call_of_a_function_that_reads_from_one_that_reads() {
+        FlatProgramBuilder::new()
+            .read_function("double", [("n", Ty::Int)], Ty::Int, |t| {
+                t.add(NumericType::Int, t.param("n"), t.param("n"))
+            })
+            .read_function("quadruple", [("n", Ty::Int)], Ty::Int, |t| {
+                let double = t.call("double", [t.param("n")]);
+                t.call("double", [double])
+            })
+            .entrypoint("Test", [], |t| {
+                t.escape(t.int_to_string(t.call("quadruple", [t.int(1)])))
+            })
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    fn should_reject_a_call_of_a_function_that_reads_in_a_pure_function() {
+        let error = FlatProgramBuilder::new()
+            .read_function("seven", [], Ty::Int, |t| t.int(7))
+            .function("eight", [], Ty::Int, |t| {
+                t.add(NumericType::Int, t.call("seven", []), t.int(1))
+            })
+            .entrypoint("Test", [], |t| {
+                t.escape(t.int_to_string(t.call("eight", [])))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+    }
+
+    #[test]
+    fn should_reject_an_application_of_a_closure_that_reads_in_a_pure_function() {
+        let error = FlatProgramBuilder::new()
+            .function("eight", [], Ty::Int, |t| {
+                let seven = t.read_lambda([], |t, _| t.int(7));
+                t.add(NumericType::Int, t.apply(seven, []), t.int(1))
+            })
+            .entrypoint("Test", [], |t| {
+                t.escape(t.int_to_string(t.call("eight", [])))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+    }
+
+    #[test]
+    fn should_reject_a_write_in_a_closure_that_reads() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.cell(|t| t.int(0));
+                t.read_lambda([], |t, _| t.cell_write(count, t.int(1)));
+                t.text("x")
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::MutOutsideMutBlock);
+    }
+
+    #[test]
+    fn should_reject_a_call_of_a_function_that_renders_in_a_function_that_reads() {
+        let error = FlatProgramBuilder::new()
+            .render_function("counter", [], Ty::Int, |t| {
+                t.cell_read(t.cell(|t| t.int(0)))
+            })
+            .read_function("twice", [], Ty::Int, |t| {
+                let count = t.call("counter", []);
+                t.add(NumericType::Int, count, count)
+            })
+            .entrypoint("Test", [], |t| {
+                t.escape(t.int_to_string(t.call("twice", [])))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+    }
+
+    #[test]
+    fn should_reject_a_cell_in_a_function_that_reads() {
+        let error = FlatProgramBuilder::new()
+            .read_function("counter", [], Ty::Int, |t| {
+                t.cell_read(t.cell(|t| t.int(0)))
+            })
+            .entrypoint("Test", [], |t| {
+                t.escape(t.int_to_string(t.call("counter", [])))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+    }
+
+    #[test]
+    fn should_reject_a_function_that_reads_and_returns_html() {
+        let error = FlatProgramBuilder::new()
+            .read_function("label", [], Ty::Html, |t| t.text("x"))
+            .entrypoint("Test", [], |t| t.call("label", []))
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+    }
+
+    #[test]
+    fn should_reject_a_closure_that_reads_as_a_click_handler() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let handler = t.read_lambda([], |t, _| t.tuple([]));
+                t.element_on_click(t.mint(), "button", vec![], handler, Some(t.text("x")))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::ClickNotHandler);
     }
 }

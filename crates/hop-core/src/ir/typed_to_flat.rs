@@ -250,6 +250,7 @@ impl<'a> Compiler<'a> {
 
         let modifier = match decl.modifier {
             Modifier::Pure => IrModifier::Pure,
+            Modifier::Read => IrModifier::Read,
             Modifier::Render => IrModifier::Render,
             Modifier::Mut => IrModifier::Mut,
         };
@@ -485,10 +486,12 @@ impl<'a> Compiler<'a> {
     fn compile_expr(&mut self, expr: &TypedExpr) -> ValueId {
         let typ = expr.typ();
         let op = match expr {
-            // In what mutates, a variable a let mut binds is the value its
-            // cell has now, not the one the render read.
+            // In what reads or mutates, a variable a let mut binds is the
+            // value its cell has now, not the one the render read.
             TypedExpr::Var { value, .. } => match self.cell(value) {
-                Some(cell) if self.context == IrModifier::Mut => FlatOp::CellRead(cell),
+                Some(cell) if matches!(self.context, IrModifier::Read | IrModifier::Mut) => {
+                    FlatOp::CellRead(cell)
+                }
                 _ => return self.resolve(value),
             },
             TypedExpr::Assign { cell, value } => {
@@ -981,6 +984,7 @@ impl<'a> Compiler<'a> {
                     &mut self.context,
                     match function.modifier {
                         Modifier::Pure => IrModifier::Pure,
+                        Modifier::Read => IrModifier::Read,
                         Modifier::Render => IrModifier::Render,
                         Modifier::Mut => IrModifier::Mut,
                     },
@@ -1135,6 +1139,7 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
         Type::Function(function) => IrType::function(
             match function.modifier {
                 Modifier::Pure => IrModifier::Pure,
+                Modifier::Read => IrModifier::Read,
                 Modifier::Render => IrModifier::Render,
                 Modifier::Mut => IrModifier::Mut,
             },
@@ -2470,6 +2475,53 @@ mod tests {
                   let v11: Id = mint()
                   let v12: Html = element(v11, "p", {}, v10)
                   v12
+                }
+                page Test: e0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_read_functions_and_lambdas_to_reads_of_cells() {
+        check(
+            indoc! {r#"
+                read fn double(n: Int) -> Int {
+                  n + n
+                }
+                page Test(n: Int) {
+                  fn body() -> Html {
+                    let mut count = n;
+                    let get = read fn() -> Int { double(count) };
+                    <p>{get().to_string()}</p>
+                  }
+                }
+            "#},
+            expect![[r#"
+                read fn double@f0(
+                  n@v12: Int,
+                ) -> Int {
+                  let v13: Int = int_add(v12, v12)
+                  v13
+                }
+                entrypoint body@e0(
+                  n@v0: Int,
+                ) -> Html {
+                  let v1: Cell[Int] = cell {
+                    v0
+                  }
+                  let v2: Int = read(v1)
+                  let v5: read () -> Int = fn() {
+                    let v3: Int = read(v1)
+                    let v4: Int = f0(v3)
+                    v4
+                  }
+                  let v6: Int = v5()
+                  let v7: String = int_to_string(v6)
+                  let v8: Html = escape(v7)
+                  let v9: Html = concat(v8)
+                  let v10: Id = mint()
+                  let v11: Html = element(v10, "p", {}, v9)
+                  v11
                 }
                 page Test: e0
             "#]],

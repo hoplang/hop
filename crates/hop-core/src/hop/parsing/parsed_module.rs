@@ -328,6 +328,7 @@ impl Display for ParsedFunctionDeclaration {
             "{}{}fn {}({}",
             pub_prefix(&self.pub_range),
             match &self.modifier {
+                Some((ParsedModifier::Read, _)) => "read ",
                 Some((ParsedModifier::Render, _)) => "render ",
                 Some((ParsedModifier::Mut, _)) => "mut ",
                 None => "",

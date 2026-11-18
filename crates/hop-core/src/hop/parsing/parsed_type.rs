@@ -47,6 +47,7 @@ pub enum ParsedType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParsedModifier {
+    Read,
     Render,
     Mut,
 }
@@ -54,6 +55,7 @@ pub enum ParsedModifier {
 impl ParsedModifier {
     pub fn as_str(self) -> &'static str {
         match self {
+            ParsedModifier::Read => "read",
             ParsedModifier::Render => "render",
             ParsedModifier::Mut => "mut",
         }

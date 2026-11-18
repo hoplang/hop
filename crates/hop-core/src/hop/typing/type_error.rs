@@ -389,6 +389,7 @@ pub enum TypeErrorKind {
         "{}",
         match position {
             Position::PureFn => "let mut needs a render fn",
+            Position::ReadFn => "let mut in a read fn",
             Position::MutFn => "let mut in a mut fn",
             Position::InitialValue => "let mut in an initial value",
             Position::Key => "let mut in a key",
@@ -400,6 +401,7 @@ pub enum TypeErrorKind {
         "{}",
         match position {
             Position::PureFn => "Render fn called from a non-render fn",
+            Position::ReadFn => "Render fn called from a read fn",
             Position::MutFn => "Render fn called from a mut fn",
             Position::InitialValue => "Render fn called in an initial value",
             Position::Key => "Render fn called in a key",
@@ -407,7 +409,10 @@ pub enum TypeErrorKind {
     )]
     RenderCallNotAllowed { position: Position },
 
-    #[error("Only a render fn or mut fn can capture a mutable variable")]
+    #[error("Read fn called from a plain fn")]
+    ReadCallNotAllowed,
+
+    #[error("Only a read, render or mut fn can capture a mutable variable")]
     MutableCaptureInPlainFn,
 
     #[error("Only a mut fn can assign")]
@@ -424,6 +429,9 @@ pub enum TypeErrorKind {
 
     #[error("A mut fn can not return {result}")]
     MutFunctionReturnsNonData { result: Type },
+
+    #[error("A read fn can not return {result}")]
+    ReadFunctionReturnsNonData { result: Type },
 
     #[error("let mut cannot hold {typ}")]
     LetMutNotData { typ: Type },

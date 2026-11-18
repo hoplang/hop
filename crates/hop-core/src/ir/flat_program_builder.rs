@@ -86,6 +86,22 @@ impl FlatProgramBuilder {
             .define(name, |t, _| body_fn(t))
     }
 
+    pub fn read_function<'p>(
+        self,
+        name: &str,
+        params: impl IntoIterator<Item = (&'p str, Ty)>,
+        return_type: Ty,
+        body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
+    ) -> Self {
+        let params: Vec<(&str, IrType)> = params
+            .into_iter()
+            .map(|(name, typ)| (name, self.types.ty(typ)))
+            .collect();
+        let return_type = self.types.ty(return_type);
+        self.declare_with_types(name, params, return_type, IrModifier::Read)
+            .define(name, |t, _| body_fn(t))
+    }
+
     pub fn mut_function<'p>(
         self,
         name: &str,
@@ -918,6 +934,17 @@ impl<'a> FlatBlockBuilder<'a> {
             body: body.into_block(),
         };
         self.push(typ, FlatOp::Lambda(lambda))
+    }
+
+    pub fn read_lambda<F>(
+        &self,
+        parameters: impl IntoIterator<Item = IrType>,
+        body_fn: F,
+    ) -> ValueId
+    where
+        F: FnOnce(&FlatBlockBuilder<'_>, &[ValueId]) -> ValueId,
+    {
+        self.closure(Some(IrModifier::Read), parameters, body_fn)
     }
 
     pub fn mut_lambda<F>(&self, parameters: impl IntoIterator<Item = IrType>, body_fn: F) -> ValueId

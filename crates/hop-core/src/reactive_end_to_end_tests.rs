@@ -1308,3 +1308,34 @@ fn render_and_mut_lambdas_read_cells_and_plain_lambdas_take_their_values_as_argu
         "#]],
     );
 }
+
+#[test]
+fn a_read_lambda_reads_the_value_a_cell_has_now_in_a_render_and_in_a_handler() {
+    check(
+        indoc! {r#"
+            render fn WithState(init: Int, k: fn(read fn() -> Int, mut fn(Int) -> Tuple[]) -> Html) -> Html {
+              let mut c = init;
+              k(read fn() -> Int { c }, mut fn(v: Int) { c = v })
+            }
+            page Test {
+              fn body() -> Html {
+                <WithState init={1} k={fn(get: read fn() -> Int, set: mut fn(Int) -> Tuple[]) {
+                  <button on:click={mut fn() {
+                    set(get() + 1);
+                    set(get() * 2)
+                  }}>{get().to_string()}</button>
+                }}/>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>1</button>
+            -- click button@e1 --
+            <button@e1>4</button>
+            -- click button@e1 --
+            <button@e1>10</button>
+        "#]],
+    );
+}

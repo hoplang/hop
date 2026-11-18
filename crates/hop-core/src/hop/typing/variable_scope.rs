@@ -55,6 +55,7 @@ pub enum Context {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Position {
     PureFn,
+    ReadFn,
     MutFn,
     InitialValue,
     Key,
@@ -138,14 +139,16 @@ impl VariableScope {
         std::mem::replace(&mut self.context, context)
     }
 
-    pub fn require_render(
+    pub fn require(
         &mut self,
+        allowed: impl FnOnce(Position) -> bool,
         error: impl FnOnce(Position) -> TypeErrorKind,
         range: &DocumentRange,
         errors: &mut Vec<TypeError>,
     ) {
         match self.context {
             Context::Render => {}
+            Context::Outside(position) if allowed(position) => {}
             Context::Outside(position) => {
                 errors.push(TypeError::new(error(position), range.clone()));
             }
@@ -250,7 +253,7 @@ impl VariableScope {
     /// the context around the lambda.
     pub fn enter_lambda(&mut self, context: Context) -> Context {
         self.bodies.push(Body::Lambda(match context {
-            Context::Render | Context::Outside(Position::MutFn) => Lambda::Reads,
+            Context::Render | Context::Outside(Position::ReadFn | Position::MutFn) => Lambda::Reads,
             Context::Outside(_) => Lambda::Plain,
             Context::Undecided => Lambda::Undecided {
                 needs_render: Vec::new(),

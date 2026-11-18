@@ -141,7 +141,7 @@ impl<'a> RenderTransaction<'a> {
     pub fn bind_cell<E>(
         &mut self,
         var: ValueId,
-        initial: impl FnOnce() -> Result<Value<'a>, E>,
+        initial: impl FnOnce(&Self) -> Result<Value<'a>, E>,
     ) -> Result<CellId, E> {
         let cell = CellId {
             region: self.current(),
@@ -149,7 +149,7 @@ impl<'a> RenderTransaction<'a> {
         };
         let value = match self.old.cells.get(&cell) {
             Some(value) => value.clone(),
-            None => initial()?,
+            None => initial(self)?,
         };
         let previous = self.cells.insert(cell, value);
         assert!(previous.is_none(), "two cells of the same binding");
@@ -309,7 +309,7 @@ mod tests {
     ) -> arbitrary::Result<()> {
         for var in &block.cells {
             let initial = u.int_in_range(0..=9)?;
-            let Ok(cell) = render.bind_cell(*var, || Ok::<_, Infallible>(Value::Int(initial)));
+            let Ok(cell) = render.bind_cell(*var, |_| Ok::<_, Infallible>(Value::Int(initial)));
             bound.cells.push(((path.clone(), *var), cell, initial));
         }
         for var in &block.elements {

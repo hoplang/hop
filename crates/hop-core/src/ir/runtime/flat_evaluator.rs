@@ -267,12 +267,13 @@ fn evaluate_op<'a>(
 
         FlatOp::Cell(initial) => {
             let render = context.render("binds a cell");
-            Value::Cell(render.bind_cell(var, || {
+            Value::Cell(render.bind_cell(var, |render| {
                 let env = Env {
                     parent: env.freeze(),
                     bindings: Vec::new(),
                 };
-                evaluate_block(initial, env, functions, Context::Pure, depth, op_count)
+                let context = Context::Read(Reader::Render(render));
+                evaluate_block(initial, env, functions, context, depth, op_count)
             })?)
         }
 
@@ -287,11 +288,17 @@ fn evaluate_op<'a>(
             Value::Tuple(Rc::new([]))
         }
 
-        FlatOp::CellRead(cell) => match context {
-            Context::Render(render) => render.read(env[cell].as_cell()).clone(),
-            Context::Mut(mutations) => mutations.read(env[cell].as_cell()).clone(),
-            Context::Pure => panic!("only a block that renders or mutates reads a cell"),
-        },
+        FlatOp::CellRead(cell) => {
+            let cell = env[cell].as_cell();
+            match context {
+                Context::Render(render) => render.read(cell),
+                Context::Read(Reader::Render(render)) => render.read(cell),
+                Context::Mut(mutations) => mutations.read(cell),
+                Context::Read(Reader::Mut(mutations)) => mutations.read(cell),
+                Context::Pure => panic!("only a block that reads, renders or mutates reads a cell"),
+            }
+            .clone()
+        }
 
         FlatOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.as_str()))?),
 
@@ -369,6 +376,10 @@ fn evaluate_op<'a>(
                     render.exit();
                     value
                 }
+                IrModifier::Read => {
+                    let context = Context::Read(context.reader("calls a function that reads"));
+                    evaluate_function(functions, function, values, context, depth, op_count)?
+                }
                 IrModifier::Mut => {
                     evaluate_function(functions, function, values, context, depth, op_count)?
                 }
@@ -427,7 +438,7 @@ fn evaluate_op<'a>(
                             key,
                             env,
                             functions,
-                            Context::Pure,
+                            Context::Read(Reader::Render(render)),
                             depth,
                             op_count,
                         )?)
@@ -478,6 +489,10 @@ fn evaluate_op<'a>(
                     render.exit();
                     value
                 }
+                IrModifier::Read => {
+                    let context = Context::Read(context.reader("applies a closure that reads"));
+                    evaluate_apply(closure, args, functions, context, depth, op_count)?
+                }
                 IrModifier::Mut => {
                     evaluate_apply(closure, args, functions, context, depth, op_count)?
                 }
@@ -491,14 +506,22 @@ fn evaluate_op<'a>(
 
 enum Context<'t, 'a> {
     Pure,
+    Read(Reader<'t, 'a>),
     Render(&'t mut RenderTransaction<'a>),
     Mut(&'t mut MutationTransaction<'a>),
+}
+
+#[derive(Clone, Copy)]
+enum Reader<'t, 'a> {
+    Render(&'t RenderTransaction<'a>),
+    Mut(&'t MutationTransaction<'a>),
 }
 
 impl<'t, 'a> Context<'t, 'a> {
     fn reborrow(&mut self) -> Context<'_, 'a> {
         match self {
             Context::Pure => Context::Pure,
+            Context::Read(reader) => Context::Read(*reader),
             Context::Render(render) => Context::Render(render),
             Context::Mut(mutations) => Context::Mut(mutations),
         }
@@ -507,14 +530,27 @@ impl<'t, 'a> Context<'t, 'a> {
     fn render(self, what: &str) -> &'t mut RenderTransaction<'a> {
         match self {
             Context::Render(render) => render,
-            Context::Pure | Context::Mut(_) => panic!("only a block that renders {what}"),
+            Context::Pure | Context::Read(_) | Context::Mut(_) => {
+                panic!("only a block that renders {what}")
+            }
+        }
+    }
+
+    fn reader(self, what: &str) -> Reader<'t, 'a> {
+        match self {
+            Context::Read(reader) => reader,
+            Context::Render(render) => Reader::Render(render),
+            Context::Mut(mutations) => Reader::Mut(mutations),
+            Context::Pure => panic!("only a block that reads, renders or mutates {what}"),
         }
     }
 
     fn mutations(self, what: &str) -> &'t mut MutationTransaction<'a> {
         match self {
             Context::Mut(mutations) => mutations,
-            Context::Pure | Context::Render(_) => panic!("only a block that mutates {what}"),
+            Context::Pure | Context::Read(_) | Context::Render(_) => {
+                panic!("only a block that mutates {what}")
+            }
         }
     }
 }
@@ -705,8 +741,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 2227196 allocations
-            program evaluation: 24207 allocations
+            program generation: 2049589 allocations
+            program evaluation: 33487 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -2013,22 +2049,22 @@ mod tests {
             program: _,
         } = stats;
         expect![[r#"
-            3338 invocations
-            32 invocations hit the call depth limit
+            3244 invocations
+            28 invocations hit the call depth limit
             0 invocations hit the array length limit
             0 invocations hit the string length limit
             0 invocations hit the Html size limit
-            9 invocations hit the op count limit
-            44496 cells bound
+            22 invocations hit the op count limit
+            88917 cells bound
 
-            11667 clicks
-            62 programs have a click
-            34 programs have a click that changes a cell
-            26 programs have a click that changes the page
-            12 programs have a click that switches an arm of a match
-            10 programs have a click that switches an arm of a match that binds cells
-            9 programs have a click that changes the iterations of a loop
-            9 programs have a click that changes an array cell
+            21135 clicks
+            64 programs have a click
+            35 programs have a click that changes a cell
+            29 programs have a click that changes the page
+            14 programs have a click that switches an arm of a match
+            11 programs have a click that switches an arm of a match that binds cells
+            13 programs have a click that changes the iterations of a loop
+            4 programs have a click that changes an array cell
         "#]].assert_eq(&format!(
             "{invocations} invocations\n\
              {call_depth_limit} invocations hit the call depth limit\n\
