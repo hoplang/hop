@@ -9,7 +9,7 @@ use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::typing::type_error::{Target, TypeError, TypeErrorKind, TypeMismatchContext};
-use crate::hop::typing::{Type, TypedAttribute, TypedAttrs};
+use crate::hop::typing::{Modifier, Type, TypedAttribute, TypedAttrs};
 use crate::hop::uncooked_string::UncookedString;
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
@@ -178,12 +178,19 @@ pub fn typecheck_call(
                 use_range: DocumentRange::clone(name_range),
                 definition_range: definition_range.clone(),
             });
-            if signature.mutates && !var_env.mutates() {
+            if signature.modifier == Modifier::Mut && !var_env.mutates() {
                 errors.push(TypeError::new(
                     TypeErrorKind::MutCallOutsideMut,
                     DocumentRange::clone(report_range),
                 ));
                 return None;
+            }
+            if signature.modifier == Modifier::Render && !signature.return_type.renders_html() {
+                var_env.require_render(
+                    |position| TypeErrorKind::RenderCallNotAllowed { position },
+                    report_range,
+                    errors,
+                );
             }
             (
                 &signature.row,

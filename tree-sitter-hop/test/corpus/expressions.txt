@@ -574,3 +574,70 @@ fn Main() -> Int {
             (identifier)
             (integer_literal))))
       (identifier))))
+
+================================================================================
+render functions
+================================================================================
+
+render fn first(start: Int, f: render fn(Int) -> Int) -> Int {
+  let mut value = start;
+  value
+}
+
+pub render fn Card() -> Html {
+  let count = render fn() -> Int { 0 };
+  <p>{count().to_string()}</p>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (render_modifier)
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier))
+      (parameter
+        (identifier)
+        (function_type
+          (render_modifier)
+          (parameter_types
+            (type_identifier))
+          (type_identifier))))
+    (type_identifier)
+    (block
+      (let_statement
+        (mutable_specifier)
+        (identifier)
+        (identifier))
+      (identifier)))
+  (function_declaration
+    (visibility_modifier)
+    (render_modifier)
+    (type_identifier)
+    (parameters)
+    (type_identifier)
+    (block
+      (let_statement
+        (identifier)
+        (lambda_expression
+          (render_modifier)
+          (lambda_parameters)
+          (type_identifier)
+          (block
+            (integer_literal))))
+      (element
+        (start_tag
+          (tag_name))
+        (interpolation
+          (call_expression
+            (field_expression
+              (call_expression
+                (identifier)
+                (arguments))
+              (field_identifier))
+            (arguments)))
+        (end_tag
+          (tag_name))))))

@@ -909,6 +909,10 @@
           "named": true
         },
         {
+          "type": "render_modifier",
+          "named": true
+        },
+        {
           "type": "visibility_modifier",
           "named": true
         }
@@ -946,6 +950,10 @@
       "types": [
         {
           "type": "mutable_specifier",
+          "named": true
+        },
+        {
+          "type": "render_modifier",
           "named": true
         }
       ]
@@ -1057,6 +1065,10 @@
       "types": [
         {
           "type": "mutable_specifier",
+          "named": true
+        },
+        {
+          "type": "render_modifier",
           "named": true
         }
       ]
@@ -2003,6 +2015,10 @@
   {
     "type": "record",
     "named": false
+  },
+  {
+    "type": "render_modifier",
+    "named": true
   },
   {
     "type": "string_content",

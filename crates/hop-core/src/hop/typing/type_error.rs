@@ -1,7 +1,7 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic_severity::DiagnosticSeverity;
 use crate::document::{CheapString, DocumentRange};
-use crate::hop::typing::variable_scope::RepeatedBody;
+use crate::hop::typing::variable_scope::{Position, RepeatedBody};
 use crate::hop::typing::{DataType, Type, TypedPattern};
 use crate::html::HtmlElementKind;
 use crate::root_relative_path::RootRelativePathError;
@@ -385,8 +385,27 @@ pub enum TypeErrorKind {
     )]
     DuplicateName { target: Target, name: AttributeName },
 
-    #[error("let mut needs a block that returns Html")]
-    LetMutOutsideHtml,
+    #[error(
+        "{}",
+        match position {
+            Position::PureFn => "let mut needs a render fn",
+            Position::MutFn => "let mut in a mut fn",
+            Position::InitialValue => "let mut in an initial value",
+            Position::Key => "let mut in a key",
+        }
+    )]
+    LetMutNotAllowed { position: Position },
+
+    #[error(
+        "{}",
+        match position {
+            Position::PureFn => "Render fn called from a non-render fn",
+            Position::MutFn => "Render fn called from a mut fn",
+            Position::InitialValue => "Render fn called in an initial value",
+            Position::Key => "Render fn called in a key",
+        }
+    )]
+    RenderCallNotAllowed { position: Position },
 
     #[error("Only a mut fn can assign")]
     AssignmentOutsideMut,

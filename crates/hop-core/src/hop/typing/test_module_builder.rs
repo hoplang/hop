@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::document::{CheapString, DocumentCursor};
-use crate::hop::typing::r#type::{DataType, Type};
+use crate::hop::typing::r#type::{DataType, Modifier, Type};
 use crate::hop::typing::type_env::{
     FunctionSignature, Name, NameKind, ParamEntry, Row, Tail, TypeEnv,
 };
@@ -74,7 +74,7 @@ impl TestModuleBuilder {
                 })
                 .collect();
             let signature = FunctionSignature {
-                mutates: false,
+                modifier: Modifier::of(None, &decl.return_type),
                 declared: params.len(),
                 row: Row {
                     fields: params,

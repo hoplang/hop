@@ -19,6 +19,7 @@ use super::parsed_expr::{
     ParsedLambdaParameter, ParsedLetBinding, ParsedLoopSource, ParsedMatchArm, ParsedNamedArgument,
     ParsedPattern, ParsedStatement, ParsedUnaryOp, Precedence,
 };
+use super::parsed_type::ParsedModifier;
 use super::token::LangToken;
 use super::tokenize_expr::{next, peek, peek2, peek3};
 
@@ -359,7 +360,22 @@ pub fn parse_primary(
         parse_lambda(iter, comments, errors, None, fn_range)?
     } else if let Some(mut_range) = next_if_eq(iter, comments, errors, LangToken::Mut) {
         let fn_range = expect_token(iter, comments, errors, &LangToken::Fn)?;
-        parse_lambda(iter, comments, errors, Some(mut_range), fn_range)?
+        parse_lambda(
+            iter,
+            comments,
+            errors,
+            Some((ParsedModifier::Mut, mut_range)),
+            fn_range,
+        )?
+    } else if let Some(render_range) = next_if_eq(iter, comments, errors, LangToken::Render) {
+        let fn_range = expect_token(iter, comments, errors, &LangToken::Fn)?;
+        parse_lambda(
+            iter,
+            comments,
+            errors,
+            Some((ParsedModifier::Render, render_range)),
+            fn_range,
+        )?
     } else if let Some(some_range) = next_if_eq(iter, comments, errors, LangToken::Some) {
         let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
         let (value, parens) = parse_delimited(
@@ -775,7 +791,7 @@ fn parse_lambda(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    mut_range: Option<DocumentRange>,
+    modifier: Option<(ParsedModifier, DocumentRange)>,
     fn_range: DocumentRange,
 ) -> Result<ParsedExpr, ErrorEmitted> {
     let left_paren = expect_token(iter, comments, errors, &LangToken::LeftParen)?;
@@ -815,8 +831,11 @@ fn parse_lambda(
     let left_brace = expect_token(iter, comments, errors, &LangToken::LeftBrace)?;
     let body = parse_block(iter, comments, errors, &left_brace)?;
     Ok(ParsedExpr::Lambda {
-        range: (mut_range.clone().unwrap_or(fn_range)).to(body.range.clone()),
-        mut_range,
+        range: (modifier
+            .as_ref()
+            .map_or(fn_range, |(_, range)| range.clone()))
+        .to(body.range.clone()),
+        modifier,
         params,
         return_type: return_type.map(Box::new),
         body,

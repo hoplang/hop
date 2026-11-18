@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::r#type::{DataType, FunctionType, Type};
+use super::r#type::{DataType, FunctionType, Modifier, Type};
 use super::type_env::{Name, NameKind};
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
@@ -21,7 +21,7 @@ pub fn resolve_type(
         ParsedType::Float { .. } => DataType::Float,
         ParsedType::Html { .. } => return Some(Type::HTML),
         ParsedType::Function {
-            mut_range,
+            modifier,
             parameters,
             result,
             ..
@@ -33,7 +33,7 @@ pub fn resolve_type(
             let result_type = resolve_type(result, names, definition_links, errors)?;
             let parameters = parameters.into_iter().collect::<Option<Vec<_>>>()?;
             let function = FunctionType {
-                mutates: mut_range.is_some(),
+                modifier: Modifier::of(modifier.as_ref().map(|(m, _)| *m), &result_type),
                 parameters,
                 result: Box::new(result_type),
             };
@@ -112,7 +112,7 @@ pub fn check_function_type(function: &FunctionType) -> Option<TypeErrorKind> {
             result: function.result.as_ref().clone(),
         });
     }
-    if function.mutates && function.result.as_data().is_none() {
+    if function.modifier == Modifier::Mut && function.result.as_data().is_none() {
         return Some(TypeErrorKind::MutFunctionReturnsNonData {
             result: function.result.as_ref().clone(),
         });

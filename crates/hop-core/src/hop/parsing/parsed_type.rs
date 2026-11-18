@@ -38,11 +38,26 @@ pub enum ParsedType {
         range: DocumentRange,
     },
     Function {
-        mut_range: Option<DocumentRange>,
+        modifier: Option<(ParsedModifier, DocumentRange)>,
         parameters: Vec<ParsedType>,
         result: Box<ParsedType>,
         range: DocumentRange,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParsedModifier {
+    Render,
+    Mut,
+}
+
+impl ParsedModifier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ParsedModifier::Render => "render",
+            ParsedModifier::Mut => "mut",
+        }
+    }
 }
 
 impl ParsedType {
@@ -75,13 +90,13 @@ impl Display for ParsedType {
             ParsedType::Tuple { elements, .. } => write!(f, "Tuple[{}]", join(elements, ", ")),
             ParsedType::Named { name, .. } => write!(f, "{name}"),
             ParsedType::Function {
-                mut_range,
+                modifier,
                 parameters,
                 result,
                 ..
             } => {
-                if mut_range.is_some() {
-                    f.write_str("mut ")?;
+                if let Some((modifier, _)) = modifier {
+                    write!(f, "{} ", modifier.as_str())?;
                 }
                 write!(f, "fn({}) -> {result}", join(parameters, ", "))
             }

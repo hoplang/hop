@@ -1,7 +1,7 @@
 use super::parse_helpers::{expect_token, next_if_eq, parse_delimited, parse_delimited_list};
 use super::tokenize_expr::{next, peek};
 
-use super::parsed_type::ParsedType;
+use super::parsed_type::{ParsedModifier, ParsedType};
 use super::token::LangToken;
 use crate::document::{DocumentCursor, DocumentRange};
 use crate::hop::parsing::parse_error::{Emit, ErrorEmitted, OrEmit, ParseError, ParseErrorKind};
@@ -58,8 +58,12 @@ pub fn parse_type(
             range: type_option.to(brackets),
         });
     }
-    let mut_range = next_if_eq(iter, comments, errors, LangToken::Mut);
-    let fn_keyword = match &mut_range {
+    let modifier = match next_if_eq(iter, comments, errors, LangToken::Mut) {
+        Some(range) => Some((ParsedModifier::Mut, range)),
+        None => next_if_eq(iter, comments, errors, LangToken::Render)
+            .map(|range| (ParsedModifier::Render, range)),
+    };
+    let fn_keyword = match &modifier {
         Some(_) => Some(expect_token(iter, comments, errors, &LangToken::Fn)?),
         None => next_if_eq(iter, comments, errors, LangToken::Fn),
     };
@@ -77,8 +81,11 @@ pub fn parse_type(
         expect_token(iter, comments, errors, &LangToken::Arrow)?;
         let result = parse_type(iter, comments, errors)?;
         return Ok(ParsedType::Function {
-            range: (mut_range.clone().unwrap_or(fn_keyword)).to(result.range().clone()),
-            mut_range,
+            range: (modifier
+                .as_ref()
+                .map_or(fn_keyword, |(_, range)| range.clone()))
+            .to(result.range().clone()),
+            modifier,
             parameters,
             result: Box::new(result),
         });

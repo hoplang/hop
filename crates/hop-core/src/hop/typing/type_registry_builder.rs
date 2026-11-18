@@ -1,5 +1,6 @@
+use crate::hop::parsing::ParsedModifier;
 use crate::hop::typing::resolve_type::check_function_type;
-use crate::hop::typing::r#type::{DataType, FunctionType, Type};
+use crate::hop::typing::r#type::{DataType, FunctionType, Modifier, Type};
 use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::field_name::FieldName;
@@ -87,10 +88,11 @@ impl From<Ty> for Type {
                 parameters,
                 result,
             } => {
+                let result: Type = (*result).into();
                 let function = FunctionType {
-                    mutates,
+                    modifier: Modifier::of(mutates.then_some(ParsedModifier::Mut), &result),
                     parameters: parameters.into_iter().map(Type::from).collect(),
-                    result: Box::new((*result).into()),
+                    result: Box::new(result),
                 };
                 if let Some(error) = check_function_type(&function) {
                     panic!("invalid function type: {error:?}");

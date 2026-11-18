@@ -50,7 +50,7 @@ pub fn next_if_eq(
 pub fn at_declaration(iter: &DocumentCursor) -> bool {
     match peek(iter) {
         Some((LangToken::Fn, _)) => !matches!(peek2(iter), Some((LangToken::LeftParen, _))),
-        Some((LangToken::Mut, _)) => {
+        Some((LangToken::Mut | LangToken::Render, _)) => {
             matches!(peek2(iter), Some((LangToken::Fn, _)))
                 && !matches!(peek3(iter), Some((LangToken::LeftParen, _)))
         }

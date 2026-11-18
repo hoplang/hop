@@ -651,10 +651,8 @@ impl Display for TypedExpr {
             }
             TypedExpr::Asset { path } => write!(f, "asset!(\"/{}\")", path.as_str()),
             TypedExpr::Lambda { params, body, typ } => {
-                if let Type::Function(function) = typ
-                    && function.mutates
-                {
-                    f.write_str("mut ")?;
+                if let Type::Function(function) = typ {
+                    f.write_str(function.modifier.prefix(&function.result))?;
                 }
                 f.write_str("fn(")?;
                 for (i, (name, typ)) in params.iter().enumerate() {

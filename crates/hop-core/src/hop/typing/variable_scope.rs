@@ -3,6 +3,7 @@ use std::fmt;
 
 use super::r#type::Type;
 use super::type_env::FunctionSignature;
+use super::type_error::{TypeError, TypeErrorKind};
 use crate::document::{CheapString, DocumentRange};
 use crate::symbols::var_name::VarName;
 
@@ -14,7 +15,22 @@ pub struct VariableScope {
     /// The loop and lambda bodies around the code being checked, outermost
     /// first.
     bodies: Vec<RepeatedBody>,
-    mutates: bool,
+    context: Context,
+}
+
+#[derive(Debug, Clone)]
+pub enum Context {
+    Render,
+    Outside(Position),
+    Undecided(Vec<TypeError>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Position {
+    PureFn,
+    MutFn,
+    InitialValue,
+    Key,
 }
 
 /// A body that runs any number of times for each run of the code around
@@ -83,16 +99,33 @@ impl VariableScope {
             entries: HashMap::new(),
             operations: Vec::new(),
             bodies: Vec::new(),
-            mutates: false,
+            context: Context::Outside(Position::PureFn),
         }
     }
 
     pub fn mutates(&self) -> bool {
-        self.mutates
+        matches!(self.context, Context::Outside(Position::MutFn))
     }
 
-    pub fn set_mutates(&mut self, mutates: bool) -> bool {
-        std::mem::replace(&mut self.mutates, mutates)
+    pub fn set_context(&mut self, context: Context) -> Context {
+        std::mem::replace(&mut self.context, context)
+    }
+
+    pub fn require_render(
+        &mut self,
+        error: impl FnOnce(Position) -> TypeErrorKind,
+        range: &DocumentRange,
+        errors: &mut Vec<TypeError>,
+    ) {
+        match &mut self.context {
+            Context::Render => {}
+            Context::Outside(position) => {
+                errors.push(TypeError::new(error(*position), range.clone()));
+            }
+            Context::Undecided(pending) => {
+                pending.push(TypeError::new(error(Position::PureFn), range.clone()));
+            }
+        }
     }
 
     /// Bring a function into scope for every body of the module. Functions

@@ -1,4 +1,4 @@
-use super::{DataType, Type, TypedExpr};
+use super::{DataType, Modifier, Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
@@ -21,7 +21,9 @@ use crate::hop::typing::typecheck_expr::{typecheck_block, typecheck_expr};
 use crate::hop::typing::typed_module::{
     TypedFunctionDeclaration, TypedModule, TypedPageDeclaration, TypedParameter,
 };
-use crate::hop::typing::variable_scope::{FunctionScopeEntry, ScopeEntry, VariableScope};
+use crate::hop::typing::variable_scope::{
+    Context, FunctionScopeEntry, Position, ScopeEntry, VariableScope,
+};
 use crate::hover_annotation::HoverAnnotation;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
@@ -636,6 +638,7 @@ fn typecheck_page_declaration(
         });
     }
 
+    let outer = var_env.set_context(Context::Render);
     let typed_head = head.as_ref().and_then(|head| {
         typecheck_block(
             &head.body,
@@ -662,6 +665,7 @@ fn typecheck_page_declaration(
         asset_references,
         errors,
     );
+    var_env.set_context(outer);
 
     for _ in 0..pushed_params {
         let (name, entry) = var_env.pop();
@@ -763,7 +767,8 @@ fn create_function_signature<'a>(
         ));
         return None;
     }
-    if function.mut_range.is_some() && return_type.as_data().is_none() {
+    let modifier = Modifier::of(function.modifier.as_ref().map(|(m, _)| *m), &return_type);
+    if modifier == Modifier::Mut && return_type.as_data().is_none() {
         errors.push(TypeError::new(
             TypeErrorKind::MutFunctionReturnsNonData {
                 result: return_type,
@@ -778,7 +783,7 @@ fn create_function_signature<'a>(
         resolved_params,
         typed_params,
         signature: FunctionSignature {
-            mutates: function.mut_range.is_some(),
+            modifier,
             declared: declared_params.len(),
             row: Row {
                 fields: declared_params,
@@ -814,7 +819,7 @@ fn typecheck_function_body(
         ..
     } = function;
     let return_type = signature.return_type;
-    let mutates = signature.mutates;
+    let modifier = signature.modifier;
 
     // The row of the settled signature holds the parameters the rest adds,
     // after the declared ones. A function that lost its name to an earlier
@@ -846,7 +851,11 @@ fn typecheck_function_body(
 
     let forwarded_names: Vec<VarName> = forwarded.iter().map(|p| p.name.clone()).collect();
 
-    let outer = var_env.set_mutates(mutates);
+    let outer = var_env.set_context(match modifier {
+        Modifier::Pure => Context::Outside(Position::PureFn),
+        Modifier::Render => Context::Render,
+        Modifier::Mut => Context::Outside(Position::MutFn),
+    });
     let typed_body = typecheck_block(
         body,
         Some(&return_type),
@@ -859,7 +868,7 @@ fn typecheck_function_body(
         asset_references,
         errors,
     );
-    var_env.set_mutates(outer);
+    var_env.set_context(outer);
 
     for _ in 0..pushed_params {
         let (name, entry) = var_env.pop();
@@ -896,7 +905,7 @@ fn typecheck_function_body(
     }
 
     Some(TypedFunctionDeclaration {
-        mutates,
+        modifier,
         name: name.clone(),
         params: typed_params,
         rest_param: rest_param.as_ref().map(|(rest, _)| rest.clone()),
@@ -1664,7 +1673,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: let mut needs a block that returns Html
+                error: let mut needs a render fn
                   --> main.hop (line 2, col 11)
                  1 | fn missing_value() -> Int {
                  2 |   let mut a = 0;
@@ -1676,7 +1685,7 @@ mod tests {
                  3 |   let b: Int = missing;
                    |                ^^^^^^^
 
-                error: let mut needs a block that returns Html
+                error: let mut needs a render fn
                   --> main.hop (line 7, col 11)
                  6 | fn clash() -> Int {
                  7 |   let mut c = 0;
@@ -14638,7 +14647,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 record Row {
-                  render: fn() -> Html,
+                  redraw: fn() -> Html,
                 }
                 fn Main(rows: Array[fn(Int) -> Int]) -> Html {
                   let row = Some(fn(n: Int) { n });
@@ -14649,7 +14658,7 @@ mod tests {
                 error: fn() -> Html is not allowed inside another type
                   --> main.hop (line 2, col 11)
                 1 | record Row {
-                2 |   render: fn() -> Html,
+                2 |   redraw: fn() -> Html,
                   |           ^^^^^^^^^^^^
 
                 error: fn(Int) -> Int is not allowed inside another type
@@ -14707,7 +14716,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Main(measure: fn(Html) -> Int) -> Html {
-                  let count = fn(content: Html, render: fn() -> Html) { 1 };
+                  let count = fn(content: Html, redraw: fn() -> Html) { 1 };
                   <></>
                 }
             "#},
@@ -14720,19 +14729,19 @@ mod tests {
                 warning: Unused variable content
                   --> main.hop (line 2, col 18)
                 1 | fn Main(measure: fn(Html) -> Int) -> Html {
-                2 |   let count = fn(content: Html, render: fn() -> Html) { 1 };
+                2 |   let count = fn(content: Html, redraw: fn() -> Html) { 1 };
                   |                  ^^^^^^^
 
                 error: fn(Html, fn() -> Html) -> Int returns Int and cannot take Html
                   --> main.hop (line 2, col 18)
                 1 | fn Main(measure: fn(Html) -> Int) -> Html {
-                2 |   let count = fn(content: Html, render: fn() -> Html) { 1 };
+                2 |   let count = fn(content: Html, redraw: fn() -> Html) { 1 };
                   |                  ^^^^^^^
 
-                warning: Unused variable render
+                warning: Unused variable redraw
                   --> main.hop (line 2, col 33)
                 1 | fn Main(measure: fn(Html) -> Int) -> Html {
-                2 |   let count = fn(content: Html, render: fn() -> Html) { 1 };
+                2 |   let count = fn(content: Html, redraw: fn() -> Html) { 1 };
                   |                                 ^^^^^^
             "#]],
         );
@@ -14743,16 +14752,16 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                page Home(render: fn() -> Html) {
+                page Home(redraw: fn() -> Html) {
                   fn body() -> Html {
-                    render()
+                    redraw()
                   }
                 }
             "#},
             expect![[r#"
                 error: fn() -> Html is not allowed in page parameters
                   --> main.hop (line 1, col 19)
-                1 | page Home(render: fn() -> Html) {
+                1 | page Home(redraw: fn() -> Html) {
                   |                   ^^^^^^^^^^^^
             "#]],
         );
@@ -14865,31 +14874,31 @@ mod tests {
         reject(
             indoc! {r#"
                 -- main.hop --
-                fn Main(render: fn(String, Int) -> Html) -> Html {
+                fn Main(redraw: fn(String, Int) -> Html) -> Html {
                   <>
-                    {render(label: "a", depth: 1)}
-                    {render("a")}
-                    {render("a", "b")}
+                    {redraw(label: "a", depth: 1)}
+                    {redraw("a")}
+                    {redraw("a", "b")}
                   </>
                 }
             "#},
             expect![[r#"
-                error: Function render takes its arguments by position
+                error: Function redraw takes its arguments by position
                   --> main.hop (line 3, col 6)
                 2 |   <>
-                3 |     {render(label: "a", depth: 1)}
+                3 |     {redraw(label: "a", depth: 1)}
                   |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                error: Function render expects 2 argument(s), got 1
+                error: Function redraw expects 2 argument(s), got 1
                   --> main.hop (line 4, col 6)
-                3 |     {render(label: "a", depth: 1)}
-                4 |     {render("a")}
+                3 |     {redraw(label: "a", depth: 1)}
+                4 |     {redraw("a")}
                   |      ^^^^^^^^^^^
 
                 error: Expected Int got String
                   --> main.hop (line 5, col 18)
-                4 |     {render("a")}
-                5 |     {render("a", "b")}
+                4 |     {redraw("a")}
+                5 |     {redraw("a", "b")}
                   |                  ^^^
             "#]],
         );
@@ -14906,28 +14915,28 @@ mod tests {
                 pub record Item {
                   tag: Tag,
                 }
-                pub fn Show(render: fn(Item) -> Tag) -> Html {
-                  <>{render(Item {tag: Tag {name: "x"}}).name}</>
+                pub fn Show(redraw: fn(Item) -> Tag) -> Html {
+                  <>{redraw(Item {tag: Tag {name: "x"}}).name}</>
                 }
                 -- main.hop --
                 import other::Item
                 import other::Tag
                 import other::Show
                 fn Main() -> Html {
-                  <Show render={fn(item: Item) -> Tag { item.tag }}/>
+                  <Show redraw={fn(item: Item) -> Tag { item.tag }}/>
                 }
             "#},
             expect![[r#"
                 -- other.hop --
-                fn Show(render: fn(Item) -> Tag) -> Html {
+                fn Show(redraw: fn(Item) -> Tag) -> Html {
                   concat(
-                    escape(render(Item {tag: Tag {name: "x"}}).name),
+                    escape(redraw(Item {tag: Tag {name: "x"}}).name),
                   )
                 }
 
                 -- main.hop --
                 fn Main() -> Html {
-                  Show(render: fn(item: Item) -> Tag {
+                  Show(redraw: fn(item: Item) -> Tag {
                     item.tag
                   })
                 }
@@ -15073,13 +15082,13 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: let mut needs a block that returns Html
+                error: let mut needs a render fn
                   --> main.hop (line 2, col 11)
                  1 | fn counter() -> Int {
                  2 |   let mut count = 0;
                    |           ^^^^^
 
-                error: let mut needs a block that returns Html
+                error: let mut in a mut fn
                   --> main.hop (line 8, col 13)
                  7 |   <button on:click={mut fn() {
                  8 |     let mut last = count;
@@ -15089,8 +15098,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_cell_in_a_block_of_its_own_that_computes_a_value() {
-        reject(
+    fn accepts_a_cell_in_a_block_of_its_own_that_computes_a_value_in_a_render_fn() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(open: Bool, name: Option[String]) -> Html {
@@ -15120,36 +15129,40 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: let mut needs a block that returns Html
-                  --> main.hop (line 4, col 15)
-                 3 |     true => {
-                 4 |       let mut count = 0;
-                   |               ^^^^^
-
-                error: let mut needs a block that returns Html
-                  --> main.hop (line 10, col 13)
-                 9 |   let seen = open && {
-                10 |     let mut first = true;
-                   |             ^^^^^
-
-                error: let mut needs a block that returns Html
-                  --> main.hop (line 14, col 13)
-                13 |   let shut = open || {
-                14 |     let mut last = false;
-                   |             ^^^^
-
-                error: let mut needs a block that returns Html
-                  --> main.hop (line 18, col 13)
-                17 |   let label = name.unwrap_or({
-                18 |     let mut fallback = "anon";
-                   |             ^^^^^^^^
+                -- main.hop --
+                fn Main(open: Bool, name: Option[String]) -> Html {
+                  let bump = match open {
+                    true => let mut count = 0 in add(count, 1),
+                    false => 0,
+                  } in let seen = and(open, let mut first = true in first) in let shut = or(open, let mut last = false in last) in let label = name.unwrap_or(let mut fallback = "anon" in fallback) in concat(
+                    element(
+                      tag: "button",
+                      attrs: [
+                        disabled: seen,
+                      ],
+                      children: concat(
+                        escape(label),
+                        escape(bump.to_string()),
+                      ),
+                    ),
+                    element(
+                      tag: "button",
+                      attrs: [
+                        disabled: shut,
+                      ],
+                      children: concat(
+                        text("x"),
+                      ),
+                    ),
+                  )
+                }
             "#]],
         );
     }
 
     #[test]
-    fn rejects_a_cell_in_a_block_that_returns_a_lambda_that_renders_html() {
-        reject(
+    fn accepts_a_cell_in_a_block_that_returns_a_lambda_that_renders_html() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
@@ -15163,11 +15176,28 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: let mut needs a block that returns Html
-                  --> main.hop (line 3, col 13)
-                2 |   let row = {
-                3 |     let mut open = false;
-                  |             ^^^^
+                -- main.hop --
+                fn Main() -> Html {
+                  let row = let mut open = false in fn(label: String) -> Html {
+                    element(
+                      tag: "li",
+                      attrs: [],
+                      children: concat(
+                        escape(label),
+                      ),
+                      on_click: mut fn() -> Tuple[] {
+                        open = not(open)
+                      },
+                    )
+                  } in element(
+                    tag: "ul",
+                    attrs: [],
+                    children: concat(
+                      row("a"),
+                      row("b"),
+                    ),
+                  )
+                }
             "#]],
         );
     }
@@ -15274,7 +15304,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: let mut needs a block that returns Html
+                error: let mut in a key
                   --> main.hop (line 3, col 13)
                  2 |   for id in ids key {
                  3 |     let mut seen = id;
@@ -15460,6 +15490,209 @@ mod tests {
                   --> main.hop (line 1, col 19)
                 1 | mut fn reset() -> Html {
                   |                   ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_render_on_functions_that_return_html() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                render fn Card(content: render fn() -> Html) -> Html {
+                  let row = render fn(label: String) -> Html { <li>{label}</li> };
+                  <ul>{content()}{row("a")}</ul>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Card(content: fn() -> Html) -> Html {
+                  let row = fn(label: String) -> Html {
+                    element(
+                      tag: "li",
+                      attrs: [],
+                      children: concat(
+                        escape(label),
+                      ),
+                    )
+                  } in element(
+                    tag: "ul",
+                    attrs: [],
+                    children: concat(
+                      content(),
+                      row("a"),
+                    ),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_render_functions_that_return_values() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                render fn first(start: Int) -> Int {
+                  let mut value = start;
+                  value
+                }
+                render fn twice(start: Int) -> Int {
+                  first(start) + first(start)
+                }
+                fn Main(n: Int) -> Html {
+                  let counter = render fn() -> Int {
+                    let mut count = n;
+                    count
+                  };
+                  let label = match n > 0 {
+                    true => {
+                      let mut seen = n;
+                      seen.to_string()
+                    },
+                    false => "none",
+                  };
+                  <p>{first(n).to_string()}{twice(n).to_string()}{counter().to_string()}{label}</p>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(n: Int) -> Html {
+                  let counter = render fn() -> Int {
+                    let mut count = n in count
+                  } in let label = match gt(n, 0) {
+                    true => let mut seen = n in seen.to_string(),
+                    false => "none",
+                  } in element(
+                    tag: "p",
+                    attrs: [],
+                    children: concat(
+                      escape(first(start: n).to_string()),
+                      escape(twice(start: n).to_string()),
+                      escape(counter().to_string()),
+                      escape(label),
+                    ),
+                  )
+                }
+
+                render fn first(start: Int) -> Int {
+                  let mut value = start in value
+                }
+
+                render fn twice(start: Int) -> Int {
+                  add(first(start: start), first(start: start))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_let_mut_in_an_initial_value() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let mut a = {
+                    let mut b = 0;
+                    b
+                  };
+                  <p>{a.to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                error: let mut in an initial value
+                  --> main.hop (line 3, col 13)
+                2 |   let mut a = {
+                3 |     let mut b = 0;
+                  |             ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_calls_of_render_functions_outside_what_renders() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                render fn first(start: Int) -> Int {
+                  let mut value = start;
+                  value
+                }
+                fn pure(n: Int) -> Int {
+                  first(n)
+                }
+                fn Main(items: Array[Int]) -> Html {
+                  let mut a = first(1);
+                  let later = render fn() -> Int { 2 };
+                  let f = fn() -> Int { first(3) };
+                  let g = fn() { later() };
+                  <>
+                    {f().to_string()}{g().to_string()}
+                    {for item in items key first(item) {
+                      <i>{a.to_string()}</i>
+                    }}
+                    <b on:click={mut fn() { a = first(4) }}>x</b>
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: Render fn called from a non-render fn
+                  --> main.hop (line 6, col 3)
+                 5 | fn pure(n: Int) -> Int {
+                 6 |   first(n)
+                   |   ^^^^^^^^
+
+                error: Render fn called in an initial value
+                  --> main.hop (line 9, col 15)
+                 8 | fn Main(items: Array[Int]) -> Html {
+                 9 |   let mut a = first(1);
+                   |               ^^^^^^^^
+
+                error: Render fn called from a non-render fn
+                  --> main.hop (line 11, col 25)
+                10 |   let later = render fn() -> Int { 2 };
+                11 |   let f = fn() -> Int { first(3) };
+                   |                         ^^^^^^^^
+
+                error: Render fn called from a non-render fn
+                  --> main.hop (line 12, col 18)
+                11 |   let f = fn() -> Int { first(3) };
+                12 |   let g = fn() { later() };
+                   |                  ^^^^^^^
+
+                error: Render fn called in a key
+                  --> main.hop (line 15, col 28)
+                14 |     {f().to_string()}{g().to_string()}
+                15 |     {for item in items key first(item) {
+                   |                            ^^^^^^^^^^^
+
+                error: Render fn called from a mut fn
+                  --> main.hop (line 18, col 33)
+                17 |     }}
+                18 |     <b on:click={mut fn() { a = first(4) }}>x</b>
+                   |                                 ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_closure_that_does_not_render_where_one_that_renders_is_expected() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Show(count: render fn() -> Int) -> Html {
+                  <p>{count().to_string()}</p>
+                }
+                fn Main() -> Html {
+                  <Show count={fn() -> Int { 1 }}/>
+                }
+            "#},
+            expect![[r#"
+                error: Expected render fn() -> Int got fn() -> Int
+                  --> main.hop (line 5, col 16)
+                4 | fn Main() -> Html {
+                5 |   <Show count={fn() -> Int { 1 }}/>
+                  |                ^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

@@ -63,7 +63,7 @@ Using any of the words below as an identifier is a compile error.
 ```
 enum    false   fn      for     import  in
 let     match   mut     page    pub     record
-true
+render  true
 
 None    Some
 

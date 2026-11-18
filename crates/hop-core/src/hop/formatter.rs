@@ -3,8 +3,8 @@ use crate::hop::parsing::{
     ParsedArguments, ParsedAttribute, ParsedBlock, ParsedDeclaration, ParsedEnumDeclaration,
     ParsedEnumDeclarationVariant, ParsedExpr, ParsedFieldDeclaration, ParsedFunctionDeclaration,
     ParsedImportDeclaration, ParsedLetBinding, ParsedLoopSource, ParsedMarkup, ParsedMatchArm,
-    ParsedModule, ParsedNamedArgument, ParsedPageDeclaration, ParsedParameter, ParsedPattern,
-    ParsedRecordDeclaration, ParsedStatement, ParsedType, Precedence,
+    ParsedModifier, ParsedModule, ParsedNamedArgument, ParsedPageDeclaration, ParsedParameter,
+    ParsedPattern, ParsedRecordDeclaration, ParsedStatement, ParsedType, Precedence,
 };
 use crate::html::HtmlElementKind;
 use crate::symbols::var_name::VarName;
@@ -432,14 +432,13 @@ fn format_function_declaration<'a>(
     } else {
         arena.nil()
     };
-    let mut_prefix = if function.mut_range.is_some() {
-        arena.text("mut ")
-    } else {
-        arena.nil()
+    let modifier_prefix = match &function.modifier {
+        Some((modifier, _)) => arena.text(modifier.as_str()).append(arena.text(" ")),
+        None => arena.nil(),
     };
     leading_comments
         .append(pub_prefix)
-        .append(mut_prefix)
+        .append(modifier_prefix)
         .append(arena.text("fn"))
         .append(arena.text(" "))
         .append(arena.text(function.name.as_str()))
@@ -904,15 +903,15 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
             .append(arena.text("]")),
         ParsedType::Named { name, .. } => arena.text(name.to_string()),
         ParsedType::Function {
-            mut_range,
+            modifier,
             parameters,
             result,
             ..
         } => arena
-            .text(if mut_range.is_some() {
-                "mut fn("
-            } else {
-                "fn("
+            .text(match modifier {
+                Some((ParsedModifier::Render, _)) => "render fn(",
+                Some((ParsedModifier::Mut, _)) => "mut fn(",
+                None => "fn(",
             })
             .append(
                 arena.intersperse(
@@ -1022,16 +1021,16 @@ fn format_expr<'a>(
             .append(arena.hardline())
             .append(arena.text("}")),
         ParsedExpr::Lambda {
-            mut_range,
+            modifier,
             params,
             return_type,
             body,
             ..
         } => arena
-            .text(if mut_range.is_some() {
-                "mut fn("
-            } else {
-                "fn("
+            .text(match modifier {
+                Some((ParsedModifier::Render, _)) => "render fn(",
+                Some((ParsedModifier::Mut, _)) => "mut fn(",
+                None => "fn(",
             })
             .append(arena.intersperse(
                 params.iter().map(|param| {
@@ -2258,6 +2257,39 @@ mod tests {
                   }}>
                     {count.to_string()}
                   </button>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn render_functions() {
+        check(
+            indoc! {r#"
+                render fn first(start: Int, f: render fn(Int) -> Int) -> Int {
+                  let mut value = start; value
+                }
+                pub render fn Card() -> Html {
+                  let count = render fn() -> Int { 0 };
+                  <p>{count().to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                render fn first(
+                  start: Int,
+                  f: render fn(Int) -> Int,
+                ) -> Int {
+                  let mut value = start;
+                  value
+                }
+
+                pub render fn Card() -> Html {
+                  let count = render fn() -> Int {
+                    0
+                  };
+                  <p>
+                    {count().to_string()}
+                  </p>
                 }
             "#]],
         );

@@ -5,6 +5,7 @@ use super::parsed_module::{
     ParsedFunctionDeclaration, ParsedImportDeclaration, ParsedModule, ParsedPageDeclaration,
     ParsedRecordDeclaration,
 };
+use super::parsed_type::ParsedModifier;
 use super::tokenize_expr;
 use crate::document::{CheapString, Document, DocumentCursor, DocumentRange};
 
@@ -54,14 +55,19 @@ pub fn parse(document: Document, errors: &mut Vec<ParseError>) -> ParsedModule {
                 pub_range,
             )
             .map(|function| ParsedDeclaration::Function(Box::new(function))),
-            Some((LangToken::Mut, mut_range)) => {
+            Some((token @ (LangToken::Mut | LangToken::Render), modifier_range)) => {
+                let modifier = match token {
+                    LangToken::Mut => ParsedModifier::Mut,
+                    LangToken::Render => ParsedModifier::Render,
+                    _ => unreachable!(),
+                };
                 parse_helpers::expect_token(&mut iter, &mut comments, errors, &LangToken::Fn)
                     .and_then(|keyword| {
                         parse_function_declaration(
                             &mut iter,
                             &mut comments,
                             errors,
-                            Some(mut_range),
+                            Some((modifier, modifier_range)),
                             keyword,
                             pub_range,
                         )
@@ -417,7 +423,7 @@ fn parse_function_declaration(
     iter: &mut DocumentCursor,
     comments: &mut Vec<DocumentRange>,
     errors: &mut Vec<ParseError>,
-    mut_range: Option<DocumentRange>,
+    modifier: Option<(ParsedModifier, DocumentRange)>,
     keyword_range: DocumentRange,
     pub_range: Option<DocumentRange>,
 ) -> Result<ParsedFunctionDeclaration, ErrorEmitted> {
@@ -473,15 +479,15 @@ fn parse_function_declaration(
     let (params, rest_param, return_type) = signature?;
     Ok(ParsedFunctionDeclaration {
         name: FunctionName::new(name).or_emit(errors, &name_range)?,
-        mut_range: mut_range.clone(),
         name_range,
         params,
         rest_param,
         return_type,
         range: (pub_range.clone())
-            .or(mut_range)
+            .or(modifier.as_ref().map(|(_, range)| range.clone()))
             .unwrap_or_else(|| keyword_range.clone())
             .to(body.range.clone()),
+        modifier,
         body,
         pub_range,
     })
@@ -3473,6 +3479,81 @@ mod tests {
                     ],
                   )
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_render_functions() {
+        accept(
+            indoc! {"
+                render fn first(start: Int, f: render fn(Int) -> Int) -> Int {
+                  let mut value = start; value
+                }
+                pub render fn Card() -> Html {
+                  let count = render fn() -> Int { 0 };
+                  <p>{count().to_string()}</p>
+                }
+            "},
+            expect![[r#"
+                render fn first(start: Int, f: render fn(Int) -> Int) -> Int {
+                  let mut value = start;
+                  value
+                }
+
+                pub render fn Card() -> Html {
+                  let count = render fn() -> Int {
+                    0
+                  };
+                  element(
+                    tag: "p",
+                    attrs: [],
+                    children: [
+                      interpolate(count().to_string()),
+                    ],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_render_as_a_variable_name() {
+        reject(
+            indoc! {"
+                fn Main(render: Int) -> Int {
+                  render
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected identifier but got 'render'
+                1 | fn Main(render: Int) -> Int {
+                  |         ^^^^^^
+
+                error: Expected token 'fn' but got '}'
+                2 |   render
+                3 | }
+                  | ^
+                -- ast --
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_render_without_fn() {
+        reject(
+            indoc! {"
+                render first() -> Int {
+                  0
+                }
+            "},
+            expect![[r#"
+                -- errors --
+                error: Expected token 'fn' but got 'first'
+                1 | render first() -> Int {
+                  |        ^^^^^
+                -- ast --
             "#]],
         );
     }

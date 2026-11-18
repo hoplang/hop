@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Write};
 use std::ops::Bound;
 
 use super::parsed_markup::ParsedMarkup;
-use super::parsed_type::ParsedType;
+use super::parsed_type::{ParsedModifier, ParsedType};
 use super::token::LangToken;
 use crate::display::{Indent, join, write_tuple};
 use crate::document::{CheapString, DocumentRange};
@@ -140,7 +140,7 @@ pub enum ParsedExpr {
     },
 
     Lambda {
-        mut_range: Option<DocumentRange>,
+        modifier: Option<(ParsedModifier, DocumentRange)>,
         params: Vec<ParsedLambdaParameter>,
         return_type: Option<Box<ParsedType>>,
         body: ParsedBlock,
@@ -912,14 +912,14 @@ impl Display for ParsedExpr {
                 f.write_str("\n}")
             }
             ParsedExpr::Lambda {
-                mut_range,
+                modifier,
                 params,
                 return_type,
                 body,
                 ..
             } => {
-                if mut_range.is_some() {
-                    f.write_str("mut ")?;
+                if let Some((modifier, _)) = modifier {
+                    write!(f, "{} ", modifier.as_str())?;
                 }
                 f.write_str("fn(")?;
                 for (i, param) in params.iter().enumerate() {

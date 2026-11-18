@@ -4,9 +4,9 @@ use std::sync::Arc;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
 use crate::hop::typing::{
-    Constructor, DataType, Pattern, PatternField, RecordField, ResolvedType, Type, TypeRegistry,
-    TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource, TypedPageDeclaration,
-    TypedParameter, TypedPattern, TypedRecordUpdateField, TypedStatement,
+    Constructor, DataType, Modifier, Pattern, PatternField, RecordField, ResolvedType, Type,
+    TypeRegistry, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
+    TypedPageDeclaration, TypedParameter, TypedPattern, TypedRecordUpdateField, TypedStatement,
 };
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
@@ -185,7 +185,7 @@ struct Compiler<'a> {
     rest: Vec<(AttributeName, Type, ValueId)>,
     /// The bindings of the block being compiled, in evaluation order.
     bindings: Vec<FlatBinding>,
-    mutates: bool,
+    context: IrModifier,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
@@ -205,7 +205,7 @@ impl<'a> Compiler<'a> {
             params: HashMap::new(),
             rest: Vec::new(),
             bindings: Vec::new(),
-            mutates: false,
+            context: IrModifier::Pure,
             asset_path_rewriter,
         }
     }
@@ -248,29 +248,19 @@ impl<'a> Compiler<'a> {
             parameters.push(IrParameter { name, binder });
         }
 
-        let (modifier, return_type, body) = match &decl.return_type {
-            Type::Html(_) => (
-                IrModifier::Render,
-                IrType::Html,
-                self.compile_html_block(&decl.body),
-            ),
-            Type::Data(_) if decl.mutates => {
-                self.mutates = true;
-                let body = self.compile_value_block(&decl.body);
-                self.mutates = false;
-                (
-                    IrModifier::Mut,
-                    lower_type(self.registry, &decl.return_type),
-                    body,
-                )
-            }
-            Type::Data(_) => (
-                IrModifier::Pure,
-                lower_type(self.registry, &decl.return_type),
-                self.compile_value_block(&decl.body),
-            ),
+        let modifier = match decl.modifier {
+            Modifier::Pure => IrModifier::Pure,
+            Modifier::Render => IrModifier::Render,
+            Modifier::Mut => IrModifier::Mut,
+        };
+        let outer = std::mem::replace(&mut self.context, modifier);
+        let body = match &decl.return_type {
+            Type::Html(_) => self.compile_html_block(&decl.body),
+            Type::Data(_) => self.compile_value_block(&decl.body),
             Type::Function(_) => unreachable!("a function returns data or Html"),
         };
+        self.context = outer;
+        let return_type = lower_type(self.registry, &decl.return_type);
         let declaration = FlatFunction {
             function,
             modifier,
@@ -316,7 +306,9 @@ impl<'a> Compiler<'a> {
                 },
             })
             .collect();
+        let outer = std::mem::replace(&mut self.context, IrModifier::Render);
         let body = self.compile_html_block(expr);
+        self.context = outer;
         self.pop_scope();
         (parameters, body)
     }
@@ -337,17 +329,19 @@ impl<'a> Compiler<'a> {
     /// returns. The Html of an expression that computes a value is erased,
     /// so `f` pushes no Html.
     fn data_block(&mut self, f: impl FnOnce(&mut Self) -> ValueId) -> FlatBlock {
+        let render = self.context == IrModifier::Render;
         let outer = std::mem::take(&mut self.bindings);
         let result = f(self);
         let bindings = std::mem::replace(&mut self.bindings, outer)
             .into_iter()
             .inspect(|binding| {
+                let cell = matches!(binding.op, FlatOp::Cell(_));
                 assert!(
-                    !matches!(binding.op, FlatOp::Cell(_)),
-                    "a block that computes a value binds no cell"
+                    render || !cell,
+                    "a block that computes a value outside what renders binds no cell"
                 );
                 assert!(
-                    binding.binder.typ.is_value_or_value_closure(),
+                    cell || binding.binder.typ.is_value_or_value_closure(),
                     "a block that computes a value binds Html"
                 );
             })
@@ -494,7 +488,7 @@ impl<'a> Compiler<'a> {
             // In what mutates, a variable a let mut binds is the value its
             // cell has now, not the one the render read.
             TypedExpr::Var { value, .. } => match self.cell(value) {
-                Some(cell) if self.mutates => FlatOp::CellRead(cell),
+                Some(cell) if self.context == IrModifier::Mut => FlatOp::CellRead(cell),
                 _ => return self.resolve(value),
             },
             TypedExpr::Assign { cell, value } => {
@@ -980,9 +974,16 @@ impl<'a> Compiler<'a> {
                 }));
             }
             TypedExpr::Lambda { params, body, .. } => {
+                let Type::Function(function) = &typ else {
+                    unreachable!("a lambda has a function type");
+                };
                 let outer = std::mem::replace(
-                    &mut self.mutates,
-                    matches!(&typ, Type::Function(function) if function.mutates),
+                    &mut self.context,
+                    match function.modifier {
+                        Modifier::Pure => IrModifier::Pure,
+                        Modifier::Render => IrModifier::Render,
+                        Modifier::Mut => IrModifier::Mut,
+                    },
                 );
                 self.push_scope();
                 let parameters: Vec<IrBinder<IrType>> = params
@@ -998,7 +999,7 @@ impl<'a> Compiler<'a> {
                 if typ.renders_html() {
                     let body = self.compile_html_block(body);
                     self.pop_scope();
-                    self.mutates = outer;
+                    self.context = outer;
                     let binder_type = lower_type(self.registry, &typ);
                     assert!(
                         binder_type.is_html_or_html_closure(),
@@ -1009,7 +1010,7 @@ impl<'a> Compiler<'a> {
                 }
                 let body = self.compile_value_block(body);
                 self.pop_scope();
-                self.mutates = outer;
+                self.context = outer;
                 assert!(
                     (parameters.iter()).all(|binder| binder.typ.is_value_or_value_closure()),
                     "a lambda that computes a value takes values only"
@@ -1132,12 +1133,10 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
         Type::Data(data) => IrType::Data(lower_data_type(registry, data)),
         Type::Html(_) => IrType::Html,
         Type::Function(function) => IrType::function(
-            if function.mutates {
-                IrModifier::Mut
-            } else if function.result.renders_html() {
-                IrModifier::Render
-            } else {
-                IrModifier::Pure
+            match function.modifier {
+                Modifier::Pure => IrModifier::Pure,
+                Modifier::Render => IrModifier::Render,
+                Modifier::Mut => IrModifier::Mut,
             },
             (function.parameters.iter()).map(|parameter| lower_type(registry, parameter)),
             lower_type(registry, &function.result),
@@ -2417,6 +2416,160 @@ mod tests {
                   let v11: Html = concat(v10)
                   let v12: Html = f0(v6, v11)
                   v12
+                }
+                page Test: e0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_render_functions_and_lambdas_that_return_values() {
+        check(
+            indoc! {r#"
+                render fn first(start: Int) -> Int {
+                  let mut value = start;
+                  value
+                }
+                page Test(n: Int) {
+                  fn body() -> Html {
+                    let counter = render fn() -> Int {
+                      let mut count = n;
+                      count
+                    };
+                    <p>{first(n).to_string()}{counter().to_string()}</p>
+                  }
+                }
+            "#},
+            expect![[r#"
+                render fn first@f0(
+                  start@v13: Int,
+                ) -> Int {
+                  let v14: Cell[Int] = cell {
+                    v13
+                  }
+                  let v15: Int = read(v14)
+                  v15
+                }
+                entrypoint body@e0(
+                  n@v0: Int,
+                ) -> Html {
+                  let v3: render () -> Int = fn() {
+                    let v1: Cell[Int] = cell {
+                      v0
+                    }
+                    let v2: Int = read(v1)
+                    v2
+                  }
+                  let v4: Int = f0(v0)
+                  let v5: String = int_to_string(v4)
+                  let v6: Html = escape(v5)
+                  let v7: Int = v3()
+                  let v8: String = int_to_string(v7)
+                  let v9: Html = escape(v8)
+                  let v10: Html = concat(v6, v9)
+                  let v11: Id = mint()
+                  let v12: Html = element(v11, "p", {}, v10)
+                  v12
+                }
+                page Test: e0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_cells_in_blocks_that_compute_values_in_what_renders() {
+        check(
+            indoc! {r#"
+                page Test(open: Bool) {
+                  fn body() -> Html {
+                    let bump = match open {
+                      true => {
+                        let mut count = 0;
+                        count + 1
+                      },
+                      false => 0,
+                    };
+                    let seen = open && {
+                      let mut first = true;
+                      first
+                    };
+                    let row = {
+                      let mut shown = false;
+                      fn(label: String) {
+                        <li on:click={mut fn() { shown = !shown }}>{label}</li>
+                      }
+                    };
+                    <ul><button disabled={seen}>{bump.to_string()}</button>{row("a")}{row("b")}</ul>
+                  }
+                }
+            "#},
+            expect![[r#"
+                entrypoint body@e0(
+                  open@v0: Bool,
+                ) -> Html {
+                  let v7: Int = match v0 {
+                    true => {
+                      let v2: Cell[Int] = cell {
+                        let v1: Int = 0
+                        v1
+                      }
+                      let v3: Int = read(v2)
+                      let v4: Int = 1
+                      let v5: Int = int_add(v3, v4)
+                      v5
+                    }
+                    false => {
+                      let v6: Int = 0
+                      v6
+                    }
+                  }
+                  let v12: Bool = match v0 {
+                    true => {
+                      let v9: Cell[Bool] = cell {
+                        let v8: Bool = true
+                        v8
+                      }
+                      let v10: Bool = read(v9)
+                      v10
+                    }
+                    false => {
+                      let v11: Bool = false
+                      v11
+                    }
+                  }
+                  let v14: Cell[Bool] = cell {
+                    let v13: Bool = false
+                    v13
+                  }
+                  let v15: Bool = read(v14)
+                  let v25: render (String) -> Html = fn(
+                    v16: String,
+                  ) {
+                    let v20: mut () -> Tuple[] = fn() {
+                      let v17: Bool = read(v14)
+                      let v18: Bool = bool_not(v17)
+                      let v19: Tuple[] = v14 := v18
+                      v19
+                    }
+                    let v21: Html = escape(v16)
+                    let v22: Html = concat(v21)
+                    let v23: Id = mint()
+                    let v24: Html = element(v23, "li", {}, v22) on_click v20
+                    v24
+                  }
+                  let v26: String = int_to_string(v7)
+                  let v27: Html = escape(v26)
+                  let v28: Html = concat(v27)
+                  let v29: Id = mint()
+                  let v30: Html = element(v29, "button", {disabled: v12}, v28)
+                  let v31: String = "a"
+                  let v32: Html = v25(v31)
+                  let v33: String = "b"
+                  let v34: Html = v25(v33)
+                  let v35: Html = concat(v30, v32, v34)
+                  let v36: Id = mint()
+                  let v37: Html = element(v36, "ul", {}, v35)
+                  v37
                 }
                 page Test: e0
             "#]],

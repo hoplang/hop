@@ -1,7 +1,7 @@
 use crate::display::{Indent, join, write_lines, write_variant};
 use crate::document::DocumentRange;
-use crate::hop::parsing::ParsedType;
 use crate::hop::parsing::{ParsedBlock, ParsedExpr};
+use crate::hop::parsing::{ParsedModifier, ParsedType};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::module_name::ModuleName;
@@ -35,7 +35,7 @@ pub enum ParsedDeclaration {
 /// ```
 #[derive(Debug, Clone)]
 pub struct ParsedFunctionDeclaration {
-    pub mut_range: Option<DocumentRange>,
+    pub modifier: Option<(ParsedModifier, DocumentRange)>,
     pub name: FunctionName,
     pub name_range: DocumentRange,
     pub params: Vec<ParsedParameter>,
@@ -327,7 +327,11 @@ impl Display for ParsedFunctionDeclaration {
             f,
             "{}{}fn {}({}",
             pub_prefix(&self.pub_range),
-            if self.mut_range.is_some() { "mut " } else { "" },
+            match &self.modifier {
+                Some((ParsedModifier::Render, _)) => "render ",
+                Some((ParsedModifier::Mut, _)) => "mut ",
+                None => "",
+            },
             self.name.as_str(),
             join(&self.params, ", ")
         )?;

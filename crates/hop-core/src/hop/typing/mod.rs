@@ -24,7 +24,7 @@ pub use compile_match::CaseVar;
 pub use compile_match::{Decision, FieldBinding, Variable, compile_decision_tree};
 pub use export::Export;
 pub use match_types::{MatchTypes, TypeShape};
-pub use r#type::{ComparableType, DataType, EquatableType, NumericType, Type};
+pub use r#type::{ComparableType, DataType, EquatableType, Modifier, NumericType, Type};
 pub use type_error::TypeError;
 pub use type_registry::{RecordField, ResolvedType, TypeRegistry};
 pub use typecheck::typecheck;

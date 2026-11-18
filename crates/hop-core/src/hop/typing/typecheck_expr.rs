@@ -9,7 +9,9 @@ use super::typecheck_lambda::typecheck_lambda;
 use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join};
 use super::typecheck_markup::typecheck_markup;
 use super::typecheck_match::typecheck_match;
-use super::variable_scope::{HtmlMisuse, RepeatedBody, ScopeEntry, VariableScope};
+use super::variable_scope::{
+    Context, HtmlMisuse, Position, RepeatedBody, ScopeEntry, VariableScope,
+};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::CheapString;
@@ -113,13 +115,13 @@ pub fn typecheck_expr(
             })
         }
         ParsedExpr::Lambda {
-            mut_range,
+            modifier,
             params,
             return_type,
             body,
             range,
         } => typecheck_lambda(
-            mut_range.is_some(),
+            modifier.as_ref().map(|(m, _)| *m),
             params,
             return_type.as_deref(),
             body,
@@ -1235,6 +1237,7 @@ pub fn typecheck_expr(
                 false
             };
             let typed_key = key.as_ref().map(|key| {
+                let outer = var_env.set_context(Context::Outside(Position::Key));
                 let typed_key = typecheck_expr(
                     key,
                     None,
@@ -1247,6 +1250,7 @@ pub fn typecheck_expr(
                     asset_references,
                     errors,
                 );
+                var_env.set_context(outer);
                 let typed_key = typed_key?;
                 let key_type = typed_key.typ();
                 if key_type != Type::INT && key_type != Type::STRING {
@@ -1680,6 +1684,14 @@ pub fn typecheck_block(
             }
             None => None,
         };
+        let outer = binding.mutable.then(|| {
+            var_env.require_render(
+                |position| TypeErrorKind::LetMutNotAllowed { position },
+                &binding.var_name_range,
+                errors,
+            );
+            var_env.set_context(Context::Outside(Position::InitialValue))
+        });
         let typed_value = typecheck_expr(
             &binding.value_expr,
             declared_type.as_ref(),
@@ -1692,6 +1704,9 @@ pub fn typecheck_block(
             asset_references,
             errors,
         );
+        if let Some(outer) = outer {
+            var_env.set_context(outer);
+        }
         let binding_type = match (&declared_type, &typed_value) {
             (Some(declared), _) => declared.clone(),
             (None, Some(typed_value)) => typed_value.typ(),
@@ -1761,12 +1776,9 @@ pub fn typecheck_block(
     } else {
         None
     };
-    // Pop the names, the last first. A cell is checked against the type of
-    // the tail whenever the tail typechecked.
-    let tail_type = typed_tail.as_ref().map(TypedExpr::typ);
     let mut all_pushed = true;
     for entry in checked.iter().rev() {
-        let Checked::Let(binding, _, pushed) = entry else {
+        let Checked::Let(_, _, pushed) = entry else {
             continue;
         };
         if *pushed {
@@ -1779,12 +1791,6 @@ pub fn typecheck_block(
             }
         } else {
             all_pushed = false;
-        }
-        if binding.mutable && tail_type.as_ref().is_some_and(|typ| *typ != Type::HTML) {
-            errors.push(TypeError::new(
-                TypeErrorKind::LetMutOutsideHtml,
-                binding.var_name_range.clone(),
-            ));
         }
     }
     if !all_pushed {
@@ -5894,8 +5900,8 @@ mod tests {
     fn accepts_call_to_closure_variable() {
         accept(
             TypeRegistryBuilder::new(),
-            &[("render", Ty::function([Ty::String, Ty::Int], Ty::Html))],
-            "render(\"a\", 1)",
+            &[("redraw", Ty::function([Ty::String, Ty::Int], Ty::Html))],
+            "redraw(\"a\", 1)",
             expect!["Html"],
         );
     }
@@ -5904,11 +5910,11 @@ mod tests {
     fn rejects_closure_call_with_mismatched_argument_type() {
         reject(
             TypeRegistryBuilder::new(),
-            &[("render", Ty::function([Ty::String, Ty::Int], Ty::Html))],
-            "render(1, 1)",
+            &[("redraw", Ty::function([Ty::String, Ty::Int], Ty::Html))],
+            "redraw(1, 1)",
             expect![[r#"
                 error: Expected String got Int
-                render(1, 1)
+                redraw(1, 1)
                        ^
             "#]],
         );

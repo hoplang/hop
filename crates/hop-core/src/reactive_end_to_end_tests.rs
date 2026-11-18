@@ -1152,3 +1152,118 @@ fn a_handler_reads_the_value_the_render_gave_through_a_let() {
         "#]],
     );
 }
+
+#[test]
+fn a_render_fn_keeps_its_cells_across_renders_and_each_call_has_its_own() {
+    check(
+        indoc! {r#"
+            render fn first(value: Int) -> Int {
+              let mut seen = value;
+              seen
+            }
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                let late = match count > 1 {
+                  true => first(count),
+                  false => 0,
+                };
+                <>
+                  <button on:click={mut fn() { count = count + 1 }}>{count.to_string()}</button>
+                  <i>{first(count).to_string()}</i>
+                  <b>{late.to_string()}</b>
+                  <s on:click={mut fn() { count = 0 }}>reset</s>
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(1),
+            Event::Click(1),
+            Event::Click(1),
+            Event::Click(4),
+            Event::Click(1),
+            Event::Click(1),
+            Event::Click(1),
+        ],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            <i@e2>0</i>
+            <b@e3>0</b>
+            <s@e4>reset</s>
+            -- click button@e1 --
+            <button@e1>1</button>
+            <i@e2>0</i>
+            <b@e3>0</b>
+            <s@e4>reset</s>
+            -- click button@e1 --
+            <button@e1>2</button>
+            <i@e2>0</i>
+            <b@e3>2</b>
+            <s@e4>reset</s>
+            -- click button@e1 --
+            <button@e1>3</button>
+            <i@e2>0</i>
+            <b@e3>2</b>
+            <s@e4>reset</s>
+            -- click s@e4 --
+            <button@e1>0</button>
+            <i@e2>0</i>
+            <b@e3>0</b>
+            <s@e4>reset</s>
+            -- click button@e1 --
+            <button@e1>1</button>
+            <i@e2>0</i>
+            <b@e3>0</b>
+            <s@e4>reset</s>
+            -- click button@e1 --
+            <button@e1>2</button>
+            <i@e2>0</i>
+            <b@e3>2</b>
+            <s@e4>reset</s>
+            -- click button@e1 --
+            <button@e1>3</button>
+            <i@e2>0</i>
+            <b@e3>2</b>
+            <s@e4>reset</s>
+        "#]],
+    );
+}
+
+#[test]
+fn a_render_lambda_that_returns_a_value_keeps_its_cells_per_application() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let mut count = 0;
+                let first = render fn(offset: Int) -> Int {
+                  let mut seen = count + offset;
+                  seen
+                };
+                <>
+                  <button on:click={mut fn() { count = count + 1 }}>{count.to_string()}</button>
+                  <i>{first(0).to_string()}</i>
+                  <b>{first(100).to_string()}</b>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            <i@e2>0</i>
+            <b@e3>100</b>
+            -- click button@e1 --
+            <button@e1>1</button>
+            <i@e2>0</i>
+            <b@e3>100</b>
+            -- click button@e1 --
+            <button@e1>2</button>
+            <i@e2>0</i>
+            <b@e3>100</b>
+        "#]],
+    );
+}

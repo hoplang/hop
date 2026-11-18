@@ -142,9 +142,16 @@ fn declaration(u: &mut Unstructured<'_>, out: &mut String) -> Result<()> {
     }
     match p {
         P::Function => {
-            if u.int_in_range(0..=3)? == 3 {
-                out.push_str("mut");
-                ws(u, out)?;
+            match u.int_in_range(0..=5)? {
+                4 => {
+                    out.push_str("mut");
+                    ws(u, out)?;
+                }
+                5 => {
+                    out.push_str("render");
+                    ws(u, out)?;
+                }
+                _ => {}
             }
             out.push_str("fn");
             ws(u, out)?;
@@ -302,9 +309,16 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
             out.push(']');
         }
         P::Function => {
-            if u.int_in_range(0..=3)? == 3 {
-                out.push_str("mut");
-                ws(u, out)?;
+            match u.int_in_range(0..=5)? {
+                4 => {
+                    out.push_str("mut");
+                    ws(u, out)?;
+                }
+                5 => {
+                    out.push_str("render");
+                    ws(u, out)?;
+                }
+                _ => {}
             }
             out.push_str("fn(");
             list(u, 0..=3, out, |u, _, out| type_(u, depth - 1, out))?;
@@ -609,9 +623,16 @@ fn primary(
             out.push('}');
         }
         P::Lambda => {
-            if u.int_in_range(0..=3)? == 3 {
-                out.push_str("mut");
-                ws(u, out)?;
+            match u.int_in_range(0..=5)? {
+                4 => {
+                    out.push_str("mut");
+                    ws(u, out)?;
+                }
+                5 => {
+                    out.push_str("render");
+                    ws(u, out)?;
+                }
+                _ => {}
             }
             out.push_str("fn(");
             list(u, 0..=3, out, |u, _, out| {

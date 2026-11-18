@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Write};
 
 use crate::display::{Indent, join};
-use crate::hop::typing::{Type, TypedExpr};
+use crate::hop::typing::{Modifier, Type, TypedExpr};
 use crate::symbols::function_name::FunctionName;
 use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
@@ -28,7 +28,7 @@ pub struct TypedParameter {
 
 #[derive(Debug, Clone)]
 pub struct TypedFunctionDeclaration {
-    pub mutates: bool,
+    pub modifier: Modifier,
     pub name: FunctionName,
     pub params: Vec<TypedParameter>,
     pub rest_param: Option<VarName>,
@@ -90,7 +90,7 @@ impl Display for TypedFunctionDeclaration {
         write!(
             f,
             "{}fn {}({}",
-            if self.mutates { "mut " } else { "" },
+            self.modifier.prefix(&self.return_type),
             self.name.as_str(),
             join(&self.params, ", ")
         )?;

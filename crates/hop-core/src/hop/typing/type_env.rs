@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::r#type::{DataType, Type};
+use super::r#type::{DataType, Modifier, Type};
 use super::typed_expr::TypedExpr;
 use crate::document::{CheapString, DocumentRange};
 use crate::html::HtmlElementKind;
@@ -9,7 +9,7 @@ use crate::symbols::var_name::VarName;
 
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
-    pub mutates: bool,
+    pub modifier: Modifier,
     /// How many fields of the row the function declares. They come first,
     /// and they are the only fields a caller can pass by position.
     pub declared: usize,

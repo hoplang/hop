@@ -69,6 +69,7 @@ pub(super) fn is_reserved_name(name: &str) -> bool {
             | "pub"
             | "public"
             | "record"
+            | "render"
             | "return"
             | "self"
             | "static"

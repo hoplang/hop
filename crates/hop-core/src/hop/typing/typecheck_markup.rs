@@ -1,4 +1,4 @@
-use super::r#type::FunctionType;
+use super::r#type::{FunctionType, Modifier};
 use super::{Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
@@ -29,7 +29,7 @@ fn typecheck_on_click(
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedExpr> {
     let handler_type = Type::Function(FunctionType {
-        mutates: true,
+        modifier: Modifier::Mut,
         parameters: Vec::new(),
         result: Box::new(Type::UNIT),
     });

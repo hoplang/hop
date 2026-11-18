@@ -26,7 +26,7 @@ pub use parsed_module::{
     ParsedFunctionDeclaration, ParsedImportDeclaration, ParsedModule, ParsedPageDeclaration,
     ParsedParameter, ParsedRecordDeclaration,
 };
-pub use parsed_type::ParsedType;
+pub use parsed_type::{ParsedModifier, ParsedType};
 
 #[cfg(test)]
 mod source_generator;

@@ -1,6 +1,7 @@
 use core::fmt;
 
 use crate::display::join;
+use crate::hop::parsing::ParsedModifier;
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::type_name::TypeName;
 
@@ -16,9 +17,36 @@ pub struct HtmlType;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionType {
-    pub mutates: bool,
+    pub modifier: Modifier,
     pub parameters: Vec<Type>,
     pub result: Box<Type>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Modifier {
+    Pure,
+    Render,
+    Mut,
+}
+
+impl Modifier {
+    pub fn of(declared: Option<ParsedModifier>, result: &Type) -> Modifier {
+        match declared {
+            Some(ParsedModifier::Render) => Modifier::Render,
+            Some(ParsedModifier::Mut) => Modifier::Mut,
+            None if result.renders_html() => Modifier::Render,
+            None => Modifier::Pure,
+        }
+    }
+
+    pub fn prefix(self, result: &Type) -> &'static str {
+        match self {
+            Modifier::Pure => "",
+            Modifier::Render if result.renders_html() => "",
+            Modifier::Render => "render ",
+            Modifier::Mut => "mut ",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,7 +188,7 @@ impl fmt::Display for Type {
             Type::Function(function) => write!(
                 f,
                 "{}fn({}) -> {}",
-                if function.mutates { "mut " } else { "" },
+                function.modifier.prefix(&function.result),
                 join(&function.parameters, ", "),
                 function.result
             ),

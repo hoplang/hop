@@ -1,17 +1,17 @@
 use std::collections::HashSet;
 
 use super::resolve_type::{check_function_type, resolve_type};
-use super::r#type::{FunctionType, Type};
+use super::r#type::{FunctionType, Modifier, Type};
 use super::type_env::TypeEnv;
 use super::type_registry::TypeRegistry;
 use super::typecheck_call::CallArguments;
 use super::typecheck_expr::{typecheck_block, typecheck_expr};
 use super::typed_expr::TypedExpr;
-use super::variable_scope::{RepeatedBody, VariableScope};
+use super::variable_scope::{Context, Position, RepeatedBody, VariableScope};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::DocumentRange;
-use crate::hop::parsing::{ParsedBlock, ParsedLambdaParameter, ParsedType};
+use crate::hop::parsing::{ParsedBlock, ParsedLambdaParameter, ParsedModifier, ParsedType};
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::function_name::FunctionName;
@@ -22,7 +22,7 @@ use crate::symbols::var_name::VarName;
 /// the lambda has. The body runs once for each application, so it is
 /// checked as a body that runs any number of times.
 pub fn typecheck_lambda(
-    mutates: bool,
+    declared: Option<ParsedModifier>,
     params: &[ParsedLambdaParameter],
     return_type: Option<&ParsedType>,
     body: &ParsedBlock,
@@ -111,7 +111,13 @@ pub fn typecheck_lambda(
     let expected_result = declared_result.as_ref().or(expected_result);
 
     var_env.enter(RepeatedBody::Lambda);
-    let outer = var_env.set_mutates(mutates);
+    let outer = var_env.set_context(match (declared, expected_result) {
+        (Some(ParsedModifier::Mut), _) => Context::Outside(Position::MutFn),
+        (Some(ParsedModifier::Render), _) => Context::Render,
+        (None, Some(result)) if result.renders_html() => Context::Render,
+        (None, Some(_)) => Context::Outside(Position::PureFn),
+        (None, None) => Context::Undecided(Vec::new()),
+    });
     let mut pushed = 0;
     for (param, typ) in &typed_params {
         let Some(name) = &param.var_name else {
@@ -156,7 +162,7 @@ pub fn typecheck_lambda(
             ));
         }
     }
-    var_env.set_mutates(outer);
+    let undecided = var_env.set_context(outer);
     var_env.exit();
 
     let typed_body = typed_body?;
@@ -164,6 +170,11 @@ pub fn typecheck_lambda(
         return None;
     }
     let body_type = typed_body.typ();
+    if let Context::Undecided(pending) = undecided
+        && !body_type.renders_html()
+    {
+        errors.extend(pending);
+    }
     if let Some(declared) = &declared_result
         && body_type != *declared
     {
@@ -179,7 +190,7 @@ pub fn typecheck_lambda(
     }
 
     let function = FunctionType {
-        mutates,
+        modifier: Modifier::of(declared, &body_type),
         parameters: typed_params.iter().map(|(_, typ)| typ.clone()).collect(),
         result: Box::new(body_type),
     };
@@ -229,12 +240,19 @@ pub fn typecheck_apply(
         ));
         return None;
     };
-    if function.mutates && !var_env.mutates() {
+    if function.modifier == Modifier::Mut && !var_env.mutates() {
         errors.push(TypeError::new(
             TypeErrorKind::MutCallOutsideMut,
             report_range.clone(),
         ));
         return None;
+    }
+    if function.modifier == Modifier::Render && !function.result.renders_html() {
+        var_env.require_render(
+            |position| TypeErrorKind::RenderCallNotAllowed { position },
+            report_range,
+            errors,
+        );
     }
     if values.len() != function.parameters.len() {
         errors.push(TypeError::new(
