@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::resolve_type::resolve_type;
-use super::r#type::{DataType, Type};
+use super::r#type::{DataType, FunctionType, Modifier, Type};
 use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_call::{Argument, CallArguments, Callee, NamedArgument, typecheck_call};
@@ -20,7 +20,8 @@ use crate::hop::parsing::{
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::{
-    TypedExpr, TypedLetBinding, TypedLoopSource, TypedRecordUpdateField, TypedStatement,
+    StateKind, TypedExpr, TypedLetBinding, TypedLoopSource, TypedRecordUpdateField, TypedState,
+    TypedStatement,
 };
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;
@@ -43,75 +44,6 @@ pub fn typecheck_expr(
     errors: &mut Vec<TypeError>,
 ) -> Option<TypedExpr> {
     match parsed_expr {
-        ParsedExpr::Assign {
-            var,
-            var_range,
-            value,
-            range,
-        } => {
-            let cell_type = match var_env.lookup(var.as_str()) {
-                Some(ScopeEntry::Variable(entry)) => {
-                    definition_links.push(DefinitionLink {
-                        use_range: var_range.clone(),
-                        definition_range: entry.range.clone(),
-                    });
-                    annotations.push(HoverAnnotation::VarName {
-                        range: var_range.clone(),
-                        typ: entry.typ.clone(),
-                        var_name: var.clone(),
-                    });
-                    if !entry.cell {
-                        errors.push(TypeError::new(
-                            TypeErrorKind::AssignmentToImmutable { name: var.clone() },
-                            var_range.clone(),
-                        ));
-                        return None;
-                    }
-                    entry.typ.clone()
-                }
-                Some(ScopeEntry::Function(_)) | None => {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::UndefinedVariable { name: var.clone() },
-                        var_range.clone(),
-                    ));
-                    return None;
-                }
-            };
-            if !var_env.mutates() {
-                errors.push(TypeError::new(
-                    TypeErrorKind::AssignmentOutsideMut,
-                    range.clone(),
-                ));
-                return None;
-            }
-            let typed_value = typecheck_expr(
-                value,
-                Some(&cell_type),
-                forwarded_params,
-                var_env,
-                type_env,
-                registry,
-                annotations,
-                definition_links,
-                asset_references,
-                errors,
-            )?;
-            if typed_value.typ() != cell_type {
-                errors.push(TypeError::new(
-                    TypeErrorKind::TypeMismatch {
-                        context: TypeMismatchContext::CellWrite,
-                        expected: cell_type,
-                        found: typed_value.typ(),
-                    },
-                    value.range().clone(),
-                ));
-                return None;
-            }
-            Some(TypedExpr::Assign {
-                cell: var.clone(),
-                value: Box::new(typed_value),
-            })
-        }
         ParsedExpr::Lambda {
             modifier,
             params,
@@ -151,7 +83,6 @@ pub fn typecheck_expr(
         } => match var_env.lookup(var_name.as_str()) {
             Some(ScopeEntry::Variable(entry)) => {
                 let typ = entry.typ.clone();
-                let cell = entry.cell;
                 annotations.push(HoverAnnotation::VarName {
                     range: parsed_expr.range().clone(),
                     typ: typ.clone(),
@@ -161,9 +92,6 @@ pub fn typecheck_expr(
                     use_range: parsed_expr.range().clone(),
                     definition_range: entry.range.clone(),
                 });
-                if cell {
-                    var_env.read_cell(var_name, parsed_expr.range(), errors);
-                }
                 if typ == Type::HTML
                     && let Err(misuse) = var_env.use_html(var_name)
                 {
@@ -1359,6 +1287,13 @@ pub fn typecheck_expr(
                     },
                     typecheck_asset(args, range, asset_references, errors),
                 ),
+                "signal" | "state" => {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::StateMacroOutsideLetPair { name: name.clone() },
+                        subject_range.clone(),
+                    ));
+                    return None;
+                }
                 _ => {
                     errors.push(TypeError::new(
                         TypeErrorKind::UnknownMacro { name: name.clone() },
@@ -1644,6 +1579,7 @@ pub fn typecheck_block(
 ) -> Option<TypedExpr> {
     enum Checked<'b> {
         Let(&'b ParsedLetBinding, Option<TypedExpr>, bool),
+        State(TypedState, [bool; 2]),
         Expr(Option<TypedExpr>),
     }
     let mut checked = Vec::new();
@@ -1651,6 +1587,129 @@ pub fn typecheck_block(
     for statement in &block.statements {
         let binding = match statement {
             ParsedStatement::Let(binding) => binding,
+            ParsedStatement::LetPair(pair) => {
+                let [(getter, getter_range), (setter, setter_range)] = &pair.names;
+                let ParsedExpr::Macro {
+                    name,
+                    subject_range,
+                    args,
+                    ..
+                } = &pair.value_expr
+                else {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::LetPairNeedsStateMacro,
+                        pair.value_expr.range().clone(),
+                    ));
+                    complete = false;
+                    break;
+                };
+                let kind = match name.as_str() {
+                    "signal" => StateKind::Signal,
+                    "state" => StateKind::State,
+                    _ => {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::LetPairNeedsStateMacro,
+                            pair.value_expr.range().clone(),
+                        ));
+                        complete = false;
+                        break;
+                    }
+                };
+                let name = kind.name();
+                let [initial] = args.as_slice() else {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::StateMacroArity {
+                            name,
+                            actual: args.len(),
+                        },
+                        pair.value_expr.range().clone(),
+                    ));
+                    complete = false;
+                    break;
+                };
+                var_env.require(
+                    |_| false,
+                    |position| TypeErrorKind::StateMacroNotAllowed { name, position },
+                    subject_range,
+                    errors,
+                );
+                let outer = var_env.set_context(Context::Outside(Position::InitialValue));
+                let typed_initial = typecheck_expr(
+                    initial,
+                    None,
+                    forwarded_params,
+                    var_env,
+                    type_env,
+                    registry,
+                    annotations,
+                    definition_links,
+                    asset_references,
+                    errors,
+                );
+                var_env.set_context(outer);
+                let Some(typed_initial) = typed_initial else {
+                    complete = false;
+                    break;
+                };
+                let typ = typed_initial.typ();
+                if typ.as_data().is_none() {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::StateMacroNotData { name, typ },
+                        initial.range().clone(),
+                    ));
+                    complete = false;
+                    break;
+                }
+                let getter_type = match kind {
+                    StateKind::State => typ.clone(),
+                    StateKind::Signal => Type::Function(FunctionType {
+                        modifier: Modifier::Read,
+                        parameters: Vec::new(),
+                        result: Box::new(typ.clone()),
+                    }),
+                };
+                let setter_type = Type::Function(FunctionType {
+                    modifier: Modifier::Mut,
+                    parameters: vec![typ],
+                    result: Box::new(Type::UNIT),
+                });
+                let mut pushed = [false; 2];
+                for (index, (var_name, range, typ)) in [
+                    (getter, getter_range, getter_type),
+                    (setter, setter_range, setter_type),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    pushed[index] = var_env
+                        .push(var_name.clone(), typ.clone(), range.clone())
+                        .is_ok();
+                    if pushed[index] {
+                        annotations.push(HoverAnnotation::VarName {
+                            range: range.clone(),
+                            typ,
+                            var_name: var_name.clone(),
+                        });
+                    } else {
+                        errors.push(TypeError::new(
+                            TypeErrorKind::VariableAlreadyDefined {
+                                name: var_name.clone(),
+                            },
+                            range.clone(),
+                        ));
+                    }
+                }
+                checked.push(Checked::State(
+                    TypedState {
+                        kind,
+                        getter: getter.clone(),
+                        setter: setter.clone(),
+                        initial: typed_initial,
+                    },
+                    pushed,
+                ));
+                continue;
+            }
             ParsedStatement::Expr { expr, range } => {
                 if !var_env.mutates() {
                     errors.push(TypeError::new(
@@ -1686,15 +1745,6 @@ pub fn typecheck_block(
             }
             None => None,
         };
-        let outer = binding.mutable.then(|| {
-            var_env.require(
-                |_| false,
-                |position| TypeErrorKind::LetMutNotAllowed { position },
-                &binding.var_name_range,
-                errors,
-            );
-            var_env.set_context(Context::Outside(Position::InitialValue))
-        });
         let typed_value = typecheck_expr(
             &binding.value_expr,
             declared_type.as_ref(),
@@ -1707,9 +1757,6 @@ pub fn typecheck_block(
             asset_references,
             errors,
         );
-        if let Some(outer) = outer {
-            var_env.set_context(outer);
-        }
         let binding_type = match (&declared_type, &typed_value) {
             (Some(declared), _) => declared.clone(),
             (None, Some(typed_value)) => typed_value.typ(),
@@ -1718,20 +1765,11 @@ pub fn typecheck_block(
                 break;
             }
         };
-        if binding.mutable && binding_type.as_data().is_none() {
-            errors.push(TypeError::new(
-                TypeErrorKind::LetMutNotData {
-                    typ: binding_type.clone(),
-                },
-                binding.value_expr.range().clone(),
-            ));
-        }
         let pushed = var_env
-            .bind(
+            .push(
                 binding.var_name.clone(),
                 binding_type.clone(),
                 binding.var_name_range.clone(),
-                binding.mutable,
             )
             .is_ok();
         if pushed {
@@ -1781,19 +1819,23 @@ pub fn typecheck_block(
     };
     let mut all_pushed = true;
     for entry in checked.iter().rev() {
-        let Checked::Let(_, _, pushed) = entry else {
-            continue;
+        let pushed = match entry {
+            Checked::Let(_, _, pushed) => std::slice::from_ref(pushed),
+            Checked::State(_, pushed) => pushed.as_slice(),
+            Checked::Expr(_) => continue,
         };
-        if *pushed {
-            let (name, entry) = var_env.pop();
-            if !entry.accessed {
-                errors.push(TypeError::new(
-                    TypeErrorKind::UnusedVariable { var_name: name },
-                    entry.range,
-                ));
+        for pushed in pushed.iter().rev() {
+            if *pushed {
+                let (name, entry) = var_env.pop();
+                if !entry.accessed {
+                    errors.push(TypeError::new(
+                        TypeErrorKind::UnusedVariable { var_name: name },
+                        entry.range,
+                    ));
+                }
+            } else {
+                all_pushed = false;
             }
-        } else {
-            all_pushed = false;
         }
     }
     if !all_pushed {
@@ -1810,9 +1852,9 @@ pub fn typecheck_block(
                 Some(match entry {
                     Checked::Let(binding, typed_value, _) => TypedStatement::Let(TypedLetBinding {
                         var: binding.var_name.clone(),
-                        cell: binding.mutable,
                         value: typed_value?,
                     }),
+                    Checked::State(state, _) => TypedStatement::State(state),
                     Checked::Expr(typed) => TypedStatement::Expr(typed?),
                 })
             })

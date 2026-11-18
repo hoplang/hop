@@ -381,12 +381,12 @@ fn f() -> Html {
                       (tag_name))))))))))))
 
 ================================================================================
-mutable let bindings
+state and signal bindings
 ================================================================================
 
 fn f() -> Html {
-  let mut count: Int = 0;
-  let mut open = false;
+  let (count, set_count) = state!(0);
+  let (open, set_open) = signal!(false);
   <p>{count}</p>
 }
 
@@ -399,14 +399,21 @@ fn f() -> Html {
     (type_identifier)
     (block
       (let_statement
-        (mutable_specifier)
-        (identifier)
-        (type_identifier)
-        (integer_literal))
+        (tuple_pattern
+          (identifier)
+          (identifier))
+        (macro_invocation
+          (identifier)
+          (arguments
+            (integer_literal))))
       (let_statement
-        (mutable_specifier)
-        (identifier)
-        (boolean_literal))
+        (tuple_pattern
+          (identifier)
+          (identifier))
+        (macro_invocation
+          (identifier)
+          (arguments
+            (boolean_literal))))
       (element
         (start_tag
           (tag_name))
@@ -474,7 +481,7 @@ key remains an ordinary identifier
 ================================================================================
 
 fn f(key: Int, n: Int) -> Int {
-  let mut n = key;
+  let n = key;
   let key = n;
   for key in key key key { key }
 }
@@ -494,7 +501,6 @@ fn f(key: Int, n: Int) -> Int {
     (type_identifier)
     (block
       (let_statement
-        (mutable_specifier)
         (identifier)
         (identifier))
       (let_statement
@@ -508,7 +514,7 @@ fn f(key: Int, n: Int) -> Int {
           (identifier))))))
 
 ================================================================================
-mut functions, expression statements and assignments
+mut functions and expression statements
 ================================================================================
 
 mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
@@ -517,9 +523,8 @@ mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
 }
 
 fn Main() -> Int {
-  let mut count = 0;
-  let reset = mut fn() { count = 0 };
-  count = count + 1;
+  let (count, set_count) = state!(0);
+  let reset = mut fn() { set_count(0); set_count(count + 1) };
   count
 }
 
@@ -555,24 +560,30 @@ fn Main() -> Int {
     (type_identifier)
     (block
       (let_statement
-        (mutable_specifier)
-        (identifier)
-        (integer_literal))
+        (tuple_pattern
+          (identifier)
+          (identifier))
+        (macro_invocation
+          (identifier)
+          (arguments
+            (integer_literal))))
       (let_statement
         (identifier)
         (lambda_expression
           (mutable_specifier)
           (lambda_parameters)
           (block
-            (assignment_expression
+            (expression_statement
+              (call_expression
+                (identifier)
+                (arguments
+                  (integer_literal))))
+            (call_expression
               (identifier)
-              (integer_literal)))))
-      (expression_statement
-        (assignment_expression
-          (identifier)
-          (binary_expression
-            (identifier)
-            (integer_literal))))
+              (arguments
+                (binary_expression
+                  (identifier)
+                  (integer_literal)))))))
       (identifier))))
 
 ================================================================================
@@ -580,7 +591,7 @@ render functions
 ================================================================================
 
 render fn first(start: Int, f: render fn(Int) -> Int) -> Int {
-  let mut value = start;
+  let (value, set_value) = state!(start);
   value
 }
 
@@ -609,9 +620,13 @@ pub render fn Card() -> Html {
     (type_identifier)
     (block
       (let_statement
-        (mutable_specifier)
-        (identifier)
-        (identifier))
+        (tuple_pattern
+          (identifier)
+          (identifier))
+        (macro_invocation
+          (identifier)
+          (arguments
+            (identifier))))
       (identifier)))
   (function_declaration
     (visibility_modifier)

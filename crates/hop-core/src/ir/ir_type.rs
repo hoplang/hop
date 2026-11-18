@@ -35,6 +35,17 @@ pub enum IrModifier {
     Mut,
 }
 
+impl IrModifier {
+    pub fn allows(self, effect: IrModifier) -> bool {
+        match (self, effect) {
+            (_, IrModifier::Pure) => true,
+            (IrModifier::Pure, _) => false,
+            (_, IrModifier::Read) => true,
+            (context, effect) => context == effect,
+        }
+    }
+}
+
 // A signature is that of a function or a closure alike.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IrSignature {

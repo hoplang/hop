@@ -1664,43 +1664,55 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_cell_in_a_block_whose_tail_is_not_html_after_a_failed_let() {
+    fn rejects_a_state_in_a_block_whose_tail_is_not_html_after_a_failed_let() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn missing_value() -> Int {
-                  let mut a = 0;
+                  let (a, set_a) = state!(0);
                   let b: Int = missing;
                   a + b
                 }
                 fn clash() -> Int {
-                  let mut c = 0;
+                  let (c, set_c) = state!(0);
                   let c = 1;
                   c
                 }
             "#},
             expect![[r#"
-                error: let mut needs a render fn
+                warning: Unused variable set_a
                   --> main.hop (line 2, col 11)
                  1 | fn missing_value() -> Int {
-                 2 |   let mut a = 0;
-                   |           ^
+                 2 |   let (a, set_a) = state!(0);
+                   |           ^^^^^
+
+                error: state! needs a render fn
+                  --> main.hop (line 2, col 20)
+                 1 | fn missing_value() -> Int {
+                 2 |   let (a, set_a) = state!(0);
+                   |                    ^^^^^^
 
                 error: Undefined variable: missing
                   --> main.hop (line 3, col 16)
-                 2 |   let mut a = 0;
+                 2 |   let (a, set_a) = state!(0);
                  3 |   let b: Int = missing;
                    |                ^^^^^^^
 
-                error: let mut needs a render fn
+                warning: Unused variable set_c
                   --> main.hop (line 7, col 11)
                  6 | fn clash() -> Int {
-                 7 |   let mut c = 0;
-                   |           ^
+                 7 |   let (c, set_c) = state!(0);
+                   |           ^^^^^
+
+                error: state! needs a render fn
+                  --> main.hop (line 7, col 20)
+                 6 | fn clash() -> Int {
+                 7 |   let (c, set_c) = state!(0);
+                   |                    ^^^^^^
 
                 error: Variable c is already defined
                   --> main.hop (line 8, col 7)
-                 7 |   let mut c = 0;
+                 7 |   let (c, set_c) = state!(0);
                  8 |   let c = 1;
                    |       ^
             "#]],
@@ -14981,7 +14993,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_cells_clicks_and_keys() {
+    fn accepts_states_clicks_and_keys() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -14990,10 +15002,10 @@ mod tests {
                   second()
                 }
                 fn Main(ids: Array[Int]) -> Html {
-                  let mut count = 0;
-                  let mut on = false;
-                  let bump = mut fn() { count = count + 1 };
-                  let flip = mut fn() -> Tuple[] { on = !on };
+                  let (count, set_count) = state!(0);
+                  let (on, set_on) = state!(false);
+                  let bump = mut fn() { set_count(count + 1) };
+                  let flip = mut fn() -> Tuple[] { set_on(!on) };
                   <>
                     <button on:click={mut fn() { both(bump, flip) }}>
                       {count.to_string()}
@@ -15007,10 +15019,10 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(ids: Array[Int]) -> Html {
-                  let mut count = 0 in let mut on = false in let bump = mut fn() -> Tuple[] {
-                    count = add(count, 1)
+                  let (count, set_count) = state!(0) in let (on, set_on) = state!(false) in let bump = mut fn() -> Tuple[] {
+                    set_count(add(count, 1))
                   } in let flip = mut fn() -> Tuple[] {
-                    on = not(on)
+                    set_on(not(on))
                   } in concat(
                     element(
                       tag: "button",
@@ -15042,141 +15054,60 @@ mod tests {
     }
 
     #[test]
-    fn rejects_an_assignment_to_a_variable_that_is_not_mutable_or_of_a_value_of_another_type() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Fixed() -> Html {
-                  let count = 0;
-                  <button on:click={mut fn() { count = count + 1 }}>x</button>
-                }
-                fn Counter() -> Html {
-                  let mut count = 0;
-                  <button on:click={mut fn() { count = "one" }}>{count.to_string()}</button>
-                }
-            "#},
-            expect![[r#"
-                error: Variable count is not mutable
-                  --> main.hop (line 3, col 32)
-                2 |   let count = 0;
-                3 |   <button on:click={mut fn() { count = count + 1 }}>x</button>
-                  |                                ^^^^^
-
-                error: Expected Int got String
-                  --> main.hop (line 7, col 40)
-                6 |   let mut count = 0;
-                7 |   <button on:click={mut fn() { count = "one" }}>{count.to_string()}</button>
-                  |                                        ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_a_cell_in_a_function_or_a_lambda_that_does_not_render_html() {
+    fn rejects_a_state_in_a_function_or_a_lambda_that_does_not_render_html() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn counter() -> Int {
-                  let mut count = 0;
+                  let (count, set_count) = state!(0);
                   count
                 }
                 fn Main() -> Html {
-                  let mut count = 0;
+                  let (count, set_count) = state!(0);
                   <button on:click={mut fn() {
-                    let mut last = count;
-                    count = last + 1
+                    let (last, set_last) = state!(count);
+                    set_count(last + 1)
                   }}>{count.to_string()}</button>
                 }
             "#},
             expect![[r#"
-                error: let mut needs a render fn
-                  --> main.hop (line 2, col 11)
+                warning: Unused variable set_count
+                  --> main.hop (line 2, col 15)
                  1 | fn counter() -> Int {
-                 2 |   let mut count = 0;
-                   |           ^^^^^
+                 2 |   let (count, set_count) = state!(0);
+                   |               ^^^^^^^^^
 
-                error: let mut in a mut fn
-                  --> main.hop (line 8, col 13)
+                error: state! needs a render fn
+                  --> main.hop (line 2, col 28)
+                 1 | fn counter() -> Int {
+                 2 |   let (count, set_count) = state!(0);
+                   |                            ^^^^^^
+
+                warning: Unused variable set_last
+                  --> main.hop (line 8, col 16)
                  7 |   <button on:click={mut fn() {
-                 8 |     let mut last = count;
-                   |             ^^^^
+                 8 |     let (last, set_last) = state!(count);
+                   |                ^^^^^^^^
+
+                error: state! in a mut fn
+                  --> main.hop (line 8, col 28)
+                 7 |   <button on:click={mut fn() {
+                 8 |     let (last, set_last) = state!(count);
+                   |                            ^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_a_cell_in_a_block_of_its_own_that_computes_a_value_in_a_render_fn() {
-        accept(
-            indoc! {r#"
-                -- main.hop --
-                fn Main(open: Bool, name: Option[String]) -> Html {
-                  let bump = match open {
-                    true => {
-                      let mut count = 0;
-                      count + 1
-                    },
-                    false => 0,
-                  };
-                  let seen = open && {
-                    let mut first = true;
-                    first
-                  };
-                  let shut = open || {
-                    let mut last = false;
-                    last
-                  };
-                  let label = name.unwrap_or({
-                    let mut fallback = "anon";
-                    fallback
-                  });
-                  <>
-                    <button disabled={seen}>{label}{bump.to_string()}</button>
-                    <button disabled={shut}>x</button>
-                  </>
-                }
-            "#},
-            expect![[r#"
-                -- main.hop --
-                fn Main(open: Bool, name: Option[String]) -> Html {
-                  let bump = match open {
-                    true => let mut count = 0 in add(count, 1),
-                    false => 0,
-                  } in let seen = and(open, let mut first = true in first) in let shut = or(open, let mut last = false in last) in let label = name.unwrap_or(let mut fallback = "anon" in fallback) in concat(
-                    element(
-                      tag: "button",
-                      attrs: [
-                        disabled: seen,
-                      ],
-                      children: concat(
-                        escape(label),
-                        escape(bump.to_string()),
-                      ),
-                    ),
-                    element(
-                      tag: "button",
-                      attrs: [
-                        disabled: shut,
-                      ],
-                      children: concat(
-                        text("x"),
-                      ),
-                    ),
-                  )
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_a_cell_in_a_block_that_returns_a_lambda_that_renders_html() {
+    fn accepts_a_state_in_a_block_that_returns_a_lambda_that_renders_html() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
                   let row = {
-                    let mut open = false;
+                    let (open, set_open) = state!(false);
                     fn(label: String) {
-                      <li on:click={mut fn() { open = !open }}>{label}</li>
+                      <li on:click={mut fn() { set_open(!open) }}>{label}</li>
                     }
                   };
                   <ul>{row("a")}{row("b")}</ul>
@@ -15185,7 +15116,7 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let row = let mut open = false in fn(label: String) -> Html {
+                  let row = let (open, set_open) = state!(false) in fn(label: String) -> Html {
                     element(
                       tag: "li",
                       attrs: [],
@@ -15193,7 +15124,7 @@ mod tests {
                         escape(label),
                       ),
                       on_click: mut fn() -> Tuple[] {
-                        open = not(open)
+                        set_open(not(open))
                       },
                     )
                   } in element(
@@ -15210,15 +15141,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_a_cell_in_an_arm_of_a_match_that_renders_html() {
+    fn accepts_a_state_in_an_arm_of_a_match_that_renders_html() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main(open: Bool) -> Html {
                   match open {
                     true => {
-                      let mut count = 0;
-                      <button on:click={mut fn() { count = count + 1 }}>{count.to_string()}</button>
+                      let (count, set_count) = state!(0);
+                      <button on:click={mut fn() { set_count(count + 1) }}>{count.to_string()}</button>
                     },
                     false => <i>closed</i>,
                   }
@@ -15228,14 +15159,14 @@ mod tests {
                 -- main.hop --
                 fn Main(open: Bool) -> Html {
                   match open {
-                    true => let mut count = 0 in element(
+                    true => let (count, set_count) = state!(0) in element(
                       tag: "button",
                       attrs: [],
                       children: concat(
                         escape(count.to_string()),
                       ),
                       on_click: mut fn() -> Tuple[] {
-                        count = add(count, 1)
+                        set_count(add(count, 1))
                       },
                     ),
                     false => element(
@@ -15252,14 +15183,14 @@ mod tests {
     }
 
     #[test]
-    fn accepts_a_cell_in_a_lambda_that_renders_html() {
+    fn accepts_a_state_in_a_lambda_that_renders_html() {
         accept(
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
                   let row = fn(label: String) {
-                    let mut open = false;
-                    <li on:click={mut fn() { open = !open }}>{label}</li>
+                    let (open, set_open) = state!(false);
+                    <li on:click={mut fn() { set_open(!open) }}>{label}</li>
                   };
                   <ul>{row("a")}{row("b")}</ul>
                 }
@@ -15268,14 +15199,14 @@ mod tests {
                 -- main.hop --
                 fn Main() -> Html {
                   let row = fn(label: String) -> Html {
-                    let mut open = false in element(
+                    let (open, set_open) = state!(false) in element(
                       tag: "li",
                       attrs: [],
                       children: concat(
                         escape(label),
                       ),
                       on_click: mut fn() -> Tuple[] {
-                        open = not(open)
+                        set_open(not(open))
                       },
                     )
                   } in element(
@@ -15292,13 +15223,13 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_key_that_binds_a_cell_or_is_neither_an_int_nor_a_string() {
+    fn rejects_a_key_that_binds_a_state_or_is_neither_an_int_nor_a_string() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Seen(ids: Array[Int]) -> Html {
                   for id in ids key {
-                    let mut seen = id;
+                    let (seen, set_seen) = state!(id);
                     seen
                   } {
                     <b>{id.to_string()}</b>
@@ -15311,11 +15242,17 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: let mut in a key
-                  --> main.hop (line 3, col 13)
+                warning: Unused variable set_seen
+                  --> main.hop (line 3, col 16)
                  2 |   for id in ids key {
-                 3 |     let mut seen = id;
-                   |             ^^^^
+                 3 |     let (seen, set_seen) = state!(id);
+                   |                ^^^^^^^^
+
+                error: state! in a key
+                  --> main.hop (line 3, col 28)
+                 2 |   for id in ids key {
+                 3 |     let (seen, set_seen) = state!(id);
+                   |                            ^^^^^^
 
                 error: Expected Int or String got Bool
                   --> main.hop (line 10, col 21)
@@ -15327,32 +15264,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_cell_that_holds_html() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Main() -> Html {
-                  let mut shown = <b>x</b>;
-                  shown
-                }
-            "#},
-            expect![[r#"
-                error: let mut cannot hold Html
-                  --> main.hop (line 2, col 19)
-                1 | fn Main() -> Html {
-                2 |   let mut shown = <b>x</b>;
-                  |                   ^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_a_click_handler_of_another_type() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let mut count = 0;
+                  let (count, set_count) = state!(0);
                   <>
                     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
                     <button on:click="go()">x</button>
@@ -15361,17 +15278,17 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                warning: Unused variable set_count
+                  --> main.hop (line 2, col 15)
+                1 | fn Main() -> Html {
+                2 |   let (count, set_count) = state!(0);
+                  |               ^^^^^^^^^
+
                 error: Expected mut fn() -> Tuple[] got fn() -> Int
                   --> main.hop (line 4, col 23)
                 3 |   <>
                 4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
                   |                       ^^^^^^^^^^^^^^^^^^
-
-                error: Only a read, render or mut fn can capture a mutable variable
-                  --> main.hop (line 4, col 30)
-                3 |   <>
-                4 |     <button on:click={fn() { count + 1 }}>{count.to_string()}</button>
-                  |                              ^^^^^
 
                 error: Expected mut fn() -> Tuple[] got String
                   --> main.hop (line 5, col 22)
@@ -15397,27 +15314,33 @@ mod tests {
                   <button>{children}</button>
                 }
                 fn Twice() -> Html {
-                  let mut count = 0;
-                  <button on:click={mut fn() { count = 1 }} on:click={mut fn() { count = 2 }}>
+                  let (count, set_count) = state!(0);
+                  <button on:click={mut fn() { set_count(1) }} on:click={mut fn() { set_count(2) }}>
                     {count.to_string()}
                   </button>
                 }
                 fn Main() -> Html {
-                  let mut count = 0;
-                  <Button on:click={mut fn() { count = count + 1 }}>{count.to_string()}</Button>
+                  let (count, set_count) = state!(0);
+                  <Button on:click={mut fn() { set_count(count + 1) }}>{count.to_string()}</Button>
                 }
             "#},
             expect![[r#"
                 error: Duplicate attribute 'on:click'
-                  --> main.hop (line 6, col 45)
-                 5 |   let mut count = 0;
-                 6 |   <button on:click={mut fn() { count = 1 }} on:click={mut fn() { count = 2 }}>
-                   |                                             ^^^^^^^^
+                  --> main.hop (line 6, col 48)
+                 5 |   let (count, set_count) = state!(0);
+                 6 |   <button on:click={mut fn() { set_count(1) }} on:click={mut fn() { set_count(2) }}>
+                   |                                                ^^^^^^^^
+
+                warning: Unused variable set_count
+                  --> main.hop (line 11, col 15)
+                10 | fn Main() -> Html {
+                11 |   let (count, set_count) = state!(0);
+                   |               ^^^^^^^^^
 
                 error: Function Button does not accept argument 'on:click'
                   --> main.hop (line 12, col 11)
-                11 |   let mut count = 0;
-                12 |   <Button on:click={mut fn() { count = count + 1 }}>{count.to_string()}</Button>
+                11 |   let (count, set_count) = state!(0);
+                12 |   <Button on:click={mut fn() { set_count(count + 1) }}>{count.to_string()}</Button>
                    |           ^^^^^^^^
             "#]],
         );
@@ -15429,23 +15352,29 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 fn Listed() -> Html {
-                  let mut count = 0;
-                  let writes = [mut fn() { count = 1 }];
+                  let (count, set_count) = state!(0);
+                  let writes = [mut fn() { set_count(1) }];
                   <b>{count.to_string()}</b>
                 }
             "#},
             expect![[r#"
+                warning: Unused variable count
+                  --> main.hop (line 2, col 8)
+                1 | fn Listed() -> Html {
+                2 |   let (count, set_count) = state!(0);
+                  |        ^^^^^
+
                 error: mut fn() -> Tuple[] is not allowed inside another type
                   --> main.hop (line 3, col 17)
-                2 |   let mut count = 0;
-                3 |   let writes = [mut fn() { count = 1 }];
-                  |                 ^^^^^^^^^^^^^^^^^^^^^^
+                2 |   let (count, set_count) = state!(0);
+                3 |   let writes = [mut fn() { set_count(1) }];
+                  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_mut_functions_statements_and_assignments() {
+    fn accepts_mut_functions_statements_and_setters() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -15454,19 +15383,19 @@ mod tests {
                   press()
                 }
                 fn Main() -> Html {
-                  let mut count = 0;
-                  let bump = mut fn() { count = count + 1 };
+                  let (count, set_count) = state!(0);
+                  let bump = mut fn() { set_count(count + 1) };
                   <button on:click={mut fn() {
                     twice(bump);
-                    match count > 2 {true => count = 0, false => ()}
+                    match count > 2 {true => set_count(0), false => ()}
                   }}>{count.to_string()}</button>
                 }
             "#},
             expect![[r#"
                 -- main.hop --
                 fn Main() -> Html {
-                  let mut count = 0 in let bump = mut fn() -> Tuple[] {
-                    count = add(count, 1)
+                  let (count, set_count) = state!(0) in let bump = mut fn() -> Tuple[] {
+                    set_count(add(count, 1))
                   } in element(
                     tag: "button",
                     attrs: [],
@@ -15475,7 +15404,7 @@ mod tests {
                     ),
                     on_click: mut fn() -> Tuple[] {
                       twice(press: bump); match gt(count, 2) {
-                        true => count = 0,
+                        true => set_count(0),
                         false => (),
                       }
                     },
@@ -15542,100 +15471,19 @@ mod tests {
     }
 
     #[test]
-    fn accepts_render_functions_that_return_values() {
-        accept(
-            indoc! {r#"
-                -- main.hop --
-                render fn first(start: Int) -> Int {
-                  let mut value = start;
-                  value
-                }
-                render fn twice(start: Int) -> Int {
-                  first(start) + first(start)
-                }
-                fn Main(n: Int) -> Html {
-                  let counter = render fn() -> Int {
-                    let mut count = n;
-                    count
-                  };
-                  let label = match n > 0 {
-                    true => {
-                      let mut seen = n;
-                      seen.to_string()
-                    },
-                    false => "none",
-                  };
-                  <p>{first(n).to_string()}{twice(n).to_string()}{counter().to_string()}{label}</p>
-                }
-            "#},
-            expect![[r#"
-                -- main.hop --
-                fn Main(n: Int) -> Html {
-                  let counter = render fn() -> Int {
-                    let mut count = n in count
-                  } in let label = match gt(n, 0) {
-                    true => let mut seen = n in seen.to_string(),
-                    false => "none",
-                  } in element(
-                    tag: "p",
-                    attrs: [],
-                    children: concat(
-                      escape(first(start: n).to_string()),
-                      escape(twice(start: n).to_string()),
-                      escape(counter().to_string()),
-                      escape(label),
-                    ),
-                  )
-                }
-
-                render fn first(start: Int) -> Int {
-                  let mut value = start in value
-                }
-
-                render fn twice(start: Int) -> Int {
-                  add(first(start: start), first(start: start))
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_a_let_mut_in_an_initial_value() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Main() -> Html {
-                  let mut a = {
-                    let mut b = 0;
-                    b
-                  };
-                  <p>{a.to_string()}</p>
-                }
-            "#},
-            expect![[r#"
-                error: let mut in an initial value
-                  --> main.hop (line 3, col 13)
-                2 |   let mut a = {
-                3 |     let mut b = 0;
-                  |             ^
-            "#]],
-        );
-    }
-
-    #[test]
     fn rejects_calls_of_render_functions_outside_what_renders() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 render fn first(start: Int) -> Int {
-                  let mut value = start;
+                  let (value, set_value) = state!(start);
                   value
                 }
                 fn pure(n: Int) -> Int {
                   first(n)
                 }
                 fn Main(items: Array[Int]) -> Html {
-                  let mut a = first(1);
+                  let (a, set_a) = state!(first(1));
                   let later = render fn() -> Int { 2 };
                   let f = fn() -> Int { first(3) };
                   let g = fn() { later() };
@@ -15644,11 +15492,17 @@ mod tests {
                     {for item in items key first(item) {
                       <i>{a.to_string()}</i>
                     }}
-                    <b on:click={mut fn() { a = first(4) }}>x</b>
+                    <b on:click={mut fn() { set_a(first(4)) }}>x</b>
                   </>
                 }
             "#},
             expect![[r#"
+                warning: Unused variable set_value
+                  --> main.hop (line 2, col 15)
+                 1 | render fn first(start: Int) -> Int {
+                 2 |   let (value, set_value) = state!(start);
+                   |               ^^^^^^^^^
+
                 error: Render fn called from a non-render fn
                   --> main.hop (line 6, col 3)
                  5 | fn pure(n: Int) -> Int {
@@ -15656,10 +15510,10 @@ mod tests {
                    |   ^^^^^^^^
 
                 error: Render fn called in an initial value
-                  --> main.hop (line 9, col 15)
+                  --> main.hop (line 9, col 27)
                  8 | fn Main(items: Array[Int]) -> Html {
-                 9 |   let mut a = first(1);
-                   |               ^^^^^^^^
+                 9 |   let (a, set_a) = state!(first(1));
+                   |                           ^^^^^^^^
 
                 error: Render fn called from a non-render fn
                   --> main.hop (line 11, col 25)
@@ -15680,10 +15534,10 @@ mod tests {
                    |                            ^^^^^^^^^^^
 
                 error: Render fn called from a mut fn
-                  --> main.hop (line 18, col 33)
+                  --> main.hop (line 18, col 35)
                 17 |     }}
-                18 |     <b on:click={mut fn() { a = first(4) }}>x</b>
-                   |                                 ^^^^^^^^
+                18 |     <b on:click={mut fn() { set_a(first(4)) }}>x</b>
+                   |                                   ^^^^^^^^
             "#]],
         );
     }
@@ -15711,107 +15565,51 @@ mod tests {
     }
 
     #[test]
-    fn rejects_reads_of_cells_in_plain_lambdas() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Main() -> Html {
-                  let mut count = 0;
-                  let mut label = "";
-                  let annotated = fn() -> Int { count };
-                  let inferred = fn() { count };
-                  let nested = fn() {
-                    let inner = fn() -> Int { count };
-                    inner()
-                  };
-                  let around = fn() -> Int {
-                    let row = fn() { <p>{count.to_string()}</p> };
-                    1
-                  };
-                  let rows = fn() {
-                    let row = fn() { <p>{count.to_string()}</p> };
-                    row()
-                  };
-                  <button on:click={mut fn() {
-                    let inside = fn() { count };
-                    label = (annotated() + inferred() + nested() + around() + inside()).to_string()
-                  }}>{label}{rows()}</button>
-                }
-            "#},
-            expect![[r#"
-                error: Only a read, render or mut fn can capture a mutable variable
-                  --> main.hop (line 4, col 33)
-                 3 |   let mut label = "";
-                 4 |   let annotated = fn() -> Int { count };
-                   |                                 ^^^^^
-
-                error: Only a read, render or mut fn can capture a mutable variable
-                  --> main.hop (line 5, col 25)
-                 4 |   let annotated = fn() -> Int { count };
-                 5 |   let inferred = fn() { count };
-                   |                         ^^^^^
-
-                error: Only a read, render or mut fn can capture a mutable variable
-                  --> main.hop (line 7, col 31)
-                 6 |   let nested = fn() {
-                 7 |     let inner = fn() -> Int { count };
-                   |                               ^^^^^
-
-                warning: Unused variable row
-                  --> main.hop (line 11, col 9)
-                10 |   let around = fn() -> Int {
-                11 |     let row = fn() { <p>{count.to_string()}</p> };
-                   |         ^^^
-
-                error: Only a read, render or mut fn can capture a mutable variable
-                  --> main.hop (line 11, col 26)
-                10 |   let around = fn() -> Int {
-                11 |     let row = fn() { <p>{count.to_string()}</p> };
-                   |                          ^^^^^
-
-                error: Only a read, render or mut fn can capture a mutable variable
-                  --> main.hop (line 19, col 25)
-                18 |   <button on:click={mut fn() {
-                19 |     let inside = fn() { count };
-                   |                         ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_a_let_mut_in_a_loop_of_a_lambda_only_if_the_lambda_returns_a_value() {
+    fn rejects_a_state_in_a_loop_of_a_lambda_only_if_the_lambda_returns_a_value() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main() -> Html {
                   let rows = fn() {
-                    <>{for i in [1] { let mut c = i; <p>{c.to_string()}</p> }}</>
+                    <>{for i in [1] { let (c, set_c) = state!(i); <p>{c.to_string()}</p> }}</>
                   };
                   let count = fn() {
-                    let shown = <>{for i in [1] { let mut c = i; <p>{c.to_string()}</p> }}</>;
+                    let shown = <>{for i in [1] { let (c, set_c) = state!(i); <p>{c.to_string()}</p> }}</>;
                     1
                   };
                   <>{rows()}{count().to_string()}</>
                 }
             "#},
             expect![[r#"
+                warning: Unused variable set_c
+                  --> main.hop (line 3, col 31)
+                 2 |   let rows = fn() {
+                 3 |     <>{for i in [1] { let (c, set_c) = state!(i); <p>{c.to_string()}</p> }}</>
+                   |                               ^^^^^
+
                 warning: Unused variable shown
                   --> main.hop (line 6, col 9)
                  5 |   let count = fn() {
-                 6 |     let shown = <>{for i in [1] { let mut c = i; <p>{c.to_string()}</p> }}</>;
+                 6 |     let shown = <>{for i in [1] { let (c, set_c) = state!(i); <p>{c.to_string()}</p> }}</>;
                    |         ^^^^^
 
-                error: let mut needs a render fn
+                warning: Unused variable set_c
                   --> main.hop (line 6, col 43)
                  5 |   let count = fn() {
-                 6 |     let shown = <>{for i in [1] { let mut c = i; <p>{c.to_string()}</p> }}</>;
-                   |                                           ^
+                 6 |     let shown = <>{for i in [1] { let (c, set_c) = state!(i); <p>{c.to_string()}</p> }}</>;
+                   |                                           ^^^^^
+
+                error: state! needs a render fn
+                  --> main.hop (line 6, col 52)
+                 5 |   let count = fn() {
+                 6 |     let shown = <>{for i in [1] { let (c, set_c) = state!(i); <p>{c.to_string()}</p> }}</>;
+                   |                                                    ^^^^^^
             "#]],
         );
     }
 
     #[test]
-    fn accepts_read_functions_where_cells_can_be_read() {
+    fn accepts_read_functions_where_signals_can_be_read() {
         accept(
             indoc! {r#"
                 -- main.hop --
@@ -15822,13 +15620,14 @@ mod tests {
                   double(double(n))
                 }
                 fn Main(items: Array[Int]) -> Html {
-                  let mut count = 1;
-                  let get = read fn() -> Int { quadruple(count) };
-                  let mut step = get();
-                  let bump = mut fn() { count = get() + step };
+                  let (count, set_count) = signal!(1);
+                  let get = read fn() -> Int { quadruple(count()) };
+                  let (step, set_step) = state!(get());
+                  let bump = mut fn() { set_count(get() + step) };
                   let row = fn(item: Int) { <i>{(item + get()).to_string()}</i> };
                   <>
                     <button on:click={bump}>{get().to_string()}</button>
+                    <b on:click={mut fn() { set_step(get()) }}>{step.to_string()}</b>
                     {for item in items key item + get() { row(item) }}
                   </>
                 }
@@ -15836,10 +15635,10 @@ mod tests {
             expect![[r#"
                 -- main.hop --
                 fn Main(items: Array[Int]) -> Html {
-                  let mut count = 1 in let get = read fn() -> Int {
-                    quadruple(n: count)
-                  } in let mut step = get() in let bump = mut fn() -> Tuple[] {
-                    count = add(get(), step)
+                  let (count, set_count) = signal!(1) in let get = read fn() -> Int {
+                    quadruple(n: count())
+                  } in let (step, set_step) = state!(get()) in let bump = mut fn() -> Tuple[] {
+                    set_count(add(get(), step))
                   } in let row = fn(item: Int) -> Html {
                     element(
                       tag: "i",
@@ -15856,6 +15655,16 @@ mod tests {
                         escape(get().to_string()),
                       ),
                       on_click: bump,
+                    ),
+                    element(
+                      tag: "b",
+                      attrs: [],
+                      children: concat(
+                        escape(step.to_string()),
+                      ),
+                      on_click: mut fn() -> Tuple[] {
+                        set_step(get())
+                      },
                     ),
                     for item in items key add(item, get()) {
                       row(item)
@@ -15886,11 +15695,11 @@ mod tests {
                   first()
                 }
                 read fn counter() -> Int {
-                  let mut c = 0;
+                  let (c, set_c) = state!(0);
                   c
                 }
                 render fn rendered() -> Int {
-                  let mut c = 0;
+                  let (c, set_c) = state!(0);
                   c
                 }
                 read fn calls_render() -> Int {
@@ -15920,11 +15729,23 @@ mod tests {
                  5 |   first()
                    |   ^^^^^^^
 
-                error: let mut in a read fn
+                warning: Unused variable set_c
                   --> main.hop (line 8, col 11)
                  7 | read fn counter() -> Int {
-                 8 |   let mut c = 0;
-                   |           ^
+                 8 |   let (c, set_c) = state!(0);
+                   |           ^^^^^
+
+                error: state! in a read fn
+                  --> main.hop (line 8, col 20)
+                 7 | read fn counter() -> Int {
+                 8 |   let (c, set_c) = state!(0);
+                   |                    ^^^^^^
+
+                warning: Unused variable set_c
+                  --> main.hop (line 12, col 11)
+                11 | render fn rendered() -> Int {
+                12 |   let (c, set_c) = state!(0);
+                   |           ^^^^^
 
                 error: Render fn called from a read fn
                   --> main.hop (line 16, col 3)
@@ -15955,56 +15776,6 @@ mod tests {
                 29 |   let f = fn() -> Int { first() };
                 30 |   let g = fn() { first() };
                    |                  ^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_an_assignment_in_a_read_lambda() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Main() -> Html {
-                  let mut count = 0;
-                  let set = read fn() -> Int {
-                    count = 1;
-                    count
-                  };
-                  <p>{set().to_string()}</p>
-                }
-            "#},
-            expect![[r#"
-                error: Only a mut fn can assign
-                  --> main.hop (line 4, col 5)
-                3 |   let set = read fn() -> Int {
-                4 |     count = 1;
-                  |     ^^^^^^^^^
-
-                error: A statement has no effect outside a mut fn
-                  --> main.hop (line 4, col 5)
-                3 |   let set = read fn() -> Int {
-                4 |     count = 1;
-                  |     ^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_an_assignment_outside_a_mut_fn() {
-        reject(
-            indoc! {r#"
-                -- main.hop --
-                fn Main() -> Html {
-                  let mut count = 0;
-                  <b on:click={fn() { count = 1 }}>{count.to_string()}</b>
-                }
-            "#},
-            expect![[r#"
-                error: Only a mut fn can assign
-                  --> main.hop (line 3, col 23)
-                2 |   let mut count = 0;
-                3 |   <b on:click={fn() { count = 1 }}>{count.to_string()}</b>
-                  |                       ^^^^^^^^^
             "#]],
         );
     }
@@ -16066,6 +15837,245 @@ mod tests {
                 1 | fn Main(next: mut fn() -> Int) -> Html {
                 2 |   <b>{next().to_string()}</b>
                   |       ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_signal_and_a_state_as_a_read_fn_a_value_and_mut_fns() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Counter() -> Html {
+                  let (count, set_count) = state!(0);
+                  let (label, set_label) = signal!("none");
+                  <button on:click={mut fn() { set_count(count + 1); set_label(label() + "!") }}>
+                    {label()}
+                  </button>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Counter() -> Html {
+                  let (count, set_count) = state!(0) in let (label, set_label) = signal!("none") in element(
+                    tag: "button",
+                    attrs: [],
+                    children: concat(
+                      escape(label()),
+                    ),
+                    on_click: mut fn() -> Tuple[] {
+                      set_count(add(count, 1)); set_label(string_concat(label(), "!"))
+                    },
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_signal_and_a_state_outside_a_render_fn() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn plain() -> Int {
+                  let (count, set_count) = state!(0);
+                  count
+                }
+                read fn reader() -> Int {
+                  let (count, set_count) = signal!(0);
+                  count()
+                }
+                mut fn writer() -> Tuple[] {
+                  let (count, set_count) = state!(0);
+                  set_count(count)
+                }
+            "#},
+            expect![[r#"
+                warning: Unused variable set_count
+                  --> main.hop (line 2, col 15)
+                 1 | fn plain() -> Int {
+                 2 |   let (count, set_count) = state!(0);
+                   |               ^^^^^^^^^
+
+                error: state! needs a render fn
+                  --> main.hop (line 2, col 28)
+                 1 | fn plain() -> Int {
+                 2 |   let (count, set_count) = state!(0);
+                   |                            ^^^^^^
+
+                warning: Unused variable set_count
+                  --> main.hop (line 6, col 15)
+                 5 | read fn reader() -> Int {
+                 6 |   let (count, set_count) = signal!(0);
+                   |               ^^^^^^^^^
+
+                error: signal! in a read fn
+                  --> main.hop (line 6, col 28)
+                 5 | read fn reader() -> Int {
+                 6 |   let (count, set_count) = signal!(0);
+                   |                            ^^^^^^^
+
+                error: state! in a mut fn
+                  --> main.hop (line 10, col 28)
+                 9 | mut fn writer() -> Tuple[] {
+                10 |   let (count, set_count) = state!(0);
+                   |                            ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_signal_in_the_initial_value_of_a_state() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                render fn first() -> Int {
+                  let (count, set_count) = state!({
+                    let (inner, set_inner) = signal!(0);
+                    inner()
+                  });
+                  count
+                }
+            "#},
+            expect![[r#"
+                warning: Unused variable set_count
+                  --> main.hop (line 2, col 15)
+                1 | render fn first() -> Int {
+                2 |   let (count, set_count) = state!({
+                  |               ^^^^^^^^^
+
+                warning: Unused variable set_inner
+                  --> main.hop (line 3, col 17)
+                2 |   let (count, set_count) = state!({
+                3 |     let (inner, set_inner) = signal!(0);
+                  |                 ^^^^^^^^^
+
+                error: signal! in an initial value
+                  --> main.hop (line 3, col 30)
+                2 |   let (count, set_count) = state!({
+                3 |     let (inner, set_inner) = signal!(0);
+                  |                              ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_signal_and_a_state_used_as_an_expression() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Counter() -> Html {
+                  let count = state!(0);
+                  <p>{signal!(1)}</p>
+                }
+            "#},
+            expect![[r#"
+                error: state! needs let (a, b) = state!(...)
+                  --> main.hop (line 2, col 15)
+                1 | fn Counter() -> Html {
+                2 |   let count = state!(0);
+                  |               ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_let_pair_whose_value_is_not_a_signal_or_a_state() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Counter() -> Html {
+                  let (a, b) = (1, 2);
+                  <p>{a.to_string()}{b.to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                error: Expected signal! or state!
+                  --> main.hop (line 2, col 16)
+                1 | fn Counter() -> Html {
+                2 |   let (a, b) = (1, 2);
+                  |                ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_state_without_exactly_one_argument() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Counter() -> Html {
+                  let (count, set_count) = state!(0, 1);
+                  <p>{count.to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                error: state! takes exactly one argument, got 2
+                  --> main.hop (line 2, col 28)
+                1 | fn Counter() -> Html {
+                2 |   let (count, set_count) = state!(0, 1);
+                  |                            ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_state_of_html() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Counter() -> Html {
+                  let (shown, set_shown) = state!(<p>x</p>);
+                  <button on:click={mut fn() { set_shown(shown) }}>{shown}</button>
+                }
+            "#},
+            expect![[r#"
+                error: state! cannot hold Html
+                  --> main.hop (line 2, col 35)
+                1 | fn Counter() -> Html {
+                2 |   let (shown, set_shown) = state!(<p>x</p>);
+                  |                                   ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_state_whose_names_are_the_same() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Counter() -> Html {
+                  let (count, count) = state!(0);
+                  <p>{count.to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                error: Variable count is already defined
+                  --> main.hop (line 2, col 15)
+                1 | fn Counter() -> Html {
+                2 |   let (count, count) = state!(0);
+                  |               ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_plain_lambda_that_calls_a_signal() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Counter() -> Html {
+                  let (count, set_count) = signal!(0);
+                  let next = fn() -> Int { count() + 1 };
+                  <button on:click={mut fn() { set_count(next()) }}>x</button>
+                }
+            "#},
+            expect![[r#"
+                error: Read fn called from a plain fn
+                  --> main.hop (line 3, col 28)
+                2 |   let (count, set_count) = signal!(0);
+                3 |   let next = fn() -> Int { count() + 1 };
+                  |                            ^^^^^^^
             "#]],
         );
     }

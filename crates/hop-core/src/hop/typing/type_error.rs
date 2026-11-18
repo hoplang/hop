@@ -388,14 +388,29 @@ pub enum TypeErrorKind {
     #[error(
         "{}",
         match position {
-            Position::PureFn => "let mut needs a render fn",
-            Position::ReadFn => "let mut in a read fn",
-            Position::MutFn => "let mut in a mut fn",
-            Position::InitialValue => "let mut in an initial value",
-            Position::Key => "let mut in a key",
+            Position::PureFn => format!("{name}! needs a render fn"),
+            Position::ReadFn => format!("{name}! in a read fn"),
+            Position::MutFn => format!("{name}! in a mut fn"),
+            Position::InitialValue => format!("{name}! in an initial value"),
+            Position::Key => format!("{name}! in a key"),
         }
     )]
-    LetMutNotAllowed { position: Position },
+    StateMacroNotAllowed {
+        name: &'static str,
+        position: Position,
+    },
+
+    #[error("{name}! cannot hold {typ}")]
+    StateMacroNotData { name: &'static str, typ: Type },
+
+    #[error("{name}! takes exactly one argument, got {actual}")]
+    StateMacroArity { name: &'static str, actual: usize },
+
+    #[error("{name}! needs let (a, b) = {name}!(...)")]
+    StateMacroOutsideLetPair { name: CheapString },
+
+    #[error("Expected signal! or state!")]
+    LetPairNeedsStateMacro,
 
     #[error(
         "{}",
@@ -412,15 +427,6 @@ pub enum TypeErrorKind {
     #[error("Read fn called from a plain fn")]
     ReadCallNotAllowed,
 
-    #[error("Only a read, render or mut fn can capture a mutable variable")]
-    MutableCaptureInPlainFn,
-
-    #[error("Only a mut fn can assign")]
-    AssignmentOutsideMut,
-
-    #[error("Variable {name} is not mutable")]
-    AssignmentToImmutable { name: VarName },
-
     #[error("A statement has no effect outside a mut fn")]
     StatementOutsideMut,
 
@@ -432,9 +438,6 @@ pub enum TypeErrorKind {
 
     #[error("A read fn can not return {result}")]
     ReadFunctionReturnsNonData { result: Type },
-
-    #[error("let mut cannot hold {typ}")]
-    LetMutNotData { typ: Type },
 
     #[error("Expected Int or String got {found}")]
     KeyTypeMismatch { found: Type },
@@ -485,8 +488,6 @@ pub enum TypeMismatchContext {
     MethodArgument,
     /// An argument of a function call.
     FunctionArgument,
-    /// The value written to a cell, compared to the type of the cell.
-    CellWrite,
     /// The handler of a click.
     ClickHandler,
 }

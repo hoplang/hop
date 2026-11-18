@@ -352,8 +352,20 @@ fn block_body(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Resul
         out.push_str("let");
         ws(u, out)?;
         if u.arbitrary()? {
-            out.push_str("mut");
+            out.push('(');
+            out.push_str(u.choose(VAR_NAMES)?);
+            out.push(',');
             ws(u, out)?;
+            out.push_str(u.choose(VAR_NAMES)?);
+            out.push(')');
+            ws(u, out)?;
+            out.push('=');
+            ws(u, out)?;
+            out.push_str(u.choose(&["state!(", "signal!("])?);
+            expr(u, depth, ANYWHERE, out)?;
+            out.push_str(");");
+            ws(u, out)?;
+            continue;
         }
         out.push_str(u.choose(VAR_NAMES)?);
         if u.arbitrary()? {
@@ -376,13 +388,6 @@ fn expr(
     restrictions: Restrictions,
     out: &mut String,
 ) -> Result<()> {
-    if depth > 0 && u.int_in_range(0..=9)? == 9 {
-        out.push_str(u.choose(VAR_NAMES)?);
-        ws(u, out)?;
-        out.push('=');
-        ws(u, out)?;
-        return expr(u, depth - 1, restrictions, out);
-    }
     unary(u, depth, restrictions, out)?;
     if u.int_in_range(0..=7)? == 7 {
         let mut comparison_since_logical = false;

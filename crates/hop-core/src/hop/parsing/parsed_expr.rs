@@ -151,13 +151,6 @@ pub enum ParsedExpr {
         markup: Box<ParsedMarkup>,
     },
 
-    Assign {
-        var: VarName,
-        var_range: DocumentRange,
-        value: Box<Self>,
-        range: DocumentRange,
-    },
-
     Call {
         name: FunctionName,
         name_range: DocumentRange,
@@ -241,6 +234,7 @@ pub struct ParsedBlock {
 #[derive(Debug, Clone)]
 pub enum ParsedStatement {
     Let(ParsedLetBinding),
+    LetPair(ParsedLetPair),
     Expr {
         expr: ParsedExpr,
         range: DocumentRange,
@@ -251,6 +245,7 @@ impl ParsedStatement {
     pub fn range(&self) -> &DocumentRange {
         match self {
             ParsedStatement::Let(binding) => &binding.range,
+            ParsedStatement::LetPair(binding) => &binding.range,
             ParsedStatement::Expr { range, .. } => range,
         }
     }
@@ -258,6 +253,7 @@ impl ParsedStatement {
     pub fn expr(&self) -> &ParsedExpr {
         match self {
             ParsedStatement::Let(binding) => &binding.value_expr,
+            ParsedStatement::LetPair(binding) => &binding.value_expr,
             ParsedStatement::Expr { expr, .. } => expr,
         }
     }
@@ -272,10 +268,22 @@ impl ParsedStatement {
 #[derive(Debug, Clone)]
 pub struct ParsedLetBinding {
     pub range: DocumentRange,
-    pub mutable: bool,
     pub var_name: VarName,
     pub var_name_range: DocumentRange,
     pub var_type: Option<ParsedType>,
+    pub value_expr: ParsedExpr,
+}
+
+/// A let statement that binds a pair of names.
+///
+/// ```text
+/// let (count, set_count) = state!(0);
+/// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// ```
+#[derive(Debug, Clone)]
+pub struct ParsedLetPair {
+    pub range: DocumentRange,
+    pub names: [(VarName, DocumentRange); 2],
     pub value_expr: ParsedExpr,
 }
 
@@ -322,7 +330,6 @@ pub enum ParsedBinaryOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {
-    Assign,
     LogicalOr,
     LogicalAnd,
     Comparison,
@@ -507,7 +514,7 @@ impl ParsedBlock {
             .iter()
             .filter_map(|statement| match statement {
                 ParsedStatement::Let(binding) => Some(binding),
-                ParsedStatement::Expr { .. } => None,
+                ParsedStatement::LetPair(_) | ParsedStatement::Expr { .. } => None,
             })
     }
 
@@ -526,12 +533,15 @@ impl Display for ParsedBlock {
         for statement in &self.statements {
             match statement {
                 ParsedStatement::Let(binding) => {
-                    let mutable = if binding.mutable { "mut " } else { "" };
-                    write!(f, "let {mutable}{}", binding.var_name.as_str())?;
+                    write!(f, "let {}", binding.var_name.as_str())?;
                     if let Some(var_type) = &binding.var_type {
                         write!(f, ": {var_type}")?;
                     }
                     writeln!(f, " = {};", binding.value_expr)?;
+                }
+                ParsedStatement::LetPair(binding) => {
+                    let [(first, _), (second, _)] = &binding.names;
+                    writeln!(f, "let ({first}, {second}) = {};", binding.value_expr)?;
                 }
                 ParsedStatement::Expr { expr, .. } => writeln!(f, "{expr};")?,
             }
@@ -545,8 +555,7 @@ impl ParsedExpr {
     pub fn for_each_child<'a>(&'a self, f: &mut impl FnMut(&'a ParsedExpr)) {
         match self {
             ParsedExpr::FieldAccess { record: inner, .. }
-            | ParsedExpr::Unary { operand: inner, .. }
-            | ParsedExpr::Assign { value: inner, .. } => f(inner),
+            | ParsedExpr::Unary { operand: inner, .. } => f(inner),
 
             ParsedExpr::MethodCall { receiver, args, .. } => {
                 f(receiver);
@@ -651,7 +660,7 @@ impl ParsedExpr {
     /// with nothing left to evaluate.
     pub fn is_constant(&self) -> bool {
         match self {
-            ParsedExpr::Block { .. } | ParsedExpr::Assign { .. } => false,
+            ParsedExpr::Block { .. } => false,
             ParsedExpr::StringLiteral { .. }
             | ParsedExpr::BoolLiteral { .. }
             | ParsedExpr::IntLiteral { .. }
@@ -702,8 +711,7 @@ impl ParsedExpr {
             | ParsedExpr::Option { range, .. }
             | ParsedExpr::Macro { range, .. }
             | ParsedExpr::Call { range, .. }
-            | ParsedExpr::Lambda { range, .. }
-            | ParsedExpr::Assign { range, .. } => range,
+            | ParsedExpr::Lambda { range, .. } => range,
             ParsedExpr::Block { block } => &block.range,
             ParsedExpr::Markup { markup } => markup.range(),
         }
@@ -712,7 +720,6 @@ impl ParsedExpr {
     pub fn precedence(&self) -> Precedence {
         match self {
             ParsedExpr::Binary { operator, .. } => operator.precedence(),
-            ParsedExpr::Assign { .. } => Precedence::Assign,
             ParsedExpr::Unary { .. }
             | ParsedExpr::IntLiteral {
                 minus_range: Some(_),
@@ -942,7 +949,6 @@ impl Display for ParsedExpr {
                 write!(Indent::new(f), "\n{block}")?;
                 f.write_str("\n}")
             }
-            ParsedExpr::Assign { var, value, .. } => write!(f, "{} = {value}", var.as_str()),
             ParsedExpr::Option { value, .. } => match value {
                 Some(inner) => write!(f, "Some({inner})"),
                 None => f.write_str("None"),

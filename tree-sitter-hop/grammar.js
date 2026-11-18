@@ -8,7 +8,6 @@
 // than removing work: text tokens are kept out of expression positions.
 
 const PREC = {
-  assign: 0,
   or: 1,
   and: 2,
   equality: 3,
@@ -177,8 +176,7 @@ module.exports = grammar({
     let_statement: ($) =>
       seq(
         "let",
-        optional($.mutable_specifier),
-        field("name", $.identifier),
+        field("name", choice($.identifier, $.tuple_pattern)),
         optional(seq(":", field("type", $._type))),
         "=",
         field("value", $._expression),
@@ -207,7 +205,6 @@ module.exports = grammar({
         $.block,
         $.unary_expression,
         $.binary_expression,
-        $.assignment_expression,
         $.field_expression,
         $.call_expression,
         $.macro_invocation,
@@ -254,12 +251,6 @@ module.exports = grammar({
       ),
 
     spread_element: ($) => seq("...", $._expression),
-
-    assignment_expression: ($) =>
-      prec.right(
-        PREC.assign,
-        seq(field("left", $.identifier), "=", field("right", $._expression)),
-      ),
 
     unary_expression: ($) =>
       prec(PREC.unary, seq(choice("!", "-"), $._expression)),

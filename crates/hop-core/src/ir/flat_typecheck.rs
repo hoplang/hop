@@ -283,17 +283,14 @@ impl<'a> Checker<'a> {
         binding: &'a FlatBinding,
         modifier: IrModifier,
     ) -> Result<(), FlatTypeError> {
-        let render = modifier == IrModifier::Render;
-        let mutates = modifier == IrModifier::Mut;
-        let reads = modifier != IrModifier::Pure;
-        // A pure block binds values and closures that compute them, and
-        // nothing that renders.
-        let renders = match binding.op {
-            FlatOp::Cell(_) | FlatOp::Mint => true,
-            FlatOp::CellRead(_) => !reads,
-            _ => false,
+        let render = modifier.allows(IrModifier::Render);
+        let allowed = match binding.op {
+            FlatOp::Cell(_) | FlatOp::Mint => render,
+            FlatOp::CellRead(_) => modifier.allows(IrModifier::Read),
+            _ => true,
         };
-        if !render && (renders || !binding.binder.typ.is_value_or_value_closure()) {
+        // Only a block that renders binds Html, a cell or an identity.
+        if !allowed || !render && !binding.binder.typ.is_value_or_value_closure() {
             return Err(FlatTypeError::RenderInPureBlock);
         }
         let declared = BoundType::of(&binding.binder.typ);
@@ -305,13 +302,11 @@ impl<'a> Checker<'a> {
             },
             FlatOp::Call(callee, args) => {
                 let callee = self.callee(callee)?;
-                if callee.modifier == IrModifier::Render && !render
-                    || callee.modifier == IrModifier::Read && !reads
-                {
-                    return Err(FlatTypeError::RenderInPureBlock);
-                }
-                if callee.modifier == IrModifier::Mut && !mutates {
-                    return Err(FlatTypeError::MutOutsideMutBlock);
+                if !modifier.allows(callee.modifier) {
+                    return Err(match callee.modifier {
+                        IrModifier::Mut => FlatTypeError::MutOutsideMutBlock,
+                        _ => FlatTypeError::RenderInPureBlock,
+                    });
                 }
                 declared == BoundType::of(&callee.return_type)
                     && self.args(
@@ -353,7 +348,7 @@ impl<'a> Checker<'a> {
             },
             FlatOp::Mint => declared == BoundType::Id,
             FlatOp::CellWrite(cell, value) => {
-                if !mutates {
+                if !modifier.allows(IrModifier::Mut) {
                     return Err(FlatTypeError::MutOutsideMutBlock);
                 }
                 match self.read(*cell)? {
@@ -457,13 +452,11 @@ impl<'a> Checker<'a> {
                 let BoundType::Function(signature) = self.read(*closure)? else {
                     return Err(FlatTypeError::IllTypedBinding);
                 };
-                if signature.modifier == IrModifier::Render && !render
-                    || signature.modifier == IrModifier::Read && !reads
-                {
-                    return Err(FlatTypeError::RenderInPureBlock);
-                }
-                if signature.modifier == IrModifier::Mut && !mutates {
-                    return Err(FlatTypeError::MutOutsideMutBlock);
+                if !modifier.allows(signature.modifier) {
+                    return Err(match signature.modifier {
+                        IrModifier::Mut => FlatTypeError::MutOutsideMutBlock,
+                        _ => FlatTypeError::RenderInPureBlock,
+                    });
                 }
                 declared == BoundType::of(&signature.result)
                     && self.args(args, signature.parameters.iter().map(BoundType::of))?

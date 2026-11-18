@@ -796,14 +796,7 @@ fn format_let_binding<'a>(
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
     let leading_comments = drain_comments_before(arena, comments, binding.var_name_range.start());
-    let mutable = if binding.mutable {
-        arena.text("mut ")
-    } else {
-        arena.nil()
-    };
-    let mut doc = leading_comments
-        .append(mutable)
-        .append(arena.text(binding.var_name.as_str()));
+    let mut doc = leading_comments.append(arena.text(binding.var_name.as_str()));
     if let Some(var_type) = &binding.var_type {
         doc = doc
             .append(arena.text(": "))
@@ -962,6 +955,13 @@ fn format_block_body<'a>(
             ParsedStatement::Let(binding) => doc
                 .append(arena.text("let "))
                 .append(format_let_binding(arena, binding, comments)),
+            ParsedStatement::LetPair(binding) => {
+                let [(first, first_range), (second, _)] = &binding.names;
+                doc.append(arena.text("let "))
+                    .append(drain_comments_before(arena, comments, first_range.start()))
+                    .append(arena.text(format!("({first}, {second}) = ")))
+                    .append(format_expr(arena, &binding.value_expr, comments))
+            }
             ParsedStatement::Expr { expr, .. } => doc.append(format_expr(arena, expr, comments)),
         }
         .append(arena.text(";"))
@@ -1061,15 +1061,6 @@ fn format_expr<'a>(
             .append(arena.hardline())
             .append(arena.text("}")),
         ParsedExpr::Markup { markup } => format_markup(arena, markup, comments),
-        ParsedExpr::Assign { var, value, .. } => arena
-            .text(var.as_str())
-            .append(arena.text(" = "))
-            .append(format_expr_in_slot(
-                arena,
-                value,
-                Bound::Included(Precedence::Assign),
-                comments,
-            )),
         ParsedExpr::FieldAccess {
             record: object,
             field,
@@ -2228,16 +2219,16 @@ mod tests {
     }
 
     #[test]
-    fn mut_functions_statements_and_assignments() {
+    fn mut_functions_statements_and_setters() {
         check(
             indoc! {r#"
                 mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
                   press(); press()
                 }
                 fn Main() -> Html {
-                  let mut count = 0;
-                  let reset = mut fn() { count = 0 };
-                  <button on:click={mut fn() { count = count + 1; match count > 2 { true => count = 0, false => () } }}>
+                  let (count, set_count) = state!(0);
+                  let reset = mut fn() { set_count(0) };
+                  <button on:click={mut fn() { set_count(count + 1); match count > 2 { true => set_count(0), false => () } }}>
                     {count.to_string()}
                   </button>
                 }
@@ -2249,15 +2240,41 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  let mut count = 0;
+                  let (count, set_count) = state!(0);
                   let reset = mut fn() {
-                    count = 0
+                    set_count(0)
                   };
                   <button on:click={mut fn() {
-                    count = count + 1;
-                    match count > 2 {true => count = 0, false => ()}
+                    set_count(count + 1);
+                    match count > 2 {true => set_count(0), false => ()}
                   }}>
                     {count.to_string()}
+                  </button>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_pairs() {
+        check(
+            indoc! {r#"
+                fn Main() -> Html {
+                  let (count,set_count)=state!(0);
+                  // the label
+                  let ( label , set_label ) = signal!("none");
+                  <button on:click={mut fn() { set_count(count + 1) }}>{label()}</button>
+                }
+            "#},
+            expect![[r#"
+                fn Main() -> Html {
+                  let (count, set_count) = state!(0);
+                  // the label
+                  let (label, set_label) = signal!("none");
+                  <button on:click={mut fn() {
+                    set_count(count + 1)
+                  }}>
+                    {label()}
                   </button>
                 }
             "#]],
@@ -2269,7 +2286,7 @@ mod tests {
         check(
             indoc! {r#"
                 render fn first(start: Int, f: render fn(Int) -> Int) -> Int {
-                  let mut value = start; value
+                  let (value, set_value) = state!(start); value
                 }
                 pub render fn Card() -> Html {
                   let count = render fn() -> Int { 0 };
@@ -2281,7 +2298,7 @@ mod tests {
                   start: Int,
                   f: render fn(Int) -> Int,
                 ) -> Int {
-                  let mut value = start;
+                  let (value, set_value) = state!(start);
                   value
                 }
 
@@ -6169,13 +6186,13 @@ mod tests {
     }
 
     #[test]
-    fn should_format_cells_clicks_and_keys() {
+    fn should_format_states_clicks_and_keys() {
         check(
             indoc! {r#"
                 fn Counter(ids: Array[Int]) -> Html {
-                  let   mut count:Int = 0;
-                  let mut on = false;
-                  <ul on:click={mut fn()->Tuple[]{count=count+1;on=!on}}>
+                  let   (count,set_count)=state!(0);
+                  let (on, set_on) = state!(false);
+                  <ul on:click={mut fn()->Tuple[]{set_count(count+1);set_on(!on)}}>
                     {for id in ids key id*2 {
                       <li>{id.to_string()}</li>
                     }}
@@ -6187,11 +6204,11 @@ mod tests {
             "#},
             expect![[r#"
                 fn Counter(ids: Array[Int]) -> Html {
-                  let mut count: Int = 0;
-                  let mut on = false;
+                  let (count, set_count) = state!(0);
+                  let (on, set_on) = state!(false);
                   <ul on:click={mut fn() -> Tuple[] {
-                    count = count + 1;
-                    on = !on
+                    set_count(count + 1);
+                    set_on(!on)
                   }}>
                     {for id in ids key id * 2 {
                       <li>

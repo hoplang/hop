@@ -136,12 +136,10 @@ struct Name {
 }
 
 /// The names a path can read.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct Scope {
     names: Vec<Name>,
-    render: bool,
-    reads: bool,
-    mutates: bool,
+    modifier: IrModifier,
 }
 
 impl Scope {
@@ -156,7 +154,7 @@ impl Scope {
         }
     }
 
-    fn inner(&self, types: &[IrType], render: bool) -> Scope {
+    fn inner(&self, types: &[IrType], modifier: IrModifier) -> Scope {
         Scope {
             names: (self.names.iter().copied())
                 .filter(|name| {
@@ -164,9 +162,7 @@ impl Scope {
                     !typ.is_html_or_html_closure() && *typ != IrType::Id
                 })
                 .collect(),
-            render,
-            reads: render,
-            mutates: false,
+            modifier,
         }
     }
 
@@ -423,10 +419,8 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
     for name in &function_names {
         builder = builder.define(name, |b, declared| {
             let mut scope = Scope {
-                render: declared.modifier == IrModifier::Render,
-                reads: declared.modifier != IrModifier::Pure,
-                mutates: declared.modifier == IrModifier::Mut,
-                ..Scope::default()
+                names: Vec::new(),
+                modifier: declared.modifier,
             };
             for parameter in &declared.parameters {
                 scope.push(parameter.binder.var);
@@ -439,7 +433,10 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
             name,
             params.iter().map(|(n, t)| (n.as_str(), t.clone())),
             |b| {
-                let mut scope = Scope::default();
+                let mut scope = Scope {
+                    names: Vec::new(),
+                    modifier: IrModifier::Render,
+                };
                 for (n, _) in params {
                     scope.push(b.param(n));
                 }
@@ -540,10 +537,7 @@ impl FlatGenerator<'_, '_> {
     ) -> Vec<&'t DeclaredFunction> {
         (b.functions().iter())
             .filter(|function| {
-                function.return_type == *target
-                    && (scope.render || function.modifier != IrModifier::Render)
-                    && (scope.reads || function.modifier != IrModifier::Read)
-                    && (scope.mutates || function.modifier != IrModifier::Mut)
+                function.return_type == *target && scope.modifier.allows(function.modifier)
             })
             .collect()
     }
@@ -762,8 +756,7 @@ impl FlatGenerator<'_, '_> {
         var: ValueId,
         depth: usize,
     ) -> ValueId {
-        let mut scope = scope.inner(&b.value_types(), false);
-        scope.reads = true;
+        let mut scope = scope.inner(&b.value_types(), IrModifier::Read);
         scope.push(var);
         let typ = b.value_types()[var.index()].clone();
         if (typ == IrType::INT || typ == IrType::STRING) && self.index(4) != 0 {
@@ -784,7 +777,7 @@ impl FlatGenerator<'_, '_> {
         var: Option<ValueId>,
         depth: usize,
     ) -> ValueId {
-        let mut scope = scope.inner(&b.value_types(), true);
+        let mut scope = scope.inner(&b.value_types(), IrModifier::Render);
         if let Some(var) = var {
             scope.push(var);
         }
@@ -792,8 +785,7 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn html_block(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
-        scope.render = true;
-        scope.reads = true;
+        scope.modifier = IrModifier::Render;
         if self.chance(EARLY_MINT_ODDS) {
             scope.push(b.mint());
         }
@@ -818,7 +810,7 @@ impl FlatGenerator<'_, '_> {
             let typ = self.random_data_type(1);
             self.data_op(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
         }
-        if scope.mutates {
+        if scope.modifier.allows(IrModifier::Mut) {
             self.writes(b, scope, 0..=2, depth, MAX_EXPRESSION_DEPTH);
         }
         self.data_op(b, scope, target, depth, MAX_EXPRESSION_DEPTH)
@@ -904,9 +896,7 @@ impl FlatGenerator<'_, '_> {
         let render = signature.modifier == IrModifier::Render;
         let read = signature.modifier == IrModifier::Read;
         let mutates = signature.modifier == IrModifier::Mut;
-        let mut inner = scope.inner(&b.value_types(), render);
-        inner.reads = signature.modifier != IrModifier::Pure;
-        inner.mutates = mutates;
+        let mut inner = scope.inner(&b.value_types(), signature.modifier);
         let depth = depth.saturating_sub(1);
         let nesting = nesting.saturating_sub(1);
         let body = |b: &FlatBlockBuilder<'_>, params: &[ValueId]| {
@@ -944,10 +934,7 @@ impl FlatGenerator<'_, '_> {
     ) -> ValueId {
         let fits = |typ: &IrType| match typ {
             IrType::Function(signature) => {
-                (scope.render || signature.modifier != IrModifier::Render)
-                    && (scope.reads || signature.modifier != IrModifier::Read)
-                    && (scope.mutates || signature.modifier != IrModifier::Mut)
-                    && *signature.result == *result
+                scope.modifier.allows(signature.modifier) && *signature.result == *result
             }
             _ => false,
         };
@@ -960,13 +947,13 @@ impl FlatGenerator<'_, '_> {
             let typ = match result {
                 IrType::Data(result) => {
                     let mut signature = self.random_value_signature(
-                        scope.render,
+                        scope.modifier.allows(IrModifier::Render),
                         1,
                         Some(IrType::Data(result.clone())),
                     );
-                    if scope.mutates && self.chance(MUT_ODDS) {
+                    if scope.modifier.allows(IrModifier::Mut) && self.chance(MUT_ODDS) {
                         signature.modifier = IrModifier::Mut;
-                    } else if scope.reads
+                    } else if scope.modifier.allows(IrModifier::Read)
                         && signature.modifier == IrModifier::Pure
                         && self.chance(READ_CLOSURE_ODDS)
                     {
@@ -1061,7 +1048,7 @@ impl FlatGenerator<'_, '_> {
         if let Some(name) = self.name_in_scope(b, scope, &IrType::Data(typ.clone())) {
             return self.cell(b, scope, name);
         }
-        if scope.reads && !scope.render && self.coin() {
+        if matches!(scope.modifier, IrModifier::Read | IrModifier::Mut) && self.coin() {
             let mut cells = Self::candidates(b, scope, Layer::Cell, &TyPat::Ground(typ.clone()));
             if !cells.is_empty() {
                 let (cell, _) = cells.swap_remove(self.index(cells.len()));
@@ -1331,7 +1318,7 @@ impl FlatGenerator<'_, '_> {
         if depth > 0 {
             productions.extend([P::Match, P::ForArray, P::ForRange, P::Apply]);
         }
-        if depth > 0 && scope.render && self.chance(TOGGLE_ODDS) {
+        if depth > 0 && scope.modifier.allows(IrModifier::Render) && self.chance(TOGGLE_ODDS) {
             productions.push(P::Toggle);
         }
         let value = match self.u.choose(&productions).unwrap() {
@@ -1419,11 +1406,11 @@ impl FlatGenerator<'_, '_> {
     // far fewer clicks switch an arm.
     fn toggle(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
         let subject_ty = self.branching_type(b.types());
-        let mut initial = scope.inner(&b.value_types(), false);
+        let mut initial = scope.inner(&b.value_types(), IrModifier::Pure);
         let cell =
             scope.push(b.cell(|b| self.literal(b, &mut initial, &subject_ty, MAX_LITERAL_DEPTH)));
         let value = scope.push(b.cell_read(cell));
-        let mut inner = scope.inner(&b.value_types(), false);
+        let mut inner = scope.inner(&b.value_types(), IrModifier::Pure);
         let handler = b.event_handler(|b| {
             let value = self.literal(b, &mut inner, &subject_ty, MAX_LITERAL_DEPTH);
             b.cell_write(cell, value)
@@ -1738,7 +1725,7 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn cell(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, value: ValueId) -> ValueId {
-        if !scope.render || !self.chance(CELL_ODDS) {
+        if !scope.modifier.allows(IrModifier::Render) || !self.chance(CELL_ODDS) {
             return value;
         }
         let cell = scope.push(b.cell(|_| value));

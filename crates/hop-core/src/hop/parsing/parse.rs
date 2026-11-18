@@ -3442,16 +3442,16 @@ mod tests {
     }
 
     #[test]
-    fn accepts_mut_functions_statements_and_assignments() {
+    fn accepts_mut_functions_statements_and_setters() {
         accept(
             indoc! {"
                 mut fn twice(press: mut fn() -> Tuple[]) -> Tuple[] {
                   press(); press()
                 }
                 fn Main() -> Html {
-                  let mut count = 0;
-                  let reset = mut fn() { count = 0 };
-                  <button on:click={mut fn() { count = count + 1; match count > 2 { true => count = 0, false => () } }}>
+                  let (count, set_count) = state!(0);
+                  let reset = mut fn() { set_count(0) };
+                  <button on:click={mut fn() { set_count(count + 1); match count > 2 { true => set_count(0), false => () } }}>
                     {count.to_string()}
                   </button>
                 }
@@ -3463,17 +3463,17 @@ mod tests {
                 }
 
                 fn Main() -> Html {
-                  let mut count = 0;
+                  let (count, set_count) = state!(0);
                   let reset = mut fn() {
-                    count = 0
+                    set_count(0)
                   };
                   element(
                     tag: "button",
                     attrs: [
                       on:click: mut fn() {
-                        count = add(count, 1);
+                        set_count(add(count, 1));
                         match gt(count, 2) {
-                          true => count = 0,
+                          true => set_count(0),
                           false => (),
                         }
                       },
@@ -3488,11 +3488,41 @@ mod tests {
     }
 
     #[test]
+    fn accepts_let_pairs() {
+        accept(
+            indoc! {"
+                fn Main() -> Html {
+                  let (count, set_count) = state!(0);
+                  let (label,set_label)=signal!(\"none\");
+                  <button on:click={mut fn() { set_count(count + 1) }}>{label()}</button>
+                }
+            "},
+            expect![[r#"
+                fn Main() -> Html {
+                  let (count, set_count) = state!(0);
+                  let (label, set_label) = signal!("none");
+                  element(
+                    tag: "button",
+                    attrs: [
+                      on:click: mut fn() {
+                        set_count(add(count, 1))
+                      },
+                    ],
+                    children: [
+                      interpolate(label()),
+                    ],
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
     fn accepts_render_functions() {
         accept(
             indoc! {"
                 render fn first(start: Int, f: render fn(Int) -> Int) -> Int {
-                  let mut value = start; value
+                  let (value, set_value) = state!(start); value
                 }
                 pub render fn Card() -> Html {
                   let count = render fn() -> Int { 0 };
@@ -3501,7 +3531,7 @@ mod tests {
             "},
             expect![[r#"
                 render fn first(start: Int, f: render fn(Int) -> Int) -> Int {
-                  let mut value = start;
+                  let (value, set_value) = state!(start);
                   value
                 }
 
@@ -3613,25 +3643,6 @@ mod tests {
                 error: Expected token 'fn' but got 'first'
                 1 | render first() -> Int {
                   |        ^^^^^
-                -- ast --
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_an_assignment_to_something_other_than_a_variable() {
-        reject(
-            indoc! {"
-                mut fn reset(n: Int) -> Tuple[] {
-                  n + 1 = 0
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Only a variable can be assigned
-                1 | mut fn reset(n: Int) -> Tuple[] {
-                2 |   n + 1 = 0
-                  |   ^^^^^
                 -- ast --
             "#]],
         );

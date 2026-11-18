@@ -18,29 +18,14 @@ pub struct VariableScope {
     context: Context,
 }
 
-/// A loop or lambda body around the code being checked.
+/// A loop or lambda body around the code being checked. A lambda whose
+/// modifier waits on the type of its body renders if its body renders Html,
+/// and is plain otherwise: it holds the errors of what needs it to render.
 #[derive(Debug, Clone)]
 enum Body {
     Loop,
-    Lambda(Lambda),
-}
-
-/// What the modifier of a lambda lets its body do with the cells bound
-/// outside it.
-#[derive(Debug, Clone)]
-enum Lambda {
-    /// A render or a mut lambda, which may read them.
-    Reads,
-    /// A plain lambda, which may not: it would read the value the render
-    /// gave, even when a mut fn applies it after a write.
-    Plain,
-    /// A lambda whose modifier waits on the type of its body. It renders if
-    /// its body renders Html, and is plain otherwise. It holds the errors of
-    /// what needs it to render, and the reads of cells, each with the number
-    /// of bodies around the binding of the cell it reads.
-    Undecided {
-        needs_render: Vec<TypeError>,
-        reads: Vec<(TypeError, usize)>,
+    Lambda {
+        needs_render: Option<Vec<TypeError>>,
     },
 }
 
@@ -85,14 +70,13 @@ pub enum ScopeEntry {
     Function(FunctionScopeEntry),
 }
 
-/// A variable in scope: its type, the range where it was bound, whether
-/// it has been accessed, and whether it is a cell.
+/// A variable in scope: its type, the range where it was bound, and
+/// whether it has been accessed.
 #[derive(Debug, Clone)]
 pub struct VariableScopeEntry {
     pub typ: Type,
     pub range: DocumentRange,
     pub accessed: bool,
-    pub cell: bool,
     /// The number of loop and lambda bodies around the binding.
     bodies: usize,
     /// Whether the code checked so far uses the Html value on the path
@@ -154,11 +138,13 @@ impl VariableScope {
             }
             Context::Undecided => {
                 // A loop body may lie between the code and its lambda.
-                let Some(Body::Lambda(Lambda::Undecided { needs_render, .. })) = self
+                let Some(Body::Lambda {
+                    needs_render: Some(needs_render),
+                }) = self
                     .bodies
                     .iter_mut()
                     .rev()
-                    .find(|body| matches!(body, Body::Lambda(_)))
+                    .find(|body| matches!(body, Body::Lambda { .. }))
                 else {
                     unreachable!("an undecided context is the body of an undecided lambda");
                 };
@@ -196,16 +182,6 @@ impl VariableScope {
     /// Returns an error if the name is already defined, as a variable or as
     /// a function.
     pub fn push(&mut self, name: VarName, typ: Type, range: DocumentRange) -> Result<(), ()> {
-        self.bind(name, typ, range, false)
-    }
-
-    pub fn bind(
-        &mut self,
-        name: VarName,
-        typ: Type,
-        range: DocumentRange,
-        cell: bool,
-    ) -> Result<(), ()> {
         if self.entries.contains_key(name.as_str()) {
             return Err(());
         }
@@ -215,7 +191,6 @@ impl VariableScope {
                 typ,
                 range,
                 accessed: false,
-                cell,
                 bodies: self.bodies.len(),
                 used: false,
             }),
@@ -252,14 +227,9 @@ impl VariableScope {
     /// of a lambda, which runs any number of times, in `context`. Returns
     /// the context around the lambda.
     pub fn enter_lambda(&mut self, context: Context) -> Context {
-        self.bodies.push(Body::Lambda(match context {
-            Context::Render | Context::Outside(Position::ReadFn | Position::MutFn) => Lambda::Reads,
-            Context::Outside(_) => Lambda::Plain,
-            Context::Undecided => Lambda::Undecided {
-                needs_render: Vec::new(),
-                reads: Vec::new(),
-            },
-        }));
+        self.bodies.push(Body::Lambda {
+            needs_render: matches!(context, Context::Undecided).then(Vec::new),
+        });
         self.set_context(context)
     }
 
@@ -274,67 +244,11 @@ impl VariableScope {
         errors: &mut Vec<TypeError>,
     ) {
         self.context = outer;
-        let Some(Body::Lambda(lambda)) = self.bodies.pop() else {
+        let Some(Body::Lambda { needs_render }) = self.bodies.pop() else {
             panic!("exit_lambda without a matching enter_lambda");
         };
-        let Lambda::Undecided {
-            needs_render,
-            reads,
-        } = lambda
-        else {
-            return;
-        };
-        match renders_html {
-            // A read may still cross a lambda further out that does not
-            // render.
-            Some(true) => {
-                for (error, bodies) in reads {
-                    self.read_cell_from(bodies, error, errors);
-                }
-            }
-            Some(false) => {
-                errors.extend(needs_render);
-                errors.extend(reads.into_iter().map(|(error, _)| error));
-            }
-            None => {}
-        }
-    }
-
-    /// Record a read of the cell bound to `name` at `range`. Only a render
-    /// or a mut lambda may read a cell bound outside it, so the read is an
-    /// error if a plain lambda lies between it and the binding.
-    pub fn read_cell(
-        &mut self,
-        name: &VarName,
-        range: &DocumentRange,
-        errors: &mut Vec<TypeError>,
-    ) {
-        let Some(ScopeEntry::Variable(entry)) = self.entries.get(name.as_str()) else {
-            unreachable!("{name} is not a variable");
-        };
-        assert!(entry.cell, "{name} is not a cell");
-        let bodies = entry.bodies;
-        let error = TypeError::new(TypeErrorKind::MutableCaptureInPlainFn, range.clone());
-        self.read_cell_from(bodies, error, errors);
-    }
-
-    /// Check a read of a cell bound inside `bodies` loop and lambda bodies
-    /// against the lambdas between it and the binding, innermost first.
-    /// An undecided lambda holds the read, and checks it against the lambdas
-    /// further out once it is known to render.
-    fn read_cell_from(&mut self, bodies: usize, error: TypeError, errors: &mut Vec<TypeError>) {
-        for body in self.bodies[bodies..].iter_mut().rev() {
-            match body {
-                Body::Loop | Body::Lambda(Lambda::Reads) => {}
-                Body::Lambda(Lambda::Plain) => {
-                    errors.push(error);
-                    return;
-                }
-                Body::Lambda(Lambda::Undecided { reads, .. }) => {
-                    reads.push((error, bodies));
-                    return;
-                }
-            }
+        if let (Some(needs_render), Some(false)) = (needs_render, renders_html) {
+            errors.extend(needs_render);
         }
     }
 
@@ -344,7 +258,7 @@ impl VariableScope {
     pub fn outermost_body(&self) -> Option<RepeatedBody> {
         self.bodies.first().map(|body| match body {
             Body::Loop => RepeatedBody::Loop,
-            Body::Lambda(_) => RepeatedBody::Lambda,
+            Body::Lambda { .. } => RepeatedBody::Lambda,
         })
     }
 
@@ -357,7 +271,7 @@ impl VariableScope {
         if let Some(body) = self.bodies.get(entry.bodies) {
             return Err(HtmlMisuse::Outside(match body {
                 Body::Loop => RepeatedBody::Loop,
-                Body::Lambda(_) => RepeatedBody::Lambda,
+                Body::Lambda { .. } => RepeatedBody::Lambda,
             }));
         }
         if entry.used {
