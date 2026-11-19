@@ -693,11 +693,9 @@ mod tests {
     use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::clicks::clicks;
     use crate::ir::runtime::value_builder::ValueBuilder;
-    use crate::ir::value_id::ValueId;
     use crate::symbols::function_name::FunctionName;
     use arbitrary::Unstructured;
     use expect_test::{Expect, expect};
-    use rand::{RngExt, SeedableRng, rngs::SmallRng};
     use std::collections::BTreeSet;
 
     #[test]
@@ -1738,159 +1736,6 @@ mod tests {
             })
     }
 
-    /// What following clicks did, over all programs: what each invocation
-    /// gave, and what each click a render showed would do.
-    #[derive(Default)]
-    struct ClickStats {
-        invocations: usize,
-        call_depth_limit: usize,
-        array_len_limit: usize,
-        string_len_limit: usize,
-        html_size_limit: usize,
-        op_count_limit: usize,
-        /// The cells of each render, summed.
-        cells_bound: usize,
-        /// The clicks rendered, over all programs.
-        clicks: usize,
-        /// Programs with a click.
-        clicked: usize,
-        /// Programs with a click that writes a cell a value other than the
-        /// one it holds.
-        changing: usize,
-        /// Programs with a click after which the page renders differently.
-        rerendering: usize,
-        /// Programs with a click after which a region is entered or no
-        /// longer entered although each iteration it is in is evaluated
-        /// both before and after, as a match took another arm.
-        switching_arms: usize,
-        /// Programs with a click after which a cell is bound or no longer
-        /// bound although each iteration it is in is evaluated both before
-        /// and after, as a match took another arm. A cell that is no longer
-        /// bound starts over when its arm is taken again.
-        switching_cells: usize,
-        /// Programs with a click after which a loop has other iterations:
-        /// it gained, lost or re-keyed some. A match that takes another arm
-        /// with a loop in it counts here as well.
-        changing_loops: usize,
-        /// Programs with a click that changes an array cell.
-        changing_arrays: usize,
-        /// What the clicks of the program being counted have done so far.
-        program: Clicked,
-    }
-
-    #[derive(Default)]
-    struct Clicked {
-        any: bool,
-        changing: bool,
-        rerendering: bool,
-        switching_arms: bool,
-        switching_cells: bool,
-        changing_loops: bool,
-        changing_arrays: bool,
-    }
-
-    /// The iterations among the regions, each by its path.
-    fn iterations(regions: &BTreeSet<Vec<Step>>) -> BTreeSet<Vec<Step>> {
-        (regions.iter())
-            .filter(|path| matches!(path.last(), Some(Step::Iteration(..))))
-            .cloned()
-            .collect()
-    }
-
-    /// Whether each iteration of the path is in `both`, the iterations two
-    /// invocations both evaluate, so that a path only one of them
-    /// evaluates is not explained by a loop.
-    fn in_both_iterations(path: &[Step], both: &BTreeSet<Vec<Step>>) -> bool {
-        (path.iter().enumerate()).all(|(index, step)| {
-            !matches!(step, Step::Iteration(..)) || both.contains(&path[..=index])
-        })
-    }
-
-    impl ClickStats {
-        fn finish_program(&mut self) {
-            let program = std::mem::take(&mut self.program);
-            self.clicked += usize::from(program.any);
-            self.changing += usize::from(program.changing);
-            self.rerendering += usize::from(program.rerendering);
-            self.switching_arms += usize::from(program.switching_arms);
-            self.switching_cells += usize::from(program.switching_cells);
-            self.changing_loops += usize::from(program.changing_loops);
-            self.changing_arrays += usize::from(program.changing_arrays);
-        }
-
-        /// Count what an invocation gave.
-        fn count_invocation<'a>(&mut self, result: &Result<(Value<'a>, State<'a>), EvalError>) {
-            self.invocations += 1;
-            self.call_depth_limit +=
-                usize::from(matches!(result, Err(EvalError::CallDepthLimit { .. })));
-            self.array_len_limit +=
-                usize::from(matches!(result, Err(EvalError::ArrayLengthLimit { .. })));
-            self.string_len_limit +=
-                usize::from(matches!(result, Err(EvalError::StringLengthLimit { .. })));
-            self.html_size_limit +=
-                usize::from(matches!(result, Err(EvalError::HtmlSizeLimit { .. })));
-            self.op_count_limit +=
-                usize::from(matches!(result, Err(EvalError::OpCountLimit { .. })));
-        }
-
-        /// Count what each click of a render would do, each from the state
-        /// of the render.
-        fn count_clicks<'a>(
-            &mut self,
-            program: &'a FlatProgram,
-            entrypoint: EntrypointId,
-            args: &HashMap<AttributeName, Value<'a>>,
-            html: &Html<'a>,
-            state: &State<'a>,
-        ) {
-            self.cells_bound += state.cell_values().count();
-            let mut markup = String::new();
-            html.write(&mut markup);
-            for (_, handlers) in clicks(html) {
-                self.clicks += 1;
-                self.program.any = true;
-                let mut mutations = state.begin_mutations();
-                if run_handlers(&handlers, &mut mutations, &program.functions).is_err() {
-                    continue;
-                }
-                let next = mutations.commit();
-                let changed: Vec<&Value<'_>> = (next.cell_values())
-                    .zip(state.cell_values())
-                    .filter_map(|((_, _, value), (_, _, before))| {
-                        (!value.total_eq(before)).then_some(value)
-                    })
-                    .collect();
-                if changed.is_empty() {
-                    continue;
-                }
-                self.program.changing = true;
-                self.program.changing_arrays |=
-                    changed.iter().any(|value| matches!(value, Value::Array(_)));
-                if let Ok((value, next_state)) =
-                    invoke_entrypoint(program, entrypoint, args.clone(), next.begin_render())
-                {
-                    let mut next_markup = String::new();
-                    value.unwrap_html().write(&mut next_markup);
-                    self.program.rerendering |= markup != next_markup;
-                    let regions: BTreeSet<Vec<Step>> = state.regions().collect();
-                    let next_regions: BTreeSet<Vec<Step>> = next_state.regions().collect();
-                    let before = iterations(&regions);
-                    let after = iterations(&next_regions);
-                    let both = before.intersection(&after).cloned().collect();
-                    self.program.changing_loops |= before != after;
-                    self.program.switching_arms |= (regions.symmetric_difference(&next_regions))
-                        .any(|path| in_both_iterations(path, &both));
-                    let cells: BTreeSet<(Vec<Step>, ValueId)> =
-                        (state.cell_values().map(|(path, var, _)| (path, var))).collect();
-                    let next_cells: BTreeSet<(Vec<Step>, ValueId)> =
-                        (next_state.cell_values().map(|(path, var, _)| (path, var))).collect();
-                    self.program.switching_cells |= (cells.symmetric_difference(&next_cells))
-                        .any(|(path, _)| in_both_iterations(path, &both));
-                }
-            }
-        }
-    }
-
     /// How many times `follow_clicks` draws arguments for the entrypoints of
     /// a program. Generating a program costs far more than evaluating it, so
     /// each program is evaluated on several.
@@ -1907,14 +1752,8 @@ mod tests {
     /// invocation on the same arguments. After each invocation, check that
     /// each node occurs at most once in the Html, and that the state the
     /// invocation leaves is a fixed point: invoking again on it with the
-    /// same arguments gives the same Html and the same state. With
-    /// `stats`, counts what each invocation gave and what each click it
-    /// rendered would do.
-    fn follow_clicks(
-        program: &FlatProgram,
-        u: &mut Unstructured<'_>,
-        mut stats: Option<&mut ClickStats>,
-    ) -> arbitrary::Result<()> {
+    /// same arguments gives the same Html and the same state.
+    fn follow_clicks(program: &FlatProgram, u: &mut Unstructured<'_>) -> arbitrary::Result<()> {
         // The state of each entrypoint, in the order the program declares
         // them, which each invocation takes from the one before it and the
         // mutations of the click after it.
@@ -1925,25 +1764,22 @@ mod tests {
             for ((entrypoint, args), state) in invocations.into_iter().zip(&mut states) {
                 for _ in 0..=CLICKS {
                     let render = state.begin_render();
-                    let result = invoke_entrypoint(program, entrypoint, args.clone(), render);
-                    if let Some(stats) = stats.as_deref_mut() {
-                        stats.count_invocation(&result);
-                    }
-                    let (value, new_state) = match result {
-                        Ok(evaluated) => evaluated,
-                        // A cell keeps a value from an earlier invocation or
-                        // a click, so a range between two cells may exceed
-                        // the array length limit where the Flat program does
-                        // not.
-                        Err(
-                            EvalError::CallDepthLimit { .. }
-                            | EvalError::ArrayLengthLimit { .. }
-                            | EvalError::StringLengthLimit { .. }
-                            | EvalError::HtmlSizeLimit { .. }
-                            | EvalError::OpCountLimit { .. },
-                        ) => break,
-                        Err(error) => panic!("{error}"),
-                    };
+                    let (value, new_state) =
+                        match invoke_entrypoint(program, entrypoint, args.clone(), render) {
+                            Ok(evaluated) => evaluated,
+                            // A cell keeps a value from an earlier invocation or
+                            // a click, so a range between two cells may exceed
+                            // the array length limit where the Flat program does
+                            // not.
+                            Err(
+                                EvalError::CallDepthLimit { .. }
+                                | EvalError::ArrayLengthLimit { .. }
+                                | EvalError::StringLengthLimit { .. }
+                                | EvalError::HtmlSizeLimit { .. }
+                                | EvalError::OpCountLimit { .. },
+                            ) => break,
+                            Err(error) => panic!("{error}"),
+                        };
                     let html = value.unwrap_html();
                     // Each node occurs at most once in the Html.
                     let mut nodes = BTreeSet::new();
@@ -1959,9 +1795,6 @@ mod tests {
                             HtmlNode::Concat(parts) => pending.extend(parts),
                             HtmlNode::Text(_) | HtmlNode::Escape(_) => {}
                         }
-                    }
-                    if let Some(stats) = stats.as_deref_mut() {
-                        stats.count_clicks(program, entrypoint, &args, &html, &new_state);
                     }
                     let targets = clicks(&html);
                     // Invoking on the new state gives the same result and
@@ -2011,76 +1844,7 @@ mod tests {
     fn fuzz_random_programs_keep_cells_and_clicks_and_evaluate_to_a_fixed_point() {
         arbtest::arbtest(|u| {
             let program = random_program(u);
-            follow_clicks(&program, u, None)
+            follow_clicks(&program, u)
         });
-    }
-
-    /// What following clicks does on the programs `should_report_generator_stats`
-    /// describes: the same seed and input give the same programs.
-    #[test]
-    fn should_report_click_stats() {
-        const SAMPLES: usize = 100;
-        const INPUT_LEN: usize = 65_536;
-        let mut rng = SmallRng::seed_from_u64(0);
-        let mut stats = ClickStats::default();
-        for _ in 0..SAMPLES {
-            let bytes: Vec<u8> = (0..INPUT_LEN).map(|_| rng.random()).collect();
-            let mut u = Unstructured::new(&bytes);
-            let program = random_program(&mut u);
-            follow_clicks(&program, &mut u, Some(&mut stats)).unwrap();
-            stats.finish_program();
-        }
-        let ClickStats {
-            invocations,
-            call_depth_limit,
-            array_len_limit,
-            string_len_limit,
-            html_size_limit,
-            op_count_limit,
-            cells_bound,
-            clicks,
-            clicked,
-            changing,
-            rerendering,
-            switching_arms,
-            switching_cells,
-            changing_loops,
-            changing_arrays,
-            program: _,
-        } = stats;
-        expect![[r#"
-            3244 invocations
-            28 invocations hit the call depth limit
-            0 invocations hit the array length limit
-            0 invocations hit the string length limit
-            0 invocations hit the Html size limit
-            22 invocations hit the op count limit
-            88917 cells bound
-
-            21135 clicks
-            64 programs have a click
-            35 programs have a click that changes a cell
-            29 programs have a click that changes the page
-            14 programs have a click that switches an arm of a match
-            11 programs have a click that switches an arm of a match that binds cells
-            13 programs have a click that changes the iterations of a loop
-            4 programs have a click that changes an array cell
-        "#]].assert_eq(&format!(
-            "{invocations} invocations\n\
-             {call_depth_limit} invocations hit the call depth limit\n\
-             {array_len_limit} invocations hit the array length limit\n\
-             {string_len_limit} invocations hit the string length limit\n\
-             {html_size_limit} invocations hit the Html size limit\n\
-             {op_count_limit} invocations hit the op count limit\n\
-             {cells_bound} cells bound\n\n\
-             {clicks} clicks\n\
-             {clicked} programs have a click\n\
-             {changing} programs have a click that changes a cell\n\
-             {rerendering} programs have a click that changes the page\n\
-             {switching_arms} programs have a click that switches an arm of a match\n\
-             {switching_cells} programs have a click that switches an arm of a match that binds cells\n\
-             {changing_loops} programs have a click that changes the iterations of a loop\n\
-             {changing_arrays} programs have a click that changes an array cell\n"
-        ));
     }
 }

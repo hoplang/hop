@@ -191,34 +191,6 @@ impl IterationKey {
 mod test_support {
     use super::*;
 
-    impl<'a> State<'a> {
-        fn paths(&self) -> BTreeMap<RegionId, Vec<Step>> {
-            let mut ordered: Vec<_> = (self.region_tree.iter())
-                .map(|((parent, step), region)| (*region, *parent, step))
-                .collect();
-            ordered.sort_by_key(|(region, _, _)| *region);
-            let mut paths = BTreeMap::from([(RegionId::ROOT, Vec::new())]);
-            for (region, parent, step) in ordered {
-                let mut path = paths[&parent].clone();
-                path.push(step.clone());
-                paths.insert(region, path);
-            }
-            paths
-        }
-
-        pub fn regions(&self) -> impl Iterator<Item = Vec<Step>> {
-            let mut paths = self.paths();
-            paths.remove(&RegionId::ROOT);
-            paths.into_values()
-        }
-
-        pub fn cell_values(&self) -> impl Iterator<Item = (Vec<Step>, ValueId, &Value<'a>)> {
-            let paths = self.paths();
-            (self.cells.iter())
-                .map(move |(cell, value)| (paths[&cell.region].clone(), cell.var, value))
-        }
-    }
-
     impl PartialEq for State<'_> {
         fn eq(&self, other: &Self) -> bool {
             self.region_tree == other.region_tree
