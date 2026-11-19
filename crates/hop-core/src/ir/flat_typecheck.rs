@@ -58,19 +58,21 @@ pub enum FlatTypeError {
     /// A function or a lambda takes a cell or an identity, which only a
     /// cell binding or a mint binds.
     CellOrIdParameter,
-    /// A pure block binds what only a block that renders binds: a cell, a
-    /// read of a cell, a mint, Html, a closure that renders it or a call of a
-    /// function that renders. A block that reads or mutates reads cells and
-    /// calls functions that read too.
-    RenderInPureBlock,
+    /// A block has an effect that its modifier does not allow. A cell and a
+    /// mint render, a read of a cell reads, a write of a cell mutates, and a
+    /// call or an application has the modifier of what it calls. A pure
+    /// block allows none of these, a block that reads allows reads, and a
+    /// block that renders or mutates allows reads and its own effect.
+    EffectNotAllowed,
+    /// A function or a lambda returns Html without the render modifier.
+    HtmlOutsideRender,
     /// A function returns something other than Html or a value: a closure,
     /// a cell or an identity.
     ReturnsUnreturnable,
-    /// A block that produces a value binds Html, a closure that renders it
-    /// or a mint, or a function or closure that returns a value takes Html or
-    /// such a closure. The value can depend on none of them.
+    /// A block that produces a value binds Html or a closure that renders
+    /// it, or a function or closure that returns a value takes Html or such
+    /// a closure. The value can depend on none of them.
     HtmlInValueBlock,
-    MutOutsideMutBlock,
 }
 
 pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
@@ -87,7 +89,7 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
             let expected = BoundType::of(&function.return_type);
             let returns_html = expected == BoundType::Html;
             if returns_html && function.modifier != IrModifier::Render {
-                return Err(FlatTypeError::RenderInPureBlock);
+                return Err(FlatTypeError::HtmlOutsideRender);
             }
             if !returns_html && !matches!(expected, BoundType::Data(_)) {
                 return Err(FlatTypeError::ReturnsUnreturnable);
@@ -273,7 +275,7 @@ impl<'a> Checker<'a> {
             // The value of a block depends on no Html, as no op looks into
             // Html, so a block that produces a value binds none.
             let typ = &binding.binder.typ;
-            if (typ.is_html_or_html_closure() || *typ == IrType::ElementId) && !returns_html {
+            if typ.is_html_or_html_closure() && !returns_html {
                 return Err(FlatTypeError::HtmlInValueBlock);
             }
             self.binding(binding, modifier)?;
@@ -286,15 +288,15 @@ impl<'a> Checker<'a> {
         binding: &'a FlatBinding,
         modifier: IrModifier,
     ) -> Result<(), FlatTypeError> {
-        let render = modifier.allows(IrModifier::Render);
-        let allowed = match binding.op {
-            FlatOp::Cell(_) | FlatOp::Mint => render,
-            FlatOp::CellRead(_) => modifier.allows(IrModifier::Read),
-            _ => true,
+        let effect = match binding.op {
+            FlatOp::Cell(_) => IrModifier::Render,
+            FlatOp::Mint => IrModifier::Render,
+            FlatOp::CellRead(_) => IrModifier::Read,
+            FlatOp::CellWrite(..) => IrModifier::Mut,
+            _ => IrModifier::Pure,
         };
-        // Only a block that renders binds Html, a cell or an identity.
-        if !allowed || !render && !binding.binder.typ.is_value_or_value_closure() {
-            return Err(FlatTypeError::RenderInPureBlock);
+        if !modifier.allows(effect) {
+            return Err(FlatTypeError::EffectNotAllowed);
         }
         let declared = BoundType::of(&binding.binder.typ);
         let html = declared == BoundType::Html;
@@ -306,10 +308,7 @@ impl<'a> Checker<'a> {
             FlatOp::Call(callee, args) => {
                 let callee = self.callee(callee)?;
                 if !modifier.allows(callee.modifier) {
-                    return Err(match callee.modifier {
-                        IrModifier::Mut => FlatTypeError::MutOutsideMutBlock,
-                        _ => FlatTypeError::RenderInPureBlock,
-                    });
+                    return Err(FlatTypeError::EffectNotAllowed);
                 }
                 declared == BoundType::of(&callee.return_type)
                     && self.args(
@@ -350,18 +349,13 @@ impl<'a> Checker<'a> {
                 _ => false,
             },
             FlatOp::Mint => declared == BoundType::ElementId,
-            FlatOp::CellWrite(cell, value) => {
-                if !modifier.allows(IrModifier::Mut) {
-                    return Err(FlatTypeError::MutOutsideMutBlock);
+            FlatOp::CellWrite(cell, value) => match self.read(*cell)? {
+                BoundType::Cell(data) => {
+                    declared == BoundType::Data(&IrDataType::UNIT)
+                        && self.read(*value)? == BoundType::Data(data)
                 }
-                match self.read(*cell)? {
-                    BoundType::Cell(data) => {
-                        declared == BoundType::Data(&IrDataType::UNIT)
-                            && self.read(*value)? == BoundType::Data(data)
-                    }
-                    _ => false,
-                }
-            }
+                _ => false,
+            },
             FlatOp::CellRead(cell) => match declared {
                 BoundType::Data(data) => self.read(*cell)? == BoundType::Cell(data),
                 _ => false,
@@ -436,7 +430,7 @@ impl<'a> Checker<'a> {
                 };
                 let result = BoundType::of(&signature.result);
                 if result == BoundType::Html && signature.modifier != IrModifier::Render {
-                    return Err(FlatTypeError::RenderInPureBlock);
+                    return Err(FlatTypeError::HtmlOutsideRender);
                 }
                 // The body runs once per application, so it reads no Html
                 // bound outside of it.
@@ -456,10 +450,7 @@ impl<'a> Checker<'a> {
                     return Err(FlatTypeError::IllTypedBinding);
                 };
                 if !modifier.allows(signature.modifier) {
-                    return Err(match signature.modifier {
-                        IrModifier::Mut => FlatTypeError::MutOutsideMutBlock,
-                        _ => FlatTypeError::RenderInPureBlock,
-                    });
+                    return Err(FlatTypeError::EffectNotAllowed);
                 }
                 declared == BoundType::of(&signature.result)
                     && self.args(args, signature.parameters.iter().map(BoundType::of))?
@@ -1198,7 +1189,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1394,6 +1385,21 @@ mod tests {
     }
 
     #[test]
+    fn should_accept_a_mint_in_a_function_that_renders_a_value() {
+        FlatProgramBuilder::new()
+            .render_function("counter", [], Ty::Int, |t| {
+                t.mint();
+                t.int(0)
+            })
+            .entrypoint("Test", [], |t| {
+                let count = t.call("counter", []);
+                t.escape(t.int_to_string(count))
+            })
+            .build()
+            .unwrap();
+    }
+
+    #[test]
     fn should_accept_a_cell_in_an_arm_of_a_match_of_a_value_in_a_block_that_renders() {
         FlatProgramBuilder::new()
             .entrypoint("Test", [("on", Ty::Bool)], |t| {
@@ -1422,7 +1428,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1437,7 +1443,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1452,7 +1458,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1470,7 +1476,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1537,7 +1543,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1601,7 +1607,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::MutOutsideMutBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1615,7 +1621,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::MutOutsideMutBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1630,7 +1636,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::MutOutsideMutBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1695,7 +1701,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1749,7 +1755,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1764,7 +1770,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1777,7 +1783,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::MutOutsideMutBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1795,7 +1801,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1809,7 +1815,7 @@ mod tests {
             })
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1819,7 +1825,7 @@ mod tests {
             .entrypoint("Test", [], |t| t.call("label", []))
             .build()
             .unwrap_err();
-        assert_eq!(error, FlatTypeError::RenderInPureBlock);
+        assert_eq!(error, FlatTypeError::HtmlOutsideRender);
     }
 
     #[test]
