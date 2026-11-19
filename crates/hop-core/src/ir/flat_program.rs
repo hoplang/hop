@@ -44,9 +44,7 @@ pub struct FlatFunction {
 }
 
 pub type FlatBlock = IrBlock<FlatBinding>;
-
 pub type FlatBinding = IrBinding<IrType, FlatOp>;
-
 pub type FlatLambda = IrLambda<IrType, FlatBlock>;
 
 #[derive(Debug, Clone)]
@@ -166,16 +164,12 @@ impl FlatOp {
     }
 }
 
-fn write_block(block: &impl fmt::Display, w: &mut dyn Write) -> fmt::Result {
-    write!(w, "\n{block}")
-}
-
 impl fmt::Display for FlatOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FlatOp::Data(op) => write!(f, "{op}"),
             FlatOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
-            FlatOp::Match(match_) => match_.write(f, write_block),
+            FlatOp::Match(match_) => match_.write(f, |block, w| write!(w, "\n{block}")),
             FlatOp::Cell(initial) => {
                 f.write_str("cell {")?;
                 write!(Indent::new(f), "\n{initial}")?;
@@ -233,7 +227,7 @@ impl fmt::Display for FlatOp {
                 write!(Indent::new(f), "\n{body}")?;
                 f.write_str("\n}")
             }
-            FlatOp::Lambda(lambda) => lambda.write(f, write_block),
+            FlatOp::Lambda(lambda) => lambda.write(f, |block, w| write!(w, "\n{block}")),
             FlatOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),
         }
     }
@@ -248,7 +242,7 @@ impl fmt::Display for FlatFunction {
             &self.parameters,
             &self.return_type,
             &self.body,
-            write_block,
+            |block, w| write!(w, "\n{block}"),
         )?;
         writeln!(f)
     }
