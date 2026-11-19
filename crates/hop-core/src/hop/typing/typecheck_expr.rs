@@ -5945,7 +5945,10 @@ mod tests {
     fn accepts_call_to_closure_variable() {
         accept(
             TypeRegistryBuilder::new(),
-            &[("redraw", Ty::function([Ty::String, Ty::Int], Ty::Html))],
+            &[(
+                "redraw",
+                Ty::render_function([Ty::String, Ty::Int], Ty::Html),
+            )],
             "redraw(\"a\", 1)",
             expect!["Html"],
         );
@@ -5955,7 +5958,10 @@ mod tests {
     fn rejects_closure_call_with_mismatched_argument_type() {
         reject(
             TypeRegistryBuilder::new(),
-            &[("redraw", Ty::function([Ty::String, Ty::Int], Ty::Html))],
+            &[(
+                "redraw",
+                Ty::render_function([Ty::String, Ty::Int], Ty::Html),
+            )],
             "redraw(1, 1)",
             expect![[r#"
                 error: Expected String got Int

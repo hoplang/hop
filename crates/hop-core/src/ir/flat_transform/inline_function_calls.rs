@@ -219,6 +219,7 @@ mod tests {
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::flat_typecheck;
+    use crate::ir::ir_type::IrModifier;
     use crate::ir::ir_type::IrType;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
@@ -457,7 +458,7 @@ mod tests {
     fn should_give_each_copy_of_a_loop_fresh_names() {
         check(
             FlatProgramBuilder::new()
-                .function("list", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
+                .render_function("list", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.html_for(t.param("items"), |t, item| {
                         t.element(t.mint(), "li", [], Some(t.escape(item)))
                     })
@@ -525,7 +526,7 @@ mod tests {
     fn should_give_each_copy_of_a_cell_a_fresh_cell_that_its_writes_write() {
         check(
             FlatProgramBuilder::new()
-                .function("counter", [], Ty::Html, |t| {
+                .render_function("counter", [], Ty::Html, |t| {
                     let n = t.cell(|t| t.int(0));
                     let count = t.cell_read(n);
                     let bump = t.event_handler(|t| {
@@ -733,7 +734,7 @@ mod tests {
     fn should_leave_a_self_recursive_function_alone() {
         check(
             FlatProgramBuilder::new()
-                .function("count", [("n", Ty::Int)], Ty::Html, |t| {
+                .render_function("count", [("n", Ty::Int)], Ty::Html, |t| {
                     t.match_(t.lt(ComparableType::Int, t.param("n"), t.int(1)), |m| {
                         m.arm(Pat::True, |t, _| t.text("."));
                         m.arm(Pat::False, |t, _| {
@@ -804,8 +805,8 @@ mod tests {
     fn should_leave_mutually_recursive_functions_alone() {
         check(
             FlatProgramBuilder::new()
-                .declare("ping", [("n", Ty::Int)], Ty::Html)
-                .declare("pong", [("n", Ty::Int)], Ty::Html)
+                .declare(IrModifier::Render, "ping", [("n", Ty::Int)], Ty::Html)
+                .declare(IrModifier::Render, "pong", [("n", Ty::Int)], Ty::Html)
                 .define("ping", |t, _| {
                     t.match_(t.lt(ComparableType::Int, t.param("n"), t.int(1)), |m| {
                         m.arm(Pat::True, |t, _| t.text("."));

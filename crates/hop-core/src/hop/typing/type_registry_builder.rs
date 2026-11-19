@@ -1,4 +1,3 @@
-use crate::hop::parsing::ParsedModifier;
 use crate::hop::typing::resolve_type::check_function_type;
 use crate::hop::typing::r#type::{DataType, FunctionType, Modifier, Type};
 use crate::hop::typing::type_registry::{EnumVariant, RecordField, TypeDef, TypeRegistry};
@@ -34,7 +33,7 @@ pub enum Ty {
     Option(Box<Ty>),
     Tuple(Vec<Ty>),
     Function {
-        mutates: bool,
+        modifier: Modifier,
         parameters: Vec<Ty>,
         result: Box<Ty>,
     },
@@ -63,7 +62,15 @@ impl Ty {
 
     pub fn function(parameters: impl IntoIterator<Item = Ty>, result: Ty) -> Ty {
         Ty::Function {
-            mutates: false,
+            modifier: Modifier::Pure,
+            parameters: parameters.into_iter().collect(),
+            result: Box::new(result),
+        }
+    }
+
+    pub fn render_function(parameters: impl IntoIterator<Item = Ty>, result: Ty) -> Ty {
+        Ty::Function {
+            modifier: Modifier::Render,
             parameters: parameters.into_iter().collect(),
             result: Box::new(result),
         }
@@ -71,7 +78,7 @@ impl Ty {
 
     pub fn mut_function(parameters: impl IntoIterator<Item = Ty>, result: Ty) -> Ty {
         Ty::Function {
-            mutates: true,
+            modifier: Modifier::Mut,
             parameters: parameters.into_iter().collect(),
             result: Box::new(result),
         }
@@ -84,13 +91,13 @@ impl From<Ty> for Type {
             Ty::Html => Type::HTML,
             Ty::Cell(_) => panic!("the surface language has no cell type"),
             Ty::Function {
-                mutates,
+                modifier,
                 parameters,
                 result,
             } => {
                 let result: Type = (*result).into();
                 let function = FunctionType {
-                    modifier: Modifier::of(mutates.then_some(ParsedModifier::Mut), &result),
+                    modifier,
                     parameters: parameters.into_iter().map(Type::from).collect(),
                     result: Box::new(result),
                 };

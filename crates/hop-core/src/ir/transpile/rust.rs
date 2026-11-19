@@ -1997,9 +1997,12 @@ mod tests {
         // The function is recursive, so the inliner keeps the closure.
         check_program(
             FlatProgramBuilder::new()
-                .function(
+                .render_function(
                     "Countdown",
-                    [("n", Ty::Int), ("row", Ty::function([Ty::Int], Ty::Html))],
+                    [
+                        ("n", Ty::Int),
+                        ("row", Ty::render_function([Ty::Int], Ty::Html)),
+                    ],
                     Ty::Html,
                     |t| {
                         t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
@@ -2015,7 +2018,7 @@ mod tests {
                 )
                 .entrypoint("Test", [("prefix", Ty::String)], |t| {
                     let prefix = t.param("prefix");
-                    let row = t.lambda([IrType::INT], |t, params| {
+                    let row = t.render_lambda([IrType::INT], |t, params| {
                         let text = t.string_concat([prefix, t.int_to_string(params[0])]);
                         t.element(t.mint(), "li", [], Some(t.escape(text)))
                     });
@@ -2205,9 +2208,12 @@ mod tests {
     fn closure_that_takes_html() {
         check_program(
             FlatProgramBuilder::new()
-                .function(
+                .render_function(
                     "Wrap",
-                    [("n", Ty::Int), ("wrap", Ty::function([Ty::Html], Ty::Html))],
+                    [
+                        ("n", Ty::Int),
+                        ("wrap", Ty::render_function([Ty::Html], Ty::Html)),
+                    ],
                     Ty::Html,
                     |t| {
                         t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
@@ -2221,7 +2227,7 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [], |t| {
-                    let wrap = t.lambda([IrType::HTML], |t, params| {
+                    let wrap = t.render_lambda([IrType::HTML], |t, params| {
                         t.element(t.mint(), "b", [], Some(params[0]))
                     });
                     t.call("Wrap", [t.int(2), wrap])

@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::display::join;
+use crate::hop::typing::Modifier;
 use crate::symbols::type_name::TypeName;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +41,17 @@ impl IrModifier {
             (IrModifier::Pure, _) => false,
             (_, IrModifier::Read) => true,
             (context, effect) => context == effect,
+        }
+    }
+}
+
+impl From<Modifier> for IrModifier {
+    fn from(modifier: Modifier) -> IrModifier {
+        match modifier {
+            Modifier::Pure => IrModifier::Pure,
+            Modifier::Read => IrModifier::Read,
+            Modifier::Render => IrModifier::Render,
+            Modifier::Mut => IrModifier::Mut,
         }
     }
 }

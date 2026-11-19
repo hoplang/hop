@@ -183,7 +183,7 @@ fn is_well_formed(signature: &IrSignature) -> bool {
             _ => true,
         });
     let result = match *signature.result {
-        IrType::Html => !matches!(signature.modifier, IrModifier::Read | IrModifier::Mut),
+        IrType::Html => signature.modifier == IrModifier::Render,
         IrType::Data(_) => (signature.parameters.iter()).all(IrType::is_value_or_value_closure),
         IrType::Function(_) | IrType::Cell(_) | IrType::ElementId => false,
     };
@@ -785,7 +785,7 @@ mod tests {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let outer = t.text("x");
-                let closure = t.lambda([], |_, _| outer);
+                let closure = t.render_lambda([], |_, _| outer);
                 t.apply(closure, [])
             })
             .build()
@@ -962,7 +962,7 @@ mod tests {
     #[test]
     fn should_reject_a_call_with_the_wrong_arguments() {
         let error = FlatProgramBuilder::new()
-            .function("show", [("n", Ty::Int)], Ty::Html, |t| {
+            .render_function("show", [("n", Ty::Int)], Ty::Html, |t| {
                 t.escape(t.int_to_string(t.param("n")))
             })
             .entrypoint("Test", [], |t| t.call("show", [t.str("one")]))
@@ -1253,7 +1253,7 @@ mod tests {
     #[test]
     fn should_reject_a_function_that_takes_a_cell() {
         let error = FlatProgramBuilder::new()
-            .function("Show", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
+            .render_function("Show", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
                 t.escape(t.int_to_string(t.cell_read(t.param("count"))))
             })
             .entrypoint("Test", [], |t| {
@@ -1355,7 +1355,8 @@ mod tests {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let id = t.mint();
-                let row = t.lambda([], |t, _| t.element(id, "li", vec![], Some(t.text("x"))));
+                let row =
+                    t.render_lambda([], |t, _| t.element(id, "li", vec![], Some(t.text("x"))));
                 t.apply(row, [])
             })
             .build()
@@ -1367,7 +1368,7 @@ mod tests {
     fn should_reject_a_lambda_that_takes_an_identity() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let row = t.lambda([IrType::ElementId], |t, params| {
+                let row = t.render_lambda([IrType::ElementId], |t, params| {
                     t.element(params[0], "li", vec![], Some(t.text("x")))
                 });
                 t.apply(row, [t.mint()])

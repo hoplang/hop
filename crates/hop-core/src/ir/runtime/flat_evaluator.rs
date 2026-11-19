@@ -1462,11 +1462,11 @@ mod tests {
     fn should_render_a_closure_a_function_takes_once_per_application() {
         check(
             FlatProgramBuilder::new()
-                .function(
+                .render_function(
                     "Rows",
                     [
                         ("items", Ty::array(Ty::String)),
-                        ("row", Ty::function([Ty::String], Ty::Html)),
+                        ("row", Ty::render_function([Ty::String], Ty::Html)),
                     ],
                     Ty::Html,
                     |t| {
@@ -1477,7 +1477,7 @@ mod tests {
                 )
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     let prefix = t.str("- ");
-                    let row = t.lambda([IrType::STRING], |t, params| {
+                    let row = t.render_lambda([IrType::STRING], |t, params| {
                         let text = t.html_concat([t.escape(prefix), t.escape(params[0])]);
                         t.element(t.mint(), "li", [], Some(text))
                     });
@@ -1663,7 +1663,7 @@ mod tests {
     #[test]
     fn should_error_when_a_function_calls_itself_in_each_element_of_a_loop() {
         let program = FlatProgramBuilder::new()
-            .function("Tree", [("n", Ty::Int)], Ty::Html, |t| {
+            .render_function("Tree", [("n", Ty::Int)], Ty::Html, |t| {
                 let n = t.param("n");
                 let deeper = t.lt(ComparableType::Int, n, t.int(10));
                 t.match_(deeper, |m| {

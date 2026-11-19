@@ -40,6 +40,7 @@ mod tests {
     use crate::ir::flat_program_builder::FlatProgramBuilder;
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::flat_typecheck;
+    use crate::ir::ir_type::IrModifier;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
 
@@ -94,8 +95,8 @@ mod tests {
     fn should_drop_a_recursive_function_no_entrypoint_calls() {
         check(
             FlatProgramBuilder::new()
-                .declare("ping", [("n", Ty::Int)], Ty::Int)
-                .declare("pong", [("n", Ty::Int)], Ty::Int)
+                .declare(IrModifier::Pure, "ping", [("n", Ty::Int)], Ty::Int)
+                .declare(IrModifier::Pure, "pong", [("n", Ty::Int)], Ty::Int)
                 .define("ping", |t, _| t.call("pong", [t.param("n")]))
                 .define("pong", |t, _| t.call("ping", [t.param("n")]))
                 .entrypoint("Test", [], |t| t.text("shown"))
@@ -133,13 +134,13 @@ mod tests {
     fn should_keep_the_callees_of_a_loop_and_of_a_lambda_nothing_applies() {
         check(
             FlatProgramBuilder::new()
-                .function("row", [("n", Ty::Int)], Ty::Html, |t| {
+                .render_function("row", [("n", Ty::Int)], Ty::Html, |t| {
                     t.escape(t.int_to_string(t.param("n")))
                 })
-                .function("label", [], Ty::Html, |t| t.text("label"))
-                .function("unused", [], Ty::Html, |t| t.text("unused"))
+                .render_function("label", [], Ty::Html, |t| t.text("label"))
+                .render_function("unused", [], Ty::Html, |t| t.text("unused"))
                 .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
-                    t.lambda([], |t, _| t.call("label", []));
+                    t.render_lambda([], |t, _| t.call("label", []));
                     t.html_for(t.param("items"), |t, item| t.call("row", [item]))
                 })
                 .build()

@@ -918,7 +918,7 @@ impl FlatGenerator<'_, '_> {
             b.mut_lambda(parameters, body)
         } else if read {
             b.read_lambda(parameters, body)
-        } else if render && *signature.result != IrType::Html {
+        } else if render {
             b.render_lambda(parameters, body)
         } else {
             b.lambda(parameters, body)

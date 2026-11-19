@@ -131,11 +131,11 @@ mod tests {
     fn should_render_the_body_of_a_closure_a_called_function_applies_in_place() {
         check(
             FlatProgramBuilder::new()
-                .function(
+                .render_function(
                     "Rows",
                     [
                         ("items", Ty::array(Ty::String)),
-                        ("row", Ty::function([Ty::String], Ty::Html)),
+                        ("row", Ty::render_function([Ty::String], Ty::Html)),
                     ],
                     Ty::Html,
                     |t| {
@@ -145,7 +145,7 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
-                    let row = t.lambda([IrType::STRING], |t, params| {
+                    let row = t.render_lambda([IrType::STRING], |t, params| {
                         t.element(t.mint(), "li", [], Some(t.escape(params[0])))
                     });
                     t.call("Rows", [t.param("items"), row])

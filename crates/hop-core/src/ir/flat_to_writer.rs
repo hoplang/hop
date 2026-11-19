@@ -1353,7 +1353,7 @@ mod tests {
     fn leaves_out_the_clicks_and_renders_each_cell_as_its_initial_value() {
         check_program(
             FlatProgramBuilder::new()
-                .function(
+                .render_function(
                     "Buttons",
                     [
                         ("n", Ty::Int),
@@ -1475,9 +1475,12 @@ mod tests {
     fn binds_a_closure_a_recursive_function_takes_and_writes_each_application() {
         check_program(
             FlatProgramBuilder::new()
-                .function(
+                .render_function(
                     "Countdown",
-                    [("n", Ty::Int), ("row", Ty::function([Ty::Int], Ty::Html))],
+                    [
+                        ("n", Ty::Int),
+                        ("row", Ty::render_function([Ty::Int], Ty::Html)),
+                    ],
                     Ty::Html,
                     |t| {
                         t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
@@ -1493,7 +1496,7 @@ mod tests {
                 )
                 .entrypoint("Test", [("prefix", Ty::String)], |t| {
                     let prefix = t.param("prefix");
-                    let row = t.lambda([IrType::INT], |t, params| {
+                    let row = t.render_lambda([IrType::INT], |t, params| {
                         let text = t.string_concat([prefix, t.int_to_string(params[0])]);
                         t.element(t.mint(), "li", [], Some(t.escape(text)))
                     });
@@ -1722,9 +1725,12 @@ mod tests {
     fn passes_the_html_a_closure_takes_as_a_closure() {
         check_program(
             FlatProgramBuilder::new()
-                .function(
+                .render_function(
                     "Wrap",
-                    [("n", Ty::Int), ("wrap", Ty::function([Ty::Html], Ty::Html))],
+                    [
+                        ("n", Ty::Int),
+                        ("wrap", Ty::render_function([Ty::Html], Ty::Html)),
+                    ],
                     Ty::Html,
                     |t| {
                         t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
@@ -1738,7 +1744,7 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [], |t| {
-                    let wrap = t.lambda([IrType::HTML], |t, params| {
+                    let wrap = t.render_lambda([IrType::HTML], |t, params| {
                         t.element(t.mint(), "b", [], Some(params[0]))
                     });
                     t.call("Wrap", [t.int(2), wrap])
@@ -2811,10 +2817,10 @@ mod tests {
     fn writes_the_children_of_inlined_calls_in_place() {
         check_program(
             FlatProgramBuilder::new()
-                .function("Badge", [("label", Ty::String)], Ty::Html, |t| {
+                .render_function("Badge", [("label", Ty::String)], Ty::Html, |t| {
                     t.element(t.mint(), "span", [], Some(t.escape(t.param("label"))))
                 })
-                .function("Wrap", [("content", Ty::Html)], Ty::Html, |t| {
+                .render_function("Wrap", [("content", Ty::Html)], Ty::Html, |t| {
                     t.element(t.mint(), "div", [], Some(t.param("content")))
                 })
                 .entrypoint("Test", [("label", Ty::String)], |t| {

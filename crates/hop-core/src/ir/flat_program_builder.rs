@@ -66,7 +66,7 @@ impl FlatProgramBuilder {
         return_type: Ty,
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     ) -> Self {
-        self.declare(name, params, return_type)
+        self.declare(IrModifier::Pure, name, params, return_type)
             .define(name, |t, _| body_fn(t))
     }
 
@@ -77,12 +77,7 @@ impl FlatProgramBuilder {
         return_type: Ty,
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     ) -> Self {
-        let params: Vec<(&str, IrType)> = params
-            .into_iter()
-            .map(|(name, typ)| (name, self.types.ty(typ)))
-            .collect();
-        let return_type = self.types.ty(return_type);
-        self.declare_with_types(name, params, return_type, IrModifier::Render)
+        self.declare(IrModifier::Render, name, params, return_type)
             .define(name, |t, _| body_fn(t))
     }
 
@@ -93,12 +88,7 @@ impl FlatProgramBuilder {
         return_type: Ty,
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     ) -> Self {
-        let params: Vec<(&str, IrType)> = params
-            .into_iter()
-            .map(|(name, typ)| (name, self.types.ty(typ)))
-            .collect();
-        let return_type = self.types.ty(return_type);
-        self.declare_with_types(name, params, return_type, IrModifier::Read)
+        self.declare(IrModifier::Read, name, params, return_type)
             .define(name, |t, _| body_fn(t))
     }
 
@@ -109,12 +99,7 @@ impl FlatProgramBuilder {
         return_type: Ty,
         body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     ) -> Self {
-        let params: Vec<(&str, IrType)> = params
-            .into_iter()
-            .map(|(name, typ)| (name, self.types.ty(typ)))
-            .collect();
-        let return_type = self.types.ty(return_type);
-        self.declare_with_types(name, params, return_type, IrModifier::Mut)
+        self.declare(IrModifier::Mut, name, params, return_type)
             .define(name, |t, _| body_fn(t))
     }
 
@@ -153,6 +138,7 @@ impl FlatProgramBuilder {
 
     pub fn declare<'p>(
         self,
+        modifier: IrModifier,
         name: &str,
         params: impl IntoIterator<Item = (&'p str, Ty)>,
         return_type: Ty,
@@ -162,11 +148,6 @@ impl FlatProgramBuilder {
             .map(|(name, typ)| (name, self.types.ty(typ)))
             .collect();
         let return_type = self.types.ty(return_type);
-        let modifier = if return_type == IrType::HTML {
-            IrModifier::Render
-        } else {
-            IrModifier::Pure
-        };
         self.declare_with_types(name, params, return_type, modifier)
     }
 
@@ -890,7 +871,7 @@ impl<'a> FlatBlockBuilder<'a> {
     where
         F: FnOnce(&FlatBlockBuilder<'_>, &[ValueId]) -> ValueId,
     {
-        self.closure(None, parameters, body_fn)
+        self.closure(IrModifier::Pure, parameters, body_fn)
     }
 
     pub fn render_lambda<F>(
@@ -901,12 +882,12 @@ impl<'a> FlatBlockBuilder<'a> {
     where
         F: FnOnce(&FlatBlockBuilder<'_>, &[ValueId]) -> ValueId,
     {
-        self.closure(Some(IrModifier::Render), parameters, body_fn)
+        self.closure(IrModifier::Render, parameters, body_fn)
     }
 
     fn closure<F>(
         &self,
-        modifier: Option<IrModifier>,
+        modifier: IrModifier,
         parameters: impl IntoIterator<Item = IrType>,
         body_fn: F,
     ) -> ValueId
@@ -923,11 +904,6 @@ impl<'a> FlatBlockBuilder<'a> {
         let names: Vec<ValueId> = parameters.iter().map(|param| param.var).collect();
         let body = self.block(|t| body_fn(t, &names));
         let types = parameters.iter().map(|param| param.typ.clone());
-        let modifier = modifier.unwrap_or(if body.typ == IrType::Html {
-            IrModifier::Render
-        } else {
-            IrModifier::Pure
-        });
         let typ = IrType::function(modifier, types, body.typ.clone());
         let lambda = IrLambda {
             parameters,
@@ -944,14 +920,14 @@ impl<'a> FlatBlockBuilder<'a> {
     where
         F: FnOnce(&FlatBlockBuilder<'_>, &[ValueId]) -> ValueId,
     {
-        self.closure(Some(IrModifier::Read), parameters, body_fn)
+        self.closure(IrModifier::Read, parameters, body_fn)
     }
 
     pub fn mut_lambda<F>(&self, parameters: impl IntoIterator<Item = IrType>, body_fn: F) -> ValueId
     where
         F: FnOnce(&FlatBlockBuilder<'_>, &[ValueId]) -> ValueId,
     {
-        self.closure(Some(IrModifier::Mut), parameters, body_fn)
+        self.closure(IrModifier::Mut, parameters, body_fn)
     }
 
     pub fn event_handler(&self, body_fn: impl FnOnce(&FlatBlockBuilder<'_>) -> ValueId) -> ValueId {

@@ -137,7 +137,7 @@ fn ir_type(ty: Ty, records: &[String], enums: &[String]) -> IrType {
         Ty::Html => IrType::Html,
         Ty::Cell(payload) => IrType::Cell(data_type(*payload, records, enums)),
         Ty::Function {
-            mutates,
+            modifier,
             parameters,
             result,
         } => {
@@ -145,14 +145,7 @@ fn ir_type(ty: Ty, records: &[String], enums: &[String]) -> IrType {
                 .into_iter()
                 .map(|parameter| ir_type(parameter, records, enums));
             let result = ir_type(*result, records, enums);
-            let modifier = if mutates {
-                IrModifier::Mut
-            } else if result == IrType::Html {
-                IrModifier::Render
-            } else {
-                IrModifier::Pure
-            };
-            IrType::function(modifier, parameters, result)
+            IrType::function(IrModifier::from(modifier), parameters, result)
         }
         ty => IrType::Data(data_type(ty, records, enums)),
     }

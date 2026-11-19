@@ -4,8 +4,8 @@ use std::sync::Arc;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
 use crate::hop::typing::{
-    Constructor, DataType, Modifier, Pattern, PatternField, RecordField, ResolvedType, StateKind,
-    Type, TypeRegistry, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
+    Constructor, DataType, Pattern, PatternField, RecordField, ResolvedType, StateKind, Type,
+    TypeRegistry, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
     TypedPageDeclaration, TypedParameter, TypedPattern, TypedRecordUpdateField, TypedStatement,
 };
 use crate::ir::entrypoint_id::EntrypointId;
@@ -247,12 +247,7 @@ impl<'a> Compiler<'a> {
             parameters.push(IrParameter { name, binder });
         }
 
-        let modifier = match decl.modifier {
-            Modifier::Pure => IrModifier::Pure,
-            Modifier::Read => IrModifier::Read,
-            Modifier::Render => IrModifier::Render,
-            Modifier::Mut => IrModifier::Mut,
-        };
+        let modifier = IrModifier::from(decl.modifier);
         let outer = std::mem::replace(&mut self.context, modifier);
         let body = match &decl.return_type {
             Type::Html(_) => self.compile_html_block(&decl.body),
@@ -990,15 +985,8 @@ impl<'a> Compiler<'a> {
                 let Type::Function(function) = &typ else {
                     unreachable!("a lambda has a function type");
                 };
-                let outer = std::mem::replace(
-                    &mut self.context,
-                    match function.modifier {
-                        Modifier::Pure => IrModifier::Pure,
-                        Modifier::Read => IrModifier::Read,
-                        Modifier::Render => IrModifier::Render,
-                        Modifier::Mut => IrModifier::Mut,
-                    },
-                );
+                let outer =
+                    std::mem::replace(&mut self.context, IrModifier::from(function.modifier));
                 self.push_scope();
                 let parameters: Vec<IrBinder<IrType>> = params
                     .iter()
@@ -1147,12 +1135,7 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
         Type::Data(data) => IrType::Data(lower_data_type(registry, data)),
         Type::Html(_) => IrType::Html,
         Type::Function(function) => IrType::function(
-            match function.modifier {
-                Modifier::Pure => IrModifier::Pure,
-                Modifier::Read => IrModifier::Read,
-                Modifier::Render => IrModifier::Render,
-                Modifier::Mut => IrModifier::Mut,
-            },
+            IrModifier::from(function.modifier),
             (function.parameters.iter()).map(|parameter| lower_type(registry, parameter)),
             lower_type(registry, &function.result),
         ),
