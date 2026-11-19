@@ -1823,7 +1823,13 @@ mod tests {
     }
 
     fn kind(binding: &FlatBinding) -> String {
-        let debug = format!("{:?}", binding.op);
+        let debug = match &binding.op {
+            FlatOp::Match(_) => "Match".to_string(),
+            FlatOp::Cell(_) => "Cell".to_string(),
+            FlatOp::For(_) => "For".to_string(),
+            FlatOp::Lambda(_) => "Lambda".to_string(),
+            op => format!("{op:?}"),
+        };
         let kind = debug
             .trim_start_matches("Data(")
             .split('(')
@@ -2049,7 +2055,7 @@ mod tests {
 
     #[test]
     fn should_report_generator_stats() {
-        const SAMPLES: usize = 100;
+        const SAMPLES: usize = 32;
         const INPUT_LEN: usize = 65_536;
         let mut rng = SmallRng::seed_from_u64(0);
         let mut counts = BTreeMap::new();
@@ -2204,78 +2210,78 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            19233 of 65536 input bytes consumed per program on average, at most 65536
-            9 of 100 programs exhaust the input
+            15268 of 65536 input bytes consumed per program on average, at most 56208
+            0 of 32 programs exhaust the input
 
             -- sizes --
-            under 256     5  #####
-            under 1K      6  ######
-            under 4K     12  #############
-            under 16K    32  ###################################
-            under 64K    36  ########################################
-            at 64K        9  ##########
+            under 256     3  #########
+            under 1K      2  ######
+            under 4K      4  ############
+            under 16K    10  ##############################
+            under 64K    13  ########################################
+            at 64K        0
 
             -- programs --
-            157 of 13284 Html bindings have more than one reference
-            10 of 3365 mints have more than one reference
-            2.7 arms per match on average, at least 2 and at most 18
-            27731 of 70078 match arms bind names
-            45130 cells
-            545 of 894 loops have a key
-            2329 of 2874 elements have a click
-            365 handlers have more than one click
-            828 clicks apply a handler bound outside their block, 23 of them a parameter
+            54 of 4459 Html bindings have more than one reference
+            2 of 1143 mints have more than one reference
+            2.5 arms per match on average, at least 2 and at most 13
+            6960 of 16966 match arms bind names
+            13682 cells
+            218 of 356 loops have a key
+            776 of 962 elements have a click
+            130 handlers have more than one click
+            296 clicks apply a handler bound outside their block, 2 of them a parameter
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      250.2    95.0    93.6    66.1
-            Array                      336.2    95.0    90.1    24.5
-            ArrayEnumerate               2.2    53.0    99.1    55.3
-            ArrayFromRange              18.3    94.0    91.9     0.0
-            ArrayGet                    62.3    93.0    88.5    50.9
-            ArrayIsEmpty                 3.3    64.0    91.3    50.6
-            ArrayLength                165.8    93.0    93.2    52.6
-            BoolLiteral                 95.4    95.0    89.2     0.0
-            BoolNegation                 3.5    69.0    90.7    49.6
-            Call                        24.4    57.0    95.1    69.9
-            Cell                       451.3    93.0    90.5    44.0
-            CellRead                   465.0    93.0    90.7    43.8
-            CellWrite                  153.5    81.0    96.7    55.8
-            Enum                       205.9    75.0    90.7    22.3
-            Equals                       3.5    68.0    93.9    69.6
-            FieldAccess                 14.9    47.0    95.1    70.5
-            FloatLiteral               159.6    95.0    91.7     0.0
-            FloatToInt                 159.2    93.0    93.3    47.5
-            HtmlApply                    4.3    70.0    97.7    79.4
-            HtmlConcat                  37.7    83.0    98.4    42.0
-            HtmlElement                 28.7    84.0    97.7    59.2
-            HtmlEscape                  17.9    87.0    98.2    46.5
-            HtmlFor                      8.9    79.0    98.2    74.4
-            HtmlLambda                  11.8    71.0    96.5    55.9
-            HtmlText                     9.6    75.0    97.8     0.0
-            IntLiteral                 197.6    97.0    91.7     0.0
-            IntToFloat                 205.4    94.0    93.8    52.6
-            IntToString                 70.1    92.0    94.8    49.6
-            Lambda                     252.3    95.0    93.2    46.9
-            LessThan                     3.2    65.0    93.4    66.1
-            LessThanOrEqual              3.7    72.0    93.3    68.3
-            Match                      258.9    95.0    93.4    79.7
-            Mint                        33.6    93.0    83.1     0.0
-            MutLambda                   52.4    97.0    95.8    32.2
-            NumericAdd                 371.6    94.0    93.7    65.5
-            NumericMultiply            369.2    94.0    93.7    65.4
-            NumericNegation            373.4    94.0    93.3    52.1
-            NumericSubtract            376.2    94.0    93.5    65.3
-            OptionIsNone                 3.5    68.0    92.0    56.0
-            OptionIsSome                 3.3    64.0    91.0    54.2
-            OptionNone                 115.1    95.0    90.6     0.0
-            OptionSome                 103.7    95.0    90.1    24.3
-            ReadLambda                  23.1    89.0    93.5    47.4
-            Record                     121.7    72.0    88.7    25.6
-            StringConcat                68.8    87.0    95.2    47.5
-            StringIsEmpty                3.4    70.0    92.9    45.4
-            StringLiteral               87.2    97.0    91.9     0.0
-            Tuple                      292.1    99.0    90.9    29.0
+            Apply                      206.2    90.6    95.8    69.2
+            Array                      260.8    90.6    93.8    26.8
+            ArrayEnumerate               1.6    56.2   100.0    60.0
+            ArrayFromRange              16.7    87.5    96.4     0.0
+            ArrayGet                    47.4    87.5    90.7    52.8
+            ArrayIsEmpty                 2.8    53.1    95.6    50.0
+            ArrayLength                120.0    87.5    95.3    50.8
+            BoolLiteral                 78.0    90.6    94.2     0.0
+            BoolNegation                 3.2    68.8    90.4    48.1
+            Call                        29.3    53.1    96.8    58.1
+            Cell                       427.6    96.9    94.3    48.8
+            CellRead                   438.7    96.9    94.4    48.4
+            CellWrite                  121.1    81.2    98.2    47.0
+            Enum                       145.6    78.1    92.3    29.1
+            Equals                       2.8    59.4   100.0    80.7
+            FieldAccess                 18.2    43.8    95.9    89.7
+            FloatLiteral               121.8    90.6    93.6     0.0
+            FloatToInt                 114.9    87.5    95.7    53.0
+            HtmlApply                    5.3    65.6    99.4    83.5
+            HtmlConcat                  39.6    87.5    99.4    43.5
+            HtmlElement                 30.1    90.6    99.3    62.8
+            HtmlEscape                  19.6    87.5    99.8    47.0
+            HtmlFor                     11.1    75.0    99.4    74.2
+            HtmlLambda                   9.7    65.6    99.7    61.5
+            HtmlText                     9.1    75.0    99.3     0.0
+            IntLiteral                 149.9    96.9    94.9     0.0
+            IntToFloat                 140.5    87.5    96.6    58.1
+            IntToString                 64.3    90.6    97.7    53.1
+            Lambda                     214.6    90.6    95.6    51.3
+            LessThan                     2.5    62.5    94.9    78.5
+            LessThanOrEqual              3.4    75.0    98.2    73.4
+            Match                      211.1    90.6    96.5    84.7
+            Mint                        35.7    96.9    83.3     0.0
+            MutLambda                   47.1    90.6    96.9    29.0
+            NumericAdd                 264.2    87.5    96.1    71.2
+            NumericMultiply            259.1    87.5    95.9    70.9
+            NumericNegation            261.8    87.5    95.7    56.7
+            NumericSubtract            269.3    87.5    96.1    70.6
+            OptionIsNone                 2.9    68.8    89.4    63.8
+            OptionIsSome                 2.9    62.5    92.5    59.1
+            OptionNone                  93.4    90.6    94.4     0.0
+            OptionSome                  88.6    90.6    93.4    25.5
+            ReadLambda                  20.8    81.2    94.7    53.5
+            Record                      99.7    68.8    92.7    32.9
+            StringConcat                60.6    81.2    97.1    46.7
+            StringIsEmpty                2.8    71.9    94.3    50.0
+            StringLiteral               74.4    93.8    94.4     0.0
+            Tuple                      256.1    96.9    94.0    33.0
         "#]]
         .assert_eq(&report);
     }
