@@ -94,7 +94,7 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
             }
             for param in &function.parameters {
                 let typ = BoundType::of(&param.binder.typ);
-                if matches!(typ, BoundType::Cell(_) | BoundType::Id) {
+                if matches!(typ, BoundType::Cell(_) | BoundType::ElementId) {
                     return Err(FlatTypeError::CellOrIdParameter);
                 }
                 // Only Html depends on Html, so a function that returns a
@@ -155,7 +155,7 @@ enum BoundType<'a> {
     Cell(&'a IrDataType),
     Function(&'a IrSignature),
     Html,
-    Id,
+    ElementId,
 }
 
 impl<'a> BoundType<'a> {
@@ -165,7 +165,7 @@ impl<'a> BoundType<'a> {
             IrType::Html => BoundType::Html,
             IrType::Function(signature) => BoundType::Function(signature),
             IrType::Cell(data) => BoundType::Cell(data),
-            IrType::Id => BoundType::Id,
+            IrType::ElementId => BoundType::ElementId,
         }
     }
 
@@ -185,7 +185,7 @@ fn is_well_formed(signature: &IrSignature) -> bool {
     let result = match *signature.result {
         IrType::Html => !matches!(signature.modifier, IrModifier::Read | IrModifier::Mut),
         IrType::Data(_) => (signature.parameters.iter()).all(IrType::is_value_or_value_closure),
-        IrType::Function(_) | IrType::Cell(_) | IrType::Id => false,
+        IrType::Function(_) | IrType::Cell(_) | IrType::ElementId => false,
     };
     parameters && result
 }
@@ -205,7 +205,7 @@ impl<'a> Checker<'a> {
             return Err(FlatTypeError::BoundTwice);
         }
         self.scope.push(name);
-        if matches!(typ, BoundType::Html | BoundType::Id) {
+        if matches!(typ, BoundType::Html | BoundType::ElementId) {
             self.live.push(name);
         }
         Ok(())
@@ -233,7 +233,7 @@ impl<'a> Checker<'a> {
         };
         let reused = match bound.typ {
             BoundType::Html => FlatTypeError::HtmlReadMoreThanOnce,
-            BoundType::Id => FlatTypeError::IdTakenMoreThanOnce,
+            BoundType::ElementId => FlatTypeError::IdTakenMoreThanOnce,
             _ => return Ok(bound.typ),
         };
         let index = (self.live.iter())
@@ -246,7 +246,10 @@ impl<'a> Checker<'a> {
     fn data(&mut self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatTypeError> {
         Ok(match self.read(name)? {
             BoundType::Data(data) => Some(data),
-            BoundType::Cell(_) | BoundType::Function(_) | BoundType::Html | BoundType::Id => None,
+            BoundType::Cell(_)
+            | BoundType::Function(_)
+            | BoundType::Html
+            | BoundType::ElementId => None,
         })
     }
 
@@ -270,7 +273,7 @@ impl<'a> Checker<'a> {
             // The value of a block depends on no Html, as no op looks into
             // Html, so a block that produces a value binds none.
             let typ = &binding.binder.typ;
-            if (typ.is_html_or_html_closure() || *typ == IrType::Id) && !returns_html {
+            if (typ.is_html_or_html_closure() || *typ == IrType::ElementId) && !returns_html {
                 return Err(FlatTypeError::HtmlInValueBlock);
             }
             self.binding(binding, modifier)?;
@@ -346,7 +349,7 @@ impl<'a> Checker<'a> {
                 }
                 _ => false,
             },
-            FlatOp::Mint => declared == BoundType::Id,
+            FlatOp::Mint => declared == BoundType::ElementId,
             FlatOp::CellWrite(cell, value) => {
                 if !modifier.allows(IrModifier::Mut) {
                     return Err(FlatTypeError::MutOutsideMutBlock);
@@ -369,7 +372,7 @@ impl<'a> Checker<'a> {
                 html && try_all(parts, |part| Ok(self.read(*part)?.is(&IrType::HTML)))?
             }
             FlatOp::Element(element) => {
-                if self.read(element.identity)? != BoundType::Id {
+                if self.read(element.identity)? != BoundType::ElementId {
                     return Err(FlatTypeError::IllTypedBinding);
                 }
                 let attributes = try_all(element.attributes.values(), |attribute| {
@@ -512,7 +515,7 @@ impl<'a> Checker<'a> {
         }
         for param in parameters {
             let typ = BoundType::of(&param.typ);
-            if matches!(typ, BoundType::Cell(_) | BoundType::Id) {
+            if matches!(typ, BoundType::Cell(_) | BoundType::ElementId) {
                 return Err(FlatTypeError::CellOrIdParameter);
             }
             self.bind(param.var, typ)?;
@@ -1364,7 +1367,7 @@ mod tests {
     fn should_reject_a_lambda_that_takes_an_identity() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let row = t.lambda([IrType::Id], |t, params| {
+                let row = t.lambda([IrType::ElementId], |t, params| {
                     t.element(params[0], "li", vec![], Some(t.text("x")))
                 });
                 t.apply(row, [t.mint()])

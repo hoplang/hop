@@ -169,7 +169,7 @@ fn parameter_type(typ: &IrType) -> IrType {
             IrType::Html,
         ),
         IrType::Data(_) | IrType::Function(_) => value_type(typ),
-        IrType::Cell(_) | IrType::Id => {
+        IrType::Cell(_) | IrType::ElementId => {
             unreachable!("the typechecker rejects a parameter of a cell or an identity")
         }
     }
@@ -190,7 +190,7 @@ fn value_type(typ: &IrType) -> IrType {
             signature.parameters.iter().map(value_type),
             value_type(&signature.result),
         ),
-        IrType::Html | IrType::Cell(_) | IrType::Id => {
+        IrType::Html | IrType::Cell(_) | IrType::ElementId => {
             unreachable!("{typ} is not the type of a value")
         }
     }
@@ -268,7 +268,7 @@ impl<'a> Lowerer<'a> {
             IrType::Html => {
                 self.html_parameters.insert(binder.var);
             }
-            IrType::Cell(_) | IrType::Id => {
+            IrType::Cell(_) | IrType::ElementId => {
                 unreachable!("the typechecker rejects a parameter of a cell or an identity")
             }
             IrType::Function(_) => {}
@@ -1407,7 +1407,7 @@ mod tests {
                     false => {
                       let v5: String = int_to_string(v0)
                       let v6: Html = escape(v5)
-                      let v7: Id = mint()
+                      let v7: ElementId = mint()
                       let v8: Html = element(v7, "button", {}, v6) on_click v1
                       let v9: Int = 1
                       let v10: Int = int_sub(v0, v9)
@@ -1538,12 +1538,12 @@ mod tests {
                   ) {
                     let v13: String = int_to_string(v12)
                     let v14: String = string_concat(v11, v13)
-                    let v15: Id = mint()
+                    let v15: ElementId = mint()
                     let v16: Html = escape(v14)
                     let v17: Html = element(v15, "li", {}, v16)
                     v17
                   }
-                  let v19: Id = mint()
+                  let v19: ElementId = mint()
                   let v20: Int = 3
                   let v21: Html = f0(v20, v18)
                   let v22: Html = element(v19, "ul", {}, v21)
@@ -1772,7 +1772,7 @@ mod tests {
                   let v13: render (Html) -> Html = fn(
                     v10: Html,
                   ) {
-                    let v11: Id = mint()
+                    let v11: ElementId = mint()
                     let v12: Html = element(v11, "b", {}, v10)
                     v12
                   }
@@ -1837,7 +1837,7 @@ mod tests {
                   title@v0: String,
                 ) -> Html {
                   let v1: Html = escape(v0)
-                  let v3: Id = mint()
+                  let v3: ElementId = mint()
                   let v4: Html = element(v3, "title", {}, v1)
                   v4
                 }
@@ -1845,7 +1845,7 @@ mod tests {
                   title@v5: String,
                 ) -> Html {
                   let v6: Html = escape(v5)
-                  let v8: Id = mint()
+                  let v8: ElementId = mint()
                   let v9: Html = element(v8, "h1", {}, v6)
                   v9
                 }
@@ -1884,9 +1884,9 @@ mod tests {
                   id@v0: String,
                   flag@v1: Bool,
                 ) -> Html {
-                  let v5: Id = mint()
+                  let v5: ElementId = mint()
                   let v6: Html = element(v5, "input", {disabled, checked: v1})
-                  let v8: Id = mint()
+                  let v8: ElementId = mint()
                   let v9: Html = element(v8, "div", {class: "a<b", id: v0}, v6)
                   v9
                 }
@@ -1932,12 +1932,12 @@ mod tests {
                   let v1: Html = text("before")
                   let v7: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
-                    let v5: Id = mint()
+                    let v5: ElementId = mint()
                     let v6: Html = element(v5, "li", {}, v3)
                     v6
                   }
                   let v8: Html = text("after")
-                  let v10: Id = mint()
+                  let v10: ElementId = mint()
                   let v9: Html = concat(v1, v7, v8)
                   let v11: Html = element(v10, "ul", {}, v9)
                   v11
@@ -1975,10 +1975,10 @@ mod tests {
                 -- flat --
                 entrypoint body@e0() -> Html {
                   let v0: Html = text("Hello")
-                  let v2: Id = mint()
+                  let v2: ElementId = mint()
                   let v3: Html = element(v2, "p", {}, v0)
                   let v4: Html = text("World")
-                  let v6: Id = mint()
+                  let v6: ElementId = mint()
                   let v7: Html = element(v6, "p", {}, v4)
                   let v8: Html = concat(v3, v7)
                   v8
@@ -2012,10 +2012,10 @@ mod tests {
                 entrypoint body@e0() -> Html {
                   let v0: Html = text("aaaaaaaaaaaaaaaaaaaaaaaaa")
                   let v1: Html = text("bbbbbbbbbbbbbbbbbbbbbbbbb")
-                  let v3: Id = mint()
+                  let v3: ElementId = mint()
                   let v4: Html = element(v3, "b", {}, v1)
                   let v5: Html = text("ccccccccccccccccccccccccc")
-                  let v7: Id = mint()
+                  let v7: ElementId = mint()
                   let v6: Html = concat(v0, v4, v5)
                   let v8: Html = element(v7, "p", {}, v6)
                   v8
@@ -2050,7 +2050,7 @@ mod tests {
                   let v1: String = "a<"
                   let v3: String = ">b"
                   let v4: String = string_concat(v1, v0, v3)
-                  let v6: Id = mint()
+                  let v6: ElementId = mint()
                   let v5: Html = concat()
                   let v7: Html = element(v6, "p", {title: v4}, v5)
                   v7
@@ -2090,13 +2090,13 @@ mod tests {
                   let v13: Html = match v2 {
                     (true, Some(v3: String)) => {
                       let v5: Html = escape(v3)
-                      let v7: Id = mint()
+                      let v7: ElementId = mint()
                       let v8: Html = element(v7, "p", {class: "member"}, v5)
                       v8
                     }
                     _ => {
                       let v9: Html = text("guest")
-                      let v11: Id = mint()
+                      let v11: ElementId = mint()
                       let v12: Html = element(v11, "p", {}, v9)
                       v12
                     }
@@ -2305,13 +2305,13 @@ mod tests {
                     }
                   }
                   let v7: Html = escape(v6)
-                  let v9: Id = mint()
+                  let v9: ElementId = mint()
                   let v10: Html = element(v9, "p", {}, v7)
                   let v11: Tuple[Bool, Option[String]] = (v0, v1)
                   let v31: Html = match v11 {
                     (true, Some(v12: String)) => {
                       let v13: Html = escape(v12)
-                      let v15: Id = mint()
+                      let v15: ElementId = mint()
                       let v16: Html = element(v15, "p", {}, v13)
                       v16
                     }
@@ -2323,17 +2323,17 @@ mod tests {
                       let v27: Html = for v21: Int in v20 {
                         let v22: String = int_to_string(v21)
                         let v23: Html = escape(v22)
-                        let v25: Id = mint()
+                        let v25: ElementId = mint()
                         let v26: Html = element(v25, "b", {}, v23)
                         v26
                       }
-                      let v29: Id = mint()
+                      let v29: ElementId = mint()
                       let v28: Html = concat(v18, v27)
                       let v30: Html = element(v29, "p", {}, v28)
                       v30
                     }
                   }
-                  let v33: Id = mint()
+                  let v33: ElementId = mint()
                   let v32: Html = concat(v10, v31)
                   let v34: Html = element(v33, "div", {}, v32)
                   v34
@@ -2440,19 +2440,19 @@ mod tests {
                   let v15: Html = match v0 {
                     Session::SignedIn {user: User {name@v1: String, admin: true}} => {
                       let v2: Html = escape(v1)
-                      let v4: Id = mint()
+                      let v4: ElementId = mint()
                       let v5: Html = element(v4, "b", {}, v2)
                       v5
                     }
                     Session::SignedIn {user: User {name@v6: String, admin: false}} => {
                       let v7: Html = escape(v6)
-                      let v9: Id = mint()
+                      let v9: ElementId = mint()
                       let v10: Html = element(v9, "i", {}, v7)
                       v10
                     }
                     Session::Guest => {
                       let v11: Html = text("guest")
-                      let v13: Id = mint()
+                      let v13: ElementId = mint()
                       let v14: Html = element(v13, "p", {}, v11)
                       v14
                     }
@@ -2527,7 +2527,7 @@ mod tests {
                     }
                   }
                   let v8: Html = escape(v7)
-                  let v10: Id = mint()
+                  let v10: ElementId = mint()
                   let v11: Html = element(v10, "p", {}, v8)
                   v11
                 }
@@ -2592,7 +2592,7 @@ mod tests {
                       let v12: Int = 1
                       let v13: Int = int_sub(v8, v12)
                       let v15: Html = f0(v13, v9)
-                      let v17: Id = mint()
+                      let v17: ElementId = mint()
                       let v18: Html = element(v17, "div", {}, v15)
                       v18
                     }
@@ -2607,7 +2607,7 @@ mod tests {
                 ) -> Html {
                   let v1: Int = 2
                   let v2: Html = escape(v0)
-                  let v4: Id = mint()
+                  let v4: ElementId = mint()
                   let v5: Html = element(v4, "b", {}, v2)
                   let v7: Html = f0(v1, v5)
                   v7
@@ -2680,7 +2680,7 @@ mod tests {
                 ) -> Html {
                   let v7: Html = match v0 {
                     Some(v2: String) => {
-                      let v3: Id = mint()
+                      let v3: ElementId = mint()
                       let v4: Html = escape(v2)
                       let v5: Html = element(v3, "b", {}, v4)
                       v5
@@ -2692,12 +2692,12 @@ mod tests {
                   }
                   let v12: Html = match v1 {
                     true => {
-                      let v8: Id = mint()
+                      let v8: ElementId = mint()
                       let v9: Html = element(v8, "p", {}, v7)
                       v9
                     }
                     false => {
-                      let v10: Id = mint()
+                      let v10: ElementId = mint()
                       let v11: Html = element(v10, "i", {}, v7)
                       v11
                     }
@@ -2779,9 +2779,9 @@ mod tests {
                   let v3: Int = 1
                   let v4: Int = int_add(v1, v3)
                   let v5: String = int_to_string(v4)
-                  let v6: Id = mint()
+                  let v6: ElementId = mint()
                   let v11: Html = for _ in v0 {
-                    let v8: Id = mint()
+                    let v8: ElementId = mint()
                     let v9: Html = text("x")
                     let v10: Html = element(v8, "li", {data-x: v5}, v9)
                     v10
@@ -2833,13 +2833,13 @@ mod tests {
                 entrypoint Test@e0(
                   label@v7: String,
                 ) -> Html {
-                  let v14: Id = mint()
+                  let v14: ElementId = mint()
                   let v15: Html = escape(v7)
                   let v16: Html = element(v14, "span", {}, v15)
-                  let v9: Id = mint()
+                  let v9: ElementId = mint()
                   let v10: Html = concat()
                   let v11: Html = element(v9, "b", {}, v10)
-                  let v17: Id = mint()
+                  let v17: ElementId = mint()
                   let v12: Html = concat(v16, v11)
                   let v18: Html = element(v17, "div", {}, v12)
                   v18

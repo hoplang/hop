@@ -219,7 +219,7 @@ mod tests {
                     let v3: Tuple[] = cell_write(v1, v2)
                     v3
                   }
-                  let v5: Id = mint()
+                  let v5: ElementId = mint()
                   let v6: Html = text("x")
                   let v7: Html = element(v5, "button", {}, v6) on_click v4
                   v7
@@ -236,7 +236,7 @@ mod tests {
                     let v3: Tuple[] = cell_write(v1, v2)
                     v3
                   }
-                  let v5: Id = mint()
+                  let v5: ElementId = mint()
                   let v6: Html = text("x")
                   let v7: Html = element(v5, "button", {}, v6) on_click v4
                   v7
@@ -284,7 +284,7 @@ mod tests {
                     let v10: Tuple[] = cell_write(v1, v9)
                     v10
                   }
-                  let v12: Id = mint()
+                  let v12: ElementId = mint()
                   let v13: Html = text("x")
                   let v14: Html = element(v12, "button", {}, v13) on_click v11
                   v14
@@ -303,7 +303,7 @@ mod tests {
                     let v10: Tuple[] = cell_write(v1, v9)
                     v10
                   }
-                  let v12: Id = mint()
+                  let v12: ElementId = mint()
                   let v13: Html = text("x")
                   let v14: Html = element(v12, "button", {}, v13) on_click v11
                   v14

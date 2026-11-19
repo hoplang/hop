@@ -772,7 +772,7 @@ impl<'a> Compiler<'a> {
                 self.bindings.push(IrBinding {
                     binder: IrBinder {
                         var: identity,
-                        typ: IrType::Id,
+                        typ: IrType::ElementId,
                     },
                     op: FlatOp::Mint,
                 });
@@ -1224,7 +1224,7 @@ mod tests {
                 entrypoint head@e0() -> Html {
                   let v0: Html = text("Hi")
                   let v1: Html = concat(v0)
-                  let v2: Id = mint()
+                  let v2: ElementId = mint()
                   let v3: Html = element(v2, "title", {}, v1)
                   v3
                 }
@@ -1276,7 +1276,7 @@ mod tests {
                 entrypoint body@e0() -> Html {
                   let v0: Html = text("Content")
                   let v1: Html = concat(v0)
-                  let v2: Id = mint()
+                  let v2: ElementId = mint()
                   let v3: Html = element(v2, "div", {}, v1)
                   v3
                 }
@@ -1306,12 +1306,12 @@ mod tests {
                   let v6: Html = for v1: String in v0 {
                     let v2: Html = escape(v1)
                     let v3: Html = concat(v2)
-                    let v4: Id = mint()
+                    let v4: ElementId = mint()
                     let v5: Html = element(v4, "li", {}, v3)
                     v5
                   }
                   let v7: Html = concat(v6)
-                  let v8: Id = mint()
+                  let v8: ElementId = mint()
                   let v9: Html = element(v8, "ul", {}, v7)
                   v9
                 }
@@ -1347,7 +1347,7 @@ mod tests {
                   let v7: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
                     let v4: Html = concat(v3)
-                    let v5: Id = mint()
+                    let v5: ElementId = mint()
                     let v6: Html = element(v5, "li", {}, v4)
                     v6
                   }
@@ -1355,20 +1355,20 @@ mod tests {
                     Some(v8: String) => {
                       let v9: Html = escape(v8)
                       let v10: Html = concat(v9)
-                      let v11: Id = mint()
+                      let v11: ElementId = mint()
                       let v12: Html = element(v11, "b", {}, v10)
                       v12
                     }
                     None => {
                       let v13: Html = text("anonymous")
                       let v14: Html = concat(v13)
-                      let v15: Id = mint()
+                      let v15: ElementId = mint()
                       let v16: Html = element(v15, "i", {}, v14)
                       v16
                     }
                   }
                   let v18: Html = concat(v7, v17)
-                  let v19: Id = mint()
+                  let v19: ElementId = mint()
                   let v20: Html = element(v19, "ul", {}, v18)
                   v20
                 }
@@ -1393,7 +1393,7 @@ mod tests {
                   let v1: String = "test"
                   let v2: Html = text("Content")
                   let v3: Html = concat(v2)
-                  let v4: Id = mint()
+                  let v4: ElementId = mint()
                   let v5: Html = element(v4, "div", {class: v0, id: v1}, v3)
                   v5
                 }
@@ -1419,7 +1419,7 @@ mod tests {
                   let v1: String = "base"
                   let v2: Html = text("Content")
                   let v3: Html = concat(v2)
-                  let v4: Id = mint()
+                  let v4: ElementId = mint()
                   let v5: Html = element(v4, "div", {class: v1, data-value: v0}, v3)
                   v5
                 }
@@ -1567,21 +1567,21 @@ mod tests {
                     (true, Status::Away {since@v3: String}) => {
                       let v4: Html = escape(v3)
                       let v5: Html = concat(v4)
-                      let v6: Id = mint()
+                      let v6: ElementId = mint()
                       let v7: Html = element(v6, "p", {}, v5)
                       v7
                     }
                     (true, _) => {
                       let v8: Html = text("here")
                       let v9: Html = concat(v8)
-                      let v10: Id = mint()
+                      let v10: ElementId = mint()
                       let v11: Html = element(v10, "p", {}, v9)
                       v11
                     }
                     (false, _) => {
                       let v12: Html = text("guest")
                       let v13: Html = concat(v12)
-                      let v14: Id = mint()
+                      let v14: ElementId = mint()
                       let v15: Html = element(v14, "p", {}, v13)
                       v15
                     }
@@ -1605,7 +1605,7 @@ mod tests {
             "#},
             expect![[r#"
                 entrypoint body@e0() -> Html {
-                  let v0: Id = mint()
+                  let v0: ElementId = mint()
                   let v1: Html = element(v0, "br", {})
                   v1
                 }
@@ -1709,7 +1709,7 @@ mod tests {
                 ) -> Html {
                   let v9: Html = text("Go")
                   let v10: Html = concat(v9)
-                  let v11: Id = mint()
+                  let v11: ElementId = mint()
                   let v12: Html = element(v11, "button", {id: v8}, v10)
                   v12
                 }
@@ -1719,7 +1719,7 @@ mod tests {
                 ) -> Html {
                   let v15: Html = text("Go")
                   let v16: Html = concat(v15)
-                  let v17: Id = mint()
+                  let v17: ElementId = mint()
                   let v18: Html = element(v17, "button", {class: v13, disabled: v14}, v16)
                   v18
                 }
@@ -1770,7 +1770,7 @@ mod tests {
                 ) -> Html {
                   let v10: Html = escape(v7)
                   let v11: Html = concat(v10)
-                  let v12: Id = mint()
+                  let v12: ElementId = mint()
                   let v13: Html = element(v12, "div", {id: v8, class: v9}, v11)
                   v13
                 }
@@ -1836,7 +1836,7 @@ mod tests {
                     }
                   }
                   let v13: Html = concat(v12)
-                  let v14: Id = mint()
+                  let v14: ElementId = mint()
                   let v15: Html = element(v14, "div", {id: v4}, v13)
                   v15
                 }
@@ -1860,7 +1860,7 @@ mod tests {
                     }
                   }
                   let v26: Html = concat(v25)
-                  let v27: Id = mint()
+                  let v27: ElementId = mint()
                   let v28: Html = element(v27, "div", {class: v17}, v26)
                   v28
                 }
@@ -1898,7 +1898,7 @@ mod tests {
                 ) -> Html {
                   let v5: Html = text("Go")
                   let v6: Html = concat(v5)
-                  let v7: Id = mint()
+                  let v7: ElementId = mint()
                   let v8: Html = element(v7, "button", {data-x: v3, aria-label: v4}, v6)
                   v8
                 }
@@ -1940,7 +1940,7 @@ mod tests {
                 render fn Used@f0() -> Html {
                   let v1: Html = text("used")
                   let v2: Html = concat(v1)
-                  let v3: Id = mint()
+                  let v3: ElementId = mint()
                   let v4: Html = element(v3, "p", {}, v2)
                   v4
                 }
@@ -2014,7 +2014,7 @@ mod tests {
                   let v1: String = f0(v0)
                   let v2: Html = escape(v1)
                   let v3: Html = concat(v2)
-                  let v4: Id = mint()
+                  let v4: ElementId = mint()
                   let v5: Html = element(v4, "p", {}, v3)
                   v5
                 }
@@ -2054,7 +2054,7 @@ mod tests {
                     v19
                   }
                   let v21: Html = concat(v20)
-                  let v22: Id = mint()
+                  let v22: ElementId = mint()
                   let v23: Html = element(v22, "ul", {}, v21)
                   v23
                 }
@@ -2077,7 +2077,7 @@ mod tests {
                     let v9: String = int_to_string(v8)
                     let v10: Html = escape(v9)
                     let v11: Html = concat(v6, v10)
-                    let v12: Id = mint()
+                    let v12: ElementId = mint()
                     let v13: Html = element(v12, "li", {}, v11)
                     v13
                   }
@@ -2143,7 +2143,7 @@ mod tests {
                   let v6: String = int_to_string(v5)
                   let v7: Html = escape(v6)
                   let v8: Html = concat(v7)
-                  let v9: Id = mint()
+                  let v9: ElementId = mint()
                   let v10: Html = element(v9, "p", {}, v8)
                   v10
                 }
@@ -2216,7 +2216,7 @@ mod tests {
                   }
                   let v6: Html = escape(v5)
                   let v7: Html = concat(v6)
-                  let v8: Id = mint()
+                  let v8: ElementId = mint()
                   let v9: Html = element(v8, "p", {}, v7)
                   v9
                 }
@@ -2256,13 +2256,13 @@ mod tests {
                   let v18: Html = match v10 {
                     true => {
                       let v12: Html = concat(v11)
-                      let v13: Id = mint()
+                      let v13: ElementId = mint()
                       let v14: Html = element(v13, "aside", {}, v12)
                       v14
                     }
                     false => {
                       let v15: Html = concat(v11)
-                      let v16: Id = mint()
+                      let v16: ElementId = mint()
                       let v17: Html = element(v16, "details", {}, v15)
                       v17
                     }
@@ -2281,7 +2281,7 @@ mod tests {
                 ) -> Html {
                   let v1: Html = text("x")
                   let v2: Html = concat(v1)
-                  let v3: Id = mint()
+                  let v3: ElementId = mint()
                   let v4: Html = element(v3, "b", {}, v2)
                   let v5: Html = concat(v4)
                   let v6: Html = f0(v0, v5)
@@ -2343,7 +2343,7 @@ mod tests {
                   let v31: String = int_to_string(v21)
                   let v32: Html = escape(v31)
                   let v33: Html = concat(v29, v30, v32)
-                  let v34: Id = mint()
+                  let v34: ElementId = mint()
                   let v35: Html = element(v34, "button", {}, v33) on_click v28
                   v35
                 }
@@ -2362,12 +2362,12 @@ mod tests {
                     let v9: String = v7.label
                     let v10: Html = f0(v9)
                     let v11: Html = concat(v10)
-                    let v12: Id = mint()
+                    let v12: ElementId = mint()
                     let v13: Html = element(v12, "li", {}, v11)
                     v13
                   }
                   let v15: Html = concat(v14)
-                  let v16: Id = mint()
+                  let v16: ElementId = mint()
                   let v17: Html = element(v16, "ul", {}, v15)
                   v17
                 }
@@ -2398,7 +2398,7 @@ mod tests {
                   children@v16: Html,
                 ) -> Html {
                   let v17: Html = concat(v16)
-                  let v18: Id = mint()
+                  let v18: ElementId = mint()
                   let v19: Html = element(v18, "button", {}, v17) on_click v15
                   v19
                 }
@@ -2491,7 +2491,7 @@ mod tests {
                   let v14: String = int_to_string(v13)
                   let v15: Html = escape(v14)
                   let v16: Html = concat(v15)
-                  let v17: Id = mint()
+                  let v17: ElementId = mint()
                   let v18: Html = element(v17, "button", {}, v16) on_click v12
                   v18
                 }
@@ -2539,7 +2539,7 @@ mod tests {
                     }
                     let v10: Html = escape(v6)
                     let v11: Html = concat(v10)
-                    let v12: Id = mint()
+                    let v12: ElementId = mint()
                     let v13: Html = element(v12, "li", {}, v11) on_click v9
                     v13
                   }
@@ -2548,7 +2548,7 @@ mod tests {
                   let v17: String = "b"
                   let v18: Html = v14(v17)
                   let v19: Html = concat(v16, v18)
-                  let v20: Id = mint()
+                  let v20: ElementId = mint()
                   let v21: Html = element(v20, "ul", {}, v19)
                   v21
                 }
@@ -2621,7 +2621,7 @@ mod tests {
                   let v17: String = int_to_string(v2)
                   let v18: Html = escape(v17)
                   let v19: Html = concat(v18)
-                  let v20: Id = mint()
+                  let v20: ElementId = mint()
                   let v21: Html = element(v20, "button", {}, v19) on_click v16
                   v21
                 }

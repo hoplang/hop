@@ -60,7 +60,7 @@ pub enum FlatOp {
     /// cell takes the value it gives. `Cell[T]`.
     Cell(FlatBlock),
     /// Bind an identity, which the node of the element that takes it keeps
-    /// across renders. `Id`.
+    /// across renders. `ElementId`.
     Mint,
     /// Write a cell. `(Cell[T], T) -> Tuple[]`.
     CellWrite(ValueId, ValueId),
@@ -74,7 +74,7 @@ pub enum FlatOp {
     Concat(Vec<ValueId>),
     /// Bind a Html element, whose node its identity keeps across renders. A
     /// void element has no children, and every other element has them.
-    /// `(Id, Html) -> Html`, or `Id -> Html` for a void element.
+    /// `(ElementId, Html) -> Html`, or `ElementId -> Html` for a void element.
     Element(IrHtmlElement<Option<ValueId>>),
     /// Run a fold-map over an array, where each iteration produces a Html value.
     /// The key, when there is one, gives each element the identity its

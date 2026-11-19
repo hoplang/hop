@@ -480,7 +480,7 @@ mod tests {
                   items@v0: Array[String],
                 ) -> Html {
                   let v5: Html = for v1: String in v0 {
-                    let v2: Id = mint()
+                    let v2: ElementId = mint()
                     let v3: Html = escape(v1)
                     let v4: Html = element(v2, "li", {}, v3)
                     v4
@@ -503,13 +503,13 @@ mod tests {
                   b@v7: Array[String],
                 ) -> Html {
                   let v15: Html = for v11: String in v6 {
-                    let v12: Id = mint()
+                    let v12: ElementId = mint()
                     let v13: Html = escape(v11)
                     let v14: Html = element(v12, "li", {}, v13)
                     v14
                   }
                   let v20: Html = for v16: String in v7 {
-                    let v17: Id = mint()
+                    let v17: ElementId = mint()
                     let v18: Html = escape(v16)
                     let v19: Html = element(v17, "li", {}, v18)
                     v19
@@ -558,7 +558,7 @@ mod tests {
                     let v5: Tuple[] = cell_write(v1, v4)
                     v5
                   }
-                  let v7: Id = mint()
+                  let v7: ElementId = mint()
                   let v8: String = int_to_string(v2)
                   let v9: Html = escape(v8)
                   let v10: Html = element(v7, "button", {}, v9) on_click v6
@@ -584,7 +584,7 @@ mod tests {
                     let v19: Tuple[] = cell_write(v15, v18)
                     v19
                   }
-                  let v21: Id = mint()
+                  let v21: ElementId = mint()
                   let v22: String = int_to_string(v16)
                   let v23: Html = escape(v22)
                   let v24: Html = element(v21, "button", {}, v23) on_click v20
@@ -599,7 +599,7 @@ mod tests {
                     let v30: Tuple[] = cell_write(v26, v29)
                     v30
                   }
-                  let v32: Id = mint()
+                  let v32: ElementId = mint()
                   let v33: String = int_to_string(v27)
                   let v34: Html = escape(v33)
                   let v35: Html = element(v32, "button", {}, v34) on_click v31
@@ -684,7 +684,7 @@ mod tests {
                     let v17: Tuple[] = f0(v13, v16)
                     v17
                   }
-                  let v19: Id = mint()
+                  let v19: ElementId = mint()
                   let v20: String = int_to_string(v8)
                   let v21: Html = escape(v20)
                   let v22: Html = element(v19, "button", {}, v21) on_click v18
@@ -719,7 +719,7 @@ mod tests {
                     let v24: Tuple[] = v16()
                     v24
                   }
-                  let v19: Id = mint()
+                  let v19: ElementId = mint()
                   let v20: String = int_to_string(v8)
                   let v21: Html = escape(v20)
                   let v22: Html = element(v19, "button", {}, v21) on_click v18

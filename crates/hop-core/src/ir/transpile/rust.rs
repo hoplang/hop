@@ -439,7 +439,7 @@ impl RustTranspiler {
             | IrType::Html
             | IrType::Function(_) => false,
             IrType::Cell(_) => unreachable!("flat_to_writer makes a cell its value"),
-            IrType::Id => unreachable!("flat_to_writer drops identities"),
+            IrType::ElementId => unreachable!("flat_to_writer drops identities"),
         }
     }
 
@@ -454,7 +454,7 @@ impl RustTranspiler {
                 unreachable!("Html is written, never held")
             }
             IrType::Cell(_) => unreachable!("flat_to_writer makes a cell its value"),
-            IrType::Id => unreachable!("flat_to_writer drops identities"),
+            IrType::ElementId => unreachable!("flat_to_writer drops identities"),
             IrType::Data(IrDataType::Array(elem)) => arena
                 .text("&[")
                 .append(self.transpile_data_type(arena, elem))

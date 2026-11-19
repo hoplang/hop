@@ -786,9 +786,9 @@ mod tests {
                 entrypoint Items@e0(
                   items@v0: Array[String],
                 ) -> Html {
-                  let v1: Id = mint()
+                  let v1: ElementId = mint()
                   let v6: Html = for v2: String in v0 {
-                    let v3: Id = mint()
+                    let v3: ElementId = mint()
                     let v4: Html = escape(v2)
                     let v5: Html = element(v3, "li", {}, v4)
                     v5
@@ -1103,7 +1103,7 @@ mod tests {
             expect![[r#"
                 -- before --
                 entrypoint Test@e0() -> Html {
-                  let v0: Id = mint()
+                  let v0: ElementId = mint()
                   let v1: Html = text("Hello World")
                   let v2: Html = element(v0, "div", {}, v1)
                   v2
@@ -1140,7 +1140,7 @@ mod tests {
                   cls@v0: String,
                   flag@v1: Bool,
                 ) -> Html {
-                  let v2: Id = mint()
+                  let v2: ElementId = mint()
                   let v3: Bool = false
                   let v4: Html = element(v2, "input", {class: v0, disabled: v1, checked: v3})
                   v4
@@ -1199,7 +1199,7 @@ mod tests {
                 ) -> Html {
                   let v5: Html = match v0 {
                     true => {
-                      let v1: Id = mint()
+                      let v1: ElementId = mint()
                       let v2: Html = text("Visible")
                       let v3: Html = element(v1, "div", {}, v2)
                       v3
@@ -1240,7 +1240,7 @@ mod tests {
                 ) -> Html {
                   let v5: Html = match v0 {
                     true => {
-                      let v1: Id = mint()
+                      let v1: ElementId = mint()
                       let v2: Html = text("Hidden")
                       let v3: Html = element(v1, "div", {}, v2)
                       v3
@@ -1285,7 +1285,7 @@ mod tests {
                   items@v0: Array[String],
                 ) -> Html {
                   let v7: Html = for v1: String in v0 {
-                    let v2: Id = mint()
+                    let v2: ElementId = mint()
                     let v3: Html = escape(v1)
                     let v4: Html = element(v2, "li", {}, v3)
                     let v5: Html = text("\n")
@@ -1496,7 +1496,7 @@ mod tests {
                     let v3: Html = v1(v2)
                     v3
                   }
-                  let v5: Id = mint()
+                  let v5: ElementId = mint()
                   let v6: Html = element(v5, "ul", {}, v4)
                   v6
                 }
@@ -1510,7 +1510,7 @@ mod tests {
                     let v10: Html = escape(v8)
                     let v11: Html = escape(v9)
                     let v12: Html = concat(v10, v11)
-                    let v13: Id = mint()
+                    let v13: ElementId = mint()
                     let v14: Html = element(v13, "li", {}, v12)
                     v14
                   }

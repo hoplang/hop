@@ -98,7 +98,7 @@ fn each_call_has_cells_of_its_own() {
               let v13: String = int_to_string(v5)
               let v14: Html = escape(v13)
               let v15: Html = concat(v14)
-              let v16: Id = mint()
+              let v16: ElementId = mint()
               let v17: Html = element(v16, "button", {}, v15) on_click v12
               v17
             }
@@ -178,7 +178,7 @@ fn the_cells_of_a_keyed_loop_follow_the_keys() {
               let v38: String = int_to_string(v28)
               let v39: Html = escape(v38)
               let v40: Html = concat(v36, v37, v39)
-              let v41: Id = mint()
+              let v41: ElementId = mint()
               let v42: Html = element(v41, "button", {}, v40) on_click v35
               v42
             }
@@ -215,7 +215,7 @@ fn the_cells_of_a_keyed_loop_follow_the_keys() {
               }
               let v16: Html = text("flip")
               let v17: Html = concat(v16)
-              let v18: Id = mint()
+              let v18: ElementId = mint()
               let v19: Html = element(v18, "b", {}, v17) on_click v15
               let v23: Html = for v20: Int in v12 key {
                 v20
@@ -297,7 +297,7 @@ fn the_cells_of_a_loop_without_a_key_follow_the_index() {
               let v38: String = int_to_string(v28)
               let v39: Html = escape(v38)
               let v40: Html = concat(v36, v37, v39)
-              let v41: Id = mint()
+              let v41: ElementId = mint()
               let v42: Html = element(v41, "button", {}, v40) on_click v35
               v42
             }
@@ -334,7 +334,7 @@ fn the_cells_of_a_loop_without_a_key_follow_the_index() {
               }
               let v16: Html = text("flip")
               let v17: Html = concat(v16)
-              let v18: Id = mint()
+              let v18: ElementId = mint()
               let v19: Html = element(v18, "b", {}, v17) on_click v15
               let v23: Html = for v20: Int in v12 {
                 let v21: String = int_to_string(v20)
@@ -412,7 +412,7 @@ fn a_cell_and_an_element_of_a_call_in_an_arm_start_over_when_the_match_takes_the
               let v30: String = int_to_string(v22)
               let v31: Html = escape(v30)
               let v32: Html = concat(v31)
-              let v33: Id = mint()
+              let v33: ElementId = mint()
               let v34: Html = element(v33, "button", {}, v32) on_click v29
               v34
             }
@@ -435,7 +435,7 @@ fn a_cell_and_an_element_of_a_call_in_an_arm_start_over_when_the_match_takes_the
               }
               let v9: Html = text("toggle")
               let v10: Html = concat(v9)
-              let v11: Id = mint()
+              let v11: ElementId = mint()
               let v12: Html = element(v11, "b", {}, v10) on_click v8
               let v18: Html = match v2 {
                 true => {
@@ -445,7 +445,7 @@ fn a_cell_and_an_element_of_a_call_in_an_arm_start_over_when_the_match_takes_the
                 false => {
                   let v14: Html = text("closed")
                   let v15: Html = concat(v14)
-                  let v16: Id = mint()
+                  let v16: ElementId = mint()
                   let v17: Html = element(v16, "i", {}, v15)
                   v17
                 }
@@ -506,7 +506,7 @@ fn an_element_bound_outside_a_match_keeps_its_identity_in_each_arm() {
                 let v4: Tuple[] = cell_write(v1, v3)
                 v4
               }
-              let v6: Id = mint()
+              let v6: ElementId = mint()
               let v7: Html = element(v6, "input", {})
               let v10: mut () -> Tuple[] = fn() {
                 let v8: Bool = bool_not(v2)
@@ -515,18 +515,18 @@ fn an_element_bound_outside_a_match_keeps_its_identity_in_each_arm() {
               }
               let v11: Html = text("toggle")
               let v12: Html = concat(v11)
-              let v13: Id = mint()
+              let v13: ElementId = mint()
               let v14: Html = element(v13, "button", {}, v12) on_click v10
               let v21: Html = match v2 {
                 true => {
                   let v15: Html = concat(v7)
-                  let v16: Id = mint()
+                  let v16: ElementId = mint()
                   let v17: Html = element(v16, "div", {}, v15)
                   v17
                 }
                 false => {
                   let v18: Html = concat(v7)
-                  let v19: Id = mint()
+                  let v19: ElementId = mint()
                   let v20: Html = element(v19, "p", {}, v18)
                   v20
                 }
@@ -614,10 +614,10 @@ fn a_click_runs_the_handlers_of_the_elements_around_it_innermost_first() {
               let v23: String = int_to_string(v8)
               let v24: Html = escape(v23)
               let v25: Html = concat(v21, v22, v24)
-              let v26: Id = mint()
+              let v26: ElementId = mint()
               let v27: Html = element(v26, "button", {}, v25) on_click v20
               let v28: Html = concat(v27)
-              let v29: Id = mint()
+              let v29: ElementId = mint()
               let v30: Html = element(v29, "div", {}, v28) on_click v14
               v30
             }
@@ -662,7 +662,7 @@ fn a_handler_reaches_an_element_through_a_parameter() {
               children@v16: Html,
             ) -> Html {
               let v17: Html = concat(v16)
-              let v18: Id = mint()
+              let v18: ElementId = mint()
               let v19: Html = element(v18, "button", {}, v17) on_click v15
               v19
             }
@@ -742,7 +742,7 @@ fn an_element_a_match_hides_keeps_its_identity_while_it_is_evaluated() {
                 let v4: Tuple[] = cell_write(v1, v3)
                 v4
               }
-              let v6: Id = mint()
+              let v6: ElementId = mint()
               let v7: Html = element(v6, "input", {})
               let v10: mut () -> Tuple[] = fn() {
                 let v8: Bool = bool_not(v2)
@@ -751,19 +751,19 @@ fn an_element_a_match_hides_keeps_its_identity_while_it_is_evaluated() {
               }
               let v11: Html = text("toggle")
               let v12: Html = concat(v11)
-              let v13: Id = mint()
+              let v13: ElementId = mint()
               let v14: Html = element(v13, "button", {}, v12) on_click v10
               let v22: Html = match v2 {
                 true => {
                   let v15: Html = concat(v7)
-                  let v16: Id = mint()
+                  let v16: ElementId = mint()
                   let v17: Html = element(v16, "div", {}, v15)
                   v17
                 }
                 false => {
                   let v18: Html = text("hidden")
                   let v19: Html = concat(v18)
-                  let v20: Id = mint()
+                  let v20: ElementId = mint()
                   let v21: Html = element(v20, "p", {}, v19)
                   v21
                 }
@@ -847,21 +847,21 @@ fn a_cell_a_match_hides_keeps_its_value_while_it_is_evaluated() {
               }
               let v19: Html = text("toggle")
               let v20: Html = concat(v19)
-              let v21: Id = mint()
+              let v21: ElementId = mint()
               let v22: Html = element(v21, "b", {}, v20) on_click v18
               let v32: Html = match v2 {
                 true => {
                   let v23: String = int_to_string(v8)
                   let v24: Html = escape(v23)
                   let v25: Html = concat(v24)
-                  let v26: Id = mint()
+                  let v26: ElementId = mint()
                   let v27: Html = element(v26, "button", {}, v25) on_click v15
                   v27
                 }
                 false => {
                   let v28: Html = text("hidden")
                   let v29: Html = concat(v28)
-                  let v30: Id = mint()
+                  let v30: ElementId = mint()
                   let v31: Html = element(v30, "p", {}, v29)
                   v31
                 }
@@ -940,12 +940,12 @@ fn a_click_whose_handler_fails_changes_nothing() {
               }
               let v13: Html = text("forever")
               let v14: Html = concat(v13)
-              let v15: Id = mint()
+              let v15: ElementId = mint()
               let v16: Html = element(v15, "button", {}, v14) on_click v12
               let v17: String = int_to_string(v2)
               let v18: Html = escape(v17)
               let v19: Html = concat(v18)
-              let v20: Id = mint()
+              let v20: ElementId = mint()
               let v21: Html = element(v20, "button", {}, v19) on_click v9
               let v22: Html = concat(v16, v21)
               v22
@@ -1020,14 +1020,14 @@ fn a_click_fails_and_changes_nothing_when_a_handler_around_the_element_fails() {
               let v13: String = int_to_string(v2)
               let v14: Html = escape(v13)
               let v15: Html = concat(v14)
-              let v16: Id = mint()
+              let v16: ElementId = mint()
               let v17: Html = element(v16, "button", {}, v15) on_click v9
               let v18: Html = concat(v17)
-              let v19: Id = mint()
+              let v19: ElementId = mint()
               let v20: Html = element(v19, "div", {}, v18) on_click v12
               let v21: Html = text("no handler")
               let v22: Html = concat(v21)
-              let v23: Id = mint()
+              let v23: ElementId = mint()
               let v24: Html = element(v23, "p", {}, v22)
               let v25: Html = concat(v20, v24)
               v25
@@ -1100,7 +1100,7 @@ fn a_handler_that_writes_in_one_arm_of_a_match_writes_nothing_in_the_other() {
               let v14: String = int_to_string(v2)
               let v15: Html = escape(v14)
               let v16: Html = concat(v15)
-              let v17: Id = mint()
+              let v17: ElementId = mint()
               let v18: Html = element(v17, "button", {}, v16) on_click v13
               v18
             }
@@ -1155,14 +1155,14 @@ fn a_click_on_an_element_without_a_handler_runs_the_handlers_around_it() {
               let v10: String = int_to_string(v2)
               let v11: Html = escape(v10)
               let v12: Html = concat(v11)
-              let v13: Id = mint()
+              let v13: ElementId = mint()
               let v14: Html = element(v13, "b", {}, v12)
               let v15: Html = concat(v14)
-              let v16: Id = mint()
+              let v16: ElementId = mint()
               let v17: Html = element(v16, "button", {}, v15) on_click v9
               let v18: Html = text("no handler")
               let v19: Html = concat(v18)
-              let v20: Id = mint()
+              let v20: ElementId = mint()
               let v21: Html = element(v20, "p", {}, v19)
               let v22: Html = concat(v17, v21)
               v22
@@ -1238,7 +1238,7 @@ fn a_cell_takes_its_initial_value_only_when_it_is_first_bound() {
               let v17: String = int_to_string(v2)
               let v18: Html = escape(v17)
               let v19: Html = concat(v18)
-              let v20: Id = mint()
+              let v20: ElementId = mint()
               let v21: Html = element(v20, "button", {}, v19) on_click v16
               let v25: mut () -> Tuple[] = fn() {
                 let v22: Int = 1
@@ -1249,7 +1249,7 @@ fn a_cell_takes_its_initial_value_only_when_it_is_first_bound() {
               let v26: String = int_to_string(v9)
               let v27: Html = escape(v26)
               let v28: Html = concat(v27)
-              let v29: Id = mint()
+              let v29: ElementId = mint()
               let v30: Html = element(v29, "button", {}, v28) on_click v25
               let v31: Html = concat(v21, v30)
               v31
@@ -1319,7 +1319,7 @@ fn a_cell_keeps_its_value_when_the_argument_its_initial_value_reads_changes() {
               let v29: String = int_to_string(v18)
               let v30: Html = escape(v29)
               let v31: Html = concat(v27, v28, v30)
-              let v32: Id = mint()
+              let v32: ElementId = mint()
               let v33: Html = element(v32, "button", {}, v31) on_click v25
               v33
             }
@@ -1343,7 +1343,7 @@ fn a_cell_keeps_its_value_when_the_argument_its_initial_value_reads_changes() {
               }
               let v10: Html = text("bump")
               let v11: Html = concat(v10)
-              let v12: Id = mint()
+              let v12: ElementId = mint()
               let v13: Html = element(v12, "b", {}, v11) on_click v9
               let v14: Html = f0(v2)
               let v15: Html = concat(v13, v14)
@@ -1432,7 +1432,7 @@ fn each_application_of_a_lambda_has_cells_of_its_own_and_shares_the_cells_it_cap
                 let v22: String = int_to_string(v2)
                 let v23: Html = escape(v22)
                 let v24: Html = concat(v20, v21, v23)
-                let v25: Id = mint()
+                let v25: ElementId = mint()
                 let v26: Html = element(v25, "button", {}, v24) on_click v18
                 v26
               }
@@ -1510,7 +1510,7 @@ fn a_cell_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
               }
               let v9: Html = text("switch")
               let v10: Html = concat(v9)
-              let v11: Id = mint()
+              let v11: ElementId = mint()
               let v12: Html = element(v11, "b", {}, v10) on_click v8
               let v45: Html = match v2 {
                 true => {
@@ -1535,7 +1535,7 @@ fn a_cell_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
                   let v24: String = int_to_string(v15)
                   let v25: Html = escape(v24)
                   let v26: Html = concat(v23, v25)
-                  let v27: Id = mint()
+                  let v27: ElementId = mint()
                   let v28: Html = element(v27, "button", {}, v26) on_click v22
                   v28
                 }
@@ -1561,7 +1561,7 @@ fn a_cell_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
                   let v40: String = int_to_string(v31)
                   let v41: Html = escape(v40)
                   let v42: Html = concat(v39, v41)
-                  let v43: Id = mint()
+                  let v43: ElementId = mint()
                   let v44: Html = element(v43, "button", {}, v42) on_click v38
                   v44
                 }
@@ -1645,7 +1645,7 @@ fn a_cell_bound_in_a_loop_follows_its_key_and_starts_over_when_the_key_comes_bac
               }
               let v13: Html = text("flip")
               let v14: Html = concat(v13)
-              let v15: Id = mint()
+              let v15: ElementId = mint()
               let v16: Html = element(v15, "b", {}, v14) on_click v12
               let v20: mut () -> Tuple[] = fn() {
                 let v17: Int = 2
@@ -1655,7 +1655,7 @@ fn a_cell_bound_in_a_loop_follows_its_key_and_starts_over_when_the_key_comes_bac
               }
               let v21: Html = text("drop")
               let v22: Html = concat(v21)
-              let v23: Id = mint()
+              let v23: ElementId = mint()
               let v24: Html = element(v23, "i", {}, v22) on_click v20
               let v44: Html = for v25: Int in v4 key {
                 v25
@@ -1683,7 +1683,7 @@ fn a_cell_bound_in_a_loop_follows_its_key_and_starts_over_when_the_key_comes_bac
                 let v39: String = int_to_string(v28)
                 let v40: Html = escape(v39)
                 let v41: Html = concat(v37, v38, v40)
-                let v42: Id = mint()
+                let v42: ElementId = mint()
                 let v43: Html = element(v42, "button", {}, v41) on_click v35
                 v43
               }
@@ -1762,7 +1762,7 @@ fn the_iterations_of_a_repeated_key_follow_the_order_they_take_it_in() {
               }
               let v12: Html = text("drop")
               let v13: Html = concat(v12)
-              let v14: Id = mint()
+              let v14: ElementId = mint()
               let v15: Html = element(v14, "b", {}, v13) on_click v11
               let v35: Html = for v16: Int in v4 key {
                 v16
@@ -1790,7 +1790,7 @@ fn the_iterations_of_a_repeated_key_follow_the_order_they_take_it_in() {
                 let v30: String = int_to_string(v19)
                 let v31: Html = escape(v30)
                 let v32: Html = concat(v28, v29, v31)
-                let v33: Id = mint()
+                let v33: ElementId = mint()
                 let v34: Html = element(v33, "button", {}, v32) on_click v26
                 v34
               }
@@ -1860,7 +1860,7 @@ fn the_cells_of_nested_loops_follow_the_keys_of_both_loops() {
               }
               let v13: Html = text("flip")
               let v14: Html = concat(v13)
-              let v15: Id = mint()
+              let v15: ElementId = mint()
               let v16: Html = element(v15, "b", {}, v14) on_click v12
               let v42: Html = for v17: String in v4 key {
                 v17
@@ -1895,7 +1895,7 @@ fn the_cells_of_nested_loops_follow_the_keys_of_both_loops() {
                   let v36: String = int_to_string(v24)
                   let v37: Html = escape(v36)
                   let v38: Html = concat(v32, v34, v35, v37)
-                  let v39: Id = mint()
+                  let v39: ElementId = mint()
                   let v40: Html = element(v39, "button", {}, v38) on_click v31
                   v40
                 }
@@ -1973,7 +1973,7 @@ fn an_element_keeps_its_identity_when_the_value_of_an_attribute_changes() {
               }
               let v12: Html = text("toggle")
               let v13: Html = concat(v12)
-              let v14: Id = mint()
+              let v14: ElementId = mint()
               let v15: Html = element(v14, "button", {class: v8}, v13) on_click v11
               v15
             }
@@ -2044,7 +2044,7 @@ fn each_level_of_a_recursive_call_has_cells_of_its_own() {
               let v32: String = int_to_string(v21)
               let v33: Html = escape(v32)
               let v34: Html = concat(v30, v31, v33)
-              let v35: Id = mint()
+              let v35: ElementId = mint()
               let v36: Html = element(v35, "button", {}, v34) on_click v28
               let v37: Int = 1
               let v38: Int = int_add(v17, v37)
@@ -2062,7 +2062,7 @@ fn each_level_of_a_recursive_call_has_cells_of_its_own() {
                 }
               }
               let v45: Html = concat(v36, v44)
-              let v46: Id = mint()
+              let v46: ElementId = mint()
               let v47: Html = element(v46, "div", {}, v45)
               v47
             }
@@ -2086,7 +2086,7 @@ fn each_level_of_a_recursive_call_has_cells_of_its_own() {
               }
               let v10: Html = text("deeper")
               let v11: Html = concat(v10)
-              let v12: Id = mint()
+              let v12: ElementId = mint()
               let v13: Html = element(v12, "b", {}, v11) on_click v9
               let v14: Int = 0
               let v15: Html = f0(v14, v2)
@@ -2212,7 +2212,7 @@ fn a_handler_calls_a_mut_fn_that_applies_the_mut_fns_it_takes() {
               let v25: String = int_to_string(v8)
               let v26: Html = escape(v25)
               let v27: Html = concat(v23, v24, v26)
-              let v28: Id = mint()
+              let v28: ElementId = mint()
               let v29: Html = element(v28, "button", {}, v27) on_click v21
               v29
             }
@@ -2253,7 +2253,7 @@ fn a_handler_passed_as_a_parameter_is_the_click_of_the_element_that_takes_it() {
               children@v22: Html,
             ) -> Html {
               let v23: Html = concat(v22)
-              let v24: Id = mint()
+              let v24: ElementId = mint()
               let v25: Html = element(v24, "button", {}, v23) on_click v21
               v25
             }
@@ -2378,11 +2378,11 @@ fn a_handler_updates_a_field_of_a_record_in_a_cell_and_keeps_the_others() {
               }
               let v24: Html = text("dark")
               let v25: Html = concat(v24)
-              let v26: Id = mint()
+              let v26: ElementId = mint()
               let v27: Html = element(v26, "button", {}, v25) on_click v12
               let v28: Html = text("raise")
               let v29: Html = concat(v28)
-              let v30: Id = mint()
+              let v30: ElementId = mint()
               let v31: Html = element(v30, "button", {}, v29) on_click v19
               let v32: Html = escape(v23)
               let v33: Html = text(" ")
@@ -2390,7 +2390,7 @@ fn a_handler_updates_a_field_of_a_record_in_a_cell_and_keeps_the_others() {
               let v35: String = int_to_string(v34)
               let v36: Html = escape(v35)
               let v37: Html = concat(v32, v33, v36)
-              let v38: Id = mint()
+              let v38: ElementId = mint()
               let v39: Html = element(v38, "p", {}, v37)
               let v40: Html = concat(v27, v31, v39)
               v40
@@ -2467,7 +2467,7 @@ fn a_click_whose_later_write_fails_changes_nothing() {
               let v12: String = int_to_string(v2)
               let v13: Html = escape(v12)
               let v14: Html = concat(v13)
-              let v15: Id = mint()
+              let v15: ElementId = mint()
               let v16: Html = element(v15, "button", {}, v14) on_click v11
               v16
             }
@@ -2536,7 +2536,7 @@ fn a_write_reads_a_signal_that_an_earlier_write_of_the_click_wrote() {
               }
               let v21: Html = escape(v9)
               let v22: Html = concat(v21)
-              let v23: Id = mint()
+              let v23: ElementId = mint()
               let v24: Html = element(v23, "button", {}, v22) on_click v20
               v24
             }
@@ -2589,7 +2589,7 @@ fn each_call_has_a_state_of_its_own() {
               let v13: String = int_to_string(v5)
               let v14: Html = escape(v13)
               let v15: Html = concat(v14)
-              let v16: Id = mint()
+              let v16: ElementId = mint()
               let v17: Html = element(v16, "button", {}, v15) on_click v12
               v17
             }
@@ -2656,7 +2656,7 @@ fn a_handler_sets_a_state_from_the_value_the_render_gave() {
               let v13: String = int_to_string(v2)
               let v14: Html = escape(v13)
               let v15: Html = concat(v14)
-              let v16: Id = mint()
+              let v16: ElementId = mint()
               let v17: Html = element(v16, "button", {}, v15) on_click v12
               v17
             }
@@ -2717,7 +2717,7 @@ fn a_handler_reads_the_value_a_signal_has_now() {
               let v17: String = int_to_string(v16)
               let v18: Html = escape(v17)
               let v19: Html = concat(v18)
-              let v20: Id = mint()
+              let v20: ElementId = mint()
               let v21: Html = element(v20, "button", {}, v19) on_click v15
               v21
             }
@@ -2814,7 +2814,7 @@ fn a_handler_that_updates_a_record_state_twice_keeps_only_the_last_update() {
               let v35: String = int_to_string(v34)
               let v36: Html = escape(v35)
               let v37: Html = concat(v32, v33, v36)
-              let v38: Id = mint()
+              let v38: ElementId = mint()
               let v39: Html = element(v38, "button", {}, v37) on_click v29
               let v56: mut () -> Tuple[] = fn() {
                 let v40: Setting = v13()
@@ -2845,7 +2845,7 @@ fn a_handler_that_updates_a_record_state_twice_keeps_only_the_last_update() {
               let v64: String = int_to_string(v63)
               let v65: Html = escape(v64)
               let v66: Html = concat(v60, v61, v65)
-              let v67: Id = mint()
+              let v67: ElementId = mint()
               let v68: Html = element(v67, "button", {}, v66) on_click v56
               let v69: Html = concat(v39, v68)
               v69
@@ -2912,7 +2912,7 @@ fn the_states_of_a_keyed_loop_follow_the_keys() {
               let v35: String = int_to_string(v25)
               let v36: Html = escape(v35)
               let v37: Html = concat(v33, v34, v36)
-              let v38: Id = mint()
+              let v38: ElementId = mint()
               let v39: Html = element(v38, "button", {}, v37) on_click v32
               v39
             }
@@ -2939,7 +2939,7 @@ fn the_states_of_a_keyed_loop_follow_the_keys() {
               }
               let v13: Html = text("flip")
               let v14: Html = concat(v13)
-              let v15: Id = mint()
+              let v15: ElementId = mint()
               let v16: Html = element(v15, "b", {}, v14) on_click v12
               let v20: Html = for v17: Int in v4 key {
                 v17
@@ -3010,7 +3010,7 @@ fn a_state_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
               }
               let v9: Html = text("toggle")
               let v10: Html = concat(v9)
-              let v11: Id = mint()
+              let v11: ElementId = mint()
               let v12: Html = element(v11, "b", {}, v10) on_click v8
               let v32: Html = match v2 {
                 true => {
@@ -3034,14 +3034,14 @@ fn a_state_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
                   let v23: String = int_to_string(v15)
                   let v24: Html = escape(v23)
                   let v25: Html = concat(v24)
-                  let v26: Id = mint()
+                  let v26: ElementId = mint()
                   let v27: Html = element(v26, "button", {}, v25) on_click v22
                   v27
                 }
                 false => {
                   let v28: Html = text("closed")
                   let v29: Html = concat(v28)
-                  let v30: Id = mint()
+                  let v30: ElementId = mint()
                   let v31: Html = element(v30, "i", {}, v29)
                   v31
                 }
@@ -3107,7 +3107,7 @@ fn a_signal_passed_to_a_component_reads_and_writes_the_cell_of_the_caller() {
               let v27: String = int_to_string(v26)
               let v28: Html = escape(v27)
               let v29: Html = concat(v28)
-              let v30: Id = mint()
+              let v30: ElementId = mint()
               let v31: Html = element(v30, "button", {}, v29) on_click v25
               v31
             }
@@ -3131,7 +3131,7 @@ fn a_signal_passed_to_a_component_reads_and_writes_the_cell_of_the_caller() {
               let v9: String = int_to_string(v8)
               let v10: Html = escape(v9)
               let v11: Html = concat(v10)
-              let v12: Id = mint()
+              let v12: ElementId = mint()
               let v13: Html = element(v12, "p", {}, v11)
               let v14: Html = concat(v7, v13)
               v14

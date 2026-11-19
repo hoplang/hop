@@ -730,7 +730,7 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn mint(&self) -> ValueId {
-        self.push(IrType::Id, FlatOp::Mint)
+        self.push(IrType::ElementId, FlatOp::Mint)
     }
 
     pub fn element(

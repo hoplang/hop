@@ -159,7 +159,7 @@ impl Scope {
             names: (self.names.iter().copied())
                 .filter(|name| {
                     let typ = &types[name.var.index()];
-                    !typ.is_html_or_html_closure() && *typ != IrType::Id
+                    !typ.is_html_or_html_closure() && *typ != IrType::ElementId
                 })
                 .collect(),
             modifier,
@@ -851,7 +851,7 @@ impl FlatGenerator<'_, '_> {
             IrType::Data(target) => self.data_block(b, scope, target, depth),
             IrType::Html => self.html_block(b, scope, depth),
             IrType::Cell(_) => unreachable!("a block produces no cell"),
-            IrType::Id => unreachable!("a block produces no identity"),
+            IrType::ElementId => unreachable!("a block produces no identity"),
             IrType::Function(_) => {
                 unreachable!("a block produces no closure")
             }
@@ -870,7 +870,9 @@ impl FlatGenerator<'_, '_> {
             IrType::Data(target) => self.data_op(b, scope, target, depth, nesting),
             IrType::Html => self.html_op(b, scope, depth, nesting),
             IrType::Cell(_) => unreachable!("a cell is bound for a block, not asked for"),
-            IrType::Id => unreachable!("an identity is minted for an element, not asked for"),
+            IrType::ElementId => {
+                unreachable!("an identity is minted for an element, not asked for")
+            }
             IrType::Function(_) => self.closure_op(b, scope, typ, depth, nesting),
         }
     }
@@ -1024,7 +1026,7 @@ impl FlatGenerator<'_, '_> {
         depth: usize,
         nesting: usize,
     ) -> ValueId {
-        let identity = match self.name_in_scope(b, scope, &IrType::Id) {
+        let identity = match self.name_in_scope(b, scope, &IrType::ElementId) {
             Some(early) => {
                 scope.set_used(early, true);
                 early
@@ -2286,7 +2288,7 @@ mod tests {
             expect![[r#"
 
                 entrypoint V0@e0() -> Html {
-                  let v0: Id = mint()
+                  let v0: ElementId = mint()
                   let v1: Int = -2147483648
                   let v2: Cell[Int] = cell {
                     v1
@@ -2334,7 +2336,7 @@ mod tests {
                   p4@v4: render () -> Tuple[],
                   p5@v5: Array[R0],
                 ) -> Html {
-                  let v6: Id = mint()
+                  let v6: ElementId = mint()
                   let v7: Int = -2147483648
                   let v8: Cell[Int] = cell {
                     v7
@@ -2343,7 +2345,7 @@ mod tests {
                   v2
                 }
                 render fn C1@f1() -> Html {
-                  let v10: Id = mint()
+                  let v10: ElementId = mint()
                   let v11: Int = -2147483648
                   let v12: Cell[Int] = cell {
                     v11
@@ -2353,7 +2355,7 @@ mod tests {
                   v14
                 }
                 entrypoint V0@e0() -> Html {
-                  let v15: Id = mint()
+                  let v15: ElementId = mint()
                   let v16: Int = -2147483648
                   let v17: Cell[Int] = cell {
                     v16
@@ -2368,7 +2370,7 @@ mod tests {
                   p2@v22: R1,
                   p3@v23: Tuple[Float, Option[R1]],
                 ) -> Html {
-                  let v24: Id = mint()
+                  let v24: ElementId = mint()
                   let v25: Int = -2147483648
                   let v26: Cell[Int] = cell {
                     v25
@@ -2381,7 +2383,7 @@ mod tests {
                   p0@v29: Array[Tuple[Int]],
                   p1@v30: Int,
                 ) -> Html {
-                  let v31: Id = mint()
+                  let v31: ElementId = mint()
                   let v32: Cell[Int] = cell {
                     v30
                   }

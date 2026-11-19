@@ -161,14 +161,14 @@ pub trait Transpiler {
                 unreachable!("Html is written, never held")
             }
             IrType::Cell(_) => unreachable!("flat_to_writer makes a cell its value"),
-            IrType::Id => unreachable!("flat_to_writer drops identities"),
+            IrType::ElementId => unreachable!("flat_to_writer drops identities"),
             IrType::Function(signature) => self.transpile_closure_type(arena, signature),
         }
     }
     fn transpile_result_type<'a>(&mut self, arena: &'a Arena<'a>, t: &IrType) -> Doc<'a> {
         match t {
             IrType::Data(data) => self.transpile_data_type(arena, data),
-            IrType::Html | IrType::Function(_) | IrType::Cell(_) | IrType::Id => {
+            IrType::Html | IrType::Function(_) | IrType::Cell(_) | IrType::ElementId => {
                 unreachable!("a closure returns data")
             }
         }

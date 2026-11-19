@@ -162,7 +162,7 @@ mod tests {
                     let v3: Html = v1(v2)
                     v3
                   }
-                  let v5: Id = mint()
+                  let v5: ElementId = mint()
                   let v6: Html = element(v5, "ul", {}, v4)
                   v6
                 }
@@ -172,7 +172,7 @@ mod tests {
                   let v12: render (String) -> Html = fn(
                     v8: String,
                   ) {
-                    let v9: Id = mint()
+                    let v9: ElementId = mint()
                     let v10: Html = escape(v8)
                     let v11: Html = element(v9, "li", {}, v10)
                     v11
@@ -186,12 +186,12 @@ mod tests {
                   items@v7: Array[String],
                 ) -> Html {
                   let v16: Html = for v14: String in v7 {
-                    let v19: Id = mint()
+                    let v19: ElementId = mint()
                     let v20: Html = escape(v14)
                     let v21: Html = element(v19, "li", {}, v20)
                     v21
                   }
-                  let v17: Id = mint()
+                  let v17: ElementId = mint()
                   let v18: Html = element(v17, "ul", {}, v16)
                   v18
                 }
@@ -222,9 +222,9 @@ mod tests {
                   items@v0: Array[String],
                 ) -> Html {
                   let v1: String = "value"
-                  let v2: Id = mint()
+                  let v2: ElementId = mint()
                   let v7: Html = for v3: String in v0 {
-                    let v4: Id = mint()
+                    let v4: ElementId = mint()
                     let v5: Html = escape(v3)
                     let v6: Html = element(v4, "li", {}, v5)
                     v6
@@ -237,9 +237,9 @@ mod tests {
                 entrypoint Items@e0(
                   items@v0: Array[String],
                 ) -> Html {
-                  let v2: Id = mint()
+                  let v2: ElementId = mint()
                   let v7: Html = for v3: String in v0 {
-                    let v4: Id = mint()
+                    let v4: ElementId = mint()
                     let v5: Html = escape(v3)
                     let v6: Html = element(v4, "li", {}, v5)
                     v6

@@ -8,10 +8,8 @@ pub enum IrType {
     Data(IrDataType),
     Html,
     Function(IrSignature),
-    /// A cell of the payload. Only a cell binding binds one.
     Cell(IrDataType),
-    /// Only a mint binds one.
-    Id,
+    ElementId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,7 +85,7 @@ impl IrType {
     pub fn as_data(&self) -> Option<&IrDataType> {
         match self {
             IrType::Data(data) => Some(data),
-            IrType::Html | IrType::Function(_) | IrType::Cell(_) | IrType::Id => None,
+            IrType::Html | IrType::Function(_) | IrType::Cell(_) | IrType::ElementId => None,
         }
     }
 
@@ -95,7 +93,7 @@ impl IrType {
         match self {
             IrType::Html => true,
             IrType::Function(signature) => *signature.result == IrType::Html,
-            IrType::Data(_) | IrType::Cell(_) | IrType::Id => false,
+            IrType::Data(_) | IrType::Cell(_) | IrType::ElementId => false,
         }
     }
 
@@ -106,7 +104,7 @@ impl IrType {
                 matches!(*signature.result, IrType::Data(_))
                     && (signature.parameters.iter()).all(IrType::is_value_or_value_closure)
             }
-            IrType::Html | IrType::Cell(_) | IrType::Id => false,
+            IrType::Html | IrType::Cell(_) | IrType::ElementId => false,
         }
     }
 }
@@ -122,7 +120,7 @@ impl fmt::Display for IrType {
             IrType::Html => f.write_str("Html"),
             IrType::Function(signature) => signature.fmt(f),
             IrType::Cell(data) => write!(f, "Cell[{data}]"),
-            IrType::Id => f.write_str("Id"),
+            IrType::ElementId => f.write_str("ElementId"),
         }
     }
 }
