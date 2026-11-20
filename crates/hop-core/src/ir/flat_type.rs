@@ -89,12 +89,12 @@ impl FlatType {
         }
     }
 
-    pub fn is_value_or_value_closure(&self) -> bool {
+    pub fn is_data_or_data_closure(&self) -> bool {
         match self {
             FlatType::Data(_) => true,
             FlatType::Function(signature) => {
                 matches!(*signature.result, FlatType::Data(_))
-                    && (signature.parameters.iter()).all(FlatType::is_value_or_value_closure)
+                    && (signature.parameters.iter()).all(FlatType::is_data_or_data_closure)
             }
             FlatType::Html | FlatType::Cell(_) | FlatType::ElementId => false,
         }

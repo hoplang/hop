@@ -338,7 +338,7 @@ impl<'a> Compiler<'a> {
                     "a block that computes a value outside what renders binds no cell"
                 );
                 assert!(
-                    cell || binding.binder.typ.is_value_or_value_closure(),
+                    cell || binding.binder.typ.is_data_or_data_closure(),
                     "a block that computes a value binds Html"
                 );
             })
@@ -362,7 +362,7 @@ impl<'a> Compiler<'a> {
     fn push(&mut self, typ: Type, op: FlatOp) -> ValueId {
         let typ = lower_type(self.registry, &typ);
         assert!(
-            typ.is_value_or_value_closure(),
+            typ.is_data_or_data_closure(),
             "an op of a value produces a value"
         );
         let name = self.value_id_counter.next();
@@ -1071,7 +1071,7 @@ impl<'a> Compiler<'a> {
                 self.pop_scope();
                 self.context = outer;
                 assert!(
-                    (parameters.iter()).all(|binder| binder.typ.is_value_or_value_closure()),
+                    (parameters.iter()).all(|binder| binder.typ.is_data_or_data_closure()),
                     "a lambda that computes a value takes values only"
                 );
                 FlatOp::Lambda(IrLambda { parameters, body })

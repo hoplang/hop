@@ -101,7 +101,7 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
                 }
                 // Only Html depends on Html, so a function that returns a
                 // value takes none.
-                if !returns_html && !param.binder.typ.is_value_or_value_closure() {
+                if !returns_html && !param.binder.typ.is_data_or_data_closure() {
                     return Err(FlatTypeError::HtmlInValueBlock);
                 }
                 checker.bind(param.binder.var, typ)?;
@@ -186,7 +186,7 @@ fn is_well_formed(signature: &FlatSignature) -> bool {
         });
     let result = match *signature.result {
         FlatType::Html => signature.modifier == IrModifier::Render,
-        FlatType::Data(_) => (signature.parameters.iter()).all(FlatType::is_value_or_value_closure),
+        FlatType::Data(_) => (signature.parameters.iter()).all(FlatType::is_data_or_data_closure),
         FlatType::Function(_) | FlatType::Cell(_) | FlatType::ElementId => false,
     };
     parameters && result
