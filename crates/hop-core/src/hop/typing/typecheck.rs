@@ -15004,8 +15004,8 @@ mod tests {
                 fn Main(ids: Array[Int]) -> Html {
                   let (count, set_count) = state!(0);
                   let (on, set_on) = state!(false);
-                  let bump = mut fn() { set_count(count + 1) };
-                  let flip = mut fn() -> Tuple[] { set_on(!on) };
+                  let bump = mut fn() { set_count(fn(old) { old + 1 }) };
+                  let flip = mut fn() -> Tuple[] { set_on(fn(_) { !on }) };
                   <>
                     <button on:click={mut fn() { both(bump, flip) }}>
                       {count.to_string()}
@@ -15020,9 +15020,13 @@ mod tests {
                 -- main.hop --
                 fn Main(ids: Array[Int]) -> Html {
                   let (count, set_count) = state!(0) in let (on, set_on) = state!(false) in let bump = mut fn() -> Tuple[] {
-                    set_count(add(count, 1))
+                    set_count(fn(old: Int) -> Int {
+                      add(old, 1)
+                    })
                   } in let flip = mut fn() -> Tuple[] {
-                    set_on(not(on))
+                    set_on(fn(_: Bool) -> Bool {
+                      not(on)
+                    })
                   } in concat(
                     element(
                       tag: "button",
@@ -15066,7 +15070,7 @@ mod tests {
                   let (count, set_count) = state!(0);
                   <button on:click={mut fn() {
                     let (last, set_last) = state!(count);
-                    set_count(last + 1)
+                    set_count(fn(_) { last + 1 })
                   }}>{count.to_string()}</button>
                 }
             "#},
@@ -15107,7 +15111,7 @@ mod tests {
                   let row = {
                     let (open, set_open) = state!(false);
                     fn(label: String) {
-                      <li on:click={mut fn() { set_open(!open) }}>{label}</li>
+                      <li on:click={mut fn() { set_open(fn(_) { !open }) }}>{label}</li>
                     }
                   };
                   <ul>{row("a")}{row("b")}</ul>
@@ -15124,7 +15128,9 @@ mod tests {
                         escape(label),
                       ),
                       on_click: mut fn() -> Tuple[] {
-                        set_open(not(open))
+                        set_open(fn(_: Bool) -> Bool {
+                          not(open)
+                        })
                       },
                     )
                   } in element(
@@ -15149,7 +15155,7 @@ mod tests {
                   match open {
                     true => {
                       let (count, set_count) = state!(0);
-                      <button on:click={mut fn() { set_count(count + 1) }}>{count.to_string()}</button>
+                      <button on:click={mut fn() { set_count(fn(old) { old + 1 }) }}>{count.to_string()}</button>
                     },
                     false => <i>closed</i>,
                   }
@@ -15166,7 +15172,9 @@ mod tests {
                         escape(count.to_string()),
                       ),
                       on_click: mut fn() -> Tuple[] {
-                        set_count(add(count, 1))
+                        set_count(fn(old: Int) -> Int {
+                          add(old, 1)
+                        })
                       },
                     ),
                     false => element(
@@ -15190,7 +15198,7 @@ mod tests {
                 fn Main() -> Html {
                   let row = fn(label: String) {
                     let (open, set_open) = state!(false);
-                    <li on:click={mut fn() { set_open(!open) }}>{label}</li>
+                    <li on:click={mut fn() { set_open(fn(_) { !open }) }}>{label}</li>
                   };
                   <ul>{row("a")}{row("b")}</ul>
                 }
@@ -15206,7 +15214,9 @@ mod tests {
                         escape(label),
                       ),
                       on_click: mut fn() -> Tuple[] {
-                        set_open(not(open))
+                        set_open(fn(_: Bool) -> Bool {
+                          not(open)
+                        })
                       },
                     )
                   } in element(
@@ -15315,21 +15325,21 @@ mod tests {
                 }
                 fn Twice() -> Html {
                   let (count, set_count) = state!(0);
-                  <button on:click={mut fn() { set_count(1) }} on:click={mut fn() { set_count(2) }}>
+                  <button on:click={mut fn() { set_count(fn(_) { 1 }) }} on:click={mut fn() { set_count(fn(_) { 2 }) }}>
                     {count.to_string()}
                   </button>
                 }
                 fn Main() -> Html {
                   let (count, set_count) = state!(0);
-                  <Button on:click={mut fn() { set_count(count + 1) }}>{count.to_string()}</Button>
+                  <Button on:click={mut fn() { set_count(fn(old) { old + 1 }) }}>{count.to_string()}</Button>
                 }
             "#},
             expect![[r#"
                 error: Duplicate attribute 'on:click'
-                  --> main.hop (line 6, col 48)
+                  --> main.hop (line 6, col 58)
                  5 |   let (count, set_count) = state!(0);
-                 6 |   <button on:click={mut fn() { set_count(1) }} on:click={mut fn() { set_count(2) }}>
-                   |                                                ^^^^^^^^
+                 6 |   <button on:click={mut fn() { set_count(fn(_) { 1 }) }} on:click={mut fn() { set_count(fn(_) { 2 }) }}>
+                   |                                                          ^^^^^^^^
 
                 warning: Unused variable set_count
                   --> main.hop (line 11, col 15)
@@ -15340,7 +15350,7 @@ mod tests {
                 error: Function Button does not accept argument 'on:click'
                   --> main.hop (line 12, col 11)
                 11 |   let (count, set_count) = state!(0);
-                12 |   <Button on:click={mut fn() { set_count(count + 1) }}>{count.to_string()}</Button>
+                12 |   <Button on:click={mut fn() { set_count(fn(old) { old + 1 }) }}>{count.to_string()}</Button>
                    |           ^^^^^^^^
             "#]],
         );
@@ -15353,7 +15363,7 @@ mod tests {
                 -- main.hop --
                 fn Listed() -> Html {
                   let (count, set_count) = state!(0);
-                  let writes = [mut fn() { set_count(1) }];
+                  let writes = [mut fn() { set_count(fn(_) { 1 }) }];
                   <b>{count.to_string()}</b>
                 }
             "#},
@@ -15367,8 +15377,8 @@ mod tests {
                 error: mut fn() -> Tuple[] is not allowed inside another type
                   --> main.hop (line 3, col 17)
                 2 |   let (count, set_count) = state!(0);
-                3 |   let writes = [mut fn() { set_count(1) }];
-                  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+                3 |   let writes = [mut fn() { set_count(fn(_) { 1 }) }];
+                  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -15384,10 +15394,10 @@ mod tests {
                 }
                 fn Main() -> Html {
                   let (count, set_count) = state!(0);
-                  let bump = mut fn() { set_count(count + 1) };
+                  let bump = mut fn() { set_count(fn(old) { old + 1 }) };
                   <button on:click={mut fn() {
                     twice(bump);
-                    match count > 2 {true => set_count(0), false => ()}
+                    match count > 2 {true => set_count(fn(_) { 0 }), false => ()}
                   }}>{count.to_string()}</button>
                 }
             "#},
@@ -15395,7 +15405,9 @@ mod tests {
                 -- main.hop --
                 fn Main() -> Html {
                   let (count, set_count) = state!(0) in let bump = mut fn() -> Tuple[] {
-                    set_count(add(count, 1))
+                    set_count(fn(old: Int) -> Int {
+                      add(old, 1)
+                    })
                   } in element(
                     tag: "button",
                     attrs: [],
@@ -15404,7 +15416,9 @@ mod tests {
                     ),
                     on_click: mut fn() -> Tuple[] {
                       twice(press: bump); match gt(count, 2) {
-                        true => set_count(0),
+                        true => set_count(fn(_: Int) -> Int {
+                          0
+                        }),
                         false => (),
                       }
                     },
@@ -15492,7 +15506,7 @@ mod tests {
                     {for item in items key first(item) {
                       <i>{a.to_string()}</i>
                     }}
-                    <b on:click={mut fn() { set_a(first(4)) }}>x</b>
+                    <b on:click={mut fn() { let next = first(4); set_a(fn(_) { next }) }}>x</b>
                   </>
                 }
             "#},
@@ -15534,10 +15548,10 @@ mod tests {
                    |                            ^^^^^^^^^^^
 
                 error: Render fn called from a mut fn
-                  --> main.hop (line 18, col 35)
+                  --> main.hop (line 18, col 40)
                 17 |     }}
-                18 |     <b on:click={mut fn() { set_a(first(4)) }}>x</b>
-                   |                                   ^^^^^^^^
+                18 |     <b on:click={mut fn() { let next = first(4); set_a(fn(_) { next }) }}>x</b>
+                   |                                        ^^^^^^^^
             "#]],
         );
     }
@@ -15627,7 +15641,7 @@ mod tests {
                   let row = fn(item: Int) { <i>{(item + get()).to_string()}</i> };
                   <>
                     <button on:click={bump}>{get().to_string()}</button>
-                    <b on:click={mut fn() { set_step(get()) }}>{step.to_string()}</b>
+                    <b on:click={mut fn() { let next = get(); set_step(fn(_) { next }) }}>{step.to_string()}</b>
                     {for item in items key item + get() { row(item) }}
                   </>
                 }
@@ -15663,7 +15677,9 @@ mod tests {
                         escape(step.to_string()),
                       ),
                       on_click: mut fn() -> Tuple[] {
-                        set_step(get())
+                        let next = get() in set_step(fn(_: Int) -> Int {
+                          next
+                        })
                       },
                     ),
                     for item in items key add(item, get()) {
@@ -15849,7 +15865,7 @@ mod tests {
                 fn Counter() -> Html {
                   let (count, set_count) = state!(0);
                   let (label, set_label) = signal!("none");
-                  <button on:click={mut fn() { set_count(count + 1); set_label(label() + "!") }}>
+                  <button on:click={mut fn() { set_count(fn(_) { count + 1 }); set_label(label() + "!") }}>
                     {label()}
                   </button>
                 }
@@ -15864,7 +15880,9 @@ mod tests {
                       escape(label()),
                     ),
                     on_click: mut fn() -> Tuple[] {
-                      set_count(add(count, 1)); set_label(string_concat(label(), "!"))
+                      set_count(fn(_: Int) -> Int {
+                        add(count, 1)
+                      }); set_label(string_concat(label(), "!"))
                     },
                   )
                 }
@@ -15887,7 +15905,7 @@ mod tests {
                 }
                 mut fn writer() -> Tuple[] {
                   let (count, set_count) = state!(0);
-                  set_count(count)
+                  set_count(fn(_) { count })
                 }
             "#},
             expect![[r#"
@@ -16026,7 +16044,7 @@ mod tests {
                 -- main.hop --
                 fn Counter() -> Html {
                   let (shown, set_shown) = state!(<p>x</p>);
-                  <button on:click={mut fn() { set_shown(shown) }}>{shown}</button>
+                  <button on:click={mut fn() { set_shown(fn(old) { old }) }}>{shown}</button>
                 }
             "#},
             expect![[r#"

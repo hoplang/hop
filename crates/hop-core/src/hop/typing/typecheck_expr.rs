@@ -1670,7 +1670,14 @@ pub fn typecheck_block(
                 };
                 let setter_type = Type::Function(FunctionType {
                     modifier: Modifier::Mut,
-                    parameters: vec![typ],
+                    parameters: vec![match kind {
+                        StateKind::State => Type::Function(FunctionType {
+                            modifier: Modifier::Pure,
+                            parameters: vec![typ.clone()],
+                            result: Box::new(typ),
+                        }),
+                        StateKind::Signal => typ,
+                    }],
                     result: Box::new(Type::UNIT),
                 });
                 let mut pushed = [false; 2];
