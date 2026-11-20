@@ -4,6 +4,22 @@ use std::rc::Rc;
 use crate::ir::runtime::value::Value;
 use crate::ir::value_id::ValueId;
 
+/// What persists from one render to the next: the cells and the region tree.
+///
+/// A closure never outlives the render that evaluated it:
+///
+/// 1. A render evaluates the entrypoint from scratch on the state the last
+///    click committed. Nothing it evaluates, a closure, Html or any other
+///    value, reaches the next render except through a cell.
+/// 2. A cell holds only data. Its initial value and every write are of its
+///    data type, so no closure, and no value holding one, is ever in a cell.
+/// 3. A click applies only the handlers of the latest render, in a mutation
+///    transaction on the state that render committed, and the next render
+///    runs before any later click.
+///
+/// A region is entered only by a render and dies only when a render commits
+/// without entering it. So every cell a closure captures is bound in the
+/// state that the closure's click mutates, wherever the closure is evaluated.
 #[derive(Debug, Clone)]
 pub struct State<'a> {
     region_tree: Rc<BTreeMap<(RegionId, Step), RegionId>>,
