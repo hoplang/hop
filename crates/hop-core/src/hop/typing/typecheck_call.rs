@@ -3,7 +3,7 @@ use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
 use super::typecheck_lambda::typecheck_apply;
 use super::typed_expr::TypedExpr;
-use super::variable_scope::{FunctionScopeEntry, Position, ScopeEntry, VariableScope};
+use super::variable_scope::{FunctionScopeEntry, ScopeEntry, VariableScope};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
@@ -189,14 +189,6 @@ pub fn typecheck_call(
                 var_env.require(
                     |_| false,
                     |position| TypeErrorKind::RenderCallNotAllowed { position },
-                    report_range,
-                    errors,
-                );
-            }
-            if signature.modifier == Modifier::Read {
-                var_env.require(
-                    |position| position != Position::PureFn,
-                    |_| TypeErrorKind::ReadCallNotAllowed,
                     report_range,
                     errors,
                 );

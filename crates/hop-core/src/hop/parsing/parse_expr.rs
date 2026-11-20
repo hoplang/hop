@@ -374,15 +374,6 @@ pub fn parse_primary(
             Some((ParsedModifier::Mut, mut_range)),
             fn_range,
         )?
-    } else if let Some(read_range) = next_if_eq(iter, comments, errors, LangToken::Read) {
-        let fn_range = expect_token(iter, comments, errors, &LangToken::Fn)?;
-        parse_lambda(
-            iter,
-            comments,
-            errors,
-            Some((ParsedModifier::Read, read_range)),
-            fn_range,
-        )?
     } else if let Some(render_range) = next_if_eq(iter, comments, errors, LangToken::Render) {
         let fn_range = expect_token(iter, comments, errors, &LangToken::Fn)?;
         parse_lambda(

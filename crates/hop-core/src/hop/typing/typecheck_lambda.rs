@@ -112,7 +112,6 @@ pub fn typecheck_lambda(
 
     let outer = var_env.enter_lambda(match (declared, expected_result) {
         (Some(ParsedModifier::Mut), _) => Context::Outside(Position::MutFn),
-        (Some(ParsedModifier::Read), _) => Context::Outside(Position::ReadFn),
         (Some(ParsedModifier::Render), _) => Context::Render,
         (None, Some(result)) if result.renders_html() => Context::Render,
         (None, Some(_)) => Context::Outside(Position::PureFn),
@@ -249,14 +248,6 @@ pub fn typecheck_apply(
         var_env.require(
             |_| false,
             |position| TypeErrorKind::RenderCallNotAllowed { position },
-            report_range,
-            errors,
-        );
-    }
-    if function.modifier == Modifier::Read {
-        var_env.require(
-            |position| position != Position::PureFn,
-            |_| TypeErrorKind::ReadCallNotAllowed,
             report_range,
             errors,
         );

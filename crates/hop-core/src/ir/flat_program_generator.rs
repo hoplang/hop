@@ -61,10 +61,6 @@ const MUT_ODDS: u8 = 128;
 /// mutates.
 const MUT_FUNCTION_ODDS: u8 = 64;
 
-const READ_FUNCTION_ODDS: u8 = 64;
-
-const READ_CLOSURE_ODDS: u8 = 64;
-
 const FLOATS: &[f64] = &[
     0.0,
     -0.0,
@@ -372,8 +368,6 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
             IrModifier::Render
         } else if g.chance(MUT_FUNCTION_ODDS) {
             IrModifier::Mut
-        } else if g.chance(READ_FUNCTION_ODDS) {
-            IrModifier::Read
         } else {
             IrModifier::Pure
         };
@@ -756,7 +750,7 @@ impl FlatGenerator<'_, '_> {
         var: ValueId,
         depth: usize,
     ) -> ValueId {
-        let mut scope = scope.inner(&b.value_types(), IrModifier::Read);
+        let mut scope = scope.inner(&b.value_types(), IrModifier::Pure);
         scope.push(var);
         let typ = b.value_types()[var.index()].clone();
         if (typ == IrType::INT || typ == IrType::STRING) && self.index(4) != 0 {
@@ -896,7 +890,6 @@ impl FlatGenerator<'_, '_> {
             unreachable!("{typ} is not a closure type");
         };
         let render = signature.modifier == IrModifier::Render;
-        let read = signature.modifier == IrModifier::Read;
         let mutates = signature.modifier == IrModifier::Mut;
         let mut inner = scope.inner(&b.value_types(), signature.modifier);
         let depth = depth.saturating_sub(1);
@@ -916,8 +909,6 @@ impl FlatGenerator<'_, '_> {
         };
         let lambda = if mutates {
             b.mut_lambda(parameters, body)
-        } else if read {
-            b.read_lambda(parameters, body)
         } else if render {
             b.render_lambda(parameters, body)
         } else {
@@ -955,11 +946,6 @@ impl FlatGenerator<'_, '_> {
                     );
                     if scope.modifier.allows(IrModifier::Mut) && self.chance(MUT_ODDS) {
                         signature.modifier = IrModifier::Mut;
-                    } else if scope.modifier.allows(IrModifier::Read)
-                        && signature.modifier == IrModifier::Pure
-                        && self.chance(READ_CLOSURE_ODDS)
-                    {
-                        signature.modifier = IrModifier::Read;
                     }
                     IrType::Function(signature)
                 }
@@ -1050,7 +1036,7 @@ impl FlatGenerator<'_, '_> {
         if let Some(name) = self.name_in_scope(b, scope, &IrType::Data(typ.clone())) {
             return self.cell(b, scope, name);
         }
-        if matches!(scope.modifier, IrModifier::Read | IrModifier::Mut) && self.coin() {
+        if scope.modifier == IrModifier::Mut && self.coin() {
             let mut cells = Self::candidates(b, scope, Layer::Cell, &TyPat::Ground(typ.clone()));
             if !cells.is_empty() {
                 let (cell, _) = cells.swap_remove(self.index(cells.len()));
@@ -1844,12 +1830,6 @@ mod tests {
             {
                 format!("Mut{kind}")
             }
-            FlatOp::Lambda(_)
-                if matches!(typ, IrType::Function(signature)
-                    if signature.modifier == IrModifier::Read) =>
-            {
-                format!("Read{kind}")
-            }
             FlatOp::Call(..) | FlatOp::Match(_) => kind.to_string(),
             _ if typ.is_html_or_html_closure() => format!("Html{kind}"),
             _ => kind.to_string(),
@@ -2210,78 +2190,77 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            15268 of 65536 input bytes consumed per program on average, at most 56208
-            0 of 32 programs exhaust the input
+            12742 of 65536 input bytes consumed per program on average, at most 65536
+            1 of 32 programs exhaust the input
 
             -- sizes --
-            under 256     3  #########
-            under 1K      2  ######
-            under 4K      4  ############
-            under 16K    10  ##############################
-            under 64K    13  ########################################
-            at 64K        0
+            under 256     6  #################
+            under 1K      1  ##
+            under 4K      3  ########
+            under 16K    14  ########################################
+            under 64K     7  ####################
+            at 64K        1  ##
 
             -- programs --
-            54 of 4459 Html bindings have more than one reference
-            2 of 1143 mints have more than one reference
-            2.5 arms per match on average, at least 2 and at most 13
-            6960 of 16966 match arms bind names
-            13682 cells
-            218 of 356 loops have a key
-            776 of 962 elements have a click
-            130 handlers have more than one click
-            296 clicks apply a handler bound outside their block, 2 of them a parameter
+            66 of 2529 Html bindings have more than one reference
+            3 of 626 mints have more than one reference
+            2.4 arms per match on average, at least 2 and at most 13
+            5886 of 14819 match arms bind names
+            11106 cells
+            112 of 193 loops have a key
+            402 of 505 elements have a click
+            58 handlers have more than one click
+            162 clicks apply a handler bound outside their block, 58 of them a parameter
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      206.2    90.6    95.8    69.2
-            Array                      260.8    90.6    93.8    26.8
-            ArrayEnumerate               1.6    56.2   100.0    60.0
-            ArrayFromRange              16.7    87.5    96.4     0.0
-            ArrayGet                    47.4    87.5    90.7    52.8
-            ArrayIsEmpty                 2.8    53.1    95.6    50.0
-            ArrayLength                120.0    87.5    95.3    50.8
-            BoolLiteral                 78.0    90.6    94.2     0.0
-            BoolNegation                 3.2    68.8    90.4    48.1
-            Call                        29.3    53.1    96.8    58.1
-            Cell                       427.6    96.9    94.3    48.8
-            CellRead                   438.7    96.9    94.4    48.4
-            CellWrite                  121.1    81.2    98.2    47.0
-            Enum                       145.6    78.1    92.3    29.1
-            Equals                       2.8    59.4   100.0    80.7
-            FieldAccess                 18.2    43.8    95.9    89.7
-            FloatLiteral               121.8    90.6    93.6     0.0
-            FloatToInt                 114.9    87.5    95.7    53.0
-            HtmlApply                    5.3    65.6    99.4    83.5
-            HtmlConcat                  39.6    87.5    99.4    43.5
-            HtmlElement                 30.1    90.6    99.3    62.8
-            HtmlEscape                  19.6    87.5    99.8    47.0
-            HtmlFor                     11.1    75.0    99.4    74.2
-            HtmlLambda                   9.7    65.6    99.7    61.5
-            HtmlText                     9.1    75.0    99.3     0.0
-            IntLiteral                 149.9    96.9    94.9     0.0
-            IntToFloat                 140.5    87.5    96.6    58.1
-            IntToString                 64.3    90.6    97.7    53.1
-            Lambda                     214.6    90.6    95.6    51.3
-            LessThan                     2.5    62.5    94.9    78.5
-            LessThanOrEqual              3.4    75.0    98.2    73.4
-            Match                      211.1    90.6    96.5    84.7
-            Mint                        35.7    96.9    83.3     0.0
-            MutLambda                   47.1    90.6    96.9    29.0
-            NumericAdd                 264.2    87.5    96.1    71.2
-            NumericMultiply            259.1    87.5    95.9    70.9
-            NumericNegation            261.8    87.5    95.7    56.7
-            NumericSubtract            269.3    87.5    96.1    70.6
-            OptionIsNone                 2.9    68.8    89.4    63.8
-            OptionIsSome                 2.9    62.5    92.5    59.1
-            OptionNone                  93.4    90.6    94.4     0.0
-            OptionSome                  88.6    90.6    93.4    25.5
-            ReadLambda                  20.8    81.2    94.7    53.5
-            Record                      99.7    68.8    92.7    32.9
-            StringConcat                60.6    81.2    97.1    46.7
-            StringIsEmpty                2.8    71.9    94.3    50.0
-            StringLiteral               74.4    93.8    94.4     0.0
-            Tuple                      256.1    96.9    94.0    33.0
+            Apply                      187.1    84.4    85.7    65.2
+            Array                      218.6    84.4    81.2    26.6
+            ArrayEnumerate               1.6    34.4    64.7    43.1
+            ArrayFromRange              12.3    87.5    84.2     0.0
+            ArrayGet                    43.0    81.2    81.9    49.6
+            ArrayIsEmpty                 2.4    68.8    90.9    62.3
+            ArrayLength                108.3    84.4    87.2    55.9
+            BoolLiteral                 62.4    81.2    73.3     0.0
+            BoolNegation                 2.6    62.5    91.5    59.8
+            Call                        10.3    43.8    93.1    67.4
+            Cell                       347.1    96.9    85.2    44.2
+            CellRead                   353.8    96.9    85.4    44.4
+            CellWrite                  103.1    75.0    94.4    64.2
+            Enum                       106.2    68.8    83.4    26.6
+            Equals                       2.3    62.5    90.7    62.7
+            FieldAccess                 15.4    43.8    85.0    65.9
+            FloatLiteral               115.4    87.5    86.6     0.0
+            FloatToInt                 101.4    87.5    88.1    45.8
+            HtmlApply                    3.8    68.8    95.9    72.1
+            HtmlConcat                  20.5    84.4    98.5    45.3
+            HtmlElement                 15.8    81.2    98.4    66.9
+            HtmlEscape                  10.0    93.8    97.5    46.7
+            HtmlFor                      6.0    75.0    94.3    65.3
+            HtmlLambda                   8.0    65.6    98.1    57.6
+            HtmlText                     4.9    71.9    97.4     0.0
+            IntLiteral                 137.7    93.8    82.1     0.0
+            IntToFloat                 128.8    84.4    87.1    50.6
+            IntToString                 52.7    90.6    93.4    53.6
+            Lambda                     205.8    84.4    85.4    48.6
+            LessThan                     2.2    59.4    87.0    62.3
+            LessThanOrEqual              2.2    62.5    85.5    68.1
+            Match                      189.3    84.4    86.5    79.0
+            Mint                        19.6    93.8    78.4     0.0
+            MutLambda                   32.0    90.6    90.6    38.6
+            NumericAdd                 245.8    87.5    87.0    63.0
+            NumericMultiply            233.2    81.2    87.0    63.2
+            NumericNegation            238.1    87.5    87.1    51.6
+            NumericSubtract            240.9    84.4    86.9    63.3
+            OptionIsNone                 2.7    59.4    87.2    65.1
+            OptionIsSome                 1.9    59.4    85.2    62.3
+            OptionNone                  51.7    81.2    74.9     0.0
+            OptionSome                  48.1    81.2    75.6    26.3
+            Record                      87.4    62.5    78.2    26.5
+            StringConcat                53.8    78.1    93.8    47.9
+            StringIsEmpty                1.9    65.6    86.9    44.3
+            StringLiteral               60.0    90.6    89.3     0.0
+            Tuple                      186.4    90.6    81.0    29.3
         "#]]
         .assert_eq(&report);
     }

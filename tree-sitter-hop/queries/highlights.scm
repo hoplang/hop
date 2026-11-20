@@ -105,7 +105,6 @@
 
 (visibility_modifier) @keyword.storage.modifier
 (mutable_specifier) @keyword.storage.modifier
-(read_modifier) @keyword.storage.modifier
 (render_modifier) @keyword.storage.modifier
 
 "match" @keyword.control.conditional

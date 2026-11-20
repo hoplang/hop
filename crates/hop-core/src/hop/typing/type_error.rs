@@ -388,44 +388,36 @@ pub enum TypeErrorKind {
     #[error(
         "{}",
         match position {
-            Position::PureFn => format!("{name}! needs a render fn"),
-            Position::ReadFn => format!("{name}! in a read fn"),
-            Position::MutFn => format!("{name}! in a mut fn"),
-            Position::InitialValue => format!("{name}! in an initial value"),
-            Position::Key => format!("{name}! in a key"),
+            Position::PureFn => "state! needs a render fn",
+            Position::MutFn => "state! in a mut fn",
+            Position::InitialValue => "state! in an initial value",
+            Position::Key => "state! in a key",
         }
     )]
-    StateMacroNotAllowed {
-        name: &'static str,
-        position: Position,
-    },
+    StateMacroNotAllowed { position: Position },
 
-    #[error("{name}! cannot hold {typ}")]
-    StateMacroNotData { name: &'static str, typ: Type },
+    #[error("state! cannot hold {typ}")]
+    StateMacroNotData { typ: Type },
 
-    #[error("{name}! takes exactly one argument, got {actual}")]
-    StateMacroArity { name: &'static str, actual: usize },
+    #[error("state! takes exactly one argument, got {actual}")]
+    StateMacroArity { actual: usize },
 
-    #[error("{name}! needs let (a, b) = {name}!(...)")]
-    StateMacroOutsideLetPair { name: CheapString },
+    #[error("state! needs let (a, b) = state!(...)")]
+    StateMacroOutsideLetPair,
 
-    #[error("Expected signal! or state!")]
+    #[error("Expected state!")]
     LetPairNeedsStateMacro,
 
     #[error(
         "{}",
         match position {
             Position::PureFn => "Render fn called from a non-render fn",
-            Position::ReadFn => "Render fn called from a read fn",
             Position::MutFn => "Render fn called from a mut fn",
             Position::InitialValue => "Render fn called in an initial value",
             Position::Key => "Render fn called in a key",
         }
     )]
     RenderCallNotAllowed { position: Position },
-
-    #[error("Read fn called from a plain fn")]
-    ReadCallNotAllowed,
 
     #[error("A statement has no effect outside a mut fn")]
     StatementOutsideMut,
@@ -435,9 +427,6 @@ pub enum TypeErrorKind {
 
     #[error("A mut fn can not return {result}")]
     MutFunctionReturnsNonData { result: Type },
-
-    #[error("A read fn can not return {result}")]
-    ReadFunctionReturnsNonData { result: Type },
 
     #[error("Expected Int or String got {found}")]
     KeyTypeMismatch { found: Type },

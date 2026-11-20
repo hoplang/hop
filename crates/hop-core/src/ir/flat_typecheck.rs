@@ -59,10 +59,10 @@ pub enum FlatTypeError {
     /// cell binding or a mint binds.
     CellOrIdParameter,
     /// A block has an effect that its modifier does not allow. A cell and a
-    /// mint render, a read of a cell reads, a write of a cell mutates, and a
-    /// call or an application has the modifier of what it calls. A pure
-    /// block allows none of these, a block that reads allows reads, and a
-    /// block that renders or mutates allows reads and its own effect.
+    /// mint render, a write of a cell mutates, and a call or an application
+    /// has the modifier of what it calls. A read of a cell is allowed in a
+    /// block that renders or mutates. A pure block allows none of these, and
+    /// a block that renders or mutates allows its own effect.
     EffectNotAllowed,
     /// A function or a lambda returns Html without the render modifier.
     HtmlOutsideRender,
@@ -288,14 +288,13 @@ impl<'a> Checker<'a> {
         binding: &'a FlatBinding,
         modifier: IrModifier,
     ) -> Result<(), FlatTypeError> {
-        let effect = match binding.op {
-            FlatOp::Cell(_) => IrModifier::Render,
-            FlatOp::Mint => IrModifier::Render,
-            FlatOp::CellRead(_) => IrModifier::Read,
-            FlatOp::CellWrite(..) => IrModifier::Mut,
-            _ => IrModifier::Pure,
+        let allowed = match binding.op {
+            FlatOp::Cell(_) | FlatOp::Mint => modifier == IrModifier::Render,
+            FlatOp::CellRead(_) => modifier != IrModifier::Pure,
+            FlatOp::CellWrite(..) => modifier == IrModifier::Mut,
+            _ => true,
         };
-        if !modifier.allows(effect) {
+        if !allowed {
             return Err(FlatTypeError::EffectNotAllowed);
         }
         let declared = BoundType::of(&binding.binder.typ);
@@ -342,7 +341,7 @@ impl<'a> Checker<'a> {
             FlatOp::Cell(initial) => match declared {
                 BoundType::Cell(data) => {
                     self.scoped(|checker| {
-                        checker.block(initial, BoundType::Data(data), IrModifier::Read)
+                        checker.block(initial, BoundType::Data(data), IrModifier::Pure)
                     })?;
                     true
                 }
@@ -411,7 +410,7 @@ impl<'a> Checker<'a> {
                     }
                     if let Some(key) = &for_.key {
                         checker.scoped(|checker| {
-                            checker.bindings(&key.bindings, false, IrModifier::Read)?;
+                            checker.bindings(&key.bindings, false, IrModifier::Pure)?;
                             let typ = checker.read(key.result)?;
                             if !typ.is(&IrType::INT) && !typ.is(&IrType::STRING) {
                                 return Err(FlatTypeError::KeyNotIntOrString);
@@ -1705,138 +1704,28 @@ mod tests {
     }
 
     #[test]
-    fn should_accept_a_closure_that_reads_a_cell_where_it_renders_mutates_and_keys() {
-        FlatProgramBuilder::new()
+    fn should_reject_a_read_of_a_cell_in_a_cell_initializer() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.cell(|t| t.int(0));
+                let step = t.cell(|t| t.cell_read(count));
+                t.escape(t.int_to_string(t.cell_read(step)))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
+    }
+
+    #[test]
+    fn should_reject_a_read_of_a_cell_in_the_key_of_a_loop() {
+        let error = FlatProgramBuilder::new()
             .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
                 let count = t.cell(|t| t.int(0));
-                let get = t.read_lambda([], |t, _| t.cell_read(count));
-                let step = t.cell(|t| t.apply(get, []));
-                let handler = t.event_handler(|t| {
-                    let next = t.add(NumericType::Int, t.apply(get, []), t.cell_read(step));
-                    t.cell_write(count, next)
-                });
-                let shown = t.escape(t.int_to_string(t.apply(get, [])));
-                let rows = t
-                    .html_for_keyed(t.param("items"), |t, _| t.apply(get, []))
-                    .body(|t, _| t.text("item"));
-                let children = t.html_concat([shown, rows]);
-                t.element_on_click(t.mint(), "button", vec![], handler, Some(children))
-            })
-            .build()
-            .unwrap();
-    }
-
-    #[test]
-    fn should_accept_a_call_of_a_function_that_reads_from_one_that_reads() {
-        FlatProgramBuilder::new()
-            .read_function("double", [("n", Ty::Int)], Ty::Int, |t| {
-                t.add(NumericType::Int, t.param("n"), t.param("n"))
-            })
-            .read_function("quadruple", [("n", Ty::Int)], Ty::Int, |t| {
-                let double = t.call("double", [t.param("n")]);
-                t.call("double", [double])
-            })
-            .entrypoint("Test", [], |t| {
-                t.escape(t.int_to_string(t.call("quadruple", [t.int(1)])))
-            })
-            .build()
-            .unwrap();
-    }
-
-    #[test]
-    fn should_reject_a_call_of_a_function_that_reads_in_a_pure_function() {
-        let error = FlatProgramBuilder::new()
-            .read_function("seven", [], Ty::Int, |t| t.int(7))
-            .function("eight", [], Ty::Int, |t| {
-                t.add(NumericType::Int, t.call("seven", []), t.int(1))
-            })
-            .entrypoint("Test", [], |t| {
-                t.escape(t.int_to_string(t.call("eight", [])))
+                t.html_for_keyed(t.param("items"), |t, _| t.cell_read(count))
+                    .body(|t, _| t.text("item"))
             })
             .build()
             .unwrap_err();
         assert_eq!(error, FlatTypeError::EffectNotAllowed);
-    }
-
-    #[test]
-    fn should_reject_an_application_of_a_closure_that_reads_in_a_pure_function() {
-        let error = FlatProgramBuilder::new()
-            .function("eight", [], Ty::Int, |t| {
-                let seven = t.read_lambda([], |t, _| t.int(7));
-                t.add(NumericType::Int, t.apply(seven, []), t.int(1))
-            })
-            .entrypoint("Test", [], |t| {
-                t.escape(t.int_to_string(t.call("eight", [])))
-            })
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::EffectNotAllowed);
-    }
-
-    #[test]
-    fn should_reject_a_write_in_a_closure_that_reads() {
-        let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], |t| {
-                let count = t.cell(|t| t.int(0));
-                t.read_lambda([], |t, _| t.cell_write(count, t.int(1)));
-                t.text("x")
-            })
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::EffectNotAllowed);
-    }
-
-    #[test]
-    fn should_reject_a_call_of_a_function_that_renders_in_a_function_that_reads() {
-        let error = FlatProgramBuilder::new()
-            .render_function("counter", [], Ty::Int, |t| {
-                t.cell_read(t.cell(|t| t.int(0)))
-            })
-            .read_function("twice", [], Ty::Int, |t| {
-                let count = t.call("counter", []);
-                t.add(NumericType::Int, count, count)
-            })
-            .entrypoint("Test", [], |t| {
-                t.escape(t.int_to_string(t.call("twice", [])))
-            })
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::EffectNotAllowed);
-    }
-
-    #[test]
-    fn should_reject_a_cell_in_a_function_that_reads() {
-        let error = FlatProgramBuilder::new()
-            .read_function("counter", [], Ty::Int, |t| {
-                t.cell_read(t.cell(|t| t.int(0)))
-            })
-            .entrypoint("Test", [], |t| {
-                t.escape(t.int_to_string(t.call("counter", [])))
-            })
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::EffectNotAllowed);
-    }
-
-    #[test]
-    fn should_reject_a_function_that_reads_and_returns_html() {
-        let error = FlatProgramBuilder::new()
-            .read_function("label", [], Ty::Html, |t| t.text("x"))
-            .entrypoint("Test", [], |t| t.call("label", []))
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::HtmlOutsideRender);
-    }
-
-    #[test]
-    fn should_reject_a_closure_that_reads_as_a_click_handler() {
-        let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], |t| {
-                let handler = t.read_lambda([], |t, _| t.tuple([]));
-                t.element_on_click(t.mint(), "button", vec![], handler, Some(t.text("x")))
-            })
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::ClickNotHandler);
     }
 }

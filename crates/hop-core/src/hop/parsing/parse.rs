@@ -55,13 +55,9 @@ pub fn parse(document: Document, errors: &mut Vec<ParseError>) -> ParsedModule {
                 pub_range,
             )
             .map(|function| ParsedDeclaration::Function(Box::new(function))),
-            Some((
-                token @ (LangToken::Mut | LangToken::Read | LangToken::Render),
-                modifier_range,
-            )) => {
+            Some((token @ (LangToken::Mut | LangToken::Render), modifier_range)) => {
                 let modifier = match token {
                     LangToken::Mut => ParsedModifier::Mut,
-                    LangToken::Read => ParsedModifier::Read,
                     LangToken::Render => ParsedModifier::Render,
                     _ => unreachable!(),
                 };
@@ -3493,14 +3489,14 @@ mod tests {
             indoc! {"
                 fn Main() -> Html {
                   let (count, set_count) = state!(0);
-                  let (label,set_label)=signal!(\"none\");
-                  <button on:click={mut fn() { set_count(count + 1) }}>{label()}</button>
+                  let (label,set_label)=state!(\"none\");
+                  <button on:click={mut fn() { set_count(count + 1) }}>{label}</button>
                 }
             "},
             expect![[r#"
                 fn Main() -> Html {
                   let (count, set_count) = state!(0);
-                  let (label, set_label) = signal!("none");
+                  let (label, set_label) = state!("none");
                   element(
                     tag: "button",
                     attrs: [
@@ -3509,7 +3505,7 @@ mod tests {
                       },
                     ],
                     children: [
-                      interpolate(label()),
+                      interpolate(label),
                     ],
                   )
                 }
@@ -3547,62 +3543,6 @@ mod tests {
                     ],
                   )
                 }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn accepts_read_functions() {
-        accept(
-            indoc! {"
-                read fn double(n: Int, f: read fn(Int) -> Int) -> Int {
-                  f(n) + f(n)
-                }
-                pub fn Card() -> Html {
-                  let get = read fn() -> Int { 0 };
-                  <p>{get().to_string()}</p>
-                }
-            "},
-            expect![[r#"
-                read fn double(n: Int, f: read fn(Int) -> Int) -> Int {
-                  add(f(n), f(n))
-                }
-
-                pub fn Card() -> Html {
-                  let get = read fn() -> Int {
-                    0
-                  };
-                  element(
-                    tag: "p",
-                    attrs: [],
-                    children: [
-                      interpolate(get().to_string()),
-                    ],
-                  )
-                }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn rejects_read_as_a_variable_name() {
-        reject(
-            indoc! {"
-                fn Main(read: Int) -> Int {
-                  read
-                }
-            "},
-            expect![[r#"
-                -- errors --
-                error: Expected identifier but got 'read'
-                1 | fn Main(read: Int) -> Int {
-                  |         ^^^^
-
-                error: Expected token 'fn' but got '}'
-                2 |   read
-                3 | }
-                  | ^
-                -- ast --
             "#]],
         );
     }

@@ -25,7 +25,6 @@ pub struct FunctionType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Modifier {
     Pure,
-    Read,
     Render,
     Mut,
 }
@@ -33,7 +32,6 @@ pub enum Modifier {
 impl Modifier {
     pub fn of(declared: Option<ParsedModifier>, result: &Type) -> Modifier {
         match declared {
-            Some(ParsedModifier::Read) => Modifier::Read,
             Some(ParsedModifier::Render) => Modifier::Render,
             Some(ParsedModifier::Mut) => Modifier::Mut,
             None if result.renders_html() => Modifier::Render,
@@ -44,7 +42,6 @@ impl Modifier {
     pub fn prefix(self, result: &Type) -> &'static str {
         match self {
             Modifier::Pure => "",
-            Modifier::Read => "read ",
             Modifier::Render if result.renders_html() => "",
             Modifier::Render => "render ",
             Modifier::Mut => "mut ",

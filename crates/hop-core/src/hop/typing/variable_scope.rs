@@ -40,7 +40,6 @@ pub enum Context {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Position {
     PureFn,
-    ReadFn,
     MutFn,
     InitialValue,
     Key,

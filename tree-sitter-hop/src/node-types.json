@@ -879,10 +879,6 @@
           "named": true
         },
         {
-          "type": "read_modifier",
-          "named": true
-        },
-        {
           "type": "render_modifier",
           "named": true
         },
@@ -924,10 +920,6 @@
       "types": [
         {
           "type": "mutable_specifier",
-          "named": true
-        },
-        {
-          "type": "read_modifier",
           "named": true
         },
         {
@@ -1043,10 +1035,6 @@
       "types": [
         {
           "type": "mutable_specifier",
-          "named": true
-        },
-        {
-          "type": "read_modifier",
           "named": true
         },
         {
@@ -1987,10 +1975,6 @@
   {
     "type": "page",
     "named": false
-  },
-  {
-    "type": "read_modifier",
-    "named": true
   },
   {
     "type": "record",

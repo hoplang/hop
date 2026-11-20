@@ -317,24 +317,8 @@ pub struct TypedLetBinding {
     pub value: TypedExpr,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StateKind {
-    Signal,
-    State,
-}
-
-impl StateKind {
-    pub fn name(self) -> &'static str {
-        match self {
-            StateKind::Signal => "signal",
-            StateKind::State => "state",
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct TypedState {
-    pub kind: StateKind,
     pub getter: VarName,
     pub setter: VarName,
     pub initial: TypedExpr,
@@ -539,10 +523,9 @@ impl Display for TypedExpr {
                         }
                         TypedStatement::State(state) => write!(
                             f,
-                            "let ({}, {}) = {}!({}) in ",
+                            "let ({}, {}) = state!({}) in ",
                             state.getter.as_str(),
                             state.setter.as_str(),
-                            state.kind.name(),
                             state.initial
                         )?,
                         TypedStatement::Expr(expr) => write!(f, "{expr}; ")?,

@@ -60,11 +60,8 @@ pub fn parse_type(
     }
     let modifier = match next_if_eq(iter, comments, errors, LangToken::Mut) {
         Some(range) => Some((ParsedModifier::Mut, range)),
-        None => match next_if_eq(iter, comments, errors, LangToken::Read) {
-            Some(range) => Some((ParsedModifier::Read, range)),
-            None => next_if_eq(iter, comments, errors, LangToken::Render)
-                .map(|range| (ParsedModifier::Render, range)),
-        },
+        None => next_if_eq(iter, comments, errors, LangToken::Render)
+            .map(|range| (ParsedModifier::Render, range)),
     };
     let fn_keyword = match &modifier {
         Some(_) => Some(expect_token(iter, comments, errors, &LangToken::Fn)?),

@@ -29,19 +29,13 @@ pub enum IrDataType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IrModifier {
     Pure,
-    Read,
     Render,
     Mut,
 }
 
 impl IrModifier {
     pub fn allows(self, effect: IrModifier) -> bool {
-        match (self, effect) {
-            (_, IrModifier::Pure) => true,
-            (IrModifier::Pure, _) => false,
-            (_, IrModifier::Read) => true,
-            (context, effect) => context == effect,
-        }
+        effect == IrModifier::Pure || self == effect
     }
 }
 
@@ -49,7 +43,6 @@ impl From<Modifier> for IrModifier {
     fn from(modifier: Modifier) -> IrModifier {
         match modifier {
             Modifier::Pure => IrModifier::Pure,
-            Modifier::Read => IrModifier::Read,
             Modifier::Render => IrModifier::Render,
             Modifier::Mut => IrModifier::Mut,
         }
@@ -141,7 +134,6 @@ impl fmt::Display for IrModifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             IrModifier::Pure => Ok(()),
-            IrModifier::Read => f.write_str("read "),
             IrModifier::Render => f.write_str("render "),
             IrModifier::Mut => f.write_str("mut "),
         }

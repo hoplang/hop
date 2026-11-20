@@ -1139,38 +1139,6 @@ fn a_click_whose_later_write_fails_changes_nothing() {
 }
 
 #[test]
-fn a_write_reads_a_signal_that_an_earlier_write_of_the_click_wrote() {
-    check(
-        indoc! {r#"
-            page Test {
-              fn body() -> Html {
-                let (count, set_count) = signal!(0);
-                let (label, set_label) = state!("none");
-                let update = mut fn() {
-                  set_count(count() + 1);
-                  let written = count().to_string();
-                  set_label(fn(_) { written })
-                };
-                
-                <button on:click={update}>
-                  {label}
-                </button>
-              }
-            }
-        "#},
-        &[Event::Click(1), Event::Click(1)],
-        expect![[r#"
-            -- render --
-            <button@e1>none</button>
-            -- click button@e1 --
-            <button@e1>1</button>
-            -- click button@e1 --
-            <button@e1>2</button>
-        "#]],
-    );
-}
-
-#[test]
 fn each_call_has_state_of_its_own() {
     check(
         indoc! {r#"
@@ -1267,18 +1235,21 @@ fn a_handler_reads_state_as_the_value_the_render_gave() {
 }
 
 #[test]
-fn a_handler_reads_the_value_a_signal_has_now() {
+fn a_handler_that_updates_a_record_state_twice_applies_both_updates() {
     check(
         indoc! {r#"
+            record Setting { level: Int, size: Int }
+
             page Test {
               fn body() -> Html {
-                let (count, set_count) = signal!(0);
-                
-                <button on:click={mut fn() {
-                  set_count(count() + 1);
-                  set_count(count() + 10)
-                }}>
-                  {count().to_string()}
+                let (setting, set_setting) = state!(Setting {level: 0, size: 0});
+                let update = mut fn() {
+                  set_setting(fn(curr) { Setting {...curr, level: curr.level + 1} });
+                  set_setting(fn(curr) { Setting {...curr, size: curr.size + 1} })
+                };
+
+                <button on:click={update}>
+                  {setting.level.to_string()}/{setting.size.to_string()}
                 </button>
               }
             }
@@ -1286,56 +1257,11 @@ fn a_handler_reads_the_value_a_signal_has_now() {
         &[Event::Click(1), Event::Click(1)],
         expect![[r#"
             -- render --
-            <button@e1>0</button>
-            -- click button@e1 --
-            <button@e1>11</button>
-            -- click button@e1 --
-            <button@e1>22</button>
-        "#]],
-    );
-}
-
-#[test]
-fn a_handler_that_updates_a_record_state_twice_applies_both_updates() {
-    check(
-        indoc! {r#"
-            record Setting { level: Int, size: Int }
-            
-            page Test {
-              fn body() -> Html {
-                let (setting, set_setting) = state!(Setting {level: 0, size: 0});
-                let (live, set_live) = signal!(Setting {level: 0, size: 0});
-                let update_state = mut fn() {
-                  set_setting(fn(curr) { Setting {...curr, level: curr.level + 1} });
-                  set_setting(fn(curr) { Setting {...curr, size: curr.size + 1} })
-                };
-                let update_signal = mut fn() {
-                  set_live(Setting {...live(), level: live().level + 1});
-                  set_live(Setting {...live(), size: live().size + 1})
-                };
-                
-                <>
-                  <button on:click={update_state}>
-                    {setting.level.to_string()}/{setting.size.to_string()}
-                  </button>
-                  <button on:click={update_signal}>
-                    {live().level.to_string()}/{live().size.to_string()}
-                  </button>
-                </>
-              }
-            }
-        "#},
-        &[Event::Click(1), Event::Click(2)],
-        expect![[r#"
-            -- render --
             <button@e1>0/0</button>
-            <button@e2>0/0</button>
             -- click button@e1 --
             <button@e1>1/1</button>
-            <button@e2>0/0</button>
-            -- click button@e2 --
-            <button@e1>1/1</button>
-            <button@e2>1/1</button>
+            -- click button@e1 --
+            <button@e1>2/2</button>
         "#]],
     );
 }
@@ -1392,31 +1318,31 @@ fn the_states_of_a_keyed_loop_follow_the_keys() {
 }
 
 #[test]
-fn a_component_reads_and_writes_a_signal_its_caller_passes() {
+fn a_component_reads_and_writes_a_state_its_caller_passes() {
     check(
         indoc! {r#"
-            fn Stepper(value: read fn() -> Int, set_value: mut fn(Int) -> Tuple[]) -> Html {
+            fn Stepper(value: Int, set_value: mut fn(fn(Int) -> Int) -> Tuple[]) -> Html {
               let step = mut fn() {
-                set_value(value() + 1);
-                set_value(value() * 2)
+                set_value(fn(curr) { curr + 1 });
+                set_value(fn(curr) { curr * 2 })
               };
-              
+
               <button on:click={step}>
-                {value().to_string()}
+                {value.to_string()}
               </button>
             }
-            
+
             page Test {
               fn body() -> Html {
-                let (count, set_count) = signal!(1);
-                
+                let (count, set_count) = state!(1);
+
                 <>
                   <Stepper
                     value={count}
                     set_value={set_count}
                   />
                   <p>
-                    {count().to_string()}
+                    {count.to_string()}
                   </p>
                 </>
               }

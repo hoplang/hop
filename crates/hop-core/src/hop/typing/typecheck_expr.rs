@@ -20,8 +20,7 @@ use crate::hop::parsing::{
 use crate::hop::typing::type_env::TypeEnv;
 use crate::hop::typing::type_error::{TypeError, TypeErrorKind, TypeMismatchContext};
 use crate::hop::typing::{
-    StateKind, TypedExpr, TypedLetBinding, TypedLoopSource, TypedRecordUpdateField, TypedState,
-    TypedStatement,
+    TypedExpr, TypedLetBinding, TypedLoopSource, TypedRecordUpdateField, TypedState, TypedStatement,
 };
 use crate::hover_annotation::HoverAnnotation;
 use crate::symbols::field_name::FieldName;
@@ -1287,9 +1286,9 @@ pub fn typecheck_expr(
                     },
                     typecheck_asset(args, range, asset_references, errors),
                 ),
-                "signal" | "state" => {
+                "state" => {
                     errors.push(TypeError::new(
-                        TypeErrorKind::StateMacroOutsideLetPair { name: name.clone() },
+                        TypeErrorKind::StateMacroOutsideLetPair,
                         subject_range.clone(),
                     ));
                     return None;
@@ -1589,23 +1588,13 @@ pub fn typecheck_block(
             ParsedStatement::Let(binding) => binding,
             ParsedStatement::LetPair(pair) => {
                 let [(getter, getter_range), (setter, setter_range)] = &pair.names;
-                let ParsedExpr::Macro {
-                    name,
-                    subject_range,
-                    args,
-                    ..
-                } = &pair.value_expr
-                else {
-                    errors.push(TypeError::new(
-                        TypeErrorKind::LetPairNeedsStateMacro,
-                        pair.value_expr.range().clone(),
-                    ));
-                    complete = false;
-                    break;
-                };
-                let kind = match name.as_str() {
-                    "signal" => StateKind::Signal,
-                    "state" => StateKind::State,
+                let (subject_range, args) = match &pair.value_expr {
+                    ParsedExpr::Macro {
+                        name,
+                        subject_range,
+                        args,
+                        ..
+                    } if name.as_str() == "state" => (subject_range, args),
                     _ => {
                         errors.push(TypeError::new(
                             TypeErrorKind::LetPairNeedsStateMacro,
@@ -1615,13 +1604,9 @@ pub fn typecheck_block(
                         break;
                     }
                 };
-                let name = kind.name();
                 let [initial] = args.as_slice() else {
                     errors.push(TypeError::new(
-                        TypeErrorKind::StateMacroArity {
-                            name,
-                            actual: args.len(),
-                        },
+                        TypeErrorKind::StateMacroArity { actual: args.len() },
                         pair.value_expr.range().clone(),
                     ));
                     complete = false;
@@ -1629,7 +1614,7 @@ pub fn typecheck_block(
                 };
                 var_env.require(
                     |_| false,
-                    |position| TypeErrorKind::StateMacroNotAllowed { name, position },
+                    |position| TypeErrorKind::StateMacroNotAllowed { position },
                     subject_range,
                     errors,
                 );
@@ -1654,30 +1639,20 @@ pub fn typecheck_block(
                 let typ = typed_initial.typ();
                 if typ.as_data().is_none() {
                     errors.push(TypeError::new(
-                        TypeErrorKind::StateMacroNotData { name, typ },
+                        TypeErrorKind::StateMacroNotData { typ },
                         initial.range().clone(),
                     ));
                     complete = false;
                     break;
                 }
-                let getter_type = match kind {
-                    StateKind::State => typ.clone(),
-                    StateKind::Signal => Type::Function(FunctionType {
-                        modifier: Modifier::Read,
-                        parameters: Vec::new(),
-                        result: Box::new(typ.clone()),
-                    }),
-                };
+                let getter_type = typ.clone();
                 let setter_type = Type::Function(FunctionType {
                     modifier: Modifier::Mut,
-                    parameters: vec![match kind {
-                        StateKind::State => Type::Function(FunctionType {
-                            modifier: Modifier::Pure,
-                            parameters: vec![typ.clone()],
-                            result: Box::new(typ),
-                        }),
-                        StateKind::Signal => typ,
-                    }],
+                    parameters: vec![Type::Function(FunctionType {
+                        modifier: Modifier::Pure,
+                        parameters: vec![typ.clone()],
+                        result: Box::new(typ),
+                    })],
                     result: Box::new(Type::UNIT),
                 });
                 let mut pushed = [false; 2];
@@ -1708,7 +1683,6 @@ pub fn typecheck_block(
                 }
                 checked.push(Checked::State(
                     TypedState {
-                        kind,
                         getter: getter.clone(),
                         setter: setter.clone(),
                         initial: typed_initial,

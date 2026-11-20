@@ -4,9 +4,9 @@ use std::sync::Arc;
 use crate::asset_path_rewriter::AssetPathRewriter;
 use crate::document::CheapString;
 use crate::hop::typing::{
-    Constructor, DataType, Pattern, PatternField, RecordField, ResolvedType, StateKind, Type,
-    TypeRegistry, TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource,
-    TypedPageDeclaration, TypedParameter, TypedPattern, TypedRecordUpdateField, TypedStatement,
+    Constructor, DataType, Pattern, PatternField, RecordField, ResolvedType, Type, TypeRegistry,
+    TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource, TypedPageDeclaration,
+    TypedParameter, TypedPattern, TypedRecordUpdateField, TypedStatement,
 };
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
@@ -853,10 +853,9 @@ impl<'a> Compiler<'a> {
             // A let binds nothing. Its variable is the name of its value, in
             // a scope that the block's lets share and that holds the tail. A
             // state binds a cell, whose initial value is compiled as a block
-            // of its own, a getter that is a read of the cell for state! and a
-            // read fn of it for signal!, and a setter that is a mut fn that
-            // writes it: the value it takes for signal!, and for state! what
-            // the function it takes gives for the value the cell has then.
+            // of its own, a getter that is a read of the cell, and a setter
+            // that is a mut fn that writes it what the function it takes
+            // gives for the value the cell has then.
             // A let of Html in a block that does not render Html is erased.
             TypedExpr::Block { statements, tail } => {
                 self.push_scope();
@@ -871,52 +870,21 @@ impl<'a> Compiler<'a> {
                             let initial = self.compile_value_block(&state.initial);
                             let cell =
                                 self.bind_html(IrType::Cell(data.clone()), FlatOp::Cell(initial));
-                            let getter = match state.kind {
-                                StateKind::State => self
-                                    .bind_html(IrType::Data(data.clone()), FlatOp::CellRead(cell)),
-                                StateKind::Signal => {
-                                    let body = self.data_block(|cx| {
-                                        cx.bind_html(
-                                            IrType::Data(data.clone()),
-                                            FlatOp::CellRead(cell),
-                                        )
-                                    });
-                                    self.bind_html(
-                                        IrType::function(
-                                            IrModifier::Read,
-                                            [],
-                                            IrType::Data(data.clone()),
-                                        ),
-                                        FlatOp::Lambda(IrLambda {
-                                            parameters: Vec::new(),
-                                            body,
-                                        }),
-                                    )
-                                }
-                            };
+                            let getter =
+                                self.bind_html(IrType::Data(data.clone()), FlatOp::CellRead(cell));
                             let parameter = self.value_id_counter.next();
-                            let parameter_type = match state.kind {
-                                StateKind::State => IrType::function(
-                                    IrModifier::Pure,
-                                    [IrType::Data(data.clone())],
-                                    IrType::Data(data.clone()),
-                                ),
-                                StateKind::Signal => IrType::Data(data.clone()),
-                            };
+                            let parameter_type = IrType::function(
+                                IrModifier::Pure,
+                                [IrType::Data(data.clone())],
+                                IrType::Data(data.clone()),
+                            );
                             let body = self.data_block(|cx| {
-                                let value = match state.kind {
-                                    StateKind::State => {
-                                        let current = cx.bind_html(
-                                            IrType::Data(data.clone()),
-                                            FlatOp::CellRead(cell),
-                                        );
-                                        cx.bind_html(
-                                            IrType::Data(data.clone()),
-                                            FlatOp::Apply(parameter, vec![current]),
-                                        )
-                                    }
-                                    StateKind::Signal => parameter,
-                                };
+                                let current = cx
+                                    .bind_html(IrType::Data(data.clone()), FlatOp::CellRead(cell));
+                                let value = cx.bind_html(
+                                    IrType::Data(data.clone()),
+                                    FlatOp::Apply(parameter, vec![current]),
+                                );
                                 cx.bind_html(
                                     IrType::Data(IrDataType::UNIT),
                                     FlatOp::CellWrite(cell, value),
@@ -2451,67 +2419,6 @@ mod tests {
                   let v16: Html = escape(v15)
                   let v17: Html = concat(v16)
                   let v18: Html = f0(v12, v17)
-                  v18
-                }
-                page Test: e0
-            "#]],
-        );
-    }
-
-    #[test]
-    fn should_compile_read_functions_and_lambdas_to_reads_of_cells() {
-        check(
-            indoc! {r#"
-                read fn double(n: Int) -> Int {
-                  n + n
-                }
-                page Test(n: Int) {
-                  fn body() -> Html {
-                    let (count, set_count) = signal!(n);
-                    let get = read fn() -> Int { double(count()) };
-                    <button on:click={mut fn() { set_count(get()) }}>{get().to_string()}</button>
-                  }
-                }
-            "#},
-            expect![[r#"
-                read fn double@f0(
-                  n@v19: Int,
-                ) -> Int {
-                  let v20: Int = int_add(v19, v19)
-                  v20
-                }
-                entrypoint body@e0(
-                  n@v0: Int,
-                ) -> Html {
-                  let v1: Cell[Int] = cell {
-                    v0
-                  }
-                  let v3: read () -> Int = fn() {
-                    let v2: Int = cell_read(v1)
-                    v2
-                  }
-                  let v6: mut (Int) -> Tuple[] = fn(
-                    v4: Int,
-                  ) {
-                    let v5: Tuple[] = cell_write(v1, v4)
-                    v5
-                  }
-                  let v9: read () -> Int = fn() {
-                    let v7: Int = v3()
-                    let v8: Int = f0(v7)
-                    v8
-                  }
-                  let v12: mut () -> Tuple[] = fn() {
-                    let v10: Int = v9()
-                    let v11: Tuple[] = v6(v10)
-                    v11
-                  }
-                  let v13: Int = v9()
-                  let v14: String = int_to_string(v13)
-                  let v15: Html = escape(v14)
-                  let v16: Html = concat(v15)
-                  let v17: ElementId = mint()
-                  let v18: Html = element(v17, "button", {}, v16) on_click v12
                   v18
                 }
                 page Test: e0

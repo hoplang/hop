@@ -142,17 +142,13 @@ fn declaration(u: &mut Unstructured<'_>, out: &mut String) -> Result<()> {
     }
     match p {
         P::Function => {
-            match u.int_in_range(0..=6)? {
+            match u.int_in_range(0..=5)? {
                 4 => {
                     out.push_str("mut");
                     ws(u, out)?;
                 }
                 5 => {
                     out.push_str("render");
-                    ws(u, out)?;
-                }
-                6 => {
-                    out.push_str("read");
                     ws(u, out)?;
                 }
                 _ => {}
@@ -313,17 +309,13 @@ fn type_(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Result<()>
             out.push(']');
         }
         P::Function => {
-            match u.int_in_range(0..=6)? {
+            match u.int_in_range(0..=5)? {
                 4 => {
                     out.push_str("mut");
                     ws(u, out)?;
                 }
                 5 => {
                     out.push_str("render");
-                    ws(u, out)?;
-                }
-                6 => {
-                    out.push_str("read");
                     ws(u, out)?;
                 }
                 _ => {}
@@ -361,7 +353,7 @@ fn block_body(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Resul
             ws(u, out)?;
             out.push('=');
             ws(u, out)?;
-            out.push_str(u.choose(&["state!(", "signal!("])?);
+            out.push_str("state!(");
             expr(u, depth, ANYWHERE, out)?;
             out.push_str(");");
             ws(u, out)?;
@@ -636,17 +628,13 @@ fn primary(
             out.push('}');
         }
         P::Lambda => {
-            match u.int_in_range(0..=6)? {
+            match u.int_in_range(0..=5)? {
                 4 => {
                     out.push_str("mut");
                     ws(u, out)?;
                 }
                 5 => {
                     out.push_str("render");
-                    ws(u, out)?;
-                }
-                6 => {
-                    out.push_str("read");
                     ws(u, out)?;
                 }
                 _ => {}
