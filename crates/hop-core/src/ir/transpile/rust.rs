@@ -116,7 +116,7 @@ impl RustTranspiler {
     fn natural_form(&self, op: &WriterOp) -> NaturalForm {
         match op {
             WriterOp::Data(IrDataOp::StringLiteral(_)) => NaturalForm::Reference,
-            WriterOp::Data(IrDataOp::FieldAccess(..)) | WriterOp::TupleIndex(..) => {
+            WriterOp::Data(IrDataOp::FieldAccess(..) | IrDataOp::TupleIndex(..)) => {
                 NaturalForm::Place
             }
             WriterOp::Data(

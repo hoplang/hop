@@ -644,6 +644,16 @@ impl<'a> FlatBlockBuilder<'a> {
         )
     }
 
+    pub fn tuple_index(&self, tuple: ValueId, index: usize) -> ValueId {
+        let IrType::Data(IrDataType::Tuple(elements)) = self.typ(tuple) else {
+            panic!("{tuple} is not a tuple");
+        };
+        self.push(
+            IrType::Data(elements[index].clone()),
+            FlatOp::Data(IrDataOp::TupleIndex(tuple, index)),
+        )
+    }
+
     pub fn string_concat(&self, parts: impl IntoIterator<Item = ValueId>) -> ValueId {
         self.push(
             IrType::STRING,

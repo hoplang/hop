@@ -471,6 +471,10 @@ impl<'a> Evaluator<'a> {
                 ),
                 _ => Folded::Op(IrDataOp::FieldAccess(record, field)),
             },
+            IrDataOp::TupleIndex(tuple, index) => match self.values.get(&tuple) {
+                Some(IrDataOp::Tuple(elements)) => Folded::Name(elements[index]),
+                _ => Folded::Op(IrDataOp::TupleIndex(tuple, index)),
+            },
             IrDataOp::StringConcat(parts) => {
                 let mut flattened = Vec::with_capacity(parts.len());
                 for part in parts {
@@ -1132,6 +1136,43 @@ mod tests {
                 ) -> Html {
                   let v1: Int = 2
                   let v2: Point = {x: v0, y: v1}
+                  let v4: String = int_to_string(v0)
+                  let v5: Html = escape(v4)
+                  v5
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_read_an_element_of_a_tuple_constructor() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [("n", Ty::Int)], |t| {
+                    let pair = t.tuple([t.int(2), t.param("n")]);
+                    t.escape(t.int_to_string(t.tuple_index(pair, 1)))
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- before --
+                entrypoint Test@e0(
+                  n@v0: Int,
+                ) -> Html {
+                  let v1: Int = 2
+                  let v2: Tuple[Int, Int] = (v1, v0)
+                  let v3: Int = tuple_index(v2, 1)
+                  let v4: String = int_to_string(v3)
+                  let v5: Html = escape(v4)
+                  v5
+                }
+
+                -- after --
+                entrypoint Test@e0(
+                  n@v0: Int,
+                ) -> Html {
+                  let v1: Int = 2
+                  let v2: Tuple[Int, Int] = (v1, v0)
                   let v4: String = int_to_string(v0)
                   let v5: Html = escape(v4)
                   v5

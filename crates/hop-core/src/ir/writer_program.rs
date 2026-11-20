@@ -76,8 +76,6 @@ pub enum WriterStmt {
 #[derive(Debug)]
 pub enum WriterOp {
     Data(IrDataOp),
-    /// Read an element of a tuple. Only lowered tuple patterns produce it.
-    TupleIndex(ValueId, usize),
     Call(IrFunction, Vec<ValueId>),
     /// A match over a value that is not Html. Each arm produces the value.
     Match(IrSwitch<WriterBlock>),
@@ -121,7 +119,6 @@ impl fmt::Display for WriterOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             WriterOp::Data(op) => write!(f, "{op}"),
-            WriterOp::TupleIndex(tuple, index) => write!(f, "{tuple}.{index}"),
             WriterOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
             WriterOp::Match(match_) => match_.write(f, |block, w| write!(w, "\n{block}")),
             WriterOp::Lambda(lambda) => lambda.write(f, WriterFunctionBody::write),

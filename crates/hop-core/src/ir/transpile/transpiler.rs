@@ -389,7 +389,9 @@ pub trait Transpiler {
             WriterOp::Data(IrDataOp::FieldAccess(record, field)) => {
                 self.transpile_field_access(arena, *record, field)
             }
-            WriterOp::TupleIndex(tuple, index) => self.transpile_tuple_index(arena, *tuple, *index),
+            WriterOp::Data(IrDataOp::TupleIndex(tuple, index)) => {
+                self.transpile_tuple_index(arena, *tuple, *index)
+            }
             WriterOp::Data(IrDataOp::Array(elements)) => match typ {
                 IrType::Data(IrDataType::Array(elem_type)) => {
                     self.transpile_array_literal(arena, elements, elem_type)

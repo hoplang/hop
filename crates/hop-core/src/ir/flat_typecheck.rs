@@ -650,6 +650,10 @@ impl<'a> Checker<'a> {
                     .is_some_and(|field| Some(&field.typ) == declared_data),
                 _ => false,
             },
+            IrDataOp::TupleIndex(tuple, index) => match self.data(*tuple)? {
+                Some(IrDataType::Tuple(elements)) => elements.get(*index) == declared_data,
+                _ => false,
+            },
         })
     }
 
@@ -1727,5 +1731,16 @@ mod tests {
             .build()
             .unwrap_err();
         assert_eq!(error, FlatTypeError::EffectNotAllowed);
+    }
+
+    #[test]
+    fn should_accept_an_index_of_an_element_of_a_tuple() {
+        FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let pair = t.tuple([t.int(1), t.str("one")]);
+                t.escape(t.tuple_index(pair, 1))
+            })
+            .build()
+            .unwrap();
     }
 }

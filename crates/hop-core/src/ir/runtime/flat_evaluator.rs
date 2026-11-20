@@ -534,6 +534,10 @@ fn evaluate_data_op<'a>(op: &IrDataOp, env: &Env<'a>) -> Result<Value<'a>, EvalE
             let (_, value) = record.iter().find(|(name, _)| name == field).unwrap();
             value.clone()
         }
+        IrDataOp::TupleIndex(tuple, index) => match &env[tuple] {
+            Value::Tuple(elements) => elements[*index].clone(),
+            value => panic!("expected a Tuple value, found {value:?}"),
+        },
         IrDataOp::Array(elements) => Value::Array(Rc::new(
             BoundedVec::new(elements.iter().map(|e| env[e].clone()))
                 .ok_or(ARRAY_LENGTH_LIMIT_ERROR)?,
@@ -707,8 +711,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 2227196 allocations
-            program evaluation: 24207 allocations
+            program generation: 1619526 allocations
+            program evaluation: 21252 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -874,6 +878,35 @@ mod tests {
 
                 -- after --
                 7
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_read_an_element_of_a_tuple() {
+        check(
+            FlatProgramBuilder::new()
+                .entrypoint("Test", [("name", Ty::String)], |t| {
+                    let pair = t.tuple([t.int(1), t.param("name")]);
+                    t.escape(t.tuple_index(pair, 1))
+                })
+                .build()
+                .unwrap(),
+            |v| vec![("name", v.str("a<b"))],
+            expect![[r#"
+                -- before --
+                entrypoint Test@e0(
+                  name@v0: String,
+                ) -> Html {
+                  let v1: Int = 1
+                  let v2: Tuple[Int, String] = (v1, v0)
+                  let v3: String = tuple_index(v2, 1)
+                  let v4: Html = escape(v3)
+                  v4
+                }
+
+                -- after --
+                a&lt;b
             "#]],
         );
     }
