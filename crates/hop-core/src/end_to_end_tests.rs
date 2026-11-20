@@ -477,6 +477,36 @@ fn let_statements_in_body_arm_and_interpolation() {
 
 #[test]
 #[ignore]
+fn let_pattern_takes_apart_a_parameter_of_a_recursive_function() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            record Step { label: String, count: Int }
+
+            fn Countdown(pair: Tuple[Step, Bool]) -> Html {
+              let (Step {label: l, count: n}, loud) = pair;
+              let shown = match loud {
+                true => format!("{}!", l),
+                false => l,
+              };
+              match n > 0 {
+                true => <><p>{shown}{n.to_string()}</p><Countdown pair={(Step {label: l, count: n - 1}, !loud)}/></>,
+                false => <p>done</p>,
+              }
+            }
+
+            page Test() {
+              fn body() -> Html {
+                <Countdown pair={(Step {label: "t", count: 2}, true)}/>
+              }
+            }
+        "#},
+        "<p>t!2</p><p>t1</p><p>done</p>",
+    );
+}
+
+#[test]
+#[ignore]
 fn tuple_literal_as_match_subject() {
     check(
         indoc! {r#"

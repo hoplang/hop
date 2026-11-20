@@ -359,7 +359,11 @@ fn block_body(u: &mut Unstructured<'_>, depth: usize, out: &mut String) -> Resul
             ws(u, out)?;
             continue;
         }
-        out.push_str(u.choose(VAR_NAMES)?);
+        if u.arbitrary()? {
+            pattern(u, 2, out)?;
+        } else {
+            out.push_str(u.choose(VAR_NAMES)?);
+        }
         if u.arbitrary()? {
             out.push_str(": ");
             type_(u, 2, out)?;

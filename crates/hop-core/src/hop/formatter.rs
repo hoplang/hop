@@ -795,8 +795,8 @@ fn format_let_binding<'a>(
     binding: &'a ParsedLetBinding,
     comments: &mut Comments<'a>,
 ) -> DocBuilder<'a, Arena<'a>> {
-    let leading_comments = drain_comments_before(arena, comments, binding.var_name_range.start());
-    let mut doc = leading_comments.append(arena.text(binding.var_name.as_str()));
+    let leading_comments = drain_comments_before(arena, comments, binding.pattern.range().start());
+    let mut doc = leading_comments.append(format_pattern(arena, &binding.pattern));
     if let Some(var_type) = &binding.var_type {
         doc = doc
             .append(arena.text(": "))
@@ -954,13 +954,6 @@ fn format_block_body<'a>(
             ParsedStatement::Let(binding) => doc
                 .append(arena.text("let "))
                 .append(format_let_binding(arena, binding, comments)),
-            ParsedStatement::LetPair(binding) => {
-                let [(first, first_range), (second, _)] = &binding.names;
-                doc.append(arena.text("let "))
-                    .append(drain_comments_before(arena, comments, first_range.start()))
-                    .append(arena.text(format!("({first}, {second}) = ")))
-                    .append(format_expr(arena, &binding.value_expr, comments))
-            }
             ParsedStatement::Expr { expr, .. } => doc.append(format_expr(arena, expr, comments)),
         }
         .append(arena.text(";"))
@@ -2274,6 +2267,33 @@ mod tests {
                   }}>
                     {label}
                   </button>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn let_patterns() {
+        check(
+            indoc! {r#"
+                fn Main(user: User) -> Html {
+                  let ( count , _ ) = state!(0);
+                  // the parts
+                  let (User{name:n,age:_},(a,b)):Tuple[User,Tuple[Int,Int]]=(user,(1,2));
+                  <p>{n}</p>
+                }
+            "#},
+            expect![[r#"
+                fn Main(user: User) -> Html {
+                  let (count, _) = state!(0);
+                  // the parts
+                  let (User {
+                    name: n,
+                    age: _,
+                  }, (a, b)): Tuple[User, Tuple[Int, Int]] = (user, (1, 2));
+                  <p>
+                    {n}
+                  </p>
                 }
             "#]],
         );

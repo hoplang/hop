@@ -1093,16 +1093,12 @@
     "type": "let_statement",
     "named": true,
     "fields": {
-      "name": {
+      "pattern": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "tuple_pattern",
+            "type": "_pattern",
             "named": true
           }
         ]

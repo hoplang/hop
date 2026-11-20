@@ -270,7 +270,7 @@ let counts = (1, []);                                     // error: Cannot infer
 ```
 
 A tuple has no fields, methods or operators. Its elements are read with a
-[tuple pattern](#tuple-patterns).
+[tuple pattern](#tuple-patterns), in a let binding or a `match`.
 
 <a id="option-expressions"></a>
 
@@ -684,7 +684,7 @@ expression, and has its type.
 
 ```ebnf
 BlockExpr  ::= "{" LetBinding* Expr "}"
-LetBinding ::= "let" LowercaseIdentifier ( ":" Type )? "=" Expr ";"
+LetBinding ::= "let" Pattern ( ":" Type )? "=" Expr ";"
 ```
 
 A let binding `let x = e;` binds `x` to the value of `e`. With a type
@@ -699,6 +699,21 @@ let summary = {
 };
 
 summary // "Alice has 0 tags"
+```
+
+A let binding with any other [pattern](#match-expressions) takes the value of
+`e` apart and binds the variables of the pattern, as the arm of a `match` does.
+The pattern must match every value of its type, so it is made of
+[wildcard and variable](#wildcard-and-variable-patterns),
+[tuple](#tuple-patterns) and [record patterns](#record-patterns), and any other
+pattern in it is a compile error. So is a pattern that binds no variable, and a
+pattern other than a variable for a value that is not data.
+
+```hop
+let (name, _) = ("Alice", 36);
+let User {name: n, age: _} = User {name: "Bob", age: 42};
+let Some(x) = Some(1); // error: A let pattern must match every value
+let _ = 1;             // error: A let must bind a name
 ```
 
 <a id="match-expressions"></a>

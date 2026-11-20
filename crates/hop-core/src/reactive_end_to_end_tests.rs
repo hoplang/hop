@@ -1362,3 +1362,36 @@ fn a_component_reads_and_writes_a_state_its_caller_passes() {
         "#]],
     );
 }
+
+#[test]
+fn a_let_pattern_takes_apart_state_that_holds_a_tuple() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (pair, set_pair) = state!((0, "a"));
+                let (count, label) = pair;
+                let step = mut fn() {
+                  set_pair(fn(curr) {
+                    let (n, l) = curr;
+                    (n + 1, l + "b")
+                  })
+                };
+
+                <button on:click={step}>
+                  {label}:{count.to_string()}
+                </button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>a:0</button>
+            -- click button@e1 --
+            <button@e1>ab:1</button>
+            -- click button@e1 --
+            <button@e1>abb:2</button>
+        "#]],
+    );
+}

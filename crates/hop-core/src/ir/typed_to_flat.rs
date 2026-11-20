@@ -427,6 +427,55 @@ impl<'a> Compiler<'a> {
             .push((name.clone(), id));
     }
 
+    /// Name the variables of a let pattern, which matches every value of
+    /// `typ`: each names the element or field it reads out of `value`.
+    fn destructure(&mut self, pattern: &TypedPattern, value: ValueId, typ: &DataType) {
+        match pattern {
+            Pattern::Wildcard => {}
+            Pattern::Binding(binder) => self.name(&binder.var, value),
+            Pattern::Constructor {
+                constructor: Constructor::Tuple,
+                args,
+                ..
+            } => {
+                let DataType::Tuple(elements) = typ else {
+                    unreachable!("a tuple pattern matches a tuple, not {typ}");
+                };
+                for (index, (arg, element)) in args.iter().zip(elements).enumerate() {
+                    if let Pattern::Wildcard = arg {
+                        continue;
+                    }
+                    let op = FlatOp::Data(IrDataOp::TupleIndex(value, index));
+                    let part = self.push(Type::Data(element.clone()), op);
+                    self.destructure(arg, part, element);
+                }
+            }
+            Pattern::Constructor {
+                constructor: Constructor::Record { .. },
+                fields,
+                ..
+            } => {
+                let registry = self.registry;
+                let Some(ResolvedType::Record {
+                    fields: declared, ..
+                }) = registry.resolve(typ)
+                else {
+                    unreachable!("a record pattern matches a record, not {typ}");
+                };
+                for field in fields {
+                    if let Pattern::Wildcard = field.pattern {
+                        continue;
+                    }
+                    let field_type = &declared[field.index].typ;
+                    let op = FlatOp::Data(IrDataOp::FieldAccess(value, field.name.clone()));
+                    let part = self.push(Type::Data(field_type.clone()), op);
+                    self.destructure(&field.pattern, part, field_type);
+                }
+            }
+            Pattern::Constructor { .. } => unreachable!("a let pattern matches every value"),
+        }
+    }
+
     fn resolve(&mut self, name: &VarName) -> ValueId {
         for scope in self.scopes.iter().rev() {
             if let Some((_, id)) = scope.iter().rev().find(|(n, _)| n == name) {
@@ -851,7 +900,9 @@ impl<'a> Compiler<'a> {
                 FlatOp::Call(function, compiled_args)
             }
             // A let binds nothing. Its variable is the name of its value, in
-            // a scope that the block's lets share and that holds the tail. A
+            // a scope that the block's lets share and that holds the tail,
+            // and the variables of a pattern are names of the elements and
+            // fields it reads out of the value. A
             // state binds a cell, whose initial value is compiled as a block
             // of its own, a getter that is a read of the cell, and a setter
             // that is a mut fn that writes it what the function it takes
@@ -904,8 +955,12 @@ impl<'a> Compiler<'a> {
                                     body,
                                 }),
                             );
-                            self.name(&state.getter, getter);
-                            self.name(&state.setter, setter);
+                            if let Some(name) = &state.getter {
+                                self.name(name, getter);
+                            }
+                            if let Some(name) = &state.setter {
+                                self.name(name, setter);
+                            }
                             continue;
                         }
                         TypedStatement::Expr(expr) => {
@@ -919,7 +974,15 @@ impl<'a> Compiler<'a> {
                         continue;
                     }
                     let value = self.compile_expr(&binding.value);
-                    self.name(&binding.var, value);
+                    match &binding.pattern {
+                        Pattern::Binding(binder) => self.name(&binder.var, value),
+                        pattern => {
+                            let Type::Data(data) = binding.value.typ() else {
+                                unreachable!("a let pattern other than a name takes data apart");
+                            };
+                            self.destructure(pattern, value, &data);
+                        }
+                    }
                 }
                 let tail = self.compile_expr(tail);
                 self.pop_scope();
@@ -2420,6 +2483,57 @@ mod tests {
                   let v17: Html = concat(v16)
                   let v18: Html = f0(v12, v17)
                   v18
+                }
+                page Test: e0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_a_let_pattern_to_reads_of_the_elements_and_fields_it_names() {
+        check(
+            indoc! {r#"
+                record User { name: String, age: Int }
+                page Test(user: User) {
+                  fn body() -> Html {
+                    let (count, _) = state!(0);
+                    let ((n, _), User {name: _, age: a}) = ((count, true), user);
+                    <p>{n.to_string()}{a.to_string()}</p>
+                  }
+                }
+            "#},
+            expect![[r#"
+                entrypoint body@e0(
+                  user@v0: User,
+                ) -> Html {
+                  let v2: Cell[Int] = cell {
+                    let v1: Int = 0
+                    v1
+                  }
+                  let v3: Int = cell_read(v2)
+                  let v8: mut ((Int) -> Int) -> Tuple[] = fn(
+                    v4: (Int) -> Int,
+                  ) {
+                    let v5: Int = cell_read(v2)
+                    let v6: Int = v4(v5)
+                    let v7: Tuple[] = cell_write(v2, v6)
+                    v7
+                  }
+                  let v9: Bool = true
+                  let v10: Tuple[Int, Bool] = (v3, v9)
+                  let v11: Tuple[Tuple[Int, Bool], User] = (v10, v0)
+                  let v12: Tuple[Int, Bool] = tuple_index(v11, 0)
+                  let v13: Int = tuple_index(v12, 0)
+                  let v14: User = tuple_index(v11, 1)
+                  let v15: Int = v14.age
+                  let v16: String = int_to_string(v13)
+                  let v17: Html = escape(v16)
+                  let v18: String = int_to_string(v15)
+                  let v19: Html = escape(v18)
+                  let v20: Html = concat(v17, v19)
+                  let v21: ElementId = mint()
+                  let v22: Html = element(v21, "p", {}, v20)
+                  v22
                 }
                 page Test: e0
             "#]],

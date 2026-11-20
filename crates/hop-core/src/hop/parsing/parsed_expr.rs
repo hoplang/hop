@@ -234,7 +234,6 @@ pub struct ParsedBlock {
 #[derive(Debug, Clone)]
 pub enum ParsedStatement {
     Let(ParsedLetBinding),
-    LetPair(ParsedLetPair),
     Expr {
         expr: ParsedExpr,
         range: DocumentRange,
@@ -245,7 +244,6 @@ impl ParsedStatement {
     pub fn range(&self) -> &DocumentRange {
         match self {
             ParsedStatement::Let(binding) => &binding.range,
-            ParsedStatement::LetPair(binding) => &binding.range,
             ParsedStatement::Expr { range, .. } => range,
         }
     }
@@ -253,37 +251,24 @@ impl ParsedStatement {
     pub fn expr(&self) -> &ParsedExpr {
         match self {
             ParsedStatement::Let(binding) => &binding.value_expr,
-            ParsedStatement::LetPair(binding) => &binding.value_expr,
             ParsedStatement::Expr { expr, .. } => expr,
         }
     }
 }
 
-/// A let statement in a block.
+/// A let statement in a block, which binds the names of its pattern.
 ///
 /// ```text
 /// let name: String = "World";
 /// ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/// ```
-#[derive(Debug, Clone)]
-pub struct ParsedLetBinding {
-    pub range: DocumentRange,
-    pub var_name: VarName,
-    pub var_name_range: DocumentRange,
-    pub var_type: Option<ParsedType>,
-    pub value_expr: ParsedExpr,
-}
-
-/// A let statement that binds a pair of names.
-///
-/// ```text
 /// let (count, set_count) = state!(0);
 /// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
 #[derive(Debug, Clone)]
-pub struct ParsedLetPair {
+pub struct ParsedLetBinding {
     pub range: DocumentRange,
-    pub names: [(VarName, DocumentRange); 2],
+    pub pattern: ParsedPattern,
+    pub var_type: Option<ParsedType>,
     pub value_expr: ParsedExpr,
 }
 
@@ -514,7 +499,7 @@ impl ParsedBlock {
             .iter()
             .filter_map(|statement| match statement {
                 ParsedStatement::Let(binding) => Some(binding),
-                ParsedStatement::LetPair(_) | ParsedStatement::Expr { .. } => None,
+                ParsedStatement::Expr { .. } => None,
             })
     }
 
@@ -533,15 +518,11 @@ impl Display for ParsedBlock {
         for statement in &self.statements {
             match statement {
                 ParsedStatement::Let(binding) => {
-                    write!(f, "let {}", binding.var_name.as_str())?;
+                    write!(f, "let {}", binding.pattern)?;
                     if let Some(var_type) = &binding.var_type {
                         write!(f, ": {var_type}")?;
                     }
                     writeln!(f, " = {};", binding.value_expr)?;
-                }
-                ParsedStatement::LetPair(binding) => {
-                    let [(first, _), (second, _)] = &binding.names;
-                    writeln!(f, "let ({first}, {second}) = {};", binding.value_expr)?;
                 }
                 ParsedStatement::Expr { expr, .. } => writeln!(f, "{expr};")?,
             }

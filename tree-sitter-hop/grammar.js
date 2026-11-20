@@ -176,7 +176,7 @@ module.exports = grammar({
     let_statement: ($) =>
       seq(
         "let",
-        field("name", choice($.identifier, $.tuple_pattern)),
+        field("pattern", $._pattern),
         optional(seq(":", field("type", $._type))),
         "=",
         field("value", $._expression),

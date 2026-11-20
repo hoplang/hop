@@ -313,14 +313,16 @@ pub enum TypedAttribute {
 /// forwarded through a `...rest` spread.
 #[derive(Debug, Clone)]
 pub struct TypedLetBinding {
-    pub var: VarName,
+    pub pattern: TypedPattern,
     pub value: TypedExpr,
 }
 
+/// A `let` of a state, whose getter and setter are bound unless written
+/// as `_`.
 #[derive(Debug, Clone)]
 pub struct TypedState {
-    pub getter: VarName,
-    pub setter: VarName,
+    pub getter: Option<VarName>,
+    pub setter: Option<VarName>,
     pub initial: TypedExpr,
 }
 
@@ -519,13 +521,13 @@ impl Display for TypedExpr {
                 for statement in statements {
                     match statement {
                         TypedStatement::Let(binding) => {
-                            write!(f, "let {} = {} in ", binding.var.as_str(), binding.value)?;
+                            write!(f, "let {} = {} in ", binding.pattern, binding.value)?;
                         }
                         TypedStatement::State(state) => write!(
                             f,
                             "let ({}, {}) = state!({}) in ",
-                            state.getter.as_str(),
-                            state.setter.as_str(),
+                            state.getter.as_ref().map_or("_", VarName::as_str),
+                            state.setter.as_ref().map_or("_", VarName::as_str),
                             state.initial
                         )?,
                         TypedStatement::Expr(expr) => write!(f, "{expr}; ")?,

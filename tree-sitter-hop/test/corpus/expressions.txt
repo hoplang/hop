@@ -423,6 +423,62 @@ fn f() -> Html {
           (tag_name))))))
 
 ================================================================================
+let patterns
+================================================================================
+
+fn f(user: User) -> Html {
+  let (count, _) = state!(0);
+  let (User {name: n, age: _}, a): Tuple[User, Int] = (user, 1);
+  <p>{n}</p>
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (identifier)
+    (parameters
+      (parameter
+        (identifier)
+        (type_identifier)))
+    (type_identifier)
+    (block
+      (let_statement
+        (tuple_pattern
+          (identifier)
+          (wildcard_pattern))
+        (macro_invocation
+          (identifier)
+          (arguments
+            (integer_literal))))
+      (let_statement
+        (tuple_pattern
+          (record_pattern
+            (type_identifier)
+            (field_pattern
+              (field_identifier)
+              (identifier))
+            (field_pattern
+              (field_identifier)
+              (wildcard_pattern)))
+          (identifier))
+        (generic_type
+          (type_identifier)
+          (type_arguments
+            (type_identifier)
+            (type_identifier)))
+        (tuple_expression
+          (identifier)
+          (integer_literal)))
+      (element
+        (start_tag
+          (tag_name))
+        (interpolation
+          (identifier))
+        (end_tag
+          (tag_name))))))
+
+================================================================================
 keyed for over an array and over a range
 ================================================================================
 

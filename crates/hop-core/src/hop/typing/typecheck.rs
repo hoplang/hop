@@ -15803,8 +15803,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_let_pair_whose_value_is_not_a_state() {
-        reject(
+    fn accepts_a_let_that_takes_a_tuple_apart() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn Counter() -> Html {
@@ -15813,11 +15813,215 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Expected state!
-                  --> main.hop (line 2, col 16)
-                1 | fn Counter() -> Html {
-                2 |   let (a, b) = (1, 2);
-                  |                ^^^^^^
+                -- main.hop --
+                fn Counter() -> Html {
+                  let (a, b) = (1, 2) in element(
+                    tag: "p",
+                    attrs: [],
+                    children: concat(
+                      escape(a.to_string()),
+                      escape(b.to_string()),
+                    ),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_let_that_takes_nested_tuples_and_records_apart() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record User { name: String, age: Int }
+                fn Card(user: User) -> Html {
+                  let (User {name: n, age: _}, (count, _)): Tuple[User, Tuple[Int, Bool]] = (user, (1, true));
+                  <p>{n}{count.to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Card(user: User) -> Html {
+                  let (User {name: n, age: _}, (count, _)) = (user, (1, true)) in element(
+                    tag: "p",
+                    attrs: [],
+                    children: concat(
+                      escape(n),
+                      escape(count.to_string()),
+                    ),
+                  )
+                }
+
+                -- type registry --
+                record User {
+                  name: String,
+                  age: Int,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_state_whose_setter_is_not_bound() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Counter() -> Html {
+                  let (count, _) = state!(0);
+                  <p>{count.to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Counter() -> Html {
+                  let (count, _) = state!(0) in element(
+                    tag: "p",
+                    attrs: [],
+                    children: concat(
+                      escape(count.to_string()),
+                    ),
+                  )
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_let_pattern_that_does_not_match_every_value() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(name: Option[String]) -> Html {
+                  let Some(n) = name;
+                  <p>{n}</p>
+                }
+                fn Flag() -> Html {
+                  let (true, n) = (true, 1);
+                  <p>{n.to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                error: A let pattern must match every value
+                  --> main.hop (line 2, col 7)
+                1 | fn Card(name: Option[String]) -> Html {
+                2 |   let Some(n) = name;
+                  |       ^^^^^^^
+
+                error: A let pattern must match every value
+                  --> main.hop (line 6, col 8)
+                5 | fn Flag() -> Html {
+                6 |   let (true, n) = (true, 1);
+                  |        ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_let_that_binds_nothing() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Card() -> Html {
+                  let _ = 1;
+                  <p>x</p>
+                }
+                fn Pair() -> Html {
+                  let (_, _) = (1, 2);
+                  <p>x</p>
+                }
+                render fn state() -> Int {
+                  let (_, _) = state!(0);
+                  1
+                }
+            "#},
+            expect![[r#"
+                error: A let must bind a name
+                  --> main.hop (line 2, col 7)
+                 1 | fn Card() -> Html {
+                 2 |   let _ = 1;
+                   |       ^
+
+                error: A let must bind a name
+                  --> main.hop (line 6, col 7)
+                 5 | fn Pair() -> Html {
+                 6 |   let (_, _) = (1, 2);
+                   |       ^^^^^^
+
+                error: A let must bind a name
+                  --> main.hop (line 10, col 7)
+                 9 | render fn state() -> Int {
+                10 |   let (_, _) = state!(0);
+                   |       ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_let_pattern_that_takes_apart_a_value_that_is_not_data() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Card() -> Html {
+                  let (a, b) = <p>x</p>;
+                  <p>{a}{b}</p>
+                }
+            "#},
+            expect![[r#"
+                error: Pattern does not match type Html
+                  --> main.hop (line 2, col 7)
+                1 | fn Card() -> Html {
+                2 |   let (a, b) = <p>x</p>;
+                  |       ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_let_pattern_that_binds_a_name_twice_or_does_not_use_it() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Card() -> Html {
+                  let (a, a) = (1, 2);
+                  <p>{a.to_string()}</p>
+                }
+                fn Pair() -> Html {
+                  let (a, b) = (1, 2);
+                  <p>{a.to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                error: Variable a is bound more than once in the pattern
+                  --> main.hop (line 2, col 11)
+                1 | fn Card() -> Html {
+                2 |   let (a, a) = (1, 2);
+                  |           ^
+
+                warning: Unused variable b
+                  --> main.hop (line 6, col 11)
+                5 | fn Pair() -> Html {
+                6 |   let (a, b) = (1, 2);
+                  |           ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_let_pattern_whose_value_has_another_type_than_declared() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Card() -> Html {
+                  let (a, b): Tuple[Int, Int] = (1, "two");
+                  <p>{a.to_string()}{b.to_string()}</p>
+                }
+            "#},
+            expect![[r#"
+                error: Expected Tuple[Int, Int] got Tuple[Int, String]
+                  --> main.hop (line 2, col 33)
+                1 | fn Card() -> Html {
+                2 |   let (a, b): Tuple[Int, Int] = (1, "two");
+                  |                                 ^^^^^^^^^^
             "#]],
         );
     }

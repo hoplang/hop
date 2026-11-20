@@ -405,8 +405,11 @@ pub enum TypeErrorKind {
     #[error("state! needs let (a, b) = state!(...)")]
     StateMacroOutsideLetPair,
 
-    #[error("Expected state!")]
-    LetPairNeedsStateMacro,
+    #[error("A let pattern must match every value")]
+    LetPatternRefutable,
+
+    #[error("A let must bind a name")]
+    LetBindsNothing,
 
     #[error(
         "{}",

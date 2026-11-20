@@ -16,8 +16,8 @@ use super::parse_markup;
 use super::parse_type::parse_type;
 use super::parsed_expr::{
     Fixity, ParsedArguments, ParsedBinaryOp, ParsedBlock, ParsedExpr, ParsedFieldInitializer,
-    ParsedLambdaParameter, ParsedLetBinding, ParsedLetPair, ParsedLoopSource, ParsedMatchArm,
-    ParsedNamedArgument, ParsedPattern, ParsedStatement, ParsedUnaryOp, Precedence,
+    ParsedLambdaParameter, ParsedLetBinding, ParsedLoopSource, ParsedMatchArm, ParsedNamedArgument,
+    ParsedPattern, ParsedStatement, ParsedUnaryOp, Precedence,
 };
 use super::parsed_type::ParsedModifier;
 use super::token::LangToken;
@@ -184,36 +184,7 @@ pub fn parse_block(
                     });
                     continue;
                 };
-                if next_if_eq(iter, comments, errors, LangToken::LeftParen).is_some() {
-                    let (first, first_range) = expect_identifier(iter, comments, errors)?;
-                    expect_token(iter, comments, errors, &LangToken::Comma)?;
-                    let (second, second_range) = expect_identifier(iter, comments, errors)?;
-                    expect_token(iter, comments, errors, &LangToken::RightParen)?;
-                    expect_token(iter, comments, errors, &LangToken::Assign)?;
-                    let value_expr = parse_expr(iter, comments, errors)?;
-                    let semicolon = expect_token(iter, comments, errors, &LangToken::Semicolon)?;
-                    if let Some((LangToken::RightBrace, _)) = peek(iter) {
-                        return Err(
-                            errors.emit(ParseErrorKind::BlockMissingTailExpression {}, semicolon)
-                        );
-                    }
-                    statements.push(ParsedStatement::LetPair(ParsedLetPair {
-                        range: let_range.to(semicolon),
-                        names: [
-                            (
-                                VarName::new(first).or_emit(errors, &first_range)?,
-                                first_range,
-                            ),
-                            (
-                                VarName::new(second).or_emit(errors, &second_range)?,
-                                second_range,
-                            ),
-                        ],
-                        value_expr,
-                    }));
-                    continue;
-                }
-                let (var_name, var_name_range) = expect_identifier(iter, comments, errors)?;
+                let pattern = parse_pattern(iter, comments, errors)?;
                 let var_type = if next_if_eq(iter, comments, errors, LangToken::Colon).is_some() {
                     Some(parse_type(iter, comments, errors)?)
                 } else {
@@ -229,8 +200,7 @@ pub fn parse_block(
                 }
                 statements.push(ParsedStatement::Let(ParsedLetBinding {
                     range: let_range.to(semicolon),
-                    var_name: VarName::new(var_name).or_emit(errors, &var_name_range)?,
-                    var_name_range,
+                    pattern,
                     var_type,
                     value_expr,
                 }));
