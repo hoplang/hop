@@ -59,103 +59,7 @@ fn run(program: &FlatProgram, page: &IrPage, events: &[Event]) -> String {
 }
 
 #[test]
-fn each_call_has_cells_of_its_own() {
-    check(
-        indoc! {r#"
-            fn Counter() -> Html {
-              let (count, set_count) = state!(0);
-              let incr_count = mut fn() {
-                set_count(fn(curr) { curr + 1 })
-              };
-              
-              <button on:click={incr_count}>
-                {count.to_string()}
-              </button>
-            }
-            page Test {
-              fn body() -> Html {
-                <>
-                  <Counter/>
-                  <Counter/>
-                </>
-              }
-            }
-        "#},
-        &[Event::Click(2), Event::Click(2), Event::Click(1)],
-        expect![[r#"
-            -- render --
-            <button@e1>0</button>
-            <button@e2>0</button>
-            -- click button@e2 --
-            <button@e1>0</button>
-            <button@e2>1</button>
-            -- click button@e2 --
-            <button@e1>0</button>
-            <button@e2>2</button>
-            -- click button@e1 --
-            <button@e1>1</button>
-            <button@e2>2</button>
-        "#]],
-    );
-}
-
-#[test]
-fn the_cells_of_a_keyed_loop_follow_the_keys() {
-    check(
-        indoc! {r#"
-            fn Counter(label: String) -> Html {
-              let (count, set_count) = state!(0);
-              let incr_count = mut fn() {
-                set_count(fn(curr) { curr + 1 })
-              };
-              
-              <button on:click={incr_count}>
-                {label}:{count.to_string()}
-              </button>
-            }
-            
-            page Test {
-              fn body() -> Html {
-                let (reversed, set_reversed) = state!(false);
-                let reverse = mut fn() {
-                  set_reversed(fn(curr) { !curr })
-                };
-                let ids = match reversed {
-                  true => [2, 1],
-                  false => [1, 2],
-                };
-                
-                <>
-                  <b on:click={reverse}>
-                    flip
-                  </b>
-                  {for id in ids key id {
-                    <Counter label={id.to_string()}/>
-                  }}
-                </>
-              }
-            }
-        "#},
-        &[Event::Click(2), Event::Click(1)],
-        expect![[r#"
-            -- render --
-            <b@e1>flip</b>
-            <button@e2>1:0</button>
-            <button@e3>2:0</button>
-            -- click button@e2 --
-            <b@e1>flip</b>
-            <button@e2>1:1</button>
-            <button@e3>2:0</button>
-            -- click b@e1 --
-            <b@e1>flip</b>
-            <button@e3>2:0</button>
-            <button@e2>1:1</button>
-        "#]],
-    );
-}
-
-#[test]
-fn the_cells_of_a_loop_without_a_key_follow_the_index() {
+fn the_state_of_a_loop_without_a_key_follows_the_index() {
     check(
         indoc! {r#"
             fn Counter(label: String) -> Html {
@@ -208,7 +112,7 @@ fn the_cells_of_a_loop_without_a_key_follow_the_index() {
 }
 
 #[test]
-fn a_cell_and_an_element_of_a_call_in_an_arm_start_over_when_the_match_takes_the_arm_again() {
+fn state_and_an_element_of_a_call_in_an_arm_start_over_when_the_match_takes_the_arm_again() {
     check(
         indoc! {r#"
             fn Counter() -> Html {
@@ -351,40 +255,6 @@ fn a_click_runs_the_handlers_of_the_elements_around_it_innermost_first() {
 }
 
 #[test]
-fn a_handler_reaches_an_element_through_a_parameter() {
-    check(
-        indoc! {r#"
-            fn Button(on_press: mut fn() -> Tuple[], children: Html) -> Html {
-              <button on:click={on_press}>
-                {children}
-              </button>
-            }
-            page Test {
-              fn body() -> Html {
-                let (on, set_on) = state!(false);
-                let toggle_on = mut fn() {
-                  set_on(fn(curr) { !curr })
-                };
-                
-                <Button on_press={toggle_on}>
-                  {match on {true => "on", false => "off"}}
-                </Button>
-              }
-            }
-        "#},
-        &[Event::Click(1), Event::Click(1)],
-        expect![[r#"
-            -- render --
-            <button@e1>off</button>
-            -- click button@e1 --
-            <button@e1>on</button>
-            -- click button@e1 --
-            <button@e1>off</button>
-        "#]],
-    );
-}
-
-#[test]
 fn an_element_a_match_hides_keeps_its_identity_while_it_is_evaluated() {
     check(
         indoc! {r#"
@@ -426,7 +296,7 @@ fn an_element_a_match_hides_keeps_its_identity_while_it_is_evaluated() {
 }
 
 #[test]
-fn a_cell_a_match_hides_keeps_its_value_while_it_is_evaluated() {
+fn state_a_match_hides_keeps_its_value_while_it_is_evaluated() {
     check(
         indoc! {r#"
             page Test {
@@ -464,47 +334,6 @@ fn a_cell_a_match_hides_keeps_its_value_while_it_is_evaluated() {
             -- click b@e1 --
             <b@e1>toggle</b>
             <button@e4>1</button>
-        "#]],
-    );
-}
-
-#[test]
-fn a_click_whose_handler_fails_changes_nothing() {
-    check(
-        indoc! {r#"
-            fn forever(n: Int) -> Int {
-              forever(n + 1)
-            }
-            page Test {
-              fn body() -> Html {
-                let (count, set_count) = state!(0);
-                let incr_count = mut fn() {
-                  set_count(fn(curr) { curr + 1 })
-                };
-                
-                <>
-                  <button on:click={mut fn() {
-                    set_count(fn(curr) { forever(curr) })
-                  }}>
-                    forever
-                  </button>
-                  <button on:click={incr_count}>
-                    {count.to_string()}
-                  </button>
-                </>
-              }
-            }
-        "#},
-        &[Event::Click(1), Event::Click(2)],
-        expect![[r#"
-            -- render --
-            <button@e1>forever</button>
-            <button@e2>0</button>
-            -- click button@e1 --
-            error: Program exceeded the call depth limit of 12
-            -- click button@e2 --
-            <button@e1>forever</button>
-            <button@e2>1</button>
         "#]],
     );
 }
@@ -561,13 +390,14 @@ fn a_handler_that_writes_in_one_arm_of_a_match_writes_nothing_in_the_other() {
             page Test {
               fn body() -> Html {
                 let (count, set_count) = state!(0);
-                
-                <button on:click={mut fn() {
+                let incr = mut fn() {
                   match count < 1 {
                     true => set_count(fn(curr) { curr + 1 }),
                     false => (),
                   }
-                }}>
+                };
+                
+                <button on:click={incr}>
                   {count.to_string()}
                 </button>
               }
@@ -629,7 +459,7 @@ fn a_click_on_an_element_without_a_handler_runs_the_handlers_around_it() {
 }
 
 #[test]
-fn a_cell_takes_its_initial_value_only_when_it_is_first_bound() {
+fn state_takes_its_initial_value_only_when_it_is_first_bound() {
     check(
         indoc! {r#"
             page Test {
@@ -673,7 +503,7 @@ fn a_cell_takes_its_initial_value_only_when_it_is_first_bound() {
 }
 
 #[test]
-fn a_cell_keeps_its_value_when_the_argument_its_initial_value_reads_changes() {
+fn state_keeps_its_value_when_the_argument_its_initial_value_reads_changes() {
     check(
         indoc! {r#"
             fn Counter(start: Int) -> Html {
@@ -716,7 +546,7 @@ fn a_cell_keeps_its_value_when_the_argument_its_initial_value_reads_changes() {
 }
 
 #[test]
-fn each_application_of_a_lambda_has_cells_of_its_own_and_shares_the_cells_it_captures() {
+fn each_application_of_a_lambda_has_states_of_its_own_and_shares_the_states_it_captures() {
     check(
         indoc! {r#"
             fn Twice(row: fn() -> Html) -> Html {
@@ -763,7 +593,7 @@ fn each_application_of_a_lambda_has_cells_of_its_own_and_shares_the_cells_it_cap
 }
 
 #[test]
-fn a_cell_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
+fn state_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
     check(
         indoc! {r#"
             page Test {
@@ -836,7 +666,7 @@ fn a_cell_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
 }
 
 #[test]
-fn a_cell_bound_in_a_loop_follows_its_key_and_starts_over_when_the_key_comes_back() {
+fn state_bound_in_a_loop_follows_its_key_and_starts_over_when_the_key_comes_back() {
     check(
         indoc! {r#"
             page Test {
@@ -952,7 +782,7 @@ fn the_iterations_of_a_repeated_key_follow_the_order_they_take_it_in() {
 }
 
 #[test]
-fn the_cells_of_nested_loops_follow_the_keys_of_both_loops() {
+fn the_states_of_nested_loops_follow_the_keys_of_both_loops() {
     check(
         indoc! {r#"
             page Test {
@@ -1042,7 +872,7 @@ fn an_element_keeps_its_identity_when_the_value_of_an_attribute_changes() {
 }
 
 #[test]
-fn each_level_of_a_recursive_call_has_cells_of_its_own() {
+fn each_level_of_a_recursive_call_has_states_of_its_own() {
     check(
         indoc! {r#"
             fn Level(depth: Int, levels: Int) -> Html {
@@ -1128,6 +958,7 @@ fn a_handler_calls_a_mut_fn_that_applies_the_mut_fns_it_takes() {
               first();
               second()
             }
+            
             page Test {
               fn body() -> Html {
                 let (a, set_a) = state!(0);
@@ -1169,6 +1000,7 @@ fn a_handler_passed_as_a_parameter_is_the_click_of_the_element_that_takes_it() {
                 {children}
               </button>
             }
+            
             page Test {
               fn body() -> Html {
                 let (count, set_count) = state!(0);
@@ -1209,11 +1041,12 @@ fn a_handler_passed_as_a_parameter_is_the_click_of_the_element_that_takes_it() {
 }
 
 #[test]
-fn a_handler_updates_a_field_of_a_record_in_a_cell_and_keeps_the_others() {
+fn a_handler_updates_a_field_of_a_record_in_state_and_keeps_the_others() {
     check(
         indoc! {r#"
             enum Mode { Light, Dark }
             record Setting { mode: Mode, level: Int }
+            
             page Test {
               fn body() -> Html {
                 let (setting, set_setting) = state!(Setting {mode: Mode::Light, level: 1});
@@ -1269,25 +1102,38 @@ fn a_click_whose_later_write_fails_changes_nothing() {
             fn forever(n: Int) -> Int {
               forever(n + 1)
             }
+            
             page Test {
               fn body() -> Html {
                 let (count, set_count) = state!(0);
-                
-                <button on:click={mut fn() {
-                  set_count(fn(curr) { curr + 1 });
-                  set_count(fn(curr) { forever(curr) })
-                }}>
-                  {count.to_string()}
-                </button>
+                let incr_count = mut fn() {
+                  set_count(fn(curr) { curr + 1 })
+                };
+
+                <>
+                  <button on:click={mut fn() {
+                    set_count(fn(curr) { curr + 1 });
+                    set_count(fn(curr) { forever(curr) })
+                  }}>
+                    forever
+                  </button>
+                  <button on:click={incr_count}>
+                    {count.to_string()}
+                  </button>
+                </>
               }
             }
         "#},
-        &[Event::Click(1)],
+        &[Event::Click(1), Event::Click(2)],
         expect![[r#"
             -- render --
-            <button@e1>0</button>
+            <button@e1>forever</button>
+            <button@e2>0</button>
             -- click button@e1 --
             error: Program exceeded the call depth limit of 12
+            -- click button@e2 --
+            <button@e1>forever</button>
+            <button@e2>1</button>
         "#]],
     );
 }
@@ -1325,7 +1171,7 @@ fn a_write_reads_a_signal_that_an_earlier_write_of_the_click_wrote() {
 }
 
 #[test]
-fn each_call_has_a_state_of_its_own() {
+fn each_call_has_state_of_its_own() {
     check(
         indoc! {r#"
             fn Counter() -> Html {
@@ -1337,6 +1183,7 @@ fn each_call_has_a_state_of_its_own() {
                 {count.to_string()}
               </button>
             }
+            
             page Test {
               fn body() -> Html {
                 <><Counter/><Counter/></>
@@ -1362,7 +1209,7 @@ fn each_call_has_a_state_of_its_own() {
 }
 
 #[test]
-fn an_update_of_a_state_takes_the_value_an_earlier_update_of_the_click_gave() {
+fn an_update_of_state_takes_the_value_an_earlier_update_of_the_click_gave() {
     check(
         indoc! {r#"
             page Test {
@@ -1391,7 +1238,7 @@ fn an_update_of_a_state_takes_the_value_an_earlier_update_of_the_click_gave() {
 }
 
 #[test]
-fn a_handler_reads_a_state_as_the_value_the_render_gave() {
+fn a_handler_reads_state_as_the_value_the_render_gave() {
     check(
         indoc! {r#"
             page Test {
@@ -1453,6 +1300,7 @@ fn a_handler_that_updates_a_record_state_twice_applies_both_updates() {
     check(
         indoc! {r#"
             record Setting { level: Int, size: Int }
+            
             page Test {
               fn body() -> Html {
                 let (setting, set_setting) = state!(Setting {level: 0, size: 0});
@@ -1506,6 +1354,7 @@ fn the_states_of_a_keyed_loop_follow_the_keys() {
                 {label}:{count.to_string()}
               </button>
             }
+            
             page Test {
               fn body() -> Html {
                 let (ids, set_ids) = state!([1, 2]);
@@ -1543,55 +1392,7 @@ fn the_states_of_a_keyed_loop_follow_the_keys() {
 }
 
 #[test]
-fn a_state_bound_in_an_arm_starts_over_when_the_match_takes_the_arm_again() {
-    check(
-        indoc! {r#"
-            page Test {
-              fn body() -> Html {
-                let (open, set_open) = state!(true);
-                let toggle = mut fn() {
-                  set_open(fn(curr) { !curr })
-                };
-                
-                <>
-                  <b on:click={toggle}>toggle</b>
-                  {match open {
-                    true => {
-                      let (count, set_count) = state!(0);
-                      let incr = mut fn() {
-                        set_count(fn(curr) { curr + 1 })
-                      };
-                      
-                      <button on:click={incr}>
-                        {count.to_string()}
-                      </button>
-                    },
-                    false => <i>closed</i>,
-                  }}
-                </>
-              }
-            }
-        "#},
-        &[Event::Click(2), Event::Click(1), Event::Click(1)],
-        expect![[r#"
-            -- render --
-            <b@e1>toggle</b>
-            <button@e2>0</button>
-            -- click button@e2 --
-            <b@e1>toggle</b>
-            <button@e2>1</button>
-            -- click b@e1 --
-            <b@e1>toggle</b>
-            <i@e3>closed</i>
-            -- click b@e1 --
-            <b@e1>toggle</b>
-            <button@e4>0</button>
-        "#]],
-    );
-}
-
-#[test]
-fn a_signal_passed_to_a_component_reads_and_writes_the_cell_of_the_caller() {
+fn a_component_reads_and_writes_a_signal_its_caller_passes() {
     check(
         indoc! {r#"
             fn Stepper(value: read fn() -> Int, set_value: mut fn(Int) -> Tuple[]) -> Html {
@@ -1604,6 +1405,7 @@ fn a_signal_passed_to_a_component_reads_and_writes_the_cell_of_the_caller() {
                 {value().to_string()}
               </button>
             }
+            
             page Test {
               fn body() -> Html {
                 let (count, set_count) = signal!(1);
