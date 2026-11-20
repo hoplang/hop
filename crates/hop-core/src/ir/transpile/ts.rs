@@ -44,7 +44,11 @@ fn transpile_param_binding<'a>(
 }
 
 fn function_ident(function: &IrFunction) -> String {
-    format!("render{}_{}", function.name.to_pascal_case(), function.id)
+    format!(
+        "render{}_{}",
+        function.name.to_pascal_case(),
+        function.id.index()
+    )
 }
 
 pub struct TsTranspiler {
@@ -401,7 +405,7 @@ impl Transpiler for TsTranspiler {
     fn name_type(&self, name: ValueId) -> &WriterType {
         self.name_types
             .get(&name)
-            .unwrap_or_else(|| unreachable!("every name records its type, and {name} has none"))
+            .unwrap_or_else(|| unreachable!("every name records its type, and {name:?} has none"))
     }
 
     fn transpile_program(&mut self, program: &WriterProgram) -> String {

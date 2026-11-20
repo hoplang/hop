@@ -1,5 +1,3 @@
-use std::fmt;
-
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::symbols::type_name::TypeName;
 
@@ -10,28 +8,35 @@ pub struct IrPage {
     pub body: EntrypointId,
 }
 
-impl IrPage {
-    #[cfg(test)]
-    pub fn for_entrypoints(program: &crate::ir::flat_program::FlatProgram) -> Vec<IrPage> {
-        program
-            .entrypoints
-            .iter_enumerated()
-            .map(|(id, decl)| IrPage {
-                name: TypeName::parse(decl.name.as_str())
-                    .expect("a test entrypoint is named like a page"),
-                head: None,
-                body: id,
-            })
-            .collect()
-    }
-}
+#[cfg(test)]
+mod test_support {
+    use super::IrPage;
+    use crate::ir::flat_program::FlatProgram;
+    use crate::symbols::type_name::TypeName;
+    use std::fmt;
 
-impl fmt::Display for IrPage {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "page {}: ", self.name)?;
-        if let Some(head) = &self.head {
-            write!(f, "e{head}, ")?;
+    impl IrPage {
+        pub fn for_entrypoints(program: &FlatProgram) -> Vec<IrPage> {
+            program
+                .entrypoints
+                .iter_enumerated()
+                .map(|(id, decl)| IrPage {
+                    name: TypeName::parse(decl.name.as_str())
+                        .expect("a test entrypoint is named like a page"),
+                    head: None,
+                    body: id,
+                })
+                .collect()
         }
-        write!(f, "e{}", self.body)
+    }
+
+    impl fmt::Display for IrPage {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "page {}: ", self.name)?;
+            if let Some(head) = &self.head {
+                write!(f, "e{head}, ")?;
+            }
+            write!(f, "e{}", self.body)
+        }
     }
 }

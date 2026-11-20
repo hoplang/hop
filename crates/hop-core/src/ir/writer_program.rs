@@ -1,6 +1,3 @@
-use std::fmt::{self, Write};
-
-use crate::display::{Indent, join};
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
@@ -66,74 +63,87 @@ pub enum WriterOp {
     Apply(ValueId, Vec<ValueId>),
 }
 
-fn write_stmts(stmts: &[WriterStmt], w: &mut dyn Write) -> fmt::Result {
-    for stmt in stmts {
-        write!(w, "\n{stmt}")?;
-    }
-    Ok(())
-}
+#[cfg(test)]
+mod test_support {
+    use super::WriterFunctionBody;
+    use super::WriterOp;
+    use super::WriterPageDeclaration;
+    use super::WriterProgram;
+    use super::WriterStmt;
+    use crate::display::{Indent, join};
+    use std::fmt::{self, Write};
 
-impl fmt::Display for WriterStmt {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            WriterStmt::Let(let_) => write!(f, "{let_}"),
-            WriterStmt::Write(content) => write!(f, "write({content:?})"),
-            WriterStmt::WriteString(name) => write!(f, "write_string({name})"),
-            WriterStmt::WriteFunction(function, args) => {
-                write!(f, "write_function f{}({})", function.id, join(args, ", "))
-            }
-            WriterStmt::WriteApply(closure, args) => {
-                write!(f, "write_apply {closure}({})", join(args, ", "))
-            }
-            WriterStmt::HtmlFor(for_) => for_.write(f, |body, w| write_stmts(body, w)),
-            WriterStmt::Match(match_) => match_.write(f, |body, w| write_stmts(body, w)),
-        }
-    }
-}
-
-impl fmt::Display for WriterOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            WriterOp::Data(op) => write!(f, "{op}"),
-            WriterOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
-            WriterOp::Match(match_) => match_.write(f, |block, w| write!(w, "\n{block}")),
-            WriterOp::Lambda(lambda) => lambda.write(f, WriterFunctionBody::write),
-            WriterOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),
-        }
-    }
-}
-
-impl WriterFunctionBody {
-    fn write(&self, w: &mut dyn Write) -> fmt::Result {
-        match self {
-            WriterFunctionBody::Writes(statements) => write_stmts(statements, w),
-            WriterFunctionBody::Returns(block) => write!(w, "\n{block}"),
-        }
-    }
-}
-
-impl fmt::Display for WriterPageDeclaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "page {}({}) {{",
-            self.name.as_str(),
-            join(&self.parameters, ", ")
-        )?;
-        write_stmts(&self.body, &mut Indent::new(f))?;
-        writeln!(f, "\n}}")
-    }
-}
-
-impl fmt::Display for WriterProgram {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for function in &self.functions {
-            function.write(f, WriterFunctionBody::write)?;
-            writeln!(f)?;
-        }
-        for page in &self.pages {
-            write!(f, "{page}")?;
+    fn write_stmts(stmts: &[WriterStmt], w: &mut dyn Write) -> fmt::Result {
+        for stmt in stmts {
+            write!(w, "\n{stmt}")?;
         }
         Ok(())
+    }
+
+    impl fmt::Display for WriterStmt {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                WriterStmt::Let(let_) => write!(f, "{let_}"),
+                WriterStmt::Write(content) => write!(f, "write({content:?})"),
+                WriterStmt::WriteString(name) => write!(f, "write_string({name})"),
+                WriterStmt::WriteFunction(function, args) => {
+                    write!(f, "write_function f{}({})", function.id, join(args, ", "))
+                }
+                WriterStmt::WriteApply(closure, args) => {
+                    write!(f, "write_apply {closure}({})", join(args, ", "))
+                }
+                WriterStmt::HtmlFor(for_) => for_.write(f, |body, w| write_stmts(body, w)),
+                WriterStmt::Match(match_) => match_.write(f, |body, w| write_stmts(body, w)),
+            }
+        }
+    }
+
+    impl fmt::Display for WriterOp {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                WriterOp::Data(op) => write!(f, "{op}"),
+                WriterOp::Call(function, args) => {
+                    write!(f, "f{}({})", function.id, join(args, ", "))
+                }
+                WriterOp::Match(match_) => match_.write(f, |block, w| write!(w, "\n{block}")),
+                WriterOp::Lambda(lambda) => lambda.write(f, WriterFunctionBody::write),
+                WriterOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),
+            }
+        }
+    }
+
+    impl WriterFunctionBody {
+        fn write(&self, w: &mut dyn Write) -> fmt::Result {
+            match self {
+                WriterFunctionBody::Writes(statements) => write_stmts(statements, w),
+                WriterFunctionBody::Returns(block) => write!(w, "\n{block}"),
+            }
+        }
+    }
+
+    impl fmt::Display for WriterPageDeclaration {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "page {}({}) {{",
+                self.name.as_str(),
+                join(&self.parameters, ", ")
+            )?;
+            write_stmts(&self.body, &mut Indent::new(f))?;
+            writeln!(f, "\n}}")
+        }
+    }
+
+    impl fmt::Display for WriterProgram {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            for function in &self.functions {
+                function.write(f, WriterFunctionBody::write)?;
+                writeln!(f)?;
+            }
+            for page in &self.pages {
+                write!(f, "{page}")?;
+            }
+            Ok(())
+        }
     }
 }

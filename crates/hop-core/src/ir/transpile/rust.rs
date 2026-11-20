@@ -34,7 +34,11 @@ fn name_ident(name: ValueId) -> String {
 }
 
 fn function_ident(function: &IrFunction) -> String {
-    format!("render_{}_{}", function.name.to_snake_case(), function.id)
+    format!(
+        "render_{}_{}",
+        function.name.to_snake_case(),
+        function.id.index()
+    )
 }
 
 /// What a binding in the generated code holds.
@@ -111,7 +115,7 @@ impl RustTranspiler {
         self.names
             .get(&name)
             .map(|(binding, _)| *binding)
-            .unwrap_or_else(|| unreachable!("every name records a binding, and {name} has none"))
+            .unwrap_or_else(|| unreachable!("every name records a binding, and {name:?} has none"))
     }
 
     /// What the op a let binds transpiles to.
@@ -655,7 +659,7 @@ impl Transpiler for RustTranspiler {
         self.names
             .get(&name)
             .map(|(_, typ)| typ)
-            .unwrap_or_else(|| unreachable!("every name records its type, and {name} has none"))
+            .unwrap_or_else(|| unreachable!("every name records its type, and {name:?} has none"))
     }
 
     fn transpile_program(&mut self, program: &WriterProgram) -> String {

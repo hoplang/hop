@@ -139,7 +139,7 @@ impl<'a> Inliner<'a> {
         assert_eq!(
             args.len(),
             decl.parameters.len(),
-            "call to {} supplies one argument per parameter",
+            "call to {:?} supplies one argument per parameter",
             decl.function
         );
         let arguments = decl

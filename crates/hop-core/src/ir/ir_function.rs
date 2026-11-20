@@ -1,5 +1,3 @@
-use std::fmt;
-
 use crate::ir::function_id::FunctionId;
 use crate::symbols::function_name::FunctionName;
 
@@ -15,8 +13,14 @@ impl IrFunction {
     }
 }
 
-impl fmt::Display for IrFunction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}@f{}", self.name, self.id)
+#[cfg(test)]
+mod test_support {
+    use super::IrFunction;
+    use std::fmt;
+
+    impl fmt::Display for IrFunction {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}@f{}", self.name, self.id)
+        }
     }
 }

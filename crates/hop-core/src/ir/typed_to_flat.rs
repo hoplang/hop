@@ -121,7 +121,7 @@ pub fn typed_to_flat(
         value_ids,
     };
     if let Err(error) = flat_typecheck::typecheck(&program) {
-        panic!("typed_to_flat produced an ill-typed program: {error:?}\n{program}");
+        panic!("typed_to_flat produced an ill-typed program: {error:?}");
     }
     (program, pages)
 }
@@ -1227,7 +1227,6 @@ fn lower_data_type(registry: &TypeRegistry, typ: &DataType) -> FlatDataType {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use crate::document::Document;
     use crate::session::Session;

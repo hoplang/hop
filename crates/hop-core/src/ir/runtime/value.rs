@@ -106,7 +106,7 @@ impl<'a> Index<&ValueId> for Env<'a> {
             env = env
                 .parent
                 .as_deref()
-                .unwrap_or_else(|| panic!("{name} is not in scope"));
+                .unwrap_or_else(|| panic!("{name:?} is not in scope"));
         }
     }
 }

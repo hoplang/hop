@@ -1,17 +1,5 @@
 use crate::html::write_escaped_html;
 
-/// How the generated Tailwind CSS is referenced from the `<head>`.
-#[derive(Debug, Clone, Copy)]
-pub enum TailwindInjection<'a> {
-    /// Inline the CSS as a `<style>{css}</style>` element. Used by `hop dev`
-    /// so hot reload can ship CSS through the same render pipeline.
-    Inline(&'a str),
-    /// Reference an external stylesheet via `<link rel="stylesheet" href={href}>`.
-    /// Used by `hop build`, where the CSS is written to disk under the assets
-    /// output directory with a content hashed filename.
-    Link { href: &'a str },
-}
-
 /// The document around the head and body of a page.
 ///
 /// The fixed markup is what the language reference lists under rendering.
@@ -27,6 +15,18 @@ pub struct DocumentShell {
     pub after_head: String,
     /// `</body></html>`
     pub after_body: &'static str,
+}
+
+/// How the generated Tailwind CSS is referenced from the `<head>`.
+#[derive(Debug, Clone, Copy)]
+pub enum TailwindInjection<'a> {
+    /// Inline the CSS as a `<style>{css}</style>` element. Used by `hop dev`
+    /// so hot reload can ship CSS through the same render pipeline.
+    Inline(&'a str),
+    /// Reference an external stylesheet via `<link rel="stylesheet" href={href}>`.
+    /// Used by `hop build`, where the CSS is written to disk under the assets
+    /// output directory with a content hashed filename.
+    Link { href: &'a str },
 }
 
 impl DocumentShell {

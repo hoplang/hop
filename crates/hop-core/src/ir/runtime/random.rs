@@ -96,7 +96,7 @@ fn random_value_at_depth(
     visiting: &mut Vec<TypeName>,
 ) -> Value<'static> {
     if depth == MAX_DEPTH && !can_construct(ty, types, &mut Vec::new()) {
-        panic!("cannot generate a value for infinitely recursive type {ty}");
+        panic!("cannot generate a value for infinitely recursive type {ty:?}");
     }
     if depth >= MAX_DEPTH
         && let Some(name) = named(ty)

@@ -1,6 +1,3 @@
-use std::fmt;
-
-use crate::display::join;
 use crate::hop::typing::Modifier;
 use crate::symbols::type_name::TypeName;
 
@@ -56,17 +53,6 @@ pub struct FlatSignature {
     pub result: Box<FlatType>,
 }
 
-#[cfg(test)]
-impl FlatType {
-    pub fn array(element: FlatDataType) -> FlatType {
-        FlatType::Data(FlatDataType::Array(Box::new(element)))
-    }
-
-    pub fn option(element: FlatDataType) -> FlatType {
-        FlatType::Data(FlatDataType::Option(Box::new(element)))
-    }
-}
-
 impl FlatType {
     pub const STRING: FlatType = FlatType::Data(FlatDataType::String);
     pub const BOOL: FlatType = FlatType::Data(FlatDataType::Bool);
@@ -119,52 +105,74 @@ impl FlatDataType {
     pub const UNIT: FlatDataType = FlatDataType::Tuple(Vec::new());
 }
 
-impl fmt::Display for FlatType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FlatType::Data(data) => data.fmt(f),
-            FlatType::Html => f.write_str("Html"),
-            FlatType::Function(signature) => signature.fmt(f),
-            FlatType::Cell(data) => write!(f, "Cell[{data}]"),
-            FlatType::ElementId => f.write_str("ElementId"),
+#[cfg(test)]
+mod test_support {
+
+    use crate::display::join;
+    use std::fmt;
+
+    use super::FlatDataType;
+    use super::FlatSignature;
+    use super::FlatType;
+    use super::IrModifier;
+
+    impl FlatType {
+        pub fn array(element: FlatDataType) -> FlatType {
+            FlatType::Data(FlatDataType::Array(Box::new(element)))
+        }
+
+        pub fn option(element: FlatDataType) -> FlatType {
+            FlatType::Data(FlatDataType::Option(Box::new(element)))
         }
     }
-}
 
-impl fmt::Display for IrModifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IrModifier::Pure => Ok(()),
-            IrModifier::Render => f.write_str("render "),
-            IrModifier::Mut => f.write_str("mut "),
-        }
-    }
-}
-
-impl fmt::Display for FlatSignature {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}(", self.modifier)?;
-        for (i, parameter) in self.parameters.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
+    impl fmt::Display for FlatType {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                FlatType::Data(data) => data.fmt(f),
+                FlatType::Html => f.write_str("Html"),
+                FlatType::Function(signature) => signature.fmt(f),
+                FlatType::Cell(data) => write!(f, "Cell[{data}]"),
+                FlatType::ElementId => f.write_str("ElementId"),
             }
-            write!(f, "{parameter}")?;
         }
-        write!(f, ") -> {}", self.result)
     }
-}
 
-impl fmt::Display for FlatDataType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FlatDataType::String => f.write_str("String"),
-            FlatDataType::Float => f.write_str("Float"),
-            FlatDataType::Int => f.write_str("Int"),
-            FlatDataType::Bool => f.write_str("Bool"),
-            FlatDataType::Array(element) => write!(f, "Array[{element}]"),
-            FlatDataType::Option(element) => write!(f, "Option[{element}]"),
-            FlatDataType::Tuple(elements) => write!(f, "Tuple[{}]", join(elements, ", ")),
-            FlatDataType::Record(name) | FlatDataType::Enum(name) => f.write_str(name.as_str()),
+    impl fmt::Display for IrModifier {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                IrModifier::Pure => Ok(()),
+                IrModifier::Render => f.write_str("render "),
+                IrModifier::Mut => f.write_str("mut "),
+            }
+        }
+    }
+
+    impl fmt::Display for FlatSignature {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}(", self.modifier)?;
+            for (i, parameter) in self.parameters.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{parameter}")?;
+            }
+            write!(f, ") -> {}", self.result)
+        }
+    }
+
+    impl fmt::Display for FlatDataType {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                FlatDataType::String => f.write_str("String"),
+                FlatDataType::Float => f.write_str("Float"),
+                FlatDataType::Int => f.write_str("Int"),
+                FlatDataType::Bool => f.write_str("Bool"),
+                FlatDataType::Array(element) => write!(f, "Array[{element}]"),
+                FlatDataType::Option(element) => write!(f, "Option[{element}]"),
+                FlatDataType::Tuple(elements) => write!(f, "Tuple[{}]", join(elements, ", ")),
+                FlatDataType::Record(name) | FlatDataType::Enum(name) => f.write_str(name.as_str()),
+            }
         }
     }
 }

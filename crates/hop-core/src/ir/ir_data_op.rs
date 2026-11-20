@@ -1,6 +1,3 @@
-use std::fmt;
-
-use crate::display::{join, write_tuple};
 use crate::document::CheapString;
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::value_id::ValueId;
@@ -67,7 +64,6 @@ pub enum IrDataOp {
 }
 
 impl IrDataOp {
-    /// Apply `f` to each name this op reads, in order.
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
             IrDataOp::StringLiteral(_)
@@ -117,8 +113,6 @@ impl IrDataOp {
         }
     }
 
-    /// Apply `f` to each name this op reads, to rewrite it. Visits the same
-    /// names as `for_each_operand`.
     pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         match self {
             IrDataOp::StringLiteral(_)
@@ -169,73 +163,82 @@ impl IrDataOp {
     }
 }
 
-impl fmt::Display for IrDataOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IrDataOp::StringLiteral(value) => write!(f, "{:?}", value.as_str()),
-            IrDataOp::IntLiteral(value) => write!(f, "{value}"),
-            IrDataOp::FloatLiteral(value) => write!(f, "{value}"),
-            IrDataOp::BoolLiteral(value) => write!(f, "{value}"),
-            IrDataOp::FieldAccess(record, field) => write!(f, "{record}.{}", field.as_str()),
-            IrDataOp::TupleIndex(tuple, index) => write!(f, "tuple_index({tuple}, {index})"),
-            IrDataOp::Array(elements) => write!(f, "[{}]", join(elements, ", ")),
-            IrDataOp::Tuple(elements) => write_tuple(f, elements),
-            IrDataOp::Enum(variant_name, fields) if fields.is_empty() => {
-                f.write_str(variant_name.as_str())
-            }
-            // Each field as its name and the name it reads.
-            IrDataOp::Record(fields) | IrDataOp::Enum(_, fields) => {
-                if let IrDataOp::Enum(variant_name, _) = self {
-                    write!(f, "{} ", variant_name.as_str())?;
+#[cfg(test)]
+mod test_support {
+    use super::IrDataOp;
+    use crate::display::{join, write_tuple};
+    use crate::hop::typing::{ComparableType, EquatableType, NumericType};
+    use std::fmt;
+
+    impl fmt::Display for IrDataOp {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                IrDataOp::StringLiteral(value) => write!(f, "{:?}", value.as_str()),
+                IrDataOp::IntLiteral(value) => write!(f, "{value}"),
+                IrDataOp::FloatLiteral(value) => write!(f, "{value}"),
+                IrDataOp::BoolLiteral(value) => write!(f, "{value}"),
+                IrDataOp::FieldAccess(record, field) => write!(f, "{record}.{}", field.as_str()),
+                IrDataOp::TupleIndex(tuple, index) => write!(f, "tuple_index({tuple}, {index})"),
+                IrDataOp::Array(elements) => write!(f, "[{}]", join(elements, ", ")),
+                IrDataOp::Tuple(elements) => write_tuple(f, elements),
+                IrDataOp::Enum(variant_name, fields) if fields.is_empty() => {
+                    f.write_str(variant_name.as_str())
                 }
-                f.write_str("{")?;
-                for (i, (name, value)) in fields.iter().enumerate() {
-                    let sep = if i > 0 { ", " } else { "" };
-                    write!(f, "{sep}{}: {value}", name.as_str())?;
+                IrDataOp::Record(fields) | IrDataOp::Enum(_, fields) => {
+                    if let IrDataOp::Enum(variant_name, _) = self {
+                        write!(f, "{} ", variant_name.as_str())?;
+                    }
+                    f.write_str("{")?;
+                    for (i, (name, value)) in fields.iter().enumerate() {
+                        let sep = if i > 0 { ", " } else { "" };
+                        write!(f, "{sep}{}: {value}", name.as_str())?;
+                    }
+                    f.write_str("}")
                 }
-                f.write_str("}")
+                IrDataOp::OptionSome(value) => write!(f, "Some({value})"),
+                IrDataOp::OptionNone => f.write_str("None"),
+                IrDataOp::StringConcat(parts) => write!(f, "string_concat({})", join(parts, ", ")),
+                IrDataOp::NumericAdd(NumericType::Int, l, r) => write!(f, "int_add({l}, {r})"),
+                IrDataOp::NumericAdd(NumericType::Float, l, r) => write!(f, "float_add({l}, {r})"),
+                IrDataOp::NumericSubtract(NumericType::Int, l, r) => write!(f, "int_sub({l}, {r})"),
+                IrDataOp::NumericSubtract(NumericType::Float, l, r) => {
+                    write!(f, "float_sub({l}, {r})")
+                }
+                IrDataOp::NumericMultiply(NumericType::Int, l, r) => write!(f, "int_mul({l}, {r})"),
+                IrDataOp::NumericMultiply(NumericType::Float, l, r) => {
+                    write!(f, "float_mul({l}, {r})")
+                }
+                IrDataOp::Equals(EquatableType::String, l, r) => write!(f, "string_eq({l}, {r})"),
+                IrDataOp::Equals(EquatableType::Bool, l, r) => write!(f, "bool_eq({l}, {r})"),
+                IrDataOp::Equals(EquatableType::Int, l, r) => write!(f, "int_eq({l}, {r})"),
+                IrDataOp::Equals(EquatableType::Float, l, r) => write!(f, "float_eq({l}, {r})"),
+                IrDataOp::LessThan(ComparableType::Int, l, r) => write!(f, "int_lt({l}, {r})"),
+                IrDataOp::LessThan(ComparableType::Float, l, r) => write!(f, "float_lt({l}, {r})"),
+                IrDataOp::LessThanOrEqual(ComparableType::Int, l, r) => {
+                    write!(f, "int_lt_eq({l}, {r})")
+                }
+                IrDataOp::LessThanOrEqual(ComparableType::Float, l, r) => {
+                    write!(f, "float_lt_eq({l}, {r})")
+                }
+                IrDataOp::ArrayFromRange(l, r) => write!(f, "array_from_range({l}, {r})"),
+                IrDataOp::NumericNegation(NumericType::Int, operand) => {
+                    write!(f, "int_neg({operand})")
+                }
+                IrDataOp::NumericNegation(NumericType::Float, operand) => {
+                    write!(f, "float_neg({operand})")
+                }
+                IrDataOp::BoolNegation(operand) => write!(f, "bool_not({operand})"),
+                IrDataOp::ArrayLength(operand) => write!(f, "array_length({operand})"),
+                IrDataOp::ArrayIsEmpty(operand) => write!(f, "array_is_empty({operand})"),
+                IrDataOp::ArrayGet(array, index) => write!(f, "array_get({array}, {index})"),
+                IrDataOp::ArrayEnumerate(operand) => write!(f, "array_enumerate({operand})"),
+                IrDataOp::StringIsEmpty(operand) => write!(f, "string_is_empty({operand})"),
+                IrDataOp::OptionIsSome(operand) => write!(f, "option_is_some({operand})"),
+                IrDataOp::OptionIsNone(operand) => write!(f, "option_is_none({operand})"),
+                IrDataOp::IntToString(operand) => write!(f, "int_to_string({operand})"),
+                IrDataOp::FloatToInt(operand) => write!(f, "float_to_int({operand})"),
+                IrDataOp::IntToFloat(operand) => write!(f, "int_to_float({operand})"),
             }
-            IrDataOp::OptionSome(value) => write!(f, "Some({value})"),
-            IrDataOp::OptionNone => f.write_str("None"),
-            IrDataOp::StringConcat(parts) => write!(f, "string_concat({})", join(parts, ", ")),
-            IrDataOp::NumericAdd(NumericType::Int, l, r) => write!(f, "int_add({l}, {r})"),
-            IrDataOp::NumericAdd(NumericType::Float, l, r) => write!(f, "float_add({l}, {r})"),
-            IrDataOp::NumericSubtract(NumericType::Int, l, r) => write!(f, "int_sub({l}, {r})"),
-            IrDataOp::NumericSubtract(NumericType::Float, l, r) => {
-                write!(f, "float_sub({l}, {r})")
-            }
-            IrDataOp::NumericMultiply(NumericType::Int, l, r) => write!(f, "int_mul({l}, {r})"),
-            IrDataOp::NumericMultiply(NumericType::Float, l, r) => {
-                write!(f, "float_mul({l}, {r})")
-            }
-            IrDataOp::Equals(EquatableType::String, l, r) => write!(f, "string_eq({l}, {r})"),
-            IrDataOp::Equals(EquatableType::Bool, l, r) => write!(f, "bool_eq({l}, {r})"),
-            IrDataOp::Equals(EquatableType::Int, l, r) => write!(f, "int_eq({l}, {r})"),
-            IrDataOp::Equals(EquatableType::Float, l, r) => write!(f, "float_eq({l}, {r})"),
-            IrDataOp::LessThan(ComparableType::Int, l, r) => write!(f, "int_lt({l}, {r})"),
-            IrDataOp::LessThan(ComparableType::Float, l, r) => write!(f, "float_lt({l}, {r})"),
-            IrDataOp::LessThanOrEqual(ComparableType::Int, l, r) => {
-                write!(f, "int_lt_eq({l}, {r})")
-            }
-            IrDataOp::LessThanOrEqual(ComparableType::Float, l, r) => {
-                write!(f, "float_lt_eq({l}, {r})")
-            }
-            IrDataOp::ArrayFromRange(l, r) => write!(f, "array_from_range({l}, {r})"),
-            IrDataOp::NumericNegation(NumericType::Int, operand) => write!(f, "int_neg({operand})"),
-            IrDataOp::NumericNegation(NumericType::Float, operand) => {
-                write!(f, "float_neg({operand})")
-            }
-            IrDataOp::BoolNegation(operand) => write!(f, "bool_not({operand})"),
-            IrDataOp::ArrayLength(operand) => write!(f, "array_length({operand})"),
-            IrDataOp::ArrayIsEmpty(operand) => write!(f, "array_is_empty({operand})"),
-            IrDataOp::ArrayGet(array, index) => write!(f, "array_get({array}, {index})"),
-            IrDataOp::ArrayEnumerate(operand) => write!(f, "array_enumerate({operand})"),
-            IrDataOp::StringIsEmpty(operand) => write!(f, "string_is_empty({operand})"),
-            IrDataOp::OptionIsSome(operand) => write!(f, "option_is_some({operand})"),
-            IrDataOp::OptionIsNone(operand) => write!(f, "option_is_none({operand})"),
-            IrDataOp::IntToString(operand) => write!(f, "int_to_string({operand})"),
-            IrDataOp::FloatToInt(operand) => write!(f, "float_to_int({operand})"),
-            IrDataOp::IntToFloat(operand) => write!(f, "int_to_float({operand})"),
         }
     }
 }

@@ -1,5 +1,3 @@
-use std::fmt;
-
 use crate::ir::flat_type::{FlatDataType, FlatType};
 use crate::ir::ir_binder::IrBinder;
 use crate::symbols::attribute_name::AttributeName;
@@ -28,8 +26,14 @@ impl IrParameter<FlatDataType> {
     }
 }
 
-impl<T: fmt::Display> fmt::Display for IrParameter<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}@{}", self.name.as_str(), self.binder)
+#[cfg(test)]
+mod test_support {
+    use super::IrParameter;
+    use std::fmt;
+
+    impl<T: fmt::Display> fmt::Display for IrParameter<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}@{}", self.name.as_str(), self.binder)
+        }
     }
 }

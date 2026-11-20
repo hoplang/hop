@@ -1,6 +1,3 @@
-use std::fmt;
-
-use crate::display::join;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
@@ -81,41 +78,53 @@ impl WriterTypeDeclarations {
     }
 }
 
-impl fmt::Display for WriterType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            WriterType::Data(data) => data.fmt(f),
-            WriterType::Function(signature) => signature.fmt(f),
+#[cfg(test)]
+mod test_support {
+    use super::WriterDataType;
+    use super::WriterResult;
+    use super::WriterSignature;
+    use super::WriterType;
+    use crate::display::join;
+    use std::fmt;
+
+    impl fmt::Display for WriterType {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                WriterType::Data(data) => data.fmt(f),
+                WriterType::Function(signature) => signature.fmt(f),
+            }
         }
     }
-}
 
-impl fmt::Display for WriterSignature {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({}) -> {}", join(&self.parameters, ", "), self.result)
-    }
-}
-
-impl fmt::Display for WriterResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            WriterResult::Writes => f.write_str("Html"),
-            WriterResult::Returns(data) => data.fmt(f),
+    impl fmt::Display for WriterSignature {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "({}) -> {}", join(&self.parameters, ", "), self.result)
         }
     }
-}
 
-impl fmt::Display for WriterDataType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            WriterDataType::String => f.write_str("String"),
-            WriterDataType::Float => f.write_str("Float"),
-            WriterDataType::Int => f.write_str("Int"),
-            WriterDataType::Bool => f.write_str("Bool"),
-            WriterDataType::Array(element) => write!(f, "Array[{element}]"),
-            WriterDataType::Option(element) => write!(f, "Option[{element}]"),
-            WriterDataType::Tuple(elements) => write!(f, "Tuple[{}]", join(elements, ", ")),
-            WriterDataType::Record(name) | WriterDataType::Enum(name) => f.write_str(name.as_str()),
+    impl fmt::Display for WriterResult {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                WriterResult::Writes => f.write_str("Html"),
+                WriterResult::Returns(data) => data.fmt(f),
+            }
+        }
+    }
+
+    impl fmt::Display for WriterDataType {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                WriterDataType::String => f.write_str("String"),
+                WriterDataType::Float => f.write_str("Float"),
+                WriterDataType::Int => f.write_str("Int"),
+                WriterDataType::Bool => f.write_str("Bool"),
+                WriterDataType::Array(element) => write!(f, "Array[{element}]"),
+                WriterDataType::Option(element) => write!(f, "Option[{element}]"),
+                WriterDataType::Tuple(elements) => write!(f, "Tuple[{}]", join(elements, ", ")),
+                WriterDataType::Record(name) | WriterDataType::Enum(name) => {
+                    f.write_str(name.as_str())
+                }
+            }
         }
     }
 }

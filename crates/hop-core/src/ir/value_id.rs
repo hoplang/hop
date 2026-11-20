@@ -1,17 +1,9 @@
-use std::fmt;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ValueId(usize);
 
 impl ValueId {
     pub fn index(self) -> usize {
         self.0
-    }
-}
-
-impl fmt::Display for ValueId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "v{}", self.0)
     }
 }
 
@@ -31,5 +23,17 @@ impl ValueIdCounter {
 
     pub fn count(&self) -> usize {
         self.0
+    }
+}
+
+#[cfg(test)]
+mod test_support {
+    use super::ValueId;
+    use std::fmt;
+
+    impl fmt::Display for ValueId {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "v{}", self.0)
+        }
     }
 }

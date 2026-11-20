@@ -200,7 +200,7 @@ fn value_type(typ: &FlatType) -> WriterType {
             result: result_type(&signature.result),
         }),
         FlatType::Html | FlatType::Cell(_) | FlatType::ElementId => {
-            unreachable!("{typ} is not the type of a value")
+            unreachable!("{typ:?} is not the type of a value")
         }
     }
 }
@@ -212,7 +212,7 @@ fn result_type(typ: &FlatType) -> WriterResult {
         FlatType::Html => WriterResult::Writes,
         FlatType::Data(data) => WriterResult::Returns(data_type(data)),
         FlatType::Function(_) | FlatType::Cell(_) | FlatType::ElementId => {
-            unreachable!("a function returns Html or data, not {typ}")
+            unreachable!("a function returns Html or data, not {typ:?}")
         }
     }
 }
@@ -369,7 +369,7 @@ impl<'a> Lowerer<'a> {
         binding.op.for_each_operand(&mut |operand| {
             assert!(
                 !self.is_html(operand),
-                "{} reads the Html of {operand} as a value",
+                "{:?} reads the Html of {operand:?} as a value",
                 binding.binder.var
             );
         });
@@ -1161,7 +1161,7 @@ impl<'a> Lowerer<'a> {
         let binding = *self
             .html
             .get(&html)
-            .unwrap_or_else(|| panic!("{html} is read as Html but is not Html"));
+            .unwrap_or_else(|| panic!("{html:?} is read as Html but is not Html"));
         match &binding.op {
             FlatOp::Text(text) => write(out, text.as_str()),
 

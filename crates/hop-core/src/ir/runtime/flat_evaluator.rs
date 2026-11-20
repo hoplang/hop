@@ -459,7 +459,7 @@ fn evaluate_op<'a>(
             lambda,
             modifier: match &binding.binder.typ {
                 FlatType::Function(signature) => signature.modifier,
-                typ => unreachable!("a lambda binds a closure, not {typ}"),
+                typ => unreachable!("a lambda binds a closure, not {typ:?}"),
             },
             env: env.freeze(),
         })),

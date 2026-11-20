@@ -1,6 +1,3 @@
-use std::fmt;
-
-use crate::display::{write_lines, write_variant};
 use crate::hop::typing::{MatchTypes, TypeShape};
 use crate::ir::flat_type::FlatDataType;
 use crate::symbols::field_name::FieldName;
@@ -89,51 +86,64 @@ impl MatchTypes for FlatTypeDeclarations {
     }
 }
 
-impl fmt::Display for FlatTypeDeclarations {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut sep = "";
-        for record in &self.records {
-            writeln!(f, "{sep}{record}")?;
-            sep = "\n";
+#[cfg(test)]
+mod test_support {
+
+    use crate::display::{write_lines, write_variant};
+    use std::fmt;
+
+    use super::FlatEnum;
+    use super::FlatField;
+    use super::FlatRecord;
+    use super::FlatTypeDeclarations;
+    use super::FlatVariant;
+
+    impl fmt::Display for FlatTypeDeclarations {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let mut sep = "";
+            for record in &self.records {
+                writeln!(f, "{sep}{record}")?;
+                sep = "\n";
+            }
+            for enumeration in &self.enums {
+                writeln!(f, "{sep}{enumeration}")?;
+                sep = "\n";
+            }
+            Ok(())
         }
-        for enumeration in &self.enums {
-            writeln!(f, "{sep}{enumeration}")?;
-            sep = "\n";
+    }
+
+    impl fmt::Display for FlatRecord {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write_lines(
+                f,
+                format_args!("record {} {{", self.name.as_str()),
+                &self.fields,
+                "}",
+            )
         }
-        Ok(())
     }
-}
 
-impl fmt::Display for FlatRecord {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_lines(
-            f,
-            format_args!("record {} {{", self.name.as_str()),
-            &self.fields,
-            "}",
-        )
+    impl fmt::Display for FlatEnum {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write_lines(
+                f,
+                format_args!("enum {} {{", self.name.as_str()),
+                &self.variants,
+                "}",
+            )
+        }
     }
-}
 
-impl fmt::Display for FlatEnum {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_lines(
-            f,
-            format_args!("enum {} {{", self.name.as_str()),
-            &self.variants,
-            "}",
-        )
+    impl fmt::Display for FlatVariant {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write_variant(f, self.name.as_str(), &self.fields)
+        }
     }
-}
 
-impl fmt::Display for FlatVariant {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_variant(f, self.name.as_str(), &self.fields)
-    }
-}
-
-impl fmt::Display for FlatField {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.name.as_str(), self.typ)
+    impl fmt::Display for FlatField {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}: {}", self.name.as_str(), self.typ)
+        }
     }
 }
