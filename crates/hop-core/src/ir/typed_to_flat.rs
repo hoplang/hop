@@ -12,6 +12,10 @@ use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
     FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
 };
+use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
+use crate::ir::flat_type_declarations::{
+    FlatEnum, FlatField, FlatRecord, FlatTypeDeclarations, FlatVariant,
+};
 use crate::ir::flat_typecheck;
 use crate::ir::function_id::FunctionIdCounter;
 use crate::ir::index_vec::IndexVec;
@@ -23,8 +27,6 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
-use crate::ir::ir_type::{IrDataType, IrModifier, IrType};
-use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::attribute_name::AttributeName;
@@ -140,8 +142,8 @@ struct Specialization {
 /// functions: the parameters and the body of each.
 struct CompiledPage {
     name: TypeName,
-    head: Option<(Vec<IrParameter<IrDataType>>, FlatBlock)>,
-    body: (Vec<IrParameter<IrDataType>>, FlatBlock),
+    head: Option<(Vec<IrParameter<FlatDataType>>, FlatBlock)>,
+    body: (Vec<IrParameter<FlatDataType>>, FlatBlock),
 }
 
 impl CompiledPage {
@@ -286,7 +288,7 @@ impl<'a> Compiler<'a> {
         &mut self,
         params: &[TypedParameter],
         expr: &TypedExpr,
-    ) -> (Vec<IrParameter<IrDataType>>, FlatBlock) {
+    ) -> (Vec<IrParameter<FlatDataType>>, FlatBlock) {
         self.push_scope();
         let parameters = params
             .iter()
@@ -374,12 +376,12 @@ impl<'a> Compiler<'a> {
     /// Bind `op` to a fresh name of type Html in the block being compiled,
     /// and return the name.
     fn push_html(&mut self, op: FlatOp) -> ValueId {
-        self.bind_html(IrType::HTML, op)
+        self.bind_html(FlatType::HTML, op)
     }
 
     /// Bind `op` to a fresh name of type `typ` in the block being compiled,
     /// and return the name.
-    fn bind_html(&mut self, typ: IrType, op: FlatOp) -> ValueId {
+    fn bind_html(&mut self, typ: FlatType, op: FlatOp) -> ValueId {
         let name = self.value_id_counter.next();
         self.bindings.push(IrBinding {
             binder: IrBinder { var: name, typ },
@@ -816,7 +818,7 @@ impl<'a> Compiler<'a> {
                 self.bindings.push(IrBinding {
                     binder: IrBinder {
                         var: identity,
-                        typ: IrType::ElementId,
+                        typ: FlatType::ElementId,
                     },
                     op: FlatOp::Mint,
                 });
@@ -920,32 +922,34 @@ impl<'a> Compiler<'a> {
                             let data = lower_data_type(self.registry, &data);
                             let initial = self.compile_value_block(&state.initial);
                             let cell =
-                                self.bind_html(IrType::Cell(data.clone()), FlatOp::Cell(initial));
-                            let getter =
-                                self.bind_html(IrType::Data(data.clone()), FlatOp::CellRead(cell));
+                                self.bind_html(FlatType::Cell(data.clone()), FlatOp::Cell(initial));
+                            let getter = self
+                                .bind_html(FlatType::Data(data.clone()), FlatOp::CellRead(cell));
                             let parameter = self.value_id_counter.next();
-                            let parameter_type = IrType::function(
+                            let parameter_type = FlatType::function(
                                 IrModifier::Pure,
-                                [IrType::Data(data.clone())],
-                                IrType::Data(data.clone()),
+                                [FlatType::Data(data.clone())],
+                                FlatType::Data(data.clone()),
                             );
                             let body = self.data_block(|cx| {
-                                let current = cx
-                                    .bind_html(IrType::Data(data.clone()), FlatOp::CellRead(cell));
+                                let current = cx.bind_html(
+                                    FlatType::Data(data.clone()),
+                                    FlatOp::CellRead(cell),
+                                );
                                 let value = cx.bind_html(
-                                    IrType::Data(data.clone()),
+                                    FlatType::Data(data.clone()),
                                     FlatOp::Apply(parameter, vec![current]),
                                 );
                                 cx.bind_html(
-                                    IrType::Data(IrDataType::UNIT),
+                                    FlatType::Data(FlatDataType::UNIT),
                                     FlatOp::CellWrite(cell, value),
                                 )
                             });
                             let setter = self.bind_html(
-                                IrType::function(
+                                FlatType::function(
                                     IrModifier::Mut,
                                     [parameter_type.clone()],
-                                    IrType::Data(IrDataType::UNIT),
+                                    FlatType::Data(FlatDataType::UNIT),
                                 ),
                                 FlatOp::Lambda(IrLambda {
                                     parameters: vec![IrBinder {
@@ -1017,7 +1021,7 @@ impl<'a> Compiler<'a> {
                         };
                         lower_data_type(self.registry, &element_type)
                     }
-                    TypedLoopSource::RangeInclusive { .. } => IrDataType::Int,
+                    TypedLoopSource::RangeInclusive { .. } => FlatDataType::Int,
                 };
                 self.push_scope();
                 let var = var_name.as_ref().map(|name| IrBinder {
@@ -1041,7 +1045,7 @@ impl<'a> Compiler<'a> {
                 let outer =
                     std::mem::replace(&mut self.context, IrModifier::from(function.modifier));
                 self.push_scope();
-                let parameters: Vec<IrBinder<IrType>> = params
+                let parameters: Vec<IrBinder<FlatType>> = params
                     .iter()
                     .map(|(name, typ)| IrBinder {
                         var: match name {
@@ -1149,31 +1153,31 @@ impl<'a> Compiler<'a> {
     }
 }
 
-fn lower_type_declarations(registry: &TypeRegistry) -> IrTypeDeclarations {
+fn lower_type_declarations(registry: &TypeRegistry) -> FlatTypeDeclarations {
     let lower_fields = |fields: &[RecordField]| {
         fields
             .iter()
-            .map(|field| IrField {
+            .map(|field| FlatField {
                 name: field.name.clone(),
                 typ: lower_data_type(registry, &field.typ),
             })
             .collect()
     };
-    IrTypeDeclarations {
+    FlatTypeDeclarations {
         records: registry
             .records()
-            .map(|(name, fields)| IrRecord {
+            .map(|(name, fields)| FlatRecord {
                 name: name.clone(),
                 fields: lower_fields(fields),
             })
             .collect(),
         enums: registry
             .enums()
-            .map(|(name, variants)| IrEnum {
+            .map(|(name, variants)| FlatEnum {
                 name: name.clone(),
                 variants: variants
                     .iter()
-                    .map(|variant| IrVariant {
+                    .map(|variant| FlatVariant {
                         name: variant.name.clone(),
                         fields: lower_fields(&variant.fields),
                     })
@@ -1183,11 +1187,11 @@ fn lower_type_declarations(registry: &TypeRegistry) -> IrTypeDeclarations {
     }
 }
 
-fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
+fn lower_type(registry: &TypeRegistry, typ: &Type) -> FlatType {
     match typ {
-        Type::Data(data) => IrType::Data(lower_data_type(registry, data)),
-        Type::Html(_) => IrType::Html,
-        Type::Function(function) => IrType::function(
+        Type::Data(data) => FlatType::Data(lower_data_type(registry, data)),
+        Type::Html(_) => FlatType::Html,
+        Type::Function(function) => FlatType::function(
             IrModifier::from(function.modifier),
             (function.parameters.iter()).map(|parameter| lower_type(registry, parameter)),
             lower_type(registry, &function.result),
@@ -1195,25 +1199,27 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> IrType {
     }
 }
 
-fn lower_data_type(registry: &TypeRegistry, typ: &DataType) -> IrDataType {
+fn lower_data_type(registry: &TypeRegistry, typ: &DataType) -> FlatDataType {
     match typ {
-        DataType::String => IrDataType::String,
-        DataType::Bool => IrDataType::Bool,
-        DataType::Int => IrDataType::Int,
-        DataType::Float => IrDataType::Float,
-        DataType::Array(element) => IrDataType::Array(Box::new(lower_data_type(registry, element))),
-        DataType::Option(element) => {
-            IrDataType::Option(Box::new(lower_data_type(registry, element)))
+        DataType::String => FlatDataType::String,
+        DataType::Bool => FlatDataType::Bool,
+        DataType::Int => FlatDataType::Int,
+        DataType::Float => FlatDataType::Float,
+        DataType::Array(element) => {
+            FlatDataType::Array(Box::new(lower_data_type(registry, element)))
         }
-        DataType::Tuple(elements) => IrDataType::Tuple(
+        DataType::Option(element) => {
+            FlatDataType::Option(Box::new(lower_data_type(registry, element)))
+        }
+        DataType::Tuple(elements) => FlatDataType::Tuple(
             elements
                 .iter()
                 .map(|element| lower_data_type(registry, element))
                 .collect(),
         ),
         DataType::Named { name, .. } => match registry.resolve(typ) {
-            Some(ResolvedType::Record { .. }) => IrDataType::Record(name.clone()),
-            Some(ResolvedType::Enum { .. }) => IrDataType::Enum(name.clone()),
+            Some(ResolvedType::Record { .. }) => FlatDataType::Record(name.clone()),
+            Some(ResolvedType::Enum { .. }) => FlatDataType::Enum(name.clone()),
             _ => panic!("type `{name}` must be declared"),
         },
     }

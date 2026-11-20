@@ -1,19 +1,13 @@
-//! The match of the Flat IR, which keeps the arms of the source.
-
 use std::fmt::{self, Write};
 
 use crate::display::{Indent, join, write_tuple};
 use crate::hop::typing::{Constructor, Pattern, PatternField};
+use crate::ir::flat_type::FlatDataType;
 use crate::ir::ir_binder::IrBinder;
-use crate::ir::ir_type::IrDataType;
 use crate::ir::value_id::ValueId;
 
-/// A pattern whose bindings bind names.
-pub type IrPattern = Pattern<IrBinder<IrDataType>>;
+pub type IrPattern = Pattern<IrBinder<FlatDataType>>;
 
-/// A match as written in the source. The first arm whose pattern matches
-/// the subject is taken, and its pattern binds the parts of the subject it
-/// names. Every value of the subject's type matches some arm.
 #[derive(Debug, Clone)]
 pub struct IrMatch<Body> {
     pub subject: ValueId,
@@ -27,8 +21,6 @@ pub struct IrMatchArm<Body> {
 }
 
 impl<Body> IrMatch<Body> {
-    /// The match head, then each arm as its pattern and its body on lines
-    /// of their own. The body starts with a line break and is indented.
     pub fn write(
         &self,
         w: &mut dyn Write,
@@ -47,7 +39,7 @@ impl<Body> IrMatch<Body> {
     }
 }
 
-impl fmt::Display for PatternField<IrBinder<IrDataType>> {
+impl fmt::Display for PatternField<IrBinder<FlatDataType>> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.pattern {
             Pattern::Binding(binder) => write!(f, "{}@{binder}", self.name.as_str()),
@@ -56,8 +48,6 @@ impl fmt::Display for PatternField<IrBinder<IrDataType>> {
     }
 }
 
-/// The pattern with each binding as its name and type, and a field that
-/// binds as the field name, an at sign and the binding.
 impl fmt::Display for IrPattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -83,8 +73,7 @@ impl fmt::Display for IrPattern {
 }
 
 impl IrPattern {
-    /// Apply `f` to the binder of each binding of the pattern.
-    pub fn for_each_binding(&self, f: &mut impl FnMut(&IrBinder<IrDataType>)) {
+    pub fn for_each_binding(&self, f: &mut impl FnMut(&IrBinder<FlatDataType>)) {
         match self {
             Pattern::Wildcard => {}
             Pattern::Binding(binder) => f(binder),
@@ -99,8 +88,6 @@ impl IrPattern {
         }
     }
 
-    /// Apply `f` to each binding of the pattern, to rewrite it, for example
-    /// into a wildcard.
     pub fn for_each_binding_mut(&mut self, f: &mut impl FnMut(&mut IrPattern)) {
         match self {
             Pattern::Wildcard => {}

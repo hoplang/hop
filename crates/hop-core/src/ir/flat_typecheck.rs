@@ -2,13 +2,13 @@ use crate::hop::typing::{
     ComparableType, Constructor, EquatableType, NumericType, Pattern, compile_arms,
 };
 use crate::ir::flat_program::{FlatBinding, FlatBlock, FlatFunction, FlatOp, FlatProgram};
+use crate::ir::flat_type::{FlatDataType, FlatSignature, FlatType, IrModifier};
+use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_match::{IrMatch, IrPattern};
-use crate::ir::ir_type::{IrDataType, IrModifier, IrSignature, IrType};
-use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 
@@ -134,7 +134,7 @@ fn try_all<T>(
 }
 
 struct Checker<'a> {
-    declarations: &'a IrTypeDeclarations,
+    declarations: &'a FlatTypeDeclarations,
     functions: &'a [FlatFunction],
     names: Vec<Option<Name<'a>>>,
     // The names bound in the blocks being checked, innermost last.
@@ -153,41 +153,41 @@ struct Name<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BoundType<'a> {
-    Data(&'a IrDataType),
-    Cell(&'a IrDataType),
-    Function(&'a IrSignature),
+    Data(&'a FlatDataType),
+    Cell(&'a FlatDataType),
+    Function(&'a FlatSignature),
     Html,
     ElementId,
 }
 
 impl<'a> BoundType<'a> {
-    fn of(typ: &'a IrType) -> Self {
+    fn of(typ: &'a FlatType) -> Self {
         match typ {
-            IrType::Data(data) => BoundType::Data(data),
-            IrType::Html => BoundType::Html,
-            IrType::Function(signature) => BoundType::Function(signature),
-            IrType::Cell(data) => BoundType::Cell(data),
-            IrType::ElementId => BoundType::ElementId,
+            FlatType::Data(data) => BoundType::Data(data),
+            FlatType::Html => BoundType::Html,
+            FlatType::Function(signature) => BoundType::Function(signature),
+            FlatType::Cell(data) => BoundType::Cell(data),
+            FlatType::ElementId => BoundType::ElementId,
         }
     }
 
-    fn is(self, typ: &IrType) -> bool {
+    fn is(self, typ: &FlatType) -> bool {
         self == BoundType::of(typ)
     }
 }
 
-fn is_well_formed(signature: &IrSignature) -> bool {
+fn is_well_formed(signature: &FlatSignature) -> bool {
     let parameters = signature
         .parameters
         .iter()
         .all(|parameter| match parameter {
-            IrType::Function(signature) => is_well_formed(signature),
+            FlatType::Function(signature) => is_well_formed(signature),
             _ => true,
         });
     let result = match *signature.result {
-        IrType::Html => signature.modifier == IrModifier::Render,
-        IrType::Data(_) => (signature.parameters.iter()).all(IrType::is_value_or_value_closure),
-        IrType::Function(_) | IrType::Cell(_) | IrType::ElementId => false,
+        FlatType::Html => signature.modifier == IrModifier::Render,
+        FlatType::Data(_) => (signature.parameters.iter()).all(FlatType::is_value_or_value_closure),
+        FlatType::Function(_) | FlatType::Cell(_) | FlatType::ElementId => false,
     };
     parameters && result
 }
@@ -245,7 +245,7 @@ impl<'a> Checker<'a> {
         Ok(bound.typ)
     }
 
-    fn data(&mut self, name: ValueId) -> Result<Option<&'a IrDataType>, FlatTypeError> {
+    fn data(&mut self, name: ValueId) -> Result<Option<&'a FlatDataType>, FlatTypeError> {
         Ok(match self.read(name)? {
             BoundType::Data(data) => Some(data),
             BoundType::Cell(_)
@@ -350,7 +350,7 @@ impl<'a> Checker<'a> {
             FlatOp::Mint => declared == BoundType::ElementId,
             FlatOp::CellWrite(cell, value) => match self.read(*cell)? {
                 BoundType::Cell(data) => {
-                    declared == BoundType::Data(&IrDataType::UNIT)
+                    declared == BoundType::Data(&FlatDataType::UNIT)
                         && self.read(*value)? == BoundType::Data(data)
                 }
                 _ => false,
@@ -360,9 +360,9 @@ impl<'a> Checker<'a> {
                 _ => false,
             },
             FlatOp::Text(_) => html,
-            FlatOp::Escape(name) => html && self.read(*name)?.is(&IrType::STRING),
+            FlatOp::Escape(name) => html && self.read(*name)?.is(&FlatType::STRING),
             FlatOp::Concat(parts) => {
-                html && try_all(parts, |part| Ok(self.read(*part)?.is(&IrType::HTML)))?
+                html && try_all(parts, |part| Ok(self.read(*part)?.is(&FlatType::HTML)))?
             }
             FlatOp::Element(element) => {
                 if self.read(element.identity)? != BoundType::ElementId {
@@ -370,8 +370,8 @@ impl<'a> Checker<'a> {
                 }
                 let attributes = try_all(element.attributes.values(), |attribute| {
                     Ok(match attribute {
-                        IrAttribute::Value(name) => self.read(*name)?.is(&IrType::STRING),
-                        IrAttribute::Presence(name) => self.read(*name)?.is(&IrType::BOOL),
+                        IrAttribute::Value(name) => self.read(*name)?.is(&FlatType::STRING),
+                        IrAttribute::Presence(name) => self.read(*name)?.is(&FlatType::BOOL),
                         IrAttribute::Constant(_) => true,
                     })
                 })?;
@@ -381,7 +381,7 @@ impl<'a> Checker<'a> {
                     };
                     if signature.modifier != IrModifier::Mut
                         || !signature.parameters.is_empty()
-                        || *signature.result != IrType::Data(IrDataType::UNIT)
+                        || *signature.result != FlatType::Data(FlatDataType::UNIT)
                     {
                         return Err(FlatTypeError::ClickNotHandler);
                     }
@@ -390,12 +390,12 @@ impl<'a> Checker<'a> {
                     (true, None) => true,
                     (true, Some(_)) => return Err(FlatTypeError::VoidElementWithChildren),
                     (false, None) => return Err(FlatTypeError::ElementWithoutChildren),
-                    (false, Some(children)) => self.read(children)?.is(&IrType::HTML),
+                    (false, Some(children)) => self.read(children)?.is(&FlatType::HTML),
                 };
                 html && attributes && children
             }
             FlatOp::For(for_) => {
-                let Some(IrDataType::Array(element)) = self.data(for_.array)? else {
+                let Some(FlatDataType::Array(element)) = self.data(for_.array)? else {
                     return Err(FlatTypeError::IllTypedBinding);
                 };
                 // The body runs once per element, so it reads no Html bound
@@ -412,7 +412,7 @@ impl<'a> Checker<'a> {
                         checker.scoped(|checker| {
                             checker.bindings(&key.bindings, false, IrModifier::Pure)?;
                             let typ = checker.read(key.result)?;
-                            if !typ.is(&IrType::INT) && !typ.is(&IrType::STRING) {
+                            if !typ.is(&FlatType::INT) && !typ.is(&FlatType::STRING) {
                                 return Err(FlatTypeError::KeyNotIntOrString);
                             }
                             Ok(())
@@ -493,7 +493,7 @@ impl<'a> Checker<'a> {
 
     fn lambda_parameters(
         &mut self,
-        parameters: &'a [IrBinder<IrType>],
+        parameters: &'a [IrBinder<FlatType>],
         signature: impl ExactSizeIterator<Item = BoundType<'a>>,
     ) -> Result<(), FlatTypeError> {
         let follows = parameters.len() == signature.len()
@@ -513,23 +513,24 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
-    fn data_op(&mut self, op: &IrDataOp, declared: &IrDataType) -> Result<bool, FlatTypeError> {
-        let mut all =
-            |names: &[ValueId], typ: IrType| try_all(names, |name| Ok(self.read(*name)?.is(&typ)));
+    fn data_op(&mut self, op: &IrDataOp, declared: &FlatDataType) -> Result<bool, FlatTypeError> {
+        let mut all = |names: &[ValueId], typ: FlatType| {
+            try_all(names, |name| Ok(self.read(*name)?.is(&typ)))
+        };
         let declared_data = Some(declared);
         Ok(match op {
-            IrDataOp::StringLiteral(_) => *declared == IrDataType::String,
-            IrDataOp::IntLiteral(_) => *declared == IrDataType::Int,
-            IrDataOp::FloatLiteral(_) => *declared == IrDataType::Float,
-            IrDataOp::BoolLiteral(_) => *declared == IrDataType::Bool,
+            IrDataOp::StringLiteral(_) => *declared == FlatDataType::String,
+            IrDataOp::IntLiteral(_) => *declared == FlatDataType::Int,
+            IrDataOp::FloatLiteral(_) => *declared == FlatDataType::Float,
+            IrDataOp::BoolLiteral(_) => *declared == FlatDataType::Bool,
             IrDataOp::Array(elements) => match declared_data {
-                Some(IrDataType::Array(element)) => {
+                Some(FlatDataType::Array(element)) => {
                     try_all(elements, |name| Ok(self.data(*name)? == Some(&**element)))?
                 }
                 _ => false,
             },
             IrDataOp::Tuple(elements) => match declared_data {
-                Some(IrDataType::Tuple(declared)) => {
+                Some(FlatDataType::Tuple(declared)) => {
                     elements.len() == declared.len()
                         && try_all(elements.iter().zip(declared), |(name, typ)| {
                             Ok(self.data(*name)? == Some(typ))
@@ -538,14 +539,14 @@ impl<'a> Checker<'a> {
                 _ => false,
             },
             IrDataOp::Record(fields) => match declared {
-                IrDataType::Record(name) => match self.declarations.record(name) {
+                FlatDataType::Record(name) => match self.declarations.record(name) {
                     Some(record) => self.fields(fields, &record.fields)?,
                     None => false,
                 },
                 _ => false,
             },
             IrDataOp::Enum(variant, fields) => match declared {
-                IrDataType::Enum(name) => {
+                FlatDataType::Enum(name) => {
                     match self.declarations.enumeration(name).and_then(|enumeration| {
                         enumeration.variants.iter().find(|v| v.name == *variant)
                     }) {
@@ -556,94 +557,94 @@ impl<'a> Checker<'a> {
                 _ => false,
             },
             IrDataOp::OptionSome(inner) => match declared_data {
-                Some(IrDataType::Option(element)) => self.data(*inner)? == Some(&**element),
+                Some(FlatDataType::Option(element)) => self.data(*inner)? == Some(&**element),
                 _ => false,
             },
-            IrDataOp::OptionNone => matches!(declared_data, Some(IrDataType::Option(_))),
+            IrDataOp::OptionNone => matches!(declared_data, Some(FlatDataType::Option(_))),
             IrDataOp::StringConcat(parts) => {
-                all(parts, IrType::STRING)? && *declared == IrDataType::String
+                all(parts, FlatType::STRING)? && *declared == FlatDataType::String
             }
             IrDataOp::NumericAdd(typ, left, right)
             | IrDataOp::NumericSubtract(typ, left, right)
             | IrDataOp::NumericMultiply(typ, left, right) => {
                 let typ = match typ {
-                    NumericType::Int => IrDataType::Int,
-                    NumericType::Float => IrDataType::Float,
+                    NumericType::Int => FlatDataType::Int,
+                    NumericType::Float => FlatDataType::Float,
                 };
-                all(&[*left, *right], IrType::Data(typ.clone()))? && *declared == typ
+                all(&[*left, *right], FlatType::Data(typ.clone()))? && *declared == typ
             }
             IrDataOp::Equals(typ, left, right) => {
                 let typ = match typ {
-                    EquatableType::String => IrType::STRING,
-                    EquatableType::Bool => IrType::BOOL,
-                    EquatableType::Int => IrType::INT,
-                    EquatableType::Float => IrType::FLOAT,
+                    EquatableType::String => FlatType::STRING,
+                    EquatableType::Bool => FlatType::BOOL,
+                    EquatableType::Int => FlatType::INT,
+                    EquatableType::Float => FlatType::FLOAT,
                 };
-                all(&[*left, *right], typ)? && *declared == IrDataType::Bool
+                all(&[*left, *right], typ)? && *declared == FlatDataType::Bool
             }
             IrDataOp::LessThan(typ, left, right) | IrDataOp::LessThanOrEqual(typ, left, right) => {
                 let typ = match typ {
-                    ComparableType::Int => IrType::INT,
-                    ComparableType::Float => IrType::FLOAT,
+                    ComparableType::Int => FlatType::INT,
+                    ComparableType::Float => FlatType::FLOAT,
                 };
-                all(&[*left, *right], typ)? && *declared == IrDataType::Bool
+                all(&[*left, *right], typ)? && *declared == FlatDataType::Bool
             }
             IrDataOp::ArrayFromRange(start, end) => {
-                all(&[*start, *end], IrType::INT)?
-                    && matches!(declared_data, Some(IrDataType::Array(element)) if **element == IrDataType::Int)
+                all(&[*start, *end], FlatType::INT)?
+                    && matches!(declared_data, Some(FlatDataType::Array(element)) if **element == FlatDataType::Int)
             }
             IrDataOp::NumericNegation(typ, operand) => {
                 let typ = match typ {
-                    NumericType::Int => IrDataType::Int,
-                    NumericType::Float => IrDataType::Float,
+                    NumericType::Int => FlatDataType::Int,
+                    NumericType::Float => FlatDataType::Float,
                 };
-                all(&[*operand], IrType::Data(typ.clone()))? && *declared == typ
+                all(&[*operand], FlatType::Data(typ.clone()))? && *declared == typ
             }
             IrDataOp::BoolNegation(operand) => {
-                all(&[*operand], IrType::BOOL)? && *declared == IrDataType::Bool
+                all(&[*operand], FlatType::BOOL)? && *declared == FlatDataType::Bool
             }
             IrDataOp::ArrayLength(operand) => {
-                matches!(self.data(*operand)?, Some(IrDataType::Array(_)))
-                    && *declared == IrDataType::Int
+                matches!(self.data(*operand)?, Some(FlatDataType::Array(_)))
+                    && *declared == FlatDataType::Int
             }
             IrDataOp::ArrayIsEmpty(operand) => {
-                matches!(self.data(*operand)?, Some(IrDataType::Array(_)))
-                    && *declared == IrDataType::Bool
+                matches!(self.data(*operand)?, Some(FlatDataType::Array(_)))
+                    && *declared == FlatDataType::Bool
             }
             IrDataOp::ArrayGet(array, index) => {
-                all(&[*index], IrType::INT)?
+                all(&[*index], FlatType::INT)?
                     && match (self.data(*array)?, declared_data) {
-                        (Some(IrDataType::Array(element)), Some(IrDataType::Option(inner))) => {
+                        (Some(FlatDataType::Array(element)), Some(FlatDataType::Option(inner))) => {
                             element == inner
                         }
                         _ => false,
                     }
             }
             IrDataOp::ArrayEnumerate(operand) => match (self.data(*operand)?, declared_data) {
-                (Some(IrDataType::Array(element)), Some(IrDataType::Array(pair))) => {
-                    matches!(pair.as_ref(), IrDataType::Tuple(types)
-                            if matches!(types.as_slice(), [IrDataType::Int, t] if t == element.as_ref()))
+                (Some(FlatDataType::Array(element)), Some(FlatDataType::Array(pair))) => {
+                    matches!(pair.as_ref(), FlatDataType::Tuple(types)
+                            if matches!(types.as_slice(), [FlatDataType::Int, t] if t == element.as_ref()))
                 }
                 _ => false,
             },
             IrDataOp::StringIsEmpty(operand) => {
-                all(&[*operand], IrType::STRING)? && *declared == IrDataType::Bool
+                all(&[*operand], FlatType::STRING)? && *declared == FlatDataType::Bool
             }
             IrDataOp::OptionIsSome(operand) | IrDataOp::OptionIsNone(operand) => {
-                matches!(self.data(*operand)?, Some(IrDataType::Option(_)))
-                    && *declared == IrDataType::Bool
+                matches!(self.data(*operand)?, Some(FlatDataType::Option(_)))
+                    && *declared == FlatDataType::Bool
             }
             IrDataOp::IntToString(operand) => {
-                all(&[*operand], IrType::INT)? && *declared == IrDataType::String
+                all(&[*operand], FlatType::INT)? && *declared == FlatDataType::String
             }
             IrDataOp::FloatToInt(operand) => {
-                all(&[*operand], IrType::FLOAT)? && *declared == IrDataType::Int
+                all(&[*operand], FlatType::FLOAT)? && *declared == FlatDataType::Int
             }
             IrDataOp::IntToFloat(operand) => {
-                all(&[*operand], IrType::INT)? && *declared == IrDataType::Float
+                all(&[*operand], FlatType::INT)? && *declared == FlatDataType::Float
             }
             IrDataOp::FieldAccess(object, field) => match self.data(*object)? {
-                Some(IrDataType::Record(name)) => self
+                Some(FlatDataType::Record(name)) => self
                     .declarations
                     .record(name)
                     .and_then(|record| record.fields.iter().find(|f| f.name == *field))
@@ -651,7 +652,7 @@ impl<'a> Checker<'a> {
                 _ => false,
             },
             IrDataOp::TupleIndex(tuple, index) => match self.data(*tuple)? {
-                Some(IrDataType::Tuple(elements)) => elements.get(*index) == declared_data,
+                Some(FlatDataType::Tuple(elements)) => elements.get(*index) == declared_data,
                 _ => false,
             },
         })
@@ -660,7 +661,7 @@ impl<'a> Checker<'a> {
     fn fields(
         &mut self,
         given: &[(FieldName, ValueId)],
-        declared: &[IrField],
+        declared: &[FlatField],
     ) -> Result<bool, FlatTypeError> {
         Ok(given.len() == declared.len()
             && try_all(declared, |field| {
@@ -675,7 +676,7 @@ impl<'a> Checker<'a> {
             })?)
     }
 
-    fn arms<B>(&self, match_: &IrMatch<B>, subject: &IrDataType) -> Result<(), FlatTypeError> {
+    fn arms<B>(&self, match_: &IrMatch<B>, subject: &FlatDataType) -> Result<(), FlatTypeError> {
         let patterns: Vec<IrPattern> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
         let (_, reachable, missing) = compile_arms(self.declarations, &patterns, subject.clone());
         if !missing.is_empty() {
@@ -690,7 +691,7 @@ impl<'a> Checker<'a> {
     fn data_pattern(
         &mut self,
         pattern: &'a IrPattern,
-        typ: &IrDataType,
+        typ: &FlatDataType,
     ) -> Result<(), FlatTypeError> {
         match pattern {
             Pattern::Wildcard => {}
@@ -706,16 +707,16 @@ impl<'a> Checker<'a> {
                 fields,
             } => {
                 let declarations = self.declarations;
-                let resolved: Option<(&[IrDataType], &[IrField])> = match (constructor, typ) {
-                    (Constructor::BoolTrue | Constructor::BoolFalse, IrDataType::Bool) => {
+                let resolved: Option<(&[FlatDataType], &[FlatField])> = match (constructor, typ) {
+                    (Constructor::BoolTrue | Constructor::BoolFalse, FlatDataType::Bool) => {
                         Some((&[], &[]))
                     }
-                    (Constructor::OptionNone, IrDataType::Option(_)) => Some((&[], &[])),
-                    (Constructor::OptionSome, IrDataType::Option(inner)) => {
+                    (Constructor::OptionNone, FlatDataType::Option(_)) => Some((&[], &[])),
+                    (Constructor::OptionSome, FlatDataType::Option(inner)) => {
                         Some((std::slice::from_ref(&**inner), &[]))
                     }
-                    (Constructor::Tuple, IrDataType::Tuple(elements)) => Some((elements, &[])),
-                    (Constructor::Record { type_name }, IrDataType::Record(name))
+                    (Constructor::Tuple, FlatDataType::Tuple(elements)) => Some((elements, &[])),
+                    (Constructor::Record { type_name }, FlatDataType::Record(name))
                         if type_name == name =>
                     {
                         declarations
@@ -727,7 +728,7 @@ impl<'a> Checker<'a> {
                             type_name,
                             variant_name,
                         },
-                        IrDataType::Enum(name),
+                        FlatDataType::Enum(name),
                     ) if type_name == name => declarations
                         .enumeration(name)
                         .and_then(|enumeration| {
@@ -771,8 +772,8 @@ mod tests {
     use super::FlatTypeError;
     use crate::hop::typing::{ComparableType, EquatableType, NumericType, Ty};
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
-    use crate::ir::ir_type::IrType;
-    use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
+    use crate::ir::flat_type::FlatType;
+    use crate::ir::flat_type_declarations_builder::FlatTypeDeclarationsBuilder;
 
     #[test]
     fn should_reject_a_closure_that_reads_html_bound_outside_it() {
@@ -847,12 +848,12 @@ mod tests {
             .entrypoint("Test", [("double", Ty::Bool)], |t| {
                 let scale = t.match_(t.param("double"), |m| {
                     m.arm(Pat::True, |t, _| {
-                        t.lambda([IrType::INT], |t, params| {
+                        t.lambda([FlatType::INT], |t, params| {
                             t.add(NumericType::Int, params[0], params[0])
                         })
                     });
                     m.arm(Pat::False, |t, _| {
-                        t.lambda([IrType::INT], |_, params| params[0])
+                        t.lambda([FlatType::INT], |_, params| params[0])
                     });
                 });
                 let scaled = t.apply(scale, [t.int(1)]);
@@ -867,7 +868,7 @@ mod tests {
     fn should_reject_an_application_with_the_wrong_arguments() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let double = t.lambda([IrType::INT], |t, params| {
+                let double = t.lambda([FlatType::INT], |t, params| {
                     t.add(NumericType::Int, params[0], params[0])
                 });
                 let doubled = t.apply(double, [t.str("one")]);
@@ -1008,7 +1009,7 @@ mod tests {
 
     #[test]
     fn should_reject_a_pattern_that_names_a_field_twice() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .record("User", [("name", Ty::String)])
             .build();
         let error = FlatProgramBuilder::with_types(types)
@@ -1100,7 +1101,7 @@ mod tests {
         let param = Cell::new(None);
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let id = t.lambda([IrType::INT], |_, params| {
+                let id = t.lambda([FlatType::INT], |_, params| {
                     param.set(Some(params[0]));
                     params[0]
                 });
@@ -1223,7 +1224,7 @@ mod tests {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
-                let set = t.mut_lambda([IrType::INT], |t, params| t.cell_write(count, params[0]));
+                let set = t.mut_lambda([FlatType::INT], |t, params| t.cell_write(count, params[0]));
                 t.element_on_click(t.mint(), "button", vec![], set, Some(t.text("x")))
             })
             .build()
@@ -1362,7 +1363,7 @@ mod tests {
     fn should_reject_a_lambda_that_takes_an_identity() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let row = t.render_lambda([IrType::ElementId], |t, params| {
+                let row = t.render_lambda([FlatType::ElementId], |t, params| {
                     t.element(params[0], "li", vec![], Some(t.text("x")))
                 });
                 t.apply(row, [t.mint()])
@@ -1580,7 +1581,7 @@ mod tests {
     fn should_reject_a_closure_that_returns_a_value_and_takes_html() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                t.lambda([IrType::HTML], |t, _| t.int(0));
+                t.lambda([FlatType::HTML], |t, _| t.int(0));
                 t.text("x")
             })
             .build()

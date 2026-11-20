@@ -2,7 +2,6 @@ use std::fmt;
 
 use crate::ir::ir_binder::IrBinder;
 
-/// Binds the result of an op to a name.
 #[derive(Debug, Clone)]
 pub struct IrBinding<Type, Op> {
     pub binder: IrBinder<Type>,

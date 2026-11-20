@@ -3,7 +3,6 @@ use std::fmt;
 use crate::ir::function_id::FunctionId;
 use crate::symbols::function_name::FunctionName;
 
-/// A function in the IR.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IrFunction {
     pub id: FunctionId,

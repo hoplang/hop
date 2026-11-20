@@ -1,6 +1,8 @@
 use crate::hop::typing::Ty;
-use crate::ir::ir_type::{IrDataType, IrModifier, IrType};
-use crate::ir::ir_type_declarations::{IrEnum, IrField, IrRecord, IrTypeDeclarations, IrVariant};
+use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
+use crate::ir::flat_type_declarations::{
+    FlatEnum, FlatField, FlatRecord, FlatTypeDeclarations, FlatVariant,
+};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
@@ -15,12 +17,12 @@ fn field_name(name: &str) -> FieldName {
 type Fields = Vec<(String, Ty)>;
 
 #[derive(Clone, Default)]
-pub struct IrTypeDeclarationsBuilder {
+pub struct FlatTypeDeclarationsBuilder {
     records: Vec<(String, Fields)>,
     enums: Vec<(String, Vec<(String, Fields)>)>,
 }
 
-impl IrTypeDeclarationsBuilder {
+impl FlatTypeDeclarationsBuilder {
     pub fn new() -> Self {
         Self::default()
     }
@@ -57,7 +59,7 @@ impl IrTypeDeclarationsBuilder {
         self
     }
 
-    pub fn build(self) -> IrTypeDeclarations {
+    pub fn build(self) -> FlatTypeDeclarations {
         let mut names: Vec<&str> = self
             .records
             .iter()
@@ -76,17 +78,17 @@ impl IrTypeDeclarationsBuilder {
         let fields = |fields: Fields| {
             fields
                 .into_iter()
-                .map(|(name, ty)| IrField {
+                .map(|(name, ty)| FlatField {
                     name: field_name(&name),
                     typ: data_type(ty, &records, &enums),
                 })
                 .collect()
         };
-        let mut declarations = IrTypeDeclarations {
+        let mut declarations = FlatTypeDeclarations {
             records: self
                 .records
                 .into_iter()
-                .map(|(name, declared)| IrRecord {
+                .map(|(name, declared)| FlatRecord {
                     name: type_name(&name),
                     fields: fields(declared),
                 })
@@ -94,11 +96,11 @@ impl IrTypeDeclarationsBuilder {
             enums: self
                 .enums
                 .into_iter()
-                .map(|(name, variants)| IrEnum {
+                .map(|(name, variants)| FlatEnum {
                     name: type_name(&name),
                     variants: variants
                         .into_iter()
-                        .map(|(variant, declared)| IrVariant {
+                        .map(|(variant, declared)| FlatVariant {
                             name: type_name(&variant),
                             fields: fields(declared),
                         })
@@ -116,8 +118,8 @@ impl IrTypeDeclarationsBuilder {
     }
 }
 
-impl IrTypeDeclarations {
-    pub fn ty(&self, ty: Ty) -> IrType {
+impl FlatTypeDeclarations {
+    pub fn ty(&self, ty: Ty) -> FlatType {
         let records: Vec<String> = self
             .records
             .iter()
@@ -128,14 +130,14 @@ impl IrTypeDeclarations {
             .iter()
             .map(|enumeration| enumeration.name.as_str().to_string())
             .collect();
-        ir_type(ty, &records, &enums)
+        flat_type(ty, &records, &enums)
     }
 }
 
-fn ir_type(ty: Ty, records: &[String], enums: &[String]) -> IrType {
+fn flat_type(ty: Ty, records: &[String], enums: &[String]) -> FlatType {
     match ty {
-        Ty::Html => IrType::Html,
-        Ty::Cell(payload) => IrType::Cell(data_type(*payload, records, enums)),
+        Ty::Html => FlatType::Html,
+        Ty::Cell(payload) => FlatType::Cell(data_type(*payload, records, enums)),
         Ty::Function {
             modifier,
             parameters,
@@ -143,34 +145,34 @@ fn ir_type(ty: Ty, records: &[String], enums: &[String]) -> IrType {
         } => {
             let parameters = parameters
                 .into_iter()
-                .map(|parameter| ir_type(parameter, records, enums));
-            let result = ir_type(*result, records, enums);
-            IrType::function(IrModifier::from(modifier), parameters, result)
+                .map(|parameter| flat_type(parameter, records, enums));
+            let result = flat_type(*result, records, enums);
+            FlatType::function(IrModifier::from(modifier), parameters, result)
         }
-        ty => IrType::Data(data_type(ty, records, enums)),
+        ty => FlatType::Data(data_type(ty, records, enums)),
     }
 }
 
-fn data_type(ty: Ty, records: &[String], enums: &[String]) -> IrDataType {
+fn data_type(ty: Ty, records: &[String], enums: &[String]) -> FlatDataType {
     let element = |ty: Box<Ty>| Box::new(data_type(*ty, records, enums));
     match ty {
-        Ty::Int => IrDataType::Int,
-        Ty::String => IrDataType::String,
-        Ty::Bool => IrDataType::Bool,
-        Ty::Float => IrDataType::Float,
+        Ty::Int => FlatDataType::Int,
+        Ty::String => FlatDataType::String,
+        Ty::Bool => FlatDataType::Bool,
+        Ty::Float => FlatDataType::Float,
         Ty::Html => panic!("Html is not a data type"),
         Ty::Cell(_) => panic!("a cell is not a data type"),
         Ty::Function { .. } => panic!("a function type is not a data type"),
-        Ty::Array(ty) => IrDataType::Array(element(ty)),
-        Ty::Option(ty) => IrDataType::Option(element(ty)),
-        Ty::Tuple(elements) => IrDataType::Tuple(
+        Ty::Array(ty) => FlatDataType::Array(element(ty)),
+        Ty::Option(ty) => FlatDataType::Option(element(ty)),
+        Ty::Tuple(elements) => FlatDataType::Tuple(
             elements
                 .into_iter()
                 .map(|ty| data_type(ty, records, enums))
                 .collect(),
         ),
-        Ty::Named(name) if records.contains(&name) => IrDataType::Record(type_name(&name)),
-        Ty::Named(name) if enums.contains(&name) => IrDataType::Enum(type_name(&name)),
+        Ty::Named(name) if records.contains(&name) => FlatDataType::Record(type_name(&name)),
+        Ty::Named(name) if enums.contains(&name) => FlatDataType::Enum(type_name(&name)),
         Ty::Named(name) => panic!("type `{name}` is not declared"),
     }
 }

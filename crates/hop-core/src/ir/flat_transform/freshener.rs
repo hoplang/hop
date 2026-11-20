@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use crate::hop::typing::Pattern;
 use crate::ir::flat_program::{FlatBlock, FlatFor, FlatOp};
+use crate::ir::flat_type::FlatType;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
-use crate::ir::ir_type::IrType;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// Copies a block with fresh names, so the copy shares none of the names
@@ -81,8 +81,8 @@ impl<'a> Freshener<'a> {
 
     fn freshen_binding(
         &mut self,
-        binding: &IrBinding<IrType, FlatOp>,
-    ) -> IrBinding<IrType, FlatOp> {
+        binding: &IrBinding<FlatType, FlatOp>,
+    ) -> IrBinding<FlatType, FlatOp> {
         let op = match &binding.op {
             FlatOp::Match(match_) => FlatOp::Match(self.freshen_match(match_)),
             FlatOp::Cell(initial) => FlatOp::Cell(self.freshen_block(initial)),

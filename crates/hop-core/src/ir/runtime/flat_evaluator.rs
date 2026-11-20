@@ -5,12 +5,12 @@ use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{FlatBinding, FlatBlock, FlatFor, FlatFunction, FlatOp, FlatProgram};
+use crate::ir::flat_type::{FlatType, IrModifier};
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_page::IrPage;
-use crate::ir::ir_type::{IrModifier, IrType};
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::state::{
@@ -458,7 +458,7 @@ fn evaluate_op<'a>(
         FlatOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
             lambda,
             modifier: match &binding.binder.typ {
-                IrType::Function(signature) => signature.modifier,
+                FlatType::Function(signature) => signature.modifier,
                 typ => unreachable!("a lambda binds a closure, not {typ}"),
             },
             env: env.freeze(),
@@ -661,8 +661,8 @@ mod tests {
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::flat_type_declarations_builder::FlatTypeDeclarationsBuilder;
     use crate::ir::index_vec::Idx;
-    use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::clicks::clicks;
     use crate::ir::runtime::value_builder::ValueBuilder;
     use crate::symbols::function_name::FunctionName;
@@ -832,7 +832,7 @@ mod tests {
 
     #[test]
     fn should_select_an_enum_arm_and_bind_its_fields() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .enum_(
                 "Shape",
                 [("Dot", vec![]), ("Circle", vec![("radius", Ty::Int)])],
@@ -913,7 +913,7 @@ mod tests {
 
     #[test]
     fn should_hold_an_empty_tuple_in_a_record_field() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .record("Holder", [("nothing", Ty::tuple([]))])
             .build();
         check(
@@ -1366,7 +1366,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
-                    let counter = t.render_lambda([IrType::INT], |t, params| {
+                    let counter = t.render_lambda([FlatType::INT], |t, params| {
                         t.cell_read(t.cell(|_| params[0]))
                     });
                     let one = t.apply(counter, [t.int(1)]);
@@ -1415,7 +1415,7 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("base", Ty::Int)], |t| {
                     let base = t.param("base");
-                    let add = t.lambda([IrType::INT], |t, params| {
+                    let add = t.lambda([FlatType::INT], |t, params| {
                         t.add(NumericType::Int, params[0], base)
                     });
                     let one = t.apply(add, [t.int(1)]);
@@ -1476,7 +1476,7 @@ mod tests {
                 )
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     let prefix = t.str("- ");
-                    let row = t.render_lambda([IrType::STRING], |t, params| {
+                    let row = t.render_lambda([FlatType::STRING], |t, params| {
                         let text = t.html_concat([t.escape(prefix), t.escape(params[0])]);
                         t.element(t.mint(), "li", [], Some(text))
                     });
@@ -1567,7 +1567,7 @@ mod tests {
 
     #[test]
     fn should_error_when_a_function_calls_itself_on_copies_of_its_argument() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .enum_(
                 "Tree",
                 [

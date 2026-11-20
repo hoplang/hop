@@ -1,7 +1,6 @@
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::flat_transform;
 
-/// Optimize the program.
 pub fn optimize_flat(program: FlatProgram) -> FlatProgram {
     let program = flat_transform::inline_function_calls(program);
     let program = flat_transform::perform_partial_evaluation(program);
@@ -17,8 +16,8 @@ mod tests {
     use crate::ir::entrypoint_id::EntrypointId;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::flat_type::FlatType;
     use crate::ir::flat_typecheck;
-    use crate::ir::ir_type::IrType;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::page_runtime::PageRuntime;
     use crate::ir::runtime::value::Value;
@@ -145,7 +144,7 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
-                    let row = t.render_lambda([IrType::STRING], |t, params| {
+                    let row = t.render_lambda([FlatType::STRING], |t, params| {
                         t.element(t.mint(), "li", [], Some(t.escape(params[0])))
                     });
                     t.call("Rows", [t.param("items"), row])

@@ -7,6 +7,7 @@ use crate::ir::flat_program::{
     FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatLambda, FlatOp, FlatProgram,
 };
 use crate::ir::flat_transform::freshener::Freshener;
+use crate::ir::flat_type::FlatType;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
@@ -14,7 +15,6 @@ use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
-use crate::ir::ir_type::IrType;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::field_name::FieldName;
 
@@ -191,7 +191,7 @@ impl<'a> Evaluator<'a> {
         out.push(IrBinding {
             binder: IrBinder {
                 var,
-                typ: IrType::HTML,
+                typ: FlatType::HTML,
             },
             op: FlatOp::Concat(concat.parts.clone()),
         });
@@ -517,7 +517,7 @@ impl<'a> Evaluator<'a> {
                             out.push(IrBinding {
                                 binder: IrBinder {
                                     var: name,
-                                    typ: IrType::STRING,
+                                    typ: FlatType::STRING,
                                 },
                                 op: FlatOp::Data(op),
                             });
@@ -698,9 +698,9 @@ mod tests {
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::flat_type::FlatType;
+    use crate::ir::flat_type_declarations_builder::FlatTypeDeclarationsBuilder;
     use crate::ir::flat_typecheck;
-    use crate::ir::ir_type::IrType;
-    use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use crate::root_contained_file_path::RootContainedFilePath;
@@ -782,7 +782,7 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("n", Ty::Int)], |t| {
                     let ten = t.int(10);
-                    let add = t.lambda([IrType::INT], |t, params| {
+                    let add = t.lambda([FlatType::INT], |t, params| {
                         t.add(NumericType::Int, params[0], ten)
                     });
                     let known = t.apply(add, [t.int(1)]);
@@ -1101,7 +1101,7 @@ mod tests {
 
     #[test]
     fn should_read_a_field_of_a_record_constructor() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .record("Point", [("x", Ty::Int), ("y", Ty::Int)])
             .build();
         check(
@@ -1426,7 +1426,7 @@ mod tests {
 
     #[test]
     fn should_select_an_enum_arm_and_bind_its_fields_to_the_constructor_operands() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .enum_(
                 "Shape",
                 [("Dot", vec![]), ("Circle", vec![("radius", Ty::Int)])],

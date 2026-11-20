@@ -9,9 +9,8 @@ use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::IrSwitch;
-use crate::ir::ir_type::IrType;
-use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::ValueId;
+use crate::ir::writer_type::{WriterResult, WriterType, WriterTypeDeclarations};
 use crate::symbols::type_name::TypeName;
 
 use super::ir_parameter::IrParameter;
@@ -27,49 +26,34 @@ use super::ir_parameter::IrParameter;
 /// an arm of a match, so a name identifies its binding.
 #[derive(Debug)]
 pub struct WriterProgram {
-    pub types: IrTypeDeclarations,
+    pub types: WriterTypeDeclarations,
     pub pages: Vec<WriterPageDeclaration>,
-    pub functions: Vec<IrFunctionDeclaration<IrType, IrType, WriterFunctionBody>>,
+    pub functions: Vec<IrFunctionDeclaration<WriterType, WriterResult, WriterFunctionBody>>,
 }
 
 #[derive(Debug)]
 pub struct WriterPageDeclaration {
     pub name: TypeName,
-    pub parameters: Vec<IrParameter<IrType>>,
+    pub parameters: Vec<IrParameter<WriterType>>,
     pub body: Vec<WriterStmt>,
 }
 
 #[derive(Debug)]
 pub enum WriterFunctionBody {
-    /// Destination passing: writes to the ambient buffer. A call site is a
-    /// WriteFunction statement.
     Writes(Vec<WriterStmt>),
-    /// Value returning. A call site is a Call value.
     Returns(WriterBlock),
 }
 
-/// Bindings followed by the name of the result: a value function body or a
-/// match arm in value position.
-pub type WriterBlock = IrBlock<IrBinding<IrType, WriterOp>>;
+pub type WriterBlock = IrBlock<IrBinding<WriterType, WriterOp>>;
 
-/// A statement. Statements write to the ambient buffer, in order, or bind
-/// a value for the statements after them.
 #[derive(Debug)]
 pub enum WriterStmt {
-    Let(IrBinding<IrType, WriterOp>),
-    /// Write a constant string, unescaped.
+    Let(IrBinding<WriterType, WriterOp>),
     Write(String),
-    /// Write a String name, escaped.
     WriteString(ValueId),
-    /// Invoke an Html function, which writes to the same buffer. The
-    /// arguments follow the function's parameters, one for each.
     WriteFunction(IrFunction, Vec<ValueId>),
-    // Applies a closure that renders Html, which writes to the same buffer
-    // as an Html function does.
     WriteApply(ValueId, Vec<ValueId>),
-    /// Run the body once per element of the array, in order.
     HtmlFor(IrFor<Vec<WriterStmt>>),
-    /// Run the arm that matches. Matching is exhaustive.
     Match(IrSwitch<Vec<WriterStmt>>),
 }
 
@@ -77,16 +61,11 @@ pub enum WriterStmt {
 pub enum WriterOp {
     Data(IrDataOp),
     Call(IrFunction, Vec<ValueId>),
-    /// A match over a value that is not Html. Each arm produces the value.
     Match(IrSwitch<WriterBlock>),
-    // A closure whose body is that of a function that writes or returns,
-    // as it renders Html or computes a value.
-    Lambda(IrLambda<IrType, WriterFunctionBody>),
+    Lambda(IrLambda<WriterType, WriterFunctionBody>),
     Apply(ValueId, Vec<ValueId>),
 }
 
-/// Each statement on a line of its own, each starting with a line break,
-/// so an empty list writes nothing.
 fn write_stmts(stmts: &[WriterStmt], w: &mut dyn Write) -> fmt::Result {
     for stmt in stmts {
         write!(w, "\n{stmt}")?;
@@ -94,8 +73,6 @@ fn write_stmts(stmts: &[WriterStmt], w: &mut dyn Write) -> fmt::Result {
     Ok(())
 }
 
-/// An HtmlFor, a Match or a let holding a Match or a Lambda spans lines,
-/// every other statement is one line.
 impl fmt::Display for WriterStmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -114,7 +91,6 @@ impl fmt::Display for WriterStmt {
     }
 }
 
-/// A Match or a Lambda spans lines, every other op is one line.
 impl fmt::Display for WriterOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -128,7 +104,6 @@ impl fmt::Display for WriterOp {
 }
 
 impl WriterFunctionBody {
-    /// Starts with a line break.
     fn write(&self, w: &mut dyn Write) -> fmt::Result {
         match self {
             WriterFunctionBody::Writes(statements) => write_stmts(statements, w),

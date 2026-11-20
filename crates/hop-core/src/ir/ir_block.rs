@@ -2,7 +2,6 @@ use std::fmt;
 
 use crate::ir::value_id::ValueId;
 
-/// Bindings in order, followed by the name of the block's result.
 #[derive(Debug, Clone)]
 pub struct IrBlock<Binding> {
     pub bindings: Vec<Binding>,

@@ -39,8 +39,8 @@ mod tests {
     use crate::hop::typing::{NumericType, Ty};
     use crate::ir::flat_program_builder::FlatProgramBuilder;
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::flat_type::IrModifier;
     use crate::ir::flat_typecheck;
-    use crate::ir::ir_type::IrModifier;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
 

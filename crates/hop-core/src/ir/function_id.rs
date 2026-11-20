@@ -1,9 +1,5 @@
 use std::fmt;
 
-/// Identity of a function in the IR.
-///
-/// Every declaration has its own unique FunctionId. Equal FunctionIds mean the
-/// same function.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FunctionId(usize);
 

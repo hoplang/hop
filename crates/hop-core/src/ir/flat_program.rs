@@ -3,6 +3,8 @@ use std::fmt::{self, Write};
 use crate::display::{Indent, join};
 use crate::document::CheapString;
 use crate::ir::entrypoint_id::EntrypointId;
+use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
+use crate::ir::flat_type_declarations::FlatTypeDeclarations;
 use crate::ir::index_vec::IndexVec;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
@@ -14,14 +16,12 @@ use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_parameter::IrParameter;
-use crate::ir::ir_type::{IrDataType, IrModifier, IrType};
-use crate::ir::ir_type_declarations::IrTypeDeclarations;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::function_name::FunctionName;
 
 #[derive(Debug, Clone)]
 pub struct FlatProgram {
-    pub types: IrTypeDeclarations,
+    pub types: FlatTypeDeclarations,
     pub functions: Vec<FlatFunction>,
     pub entrypoints: IndexVec<EntrypointId, FlatEntrypoint>,
     pub value_ids: ValueIdCounter,
@@ -30,7 +30,7 @@ pub struct FlatProgram {
 #[derive(Debug, Clone)]
 pub struct FlatEntrypoint {
     pub name: FunctionName,
-    pub parameters: Vec<IrParameter<IrDataType>>,
+    pub parameters: Vec<IrParameter<FlatDataType>>,
     pub body: FlatBlock,
 }
 
@@ -38,14 +38,14 @@ pub struct FlatEntrypoint {
 pub struct FlatFunction {
     pub function: IrFunction,
     pub modifier: IrModifier,
-    pub parameters: Vec<IrParameter<IrType>>,
-    pub return_type: IrType,
+    pub parameters: Vec<IrParameter<FlatType>>,
+    pub return_type: FlatType,
     pub body: FlatBlock,
 }
 
 pub type FlatBlock = IrBlock<FlatBinding>;
-pub type FlatBinding = IrBinding<IrType, FlatOp>;
-pub type FlatLambda = IrLambda<IrType, FlatBlock>;
+pub type FlatBinding = IrBinding<FlatType, FlatOp>;
+pub type FlatLambda = IrLambda<FlatType, FlatBlock>;
 
 #[derive(Debug, Clone)]
 pub enum FlatOp {
@@ -86,7 +86,7 @@ pub enum FlatOp {
 
 #[derive(Debug, Clone)]
 pub struct FlatFor {
-    pub var: Option<IrBinder<IrDataType>>,
+    pub var: Option<IrBinder<FlatDataType>>,
     pub array: ValueId,
     pub key: Option<FlatBlock>,
     pub body: FlatBlock,

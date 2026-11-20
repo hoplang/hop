@@ -218,9 +218,9 @@ mod tests {
     use crate::hop::typing::{ComparableType, NumericType, Ty};
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::flat_type::FlatType;
+    use crate::ir::flat_type::IrModifier;
     use crate::ir::flat_typecheck;
-    use crate::ir::ir_type::IrModifier;
-    use crate::ir::ir_type::IrType;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use expect_test::{Expect, expect};
@@ -282,13 +282,13 @@ mod tests {
                     Ty::Int,
                     |t| {
                         let f = t.param("f");
-                        let again = t.lambda([IrType::INT], |t, params| t.apply(f, [params[0]]));
+                        let again = t.lambda([FlatType::INT], |t, params| t.apply(f, [params[0]]));
                         t.apply(again, [t.apply(f, [t.param("x")])])
                     },
                 )
                 .entrypoint("Test", [("n", Ty::Int)], |t| {
                     let n = t.param("n");
-                    let add = t.lambda([IrType::INT], |t, params| {
+                    let add = t.lambda([FlatType::INT], |t, params| {
                         t.add(NumericType::Int, params[0], n)
                     });
                     let twice = t.call("Twice", [add, t.int(1)]);

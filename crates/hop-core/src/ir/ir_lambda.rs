@@ -10,8 +10,6 @@ pub struct IrLambda<Param, Body> {
 }
 
 impl<Param: fmt::Display, Body> IrLambda<Param, Body> {
-    /// The parameters, then the body, which starts with a line break and is
-    /// indented.
     pub fn write(
         &self,
         w: &mut dyn Write,

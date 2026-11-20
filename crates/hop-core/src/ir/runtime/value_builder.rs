@@ -1,15 +1,15 @@
-use crate::ir::ir_type_declarations::IrTypeDeclarations;
+use crate::ir::flat_type_declarations::FlatTypeDeclarations;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::value::Value;
 use crate::symbols::{field_name::FieldName, type_name::TypeName};
 use std::rc::Rc;
 
 pub struct ValueBuilder<'a> {
-    types: &'a IrTypeDeclarations,
+    types: &'a FlatTypeDeclarations,
 }
 
 impl<'a> ValueBuilder<'a> {
-    pub fn new(types: &'a IrTypeDeclarations) -> Self {
+    pub fn new(types: &'a FlatTypeDeclarations) -> Self {
         ValueBuilder { types }
     }
 

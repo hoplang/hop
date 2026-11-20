@@ -4,10 +4,10 @@ use crate::ir::flat_program::FlatProgram;
 use crate::ir::flat_program_builder::{
     DeclaredFunction, FlatBlockBuilder, FlatProgramBuilder, Pat,
 };
+use crate::ir::flat_type::{FlatDataType, FlatSignature, FlatType, IrModifier};
+use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
+use crate::ir::flat_type_declarations_builder::FlatTypeDeclarationsBuilder;
 use crate::ir::ir_html_element::IrAttribute;
-use crate::ir::ir_type::{IrDataType, IrModifier, IrSignature, IrType};
-use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations};
-use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
 use crate::ir::runtime::random::random_value;
 use crate::ir::runtime::value::Value;
 use crate::ir::value_id::ValueId;
@@ -150,12 +150,12 @@ impl Scope {
         }
     }
 
-    fn inner(&self, types: &[IrType], modifier: IrModifier) -> Scope {
+    fn inner(&self, types: &[FlatType], modifier: IrModifier) -> Scope {
         Scope {
             names: (self.names.iter().copied())
                 .filter(|name| {
                     let typ = &types[name.var.index()];
-                    !typ.is_html_or_html_closure() && *typ != IrType::ElementId
+                    !typ.is_html_or_html_closure() && *typ != FlatType::ElementId
                 })
                 .collect(),
             modifier,
@@ -172,8 +172,8 @@ impl Scope {
 
     fn names_where<'a>(
         &'a self,
-        types: &'a [IrType],
-        fits: impl Fn(&IrType) -> bool + 'a,
+        types: &'a [FlatType],
+        fits: impl Fn(&FlatType) -> bool + 'a,
     ) -> impl Iterator<Item = ValueId> + 'a {
         self.names
             .iter()
@@ -184,7 +184,7 @@ impl Scope {
 
 enum TyPat {
     Var(usize),
-    Ground(IrDataType),
+    Ground(FlatDataType),
     Array(Box<TyPat>),
     Option(Box<TyPat>),
 }
@@ -194,16 +194,16 @@ enum Layer {
     Cell,
 }
 
-type Subst = HashMap<usize, IrDataType>;
+type Subst = HashMap<usize, FlatDataType>;
 
 /// Whether typ has the shape of pattern, binding the variables of the
 /// pattern in subst.
-fn match_type(pattern: &TyPat, typ: &IrDataType, subst: &mut Subst) -> bool {
+fn match_type(pattern: &TyPat, typ: &FlatDataType, subst: &mut Subst) -> bool {
     match (pattern, typ) {
         (TyPat::Var(var), _) => subst.entry(*var).or_insert_with(|| typ.clone()) == typ,
         (TyPat::Ground(ground), _) => ground == typ,
-        (TyPat::Array(element), IrDataType::Array(typ))
-        | (TyPat::Option(element), IrDataType::Option(typ)) => match_type(element, typ, subst),
+        (TyPat::Array(element), FlatDataType::Array(typ))
+        | (TyPat::Option(element), FlatDataType::Option(typ)) => match_type(element, typ, subst),
         _ => false,
     }
 }
@@ -213,13 +213,15 @@ fn match_type(pattern: &TyPat, typ: &IrDataType, subst: &mut Subst) -> bool {
 fn instantiate(
     pattern: &TyPat,
     subst: &mut Subst,
-    fresh: &mut impl FnMut() -> IrDataType,
-) -> IrDataType {
+    fresh: &mut impl FnMut() -> FlatDataType,
+) -> FlatDataType {
     match pattern {
         TyPat::Var(var) => subst.entry(*var).or_insert_with(&mut *fresh).clone(),
         TyPat::Ground(typ) => typ.clone(),
-        TyPat::Array(element) => IrDataType::Array(Box::new(instantiate(element, subst, fresh))),
-        TyPat::Option(element) => IrDataType::Option(Box::new(instantiate(element, subst, fresh))),
+        TyPat::Array(element) => FlatDataType::Array(Box::new(instantiate(element, subst, fresh))),
+        TyPat::Option(element) => {
+            FlatDataType::Option(Box::new(instantiate(element, subst, fresh)))
+        }
     }
 }
 
@@ -266,12 +268,12 @@ struct FlatGenerator<'a, 'b> {
     declared_names: Vec<String>,
     record_names: Vec<String>,
     enum_names: Vec<String>,
-    records: Vec<IrDataType>,
-    types: IrTypeDeclarations,
+    records: Vec<FlatDataType>,
+    types: FlatTypeDeclarations,
 }
 
-fn handler_type() -> IrType {
-    IrType::function(IrModifier::Mut, [], IrType::Data(IrDataType::UNIT))
+fn handler_type() -> FlatType {
+    FlatType::function(IrModifier::Mut, [], FlatType::Data(FlatDataType::UNIT))
 }
 
 pub fn random_program(u: &mut Unstructured<'_>) -> FlatProgram {
@@ -289,7 +291,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
         record_names: Vec::new(),
         enum_names: Vec::new(),
         records: Vec::new(),
-        types: IrTypeDeclarations::default(),
+        types: FlatTypeDeclarations::default(),
     };
 
     // Name every type before generating any field types, so that a field can
@@ -301,7 +303,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
         .chain((0..enum_count).map(|i| format!("E{i}")))
         .collect();
 
-    let mut types = IrTypeDeclarationsBuilder::new();
+    let mut types = FlatTypeDeclarationsBuilder::new();
 
     enum Decl {
         Record(usize),
@@ -359,7 +361,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
     for name in &function_names {
         let html = g.coin();
         let return_type = if html {
-            IrType::HTML
+            FlatType::HTML
         } else {
             g.random_result_type()
         };
@@ -371,7 +373,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
         } else {
             IrModifier::Pure
         };
-        let params: Vec<(String, IrType)> = (0..g.count(0..=8))
+        let params: Vec<(String, FlatType)> = (0..g.count(0..=8))
             .map(|i| {
                 let typ = if g.index(4) == 0 {
                     g.random_closure_type(html, render_modifier, 1)
@@ -379,7 +381,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
                     handler_type()
                 } else {
                     let ty = g.random_type_where(2, NamedTypes::Any, html);
-                    g.ir_type(ty)
+                    g.flat_type(ty)
                 };
                 (format!("p{i}"), typ)
             })
@@ -485,12 +487,12 @@ impl FlatGenerator<'_, '_> {
         if n % 2 == 0 { -n / 2 } else { n / 2 + 1 }
     }
 
-    fn ir_type(&self, ty: Ty) -> IrType {
+    fn flat_type(&self, ty: Ty) -> FlatType {
         self.types.ty(ty)
     }
 
-    fn data_type(&self, ty: Ty) -> IrDataType {
-        let IrType::Data(typ) = self.ir_type(ty) else {
+    fn data_type(&self, ty: Ty) -> FlatDataType {
+        let FlatType::Data(typ) = self.flat_type(ty) else {
             panic!("a value has a data type");
         };
         typ
@@ -507,11 +509,11 @@ impl FlatGenerator<'_, '_> {
     fn record_fields_of_type<'s>(
         &'s self,
         b: &FlatBlockBuilder<'s>,
-        target: &'s IrDataType,
-    ) -> impl Iterator<Item = (&'s IrDataType, &'s IrField)> + 's {
+        target: &'s FlatDataType,
+    ) -> impl Iterator<Item = (&'s FlatDataType, &'s FlatField)> + 's {
         let types = b.types();
         self.records.iter().flat_map(move |record| {
-            let IrDataType::Record(name) = record else {
+            let FlatDataType::Record(name) = record else {
                 unreachable!("a record of the program has a Record type")
             };
             types
@@ -527,7 +529,7 @@ impl FlatGenerator<'_, '_> {
     fn callees<'t>(
         b: &FlatBlockBuilder<'t>,
         scope: &Scope,
-        target: &IrType,
+        target: &FlatType,
     ) -> Vec<&'t DeclaredFunction> {
         (b.functions().iter())
             .filter(|function| {
@@ -536,9 +538,9 @@ impl FlatGenerator<'_, '_> {
             .collect()
     }
 
-    fn closure_parameters(typ: &IrType) -> Vec<IrType> {
+    fn closure_parameters(typ: &FlatType) -> Vec<FlatType> {
         match typ {
-            IrType::Function(signature) => signature.parameters.clone(),
+            FlatType::Function(signature) => signature.parameters.clone(),
             _ => unreachable!("{typ} is not a closure type"),
         }
     }
@@ -547,10 +549,10 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &Scope,
-        fits: impl Fn(&IrDataType) -> bool,
-    ) -> Option<(ValueId, IrDataType)> {
+        fits: impl Fn(&FlatDataType) -> bool,
+    ) -> Option<(ValueId, FlatDataType)> {
         let types = b.value_types();
-        let mut vars: Vec<(ValueId, IrDataType)> = (scope
+        let mut vars: Vec<(ValueId, FlatDataType)> = (scope
             .names_where(&types, |typ| typ.as_data().is_some_and(&fits)))
         .map(|name| (name, types[name.index()].as_data().unwrap().clone()))
         .collect();
@@ -574,7 +576,7 @@ impl FlatGenerator<'_, '_> {
         let types = b.value_types();
         (scope.names_where(&types, |_| true))
             .filter_map(|name| {
-                let ((Layer::Data, IrType::Data(typ)) | (Layer::Cell, IrType::Cell(typ))) =
+                let ((Layer::Data, FlatType::Data(typ)) | (Layer::Cell, FlatType::Cell(typ))) =
                     (&layer, &types[name.index()])
                 else {
                     return None;
@@ -606,11 +608,11 @@ impl FlatGenerator<'_, '_> {
         (self.data_op(b, scope, &typ, depth, nesting), subst)
     }
 
-    fn random_closure_type(&mut self, html: bool, render: bool, depth: usize) -> IrType {
+    fn random_closure_type(&mut self, html: bool, render: bool, depth: usize) -> FlatType {
         if html && self.coin() {
-            IrType::Function(self.random_html_signature(depth))
+            FlatType::Function(self.random_html_signature(depth))
         } else {
-            IrType::Function(self.random_value_signature(render, depth, None))
+            FlatType::Function(self.random_value_signature(render, depth, None))
         }
     }
 
@@ -618,21 +620,21 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         render: bool,
         depth: usize,
-        result: Option<IrType>,
-    ) -> IrSignature {
+        result: Option<FlatType>,
+    ) -> FlatSignature {
         let parameters = (0..self.count(0..=2))
             .map(|_| {
                 if depth > 0 && self.index(4) == 0 {
-                    IrType::Function(self.random_value_signature(render, depth - 1, None))
+                    FlatType::Function(self.random_value_signature(render, depth - 1, None))
                 } else if self.index(8) == 0 {
                     handler_type()
                 } else {
-                    IrType::Data(self.random_data_type(1))
+                    FlatType::Data(self.random_data_type(1))
                 }
             })
             .collect();
         let result = result.unwrap_or_else(|| self.random_result_type());
-        IrSignature {
+        FlatSignature {
             modifier: if render && self.chance(RENDER_VALUE_ODDS) {
                 IrModifier::Render
             } else {
@@ -643,23 +645,23 @@ impl FlatGenerator<'_, '_> {
         }
     }
 
-    fn random_result_type(&mut self) -> IrType {
-        IrType::Data(self.random_data_type(1))
+    fn random_result_type(&mut self) -> FlatType {
+        FlatType::Data(self.random_data_type(1))
     }
 
-    fn random_html_signature(&mut self, depth: usize) -> IrSignature {
+    fn random_html_signature(&mut self, depth: usize) -> FlatSignature {
         let parameters = (0..self.count(0..=2))
             .map(|_| match self.index(if depth > 0 { 4 } else { 2 }) {
-                0 => IrType::Data(self.random_data_type(1)),
-                1 => IrType::HTML,
+                0 => FlatType::Data(self.random_data_type(1)),
+                1 => FlatType::HTML,
                 2 => self.random_closure_type(false, true, depth - 1),
                 _ => self.random_closure_type(true, true, depth - 1),
             })
             .collect();
-        IrSignature {
+        FlatSignature {
             modifier: IrModifier::Render,
             parameters,
-            result: Box::new(IrType::Html),
+            result: Box::new(FlatType::Html),
         }
     }
 
@@ -667,7 +669,7 @@ impl FlatGenerator<'_, '_> {
         self.random_type_where(depth, NamedTypes::Any, true)
     }
 
-    fn random_data_type(&mut self, depth: usize) -> IrDataType {
+    fn random_data_type(&mut self, depth: usize) -> FlatDataType {
         let ty = self.random_type_where(depth, NamedTypes::Any, false);
         self.data_type(ty)
     }
@@ -753,13 +755,13 @@ impl FlatGenerator<'_, '_> {
         let mut scope = scope.inner(&b.value_types(), IrModifier::Pure);
         scope.push(var);
         let typ = b.value_types()[var.index()].clone();
-        if (typ == IrType::INT || typ == IrType::STRING) && self.index(4) != 0 {
+        if (typ == FlatType::INT || typ == FlatType::STRING) && self.index(4) != 0 {
             return var;
         }
         let target = if self.coin() {
-            IrDataType::Int
+            FlatDataType::Int
         } else {
-            IrDataType::String
+            FlatDataType::String
         };
         self.data_op(b, &mut scope, &target, depth, MAX_EXPRESSION_DEPTH)
     }
@@ -785,7 +787,7 @@ impl FlatGenerator<'_, '_> {
         }
         if self.chance(DEAD_BINDING_ODDS) {
             let ty = self.random_type(1);
-            let typ = self.ir_type(ty);
+            let typ = self.flat_type(ty);
             let dead = self.op_of_type(b, scope, &typ, depth, MAX_EXPRESSION_DEPTH);
             // Html that nothing has read yet, which a later op may read.
             scope.set_used(dead, false);
@@ -797,7 +799,7 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        target: &IrDataType,
+        target: &FlatDataType,
         depth: usize,
     ) -> ValueId {
         if self.chance(DEAD_BINDING_ODDS) {
@@ -838,15 +840,15 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        typ: &IrType,
+        typ: &FlatType,
         depth: usize,
     ) -> ValueId {
         match typ {
-            IrType::Data(target) => self.data_block(b, scope, target, depth),
-            IrType::Html => self.html_block(b, scope, depth),
-            IrType::Cell(_) => unreachable!("a block produces no cell"),
-            IrType::ElementId => unreachable!("a block produces no identity"),
-            IrType::Function(_) => {
+            FlatType::Data(target) => self.data_block(b, scope, target, depth),
+            FlatType::Html => self.html_block(b, scope, depth),
+            FlatType::Cell(_) => unreachable!("a block produces no cell"),
+            FlatType::ElementId => unreachable!("a block produces no identity"),
+            FlatType::Function(_) => {
                 unreachable!("a block produces no closure")
             }
         }
@@ -856,18 +858,18 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        typ: &IrType,
+        typ: &FlatType,
         depth: usize,
         nesting: usize,
     ) -> ValueId {
         match typ {
-            IrType::Data(target) => self.data_op(b, scope, target, depth, nesting),
-            IrType::Html => self.html_op(b, scope, depth, nesting),
-            IrType::Cell(_) => unreachable!("a cell is bound for a block, not asked for"),
-            IrType::ElementId => {
+            FlatType::Data(target) => self.data_op(b, scope, target, depth, nesting),
+            FlatType::Html => self.html_op(b, scope, depth, nesting),
+            FlatType::Cell(_) => unreachable!("a cell is bound for a block, not asked for"),
+            FlatType::ElementId => {
                 unreachable!("an identity is minted for an element, not asked for")
             }
-            IrType::Function(_) => self.closure_op(b, scope, typ, depth, nesting),
+            FlatType::Function(_) => self.closure_op(b, scope, typ, depth, nesting),
         }
     }
 
@@ -878,7 +880,7 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        typ: &IrType,
+        typ: &FlatType,
         depth: usize,
         nesting: usize,
     ) -> ValueId {
@@ -886,7 +888,7 @@ impl FlatGenerator<'_, '_> {
             return name;
         }
         let parameters = Self::closure_parameters(typ);
-        let IrType::Function(signature) = typ else {
+        let FlatType::Function(signature) = typ else {
             unreachable!("{typ} is not a closure type");
         };
         let render = signature.modifier == IrModifier::Render;
@@ -899,11 +901,11 @@ impl FlatGenerator<'_, '_> {
                 inner.push(*param);
             }
             match &*signature.result {
-                IrType::Data(result) if mutates => {
+                FlatType::Data(result) if mutates => {
                     self.writes(b, &mut inner, 1..=3, depth, nesting);
                     self.data_op(b, &mut inner, result, depth, nesting)
                 }
-                IrType::Data(result) => self.data_op(b, &mut inner, result, depth, nesting),
+                FlatType::Data(result) => self.data_op(b, &mut inner, result, depth, nesting),
                 _ => self.html_op(b, &mut inner, depth, nesting),
             }
         };
@@ -921,12 +923,12 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        result: &IrType,
+        result: &FlatType,
         depth: usize,
         nesting: usize,
     ) -> ValueId {
-        let fits = |typ: &IrType| match typ {
-            IrType::Function(signature) => {
+        let fits = |typ: &FlatType| match typ {
+            FlatType::Function(signature) => {
                 scope.modifier.allows(signature.modifier) && *signature.result == *result
             }
             _ => false,
@@ -938,18 +940,18 @@ impl FlatGenerator<'_, '_> {
             fitting[self.index(fitting.len())]
         } else {
             let typ = match result {
-                IrType::Data(result) => {
+                FlatType::Data(result) => {
                     let mut signature = self.random_value_signature(
                         scope.modifier.allows(IrModifier::Render),
                         1,
-                        Some(IrType::Data(result.clone())),
+                        Some(FlatType::Data(result.clone())),
                     );
                     if scope.modifier.allows(IrModifier::Mut) && self.chance(MUT_ODDS) {
                         signature.modifier = IrModifier::Mut;
                     }
-                    IrType::Function(signature)
+                    FlatType::Function(signature)
                 }
-                _ => IrType::Function(self.random_html_signature(1)),
+                _ => FlatType::Function(self.random_html_signature(1)),
             };
             self.closure_op(b, scope, &typ, depth, nesting - 1)
         };
@@ -964,7 +966,7 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &Scope,
-        typ: &IrType,
+        typ: &FlatType,
     ) -> Option<ValueId> {
         let types = b.value_types();
         let count = scope
@@ -977,7 +979,7 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn html_leaf(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
-        let value = match self.name_in_scope(b, scope, &IrType::HTML) {
+        let value = match self.name_in_scope(b, scope, &FlatType::HTML) {
             Some(name) => name,
             None => {
                 let literal = match self.index(3) {
@@ -1012,7 +1014,7 @@ impl FlatGenerator<'_, '_> {
         depth: usize,
         nesting: usize,
     ) -> ValueId {
-        let identity = match self.name_in_scope(b, scope, &IrType::ElementId) {
+        let identity = match self.name_in_scope(b, scope, &FlatType::ElementId) {
             Some(early) => {
                 scope.set_used(early, true);
                 early
@@ -1030,10 +1032,10 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        typ: &IrDataType,
+        typ: &FlatDataType,
         depth: usize,
     ) -> ValueId {
-        if let Some(name) = self.name_in_scope(b, scope, &IrType::Data(typ.clone())) {
+        if let Some(name) = self.name_in_scope(b, scope, &FlatType::Data(typ.clone())) {
             return self.cell(b, scope, name);
         }
         if scope.modifier == IrModifier::Mut && self.coin() {
@@ -1050,12 +1052,12 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        typ: &IrDataType,
+        typ: &FlatDataType,
         depth: usize,
     ) -> ValueId {
         let literal = match typ {
-            IrDataType::String => b.str(self.u.choose(STRING_LITERALS).unwrap()),
-            IrDataType::Int => b.int(match self.index(8) {
+            FlatDataType::String => b.str(self.u.choose(STRING_LITERALS).unwrap()),
+            FlatDataType::Int => b.int(match self.index(8) {
                 0 => *self
                     .u
                     .choose(&[i32::MIN, i32::MIN + 1, i32::MAX - 1, i32::MAX])
@@ -1063,28 +1065,28 @@ impl FlatGenerator<'_, '_> {
                 1 | 2 => self.zigzag(100),
                 _ => self.zigzag(2),
             }),
-            IrDataType::Bool => b.bool(self.coin()),
-            IrDataType::Float => b.float(*self.u.choose(FLOATS).unwrap()),
-            IrDataType::Array(inner) => {
+            FlatDataType::Bool => b.bool(self.coin()),
+            FlatDataType::Float => b.float(*self.u.choose(FLOATS).unwrap()),
+            FlatDataType::Array(inner) => {
                 let len = if depth == 0 { 0 } else { self.count(0..=3) };
                 let elements: Vec<_> = (0..len)
                     .map(|_| self.data_leaf(b, scope, inner, depth.saturating_sub(1)))
                     .collect();
                 if elements.is_empty() {
-                    b.empty_array(IrType::Data((**inner).clone()))
+                    b.empty_array(FlatType::Data((**inner).clone()))
                 } else {
                     b.array(elements)
                 }
             }
-            IrDataType::Option(inner) => {
+            FlatDataType::Option(inner) => {
                 if depth > 0 && self.coin() {
                     let value = self.data_leaf(b, scope, inner, depth.saturating_sub(1));
                     b.some(value)
                 } else {
-                    b.none(IrType::Data((**inner).clone()))
+                    b.none(FlatType::Data((**inner).clone()))
                 }
             }
-            IrDataType::Record(name) => {
+            FlatDataType::Record(name) => {
                 let fields = &b.types().record(name).unwrap().fields;
                 let fields = self.shuffled(fields.iter().collect());
                 let mut values = Vec::new();
@@ -1094,9 +1096,9 @@ impl FlatGenerator<'_, '_> {
                         self.data_leaf(b, scope, &field.typ, depth.saturating_sub(1)),
                     ));
                 }
-                b.record(IrType::Data(typ.clone()), values)
+                b.record(FlatType::Data(typ.clone()), values)
             }
-            IrDataType::Enum(name) => {
+            FlatDataType::Enum(name) => {
                 let variants = &b.types().enumeration(name).unwrap().variants;
                 let variant = self.u.choose(variants).unwrap();
                 let fields = self.shuffled(variant.fields.iter().collect());
@@ -1107,9 +1109,13 @@ impl FlatGenerator<'_, '_> {
                         self.data_leaf(b, scope, &field.typ, depth.saturating_sub(1)),
                     ));
                 }
-                b.enum_variant_with_fields(IrType::Data(typ.clone()), variant.name.as_str(), values)
+                b.enum_variant_with_fields(
+                    FlatType::Data(typ.clone()),
+                    variant.name.as_str(),
+                    values,
+                )
             }
-            IrDataType::Tuple(elements) => {
+            FlatDataType::Tuple(elements) => {
                 let values: Vec<_> = elements
                     .iter()
                     .map(|element| self.data_leaf(b, scope, element, depth.saturating_sub(1)))
@@ -1121,22 +1127,22 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn constructors(
-        types: &IrTypeDeclarations,
-        typ: &IrDataType,
-    ) -> Vec<(Ctor, Vec<(String, IrDataType)>)> {
-        let fields = |fields: &[IrField]| {
+        types: &FlatTypeDeclarations,
+        typ: &FlatDataType,
+    ) -> Vec<(Ctor, Vec<(String, FlatDataType)>)> {
+        let fields = |fields: &[FlatField]| {
             fields
                 .iter()
                 .map(|field| (field.name.as_str().to_string(), field.typ.clone()))
                 .collect()
         };
         match typ {
-            IrDataType::Bool => vec![(Ctor::True, Vec::new()), (Ctor::False, Vec::new())],
-            IrDataType::Option(inner) => vec![
+            FlatDataType::Bool => vec![(Ctor::True, Vec::new()), (Ctor::False, Vec::new())],
+            FlatDataType::Option(inner) => vec![
                 (Ctor::None, Vec::new()),
                 (Ctor::Some, vec![("0".to_string(), (**inner).clone())]),
             ],
-            IrDataType::Tuple(elements) => vec![(
+            FlatDataType::Tuple(elements) => vec![(
                 Ctor::Tuple,
                 elements
                     .iter()
@@ -1144,11 +1150,11 @@ impl FlatGenerator<'_, '_> {
                     .map(|(i, element)| (i.to_string(), element.clone()))
                     .collect(),
             )],
-            IrDataType::Record(name) => {
+            FlatDataType::Record(name) => {
                 let record = types.record(name).expect("a record is declared");
                 vec![(Ctor::Record, fields(&record.fields))]
             }
-            IrDataType::Enum(name) => types
+            FlatDataType::Enum(name) => types
                 .enumeration(name)
                 .expect("an enum is declared")
                 .variants
@@ -1162,7 +1168,7 @@ impl FlatGenerator<'_, '_> {
         }
     }
 
-    fn can_branch(types: &IrTypeDeclarations, typ: &IrDataType, depth: usize) -> bool {
+    fn can_branch(types: &FlatTypeDeclarations, typ: &FlatDataType, depth: usize) -> bool {
         if depth == 0 {
             return false;
         }
@@ -1177,7 +1183,7 @@ impl FlatGenerator<'_, '_> {
     fn partition(
         &mut self,
         b: &FlatBlockBuilder<'_>,
-        typ: &IrDataType,
+        typ: &FlatDataType,
         depth: usize,
         forced: bool,
         next_bind: &mut usize,
@@ -1248,16 +1254,16 @@ impl FlatGenerator<'_, '_> {
         (Pat::bind(&name), vec![name])
     }
 
-    fn branching_type(&mut self, types: &IrTypeDeclarations) -> IrDataType {
-        let named: Vec<IrDataType> = self
+    fn branching_type(&mut self, types: &FlatTypeDeclarations) -> FlatDataType {
+        let named: Vec<FlatDataType> = self
             .declared_names
             .iter()
             .map(|name| self.data_type(Ty::named(name)))
             .filter(|typ| Self::can_branch(types, typ, MAX_PATTERN_DEPTH))
             .collect();
         let base = match self.index(2 + named.len()) {
-            0 => IrDataType::Bool,
-            1 => IrDataType::Option(Box::new(self.random_data_type(1))),
+            0 => FlatDataType::Bool,
+            1 => FlatDataType::Option(Box::new(self.random_data_type(1))),
             i => return named[i - 2].clone(),
         };
         if self.coin() {
@@ -1275,7 +1281,7 @@ impl FlatGenerator<'_, '_> {
                 }
             })
             .collect();
-        IrDataType::Tuple(elements)
+        FlatDataType::Tuple(elements)
     }
 
     fn html_op(
@@ -1300,7 +1306,7 @@ impl FlatGenerator<'_, '_> {
             Toggle,
         }
         let mut productions = vec![P::Escape, P::Element, P::Concat];
-        if !Self::callees(b, scope, &IrType::HTML).is_empty() {
+        if !Self::callees(b, scope, &FlatType::HTML).is_empty() {
             productions.push(P::Call);
         }
         if depth > 0 {
@@ -1311,7 +1317,7 @@ impl FlatGenerator<'_, '_> {
         }
         let value = match self.u.choose(&productions).unwrap() {
             P::Escape => {
-                let operand = self.data_op(b, scope, &IrDataType::String, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &FlatDataType::String, depth, nesting - 1);
                 b.escape(operand)
             }
             P::Element => {
@@ -1319,12 +1325,13 @@ impl FlatGenerator<'_, '_> {
                 let mut attributes = Vec::new();
                 for name in ["class", "id", "data-x"] {
                     if self.coin() {
-                        let value = self.data_op(b, scope, &IrDataType::String, depth, nesting - 1);
+                        let value =
+                            self.data_op(b, scope, &FlatDataType::String, depth, nesting - 1);
                         attributes.push(b.attr_value(name, value));
                     }
                 }
                 if self.coin() {
-                    let present = self.data_op(b, scope, &IrDataType::Bool, depth, nesting - 1);
+                    let present = self.data_op(b, scope, &FlatDataType::Bool, depth, nesting - 1);
                     attributes.push(b.attr_presence("disabled", present));
                 }
                 let children = if void {
@@ -1348,9 +1355,9 @@ impl FlatGenerator<'_, '_> {
                 b.html_concat(parts)
             }
             P::Toggle => self.toggle(b, scope, depth),
-            P::Call => self.call(b, scope, &IrType::HTML, depth, nesting),
-            P::Match => self.match_(b, scope, &IrType::HTML, depth, nesting),
-            P::Apply => self.apply(b, scope, &IrType::HTML, depth, nesting),
+            P::Call => self.call(b, scope, &FlatType::HTML, depth, nesting),
+            P::Match => self.match_(b, scope, &FlatType::HTML, depth, nesting),
+            P::Apply => self.apply(b, scope, &FlatType::HTML, depth, nesting),
             P::ForArray => {
                 let (array, _) = self.operand(
                     b,
@@ -1404,7 +1411,7 @@ impl FlatGenerator<'_, '_> {
             b.cell_write(cell, value)
         });
         let handler = scope.push(handler);
-        let shown = self.match_on(b, scope, value, subject_ty, &IrType::HTML, depth);
+        let shown = self.match_on(b, scope, value, subject_ty, &FlatType::HTML, depth);
         scope.push(shown);
         scope.set_used(shown, true);
         let tags: Vec<&str> = (ELEMENTS.iter())
@@ -1424,7 +1431,7 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        target: &IrDataType,
+        target: &FlatDataType,
         depth: usize,
         nesting: usize,
     ) -> ValueId {
@@ -1458,17 +1465,17 @@ impl FlatGenerator<'_, '_> {
             Call,
             Apply,
         }
-        let typ = IrType::Data(target.clone());
-        let record_fields: Vec<(IrDataType, String)> = self
+        let typ = FlatType::Data(target.clone());
+        let record_fields: Vec<(FlatDataType, String)> = self
             .record_fields_of_type(b, target)
             .map(|(record, field)| (record.clone(), field.name.as_str().to_string()))
             .collect();
-        let mut records: Vec<&IrDataType> =
+        let mut records: Vec<&FlatDataType> =
             (record_fields.iter()).map(|(record, _)| record).collect();
         // record_fields_of_type yields the fields of each record together,
         // so removing consecutive repeats leaves each record once.
         records.dedup();
-        let objects: Vec<(ValueId, &IrDataType)> = (records.into_iter())
+        let objects: Vec<(ValueId, &FlatDataType)> = (records.into_iter())
             .flat_map(|record| {
                 let pattern = TyPat::Ground(record.clone());
                 (Self::candidates(b, scope, Layer::Data, &pattern).into_iter())
@@ -1477,7 +1484,7 @@ impl FlatGenerator<'_, '_> {
             .collect();
         let types = b.value_types();
         let tuples: Vec<ValueId> = (scope.names_where(&types, |typ| {
-            matches!(typ, IrType::Data(IrDataType::Tuple(elements)) if elements.contains(target))
+            matches!(typ, FlatType::Data(FlatDataType::Tuple(elements)) if elements.contains(target))
         }))
         .collect();
         drop(types);
@@ -1488,7 +1495,7 @@ impl FlatGenerator<'_, '_> {
         if !tuples.is_empty() {
             productions.push(P::TupleIndex);
         }
-        if *target == IrDataType::Bool {
+        if *target == FlatDataType::Bool {
             productions.extend([
                 P::Eq,
                 P::Lt,
@@ -1500,7 +1507,7 @@ impl FlatGenerator<'_, '_> {
                 P::ArrayIsEmpty,
             ]);
         }
-        if *target == IrDataType::Int {
+        if *target == FlatDataType::Int {
             productions.extend([
                 P::ArrayLength,
                 P::Neg(NumericType::Int),
@@ -1510,7 +1517,7 @@ impl FlatGenerator<'_, '_> {
                 P::FloatToInt,
             ]);
         }
-        if *target == IrDataType::Float {
+        if *target == FlatDataType::Float {
             productions.extend([
                 P::Neg(NumericType::Float),
                 P::Add(NumericType::Float),
@@ -1519,19 +1526,19 @@ impl FlatGenerator<'_, '_> {
                 P::IntToFloat,
             ]);
         }
-        if matches!(target, IrDataType::Array(element) if **element == IrDataType::Int) {
+        if matches!(target, FlatDataType::Array(element) if **element == FlatDataType::Int) {
             productions.push(P::ArrayFromRange);
         }
-        if matches!(target, IrDataType::Option(_)) {
+        if matches!(target, FlatDataType::Option(_)) {
             productions.push(P::ArrayGet);
         }
-        if matches!(target, IrDataType::Array(pair)
-            if matches!(pair.as_ref(), IrDataType::Tuple(types)
-                if matches!(types.as_slice(), [IrDataType::Int, _])))
+        if matches!(target, FlatDataType::Array(pair)
+            if matches!(pair.as_ref(), FlatDataType::Tuple(types)
+                if matches!(types.as_slice(), [FlatDataType::Int, _])))
         {
             productions.push(P::ArrayEnumerate);
         }
-        if *target == IrDataType::String {
+        if *target == FlatDataType::String {
             productions.extend([P::Concat, P::IntToString]);
         }
         if !Self::callees(b, scope, &typ).is_empty() {
@@ -1554,7 +1561,7 @@ impl FlatGenerator<'_, '_> {
             }
             P::TupleIndex => {
                 let tuple = tuples[self.index(tuples.len())];
-                let IrType::Data(IrDataType::Tuple(elements)) =
+                let FlatType::Data(FlatDataType::Tuple(elements)) =
                     b.value_types()[tuple.index()].clone()
                 else {
                     unreachable!("{tuple} is a tuple");
@@ -1566,10 +1573,10 @@ impl FlatGenerator<'_, '_> {
             }
             P::Eq => {
                 let (row, ty) = match self.index(4) {
-                    0 => (EquatableType::Int, IrDataType::Int),
-                    1 => (EquatableType::String, IrDataType::String),
-                    2 => (EquatableType::Bool, IrDataType::Bool),
-                    _ => (EquatableType::Float, IrDataType::Float),
+                    0 => (EquatableType::Int, FlatDataType::Int),
+                    1 => (EquatableType::String, FlatDataType::String),
+                    2 => (EquatableType::Bool, FlatDataType::Bool),
+                    _ => (EquatableType::Float, FlatDataType::Float),
                 };
                 let left = self.data_op(b, scope, &ty, depth, nesting - 1);
                 let right = self.data_op(b, scope, &ty, depth, nesting - 1);
@@ -1577,9 +1584,9 @@ impl FlatGenerator<'_, '_> {
             }
             P::Lt => {
                 let (row, ty) = if self.coin() {
-                    (ComparableType::Int, IrDataType::Int)
+                    (ComparableType::Int, FlatDataType::Int)
                 } else {
-                    (ComparableType::Float, IrDataType::Float)
+                    (ComparableType::Float, FlatDataType::Float)
                 };
                 let left = self.data_op(b, scope, &ty, depth, nesting - 1);
                 let right = self.data_op(b, scope, &ty, depth, nesting - 1);
@@ -1587,34 +1594,34 @@ impl FlatGenerator<'_, '_> {
             }
             P::Lte => {
                 let (row, ty) = if self.coin() {
-                    (ComparableType::Int, IrDataType::Int)
+                    (ComparableType::Int, FlatDataType::Int)
                 } else {
-                    (ComparableType::Float, IrDataType::Float)
+                    (ComparableType::Float, FlatDataType::Float)
                 };
                 let left = self.data_op(b, scope, &ty, depth, nesting - 1);
                 let right = self.data_op(b, scope, &ty, depth, nesting - 1);
                 b.lte(row, left, right)
             }
             P::Not => {
-                let operand = self.data_op(b, scope, &IrDataType::Bool, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &FlatDataType::Bool, depth, nesting - 1);
                 b.not(operand)
             }
             P::Concat => {
                 let parts: Vec<_> = (0..self.count(0..=3))
-                    .map(|_| self.data_op(b, scope, &IrDataType::String, depth, nesting - 1))
+                    .map(|_| self.data_op(b, scope, &FlatDataType::String, depth, nesting - 1))
                     .collect();
                 b.string_concat(parts)
             }
             P::IntToString => {
-                let operand = self.data_op(b, scope, &IrDataType::Int, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &FlatDataType::Int, depth, nesting - 1);
                 b.int_to_string(operand)
             }
             P::FloatToInt => {
-                let operand = self.data_op(b, scope, &IrDataType::Float, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &FlatDataType::Float, depth, nesting - 1);
                 b.float_to_int(operand)
             }
             P::IntToFloat => {
-                let operand = self.data_op(b, scope, &IrDataType::Int, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &FlatDataType::Int, depth, nesting - 1);
                 b.int_to_float(operand)
             }
             P::OptionIsNone => {
@@ -1638,7 +1645,7 @@ impl FlatGenerator<'_, '_> {
                 b.option_is_some(operand)
             }
             P::StringIsEmpty => {
-                let operand = self.data_op(b, scope, &IrDataType::String, depth, nesting - 1);
+                let operand = self.data_op(b, scope, &FlatDataType::String, depth, nesting - 1);
                 b.string_is_empty(operand)
             }
             P::ArrayIsEmpty => {
@@ -1662,13 +1669,13 @@ impl FlatGenerator<'_, '_> {
                 b.array_length(operand)
             }
             P::ArrayGet => {
-                let IrDataType::Option(element) = target else {
+                let FlatDataType::Option(element) = target else {
                     unreachable!("ArrayGet is offered for an Option only")
                 };
                 let (array, _) = self.operand(
                     b,
                     scope,
-                    &TyPat::Ground(IrDataType::Array(element.clone())),
+                    &TyPat::Ground(FlatDataType::Array(element.clone())),
                     depth,
                     nesting - 1,
                 );
@@ -1676,21 +1683,21 @@ impl FlatGenerator<'_, '_> {
                     let index = b.int(self.zigzag(3));
                     self.bind(b, scope, index)
                 } else {
-                    self.data_op(b, scope, &IrDataType::Int, depth, nesting - 1)
+                    self.data_op(b, scope, &FlatDataType::Int, depth, nesting - 1)
                 };
                 b.array_get(array, index)
             }
             P::ArrayEnumerate => {
-                let IrDataType::Array(pair) = target else {
+                let FlatDataType::Array(pair) = target else {
                     unreachable!("ArrayEnumerate is offered for an Array only")
                 };
-                let IrDataType::Tuple(types) = pair.as_ref() else {
+                let FlatDataType::Tuple(types) = pair.as_ref() else {
                     unreachable!("ArrayEnumerate is offered for an Array of pairs only")
                 };
                 let (array, _) = self.operand(
                     b,
                     scope,
-                    &TyPat::Ground(IrDataType::Array(Box::new(types[1].clone()))),
+                    &TyPat::Ground(FlatDataType::Array(Box::new(types[1].clone()))),
                     depth,
                     nesting - 1,
                 );
@@ -1746,7 +1753,7 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        target: &IrType,
+        target: &FlatType,
         depth: usize,
         nesting: usize,
     ) -> ValueId {
@@ -1764,7 +1771,7 @@ impl FlatGenerator<'_, '_> {
         &mut self,
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
-        target: &IrType,
+        target: &FlatType,
         depth: usize,
         nesting: usize,
     ) -> ValueId {
@@ -1790,8 +1797,8 @@ impl FlatGenerator<'_, '_> {
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
         subject: ValueId,
-        subject_ty: IrDataType,
-        target: &IrType,
+        subject_ty: FlatDataType,
+        target: &FlatType,
         depth: usize,
     ) -> ValueId {
         let arms = self.partition(b, &subject_ty, MAX_PATTERN_DEPTH, true, &mut 0);
@@ -1847,7 +1854,7 @@ mod tests {
         let typ = &binding.binder.typ;
         match &binding.op {
             FlatOp::Lambda(_)
-                if matches!(typ, IrType::Function(signature)
+                if matches!(typ, FlatType::Function(signature)
                     if signature.modifier == IrModifier::Mut) =>
             {
                 format!("Mut{kind}")
@@ -1898,7 +1905,7 @@ mod tests {
             }
             let mutates = matches!(
                 (&binding.op, &binding.binder.typ),
-                (FlatOp::Lambda(_), IrType::Function(signature))
+                (FlatOp::Lambda(_), FlatType::Function(signature))
                     if signature.modifier == IrModifier::Mut
             );
             for (_, body) in nested(binding) {

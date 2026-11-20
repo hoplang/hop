@@ -4,11 +4,11 @@ use crate::hop::typing::Pattern;
 use crate::ir::flat_program::{
     FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
 };
+use crate::ir::flat_type::{FlatType, IrModifier};
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_match::{IrMatch, IrMatchArm};
-use crate::ir::ir_type::{IrModifier, IrType};
 use crate::ir::value_id::ValueId;
 
 /// A pass that removes the bindings nothing reads from every body.
@@ -93,7 +93,7 @@ fn eliminate_binding(
         FlatOp::Lambda(IrLambda { parameters, body }) => {
             let mutates = matches!(
                 &binder.typ,
-                IrType::Function(signature) if signature.modifier == IrModifier::Mut
+                FlatType::Function(signature) if signature.modifier == IrModifier::Mut
             );
             FlatOp::Lambda(IrLambda {
                 parameters,
@@ -143,8 +143,8 @@ mod tests {
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::flat_type_declarations_builder::FlatTypeDeclarationsBuilder;
     use crate::ir::flat_typecheck;
-    use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
     use crate::ir::runtime::EvalError;
     use crate::ir::runtime::flat_evaluator::evaluate_entrypoint;
     use expect_test::{Expect, expect};
@@ -478,7 +478,7 @@ mod tests {
 
     #[test]
     fn should_drop_unused_enum_arm_bindings_and_keep_used_ones() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .enum_(
                 "Shape",
                 [

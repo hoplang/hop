@@ -11,11 +11,12 @@ use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
-use crate::ir::ir_type::{IrDataType, IrSignature, IrType};
-use crate::ir::ir_type_declarations::{IrEnum, IrRecord};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
     WriterBlock, WriterFunctionBody, WriterOp, WriterPageDeclaration, WriterProgram, WriterStmt,
+};
+use crate::ir::writer_type::{
+    WriterDataType, WriterEnum, WriterRecord, WriterResult, WriterSignature, WriterType,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -32,7 +33,10 @@ fn name_ident(name: ValueId) -> String {
 
 /// Destructuring entry for a parameter: `name: v_0`. The property name stays
 /// the source name, since it is the caller-facing argument name.
-fn transpile_param_binding<'a>(arena: &'a Arena<'a>, param: &'a IrParameter<IrType>) -> Doc<'a> {
+fn transpile_param_binding<'a>(
+    arena: &'a Arena<'a>,
+    param: &'a IrParameter<WriterType>,
+) -> Doc<'a> {
     arena
         .text(param.name().as_str())
         .append(arena.text(": "))
@@ -53,7 +57,7 @@ pub struct TsTranspiler {
     /// The type of every name bound so far. A match binds its subject to
     /// a fresh constant of the subject's declared type, so a nested match
     /// on the same name is not narrowed by the arm it sits in.
-    name_types: HashMap<ValueId, IrType>,
+    name_types: HashMap<ValueId, WriterType>,
     /// Numbers the subject constants.
     subjects: usize,
 }
@@ -105,7 +109,7 @@ impl TsTranspiler {
     fn transpile_parameter_list<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parameters: &'a [IrParameter<IrType>],
+        parameters: &'a [IrParameter<WriterType>],
     ) -> Doc<'a> {
         for param in parameters {
             self.name_types
@@ -193,7 +197,7 @@ impl TsTranspiler {
     fn transpile_function_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parameters: &[IrType],
+        parameters: &[WriterType],
         result: Doc<'a>,
     ) -> Doc<'a> {
         let param_docs: Vec<_> = (parameters.iter().enumerate())
@@ -250,7 +254,7 @@ impl TsTranspiler {
                 let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
                 for (_, binder) in &arm.bindings {
                     self.name_types
-                        .insert(binder.var, IrType::Data(binder.typ.clone()));
+                        .insert(binder.var, WriterType::Data(binder.typ.clone()));
                 }
                 let bindings_doc = if arm.bindings.is_empty() {
                     arena.nil()
@@ -309,7 +313,7 @@ impl TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         subject: ValueId,
-        some_arm_binding: Option<&'a IrBinder<IrDataType>>,
+        some_arm_binding: Option<&'a IrBinder<WriterDataType>>,
         some_arm_body: &'a Body,
         none_arm_body: &'a Body,
         mut body: impl FnMut(&mut Self, &'a Body) -> Doc<'a>,
@@ -325,7 +329,7 @@ impl TsTranspiler {
         let binding_doc = match some_arm_binding {
             Some(binder) => {
                 self.name_types
-                    .insert(binder.var, IrType::Data(binder.typ.clone()));
+                    .insert(binder.var, WriterType::Data(binder.typ.clone()));
                 arena
                     .text("const ")
                     .append(arena.text(name_ident(binder.var)))
@@ -394,7 +398,7 @@ impl Default for TsTranspiler {
 }
 
 impl Transpiler for TsTranspiler {
-    fn name_type(&self, name: ValueId) -> &IrType {
+    fn name_type(&self, name: ValueId) -> &WriterType {
         self.name_types
             .get(&name)
             .unwrap_or_else(|| unreachable!("every name records its type, and {name} has none"))
@@ -411,7 +415,7 @@ impl Transpiler for TsTranspiler {
         let pages = &program.pages;
         let mut result = arena.nil();
 
-        for IrEnum {
+        for WriterEnum {
             name: enum_name,
             variants,
         } in &program.types.enums
@@ -522,7 +526,7 @@ impl Transpiler for TsTranspiler {
                 .append(arena.line());
         }
 
-        for IrRecord {
+        for WriterRecord {
             name: record_name,
             fields,
         } in &program.types.records
@@ -739,7 +743,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_function_def<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        function: &'a IrFunctionDeclaration<IrType, IrType, WriterFunctionBody>,
+        function: &'a IrFunctionDeclaration<WriterType, WriterResult, WriterFunctionBody>,
     ) -> Doc<'a> {
         let param_docs: Vec<_> = function
             .parameters
@@ -776,7 +780,10 @@ impl Transpiler for TsTranspiler {
                     .append(arena.text("}"))
             }
             WriterFunctionBody::Returns(block) => {
-                let return_type = self.transpile_type(arena, &function.return_type);
+                let WriterResult::Returns(return_type) = &function.return_type else {
+                    unreachable!("a function that returns has the type of a value as its result");
+                };
+                let return_type = self.transpile_data_type(arena, return_type);
                 let body = self.transpile_value_block(arena, block);
                 head.append(arena.text("): "))
                     .append(return_type)
@@ -831,14 +838,14 @@ impl Transpiler for TsTranspiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrBinder<IrDataType>>,
+        var: Option<&'a IrBinder<WriterDataType>>,
         array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a> {
         let var_name = match var {
             Some(binder) => {
                 self.name_types
-                    .insert(binder.var, IrType::Data(binder.typ.clone()));
+                    .insert(binder.var, WriterType::Data(binder.typ.clone()));
                 name_ident(binder.var)
             }
             None => "_".to_string(),
@@ -856,7 +863,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        let_: &'a IrBinding<IrType, WriterOp>,
+        let_: &'a IrBinding<WriterType, WriterOp>,
     ) -> Doc<'a> {
         self.name_types
             .insert(let_.binder.var, let_.binder.typ.clone());
@@ -1001,7 +1008,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        _elem_type: &'a IrDataType,
+        _elem_type: &'a WriterDataType,
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
             .iter()
@@ -1033,7 +1040,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        _element_types: &'a [IrDataType],
+        _element_types: &'a [WriterDataType],
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
             .iter()
@@ -1296,7 +1303,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         value: Option<ValueId>,
-        inner_type: &'a IrDataType,
+        inner_type: &'a WriterDataType,
     ) -> Doc<'a> {
         self.needs_option = true;
         match value {
@@ -1403,7 +1410,7 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         array: ValueId,
         index: ValueId,
-        element_type: &'a IrDataType,
+        element_type: &'a WriterDataType,
     ) -> Doc<'a> {
         self.needs_option = true;
         let array = name_ident(array);
@@ -1426,7 +1433,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         array: ValueId,
-        element_type: &'a IrDataType,
+        element_type: &'a WriterDataType,
     ) -> Doc<'a> {
         arena
             .text(name_ident(array))
@@ -1485,12 +1492,11 @@ impl Transpiler for TsTranspiler {
     fn transpile_closure_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        signature: &IrSignature,
+        signature: &WriterSignature,
     ) -> Doc<'a> {
-        let result = if *signature.result == IrType::Html {
-            arena.text("string")
-        } else {
-            self.transpile_result_type(arena, &signature.result)
+        let result = match &signature.result {
+            WriterResult::Writes => arena.text("string"),
+            WriterResult::Returns(result) => self.transpile_data_type(arena, result),
         };
         self.transpile_function_type(arena, &signature.parameters, result)
     }
@@ -1498,8 +1504,8 @@ impl Transpiler for TsTranspiler {
     fn transpile_lambda<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        lambda: &'a IrLambda<IrType, WriterFunctionBody>,
-        typ: &'a IrType,
+        lambda: &'a IrLambda<WriterType, WriterFunctionBody>,
+        typ: &'a WriterType,
     ) -> Doc<'a> {
         let param_docs: Vec<_> = (lambda.parameters.iter())
             .map(|param| {
@@ -1524,8 +1530,14 @@ impl Transpiler for TsTranspiler {
                     .append(arena.hardline())
                     .append(arena.text("return output;")),
             ),
-            (WriterFunctionBody::Returns(block), IrType::Function(signature)) => (
-                self.transpile_result_type(arena, &signature.result),
+            (
+                WriterFunctionBody::Returns(block),
+                WriterType::Function(WriterSignature {
+                    result: WriterResult::Returns(result),
+                    ..
+                }),
+            ) => (
+                self.transpile_data_type(arena, result),
                 self.transpile_value_block(arena, block),
             ),
             (WriterFunctionBody::Returns(_), _) => {
@@ -1574,7 +1586,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_array_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_type: &IrDataType,
+        element_type: &WriterDataType,
     ) -> Doc<'a> {
         self.transpile_data_type(arena, element_type)
             .append(arena.text("[]"))
@@ -1583,7 +1595,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_tuple_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_types: &[IrDataType],
+        element_types: &[WriterDataType],
     ) -> Doc<'a> {
         arena
             .text("[")
@@ -1602,7 +1614,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_option_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        inner_type: &IrDataType,
+        inner_type: &WriterDataType,
     ) -> Doc<'a> {
         self.needs_option = true;
         arena
@@ -1631,8 +1643,8 @@ mod tests {
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_to_writer;
+    use crate::ir::flat_type::FlatType;
     use crate::ir::ir_page::IrPage;
-    use crate::ir::ir_type::IrType;
     use crate::ir::optimize_flat;
     use crate::root_contained_file_path::RootContainedFilePath;
     use crate::session::Session;
@@ -1751,7 +1763,7 @@ mod tests {
                 )
                 .entrypoint("Test", [("prefix", Ty::String)], |t| {
                     let prefix = t.param("prefix");
-                    let row = t.render_lambda([IrType::INT], |t, params| {
+                    let row = t.render_lambda([FlatType::INT], |t, params| {
                         let text = t.string_concat([prefix, t.int_to_string(params[0])]);
                         t.element(t.mint(), "li", [], Some(t.escape(text)))
                     });
@@ -1830,7 +1842,7 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [("double", Ty::Bool)], |t| {
-                    let scale = t.lambda([IrType::INT], |t, params| {
+                    let scale = t.lambda([FlatType::INT], |t, params| {
                         t.match_(t.param("double"), |m| {
                             m.arm(Pat::True, |t, _| {
                                 t.mul(NumericType::Int, params[0], t.int(2))
@@ -1920,7 +1932,7 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [], |t| {
-                    let wrap = t.render_lambda([IrType::HTML], |t, params| {
+                    let wrap = t.render_lambda([FlatType::HTML], |t, params| {
                         t.element(t.mint(), "b", [], Some(params[0]))
                     });
                     t.call("Wrap", [t.int(2), wrap])

@@ -1,7 +1,7 @@
 use super::bounded_vec::BoundedVec;
 use super::value::Value;
-use crate::ir::ir_type::IrDataType;
-use crate::ir::ir_type_declarations::{IrField, IrTypeDeclarations, IrVariant};
+use crate::ir::flat_type::FlatDataType;
+use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations, FlatVariant};
 use crate::symbols::type_name::TypeName;
 use rand::{Rng, RngExt};
 use std::rc::Rc;
@@ -18,8 +18,8 @@ fn random_word(rng: &mut impl Rng) -> Value<'static> {
 /// Whether a value of the given type can be constructed without expanding
 /// any named type in `visiting`. Restores `visiting` before returning.
 fn can_construct(
-    ty: &IrDataType,
-    types: &IrTypeDeclarations,
+    ty: &FlatDataType,
+    types: &FlatTypeDeclarations,
     visiting: &mut Vec<TypeName>,
 ) -> bool {
     if let Some(name) = named(ty) {
@@ -29,20 +29,20 @@ fn can_construct(
         visiting.push(name.clone());
     }
     let ok = match ty {
-        IrDataType::String
-        | IrDataType::Bool
-        | IrDataType::Int
-        | IrDataType::Float
+        FlatDataType::String
+        | FlatDataType::Bool
+        | FlatDataType::Int
+        | FlatDataType::Float
         // Arrays and options can always terminate as empty and None
-        | IrDataType::Array(_)
-        | IrDataType::Option(_) => true,
-        IrDataType::Tuple(elements) => elements
+        | FlatDataType::Array(_)
+        | FlatDataType::Option(_) => true,
+        FlatDataType::Tuple(elements) => elements
             .iter()
             .all(|element| can_construct(element, types, visiting)),
-        IrDataType::Record(name) => record_fields(types, name)
+        FlatDataType::Record(name) => record_fields(types, name)
             .iter()
             .all(|field| can_construct(&field.typ, types, visiting)),
-        IrDataType::Enum(name) => enum_variants(types, name).iter().any(|v| {
+        FlatDataType::Enum(name) => enum_variants(types, name).iter().any(|v| {
             v.fields
                 .iter()
                 .all(|field| can_construct(&field.typ, types, visiting))
@@ -54,18 +54,18 @@ fn can_construct(
     ok
 }
 
-fn named(ty: &IrDataType) -> Option<&TypeName> {
+fn named(ty: &FlatDataType) -> Option<&TypeName> {
     match ty {
-        IrDataType::Record(name) | IrDataType::Enum(name) => Some(name),
+        FlatDataType::Record(name) | FlatDataType::Enum(name) => Some(name),
         _ => None,
     }
 }
 
-fn record_fields<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrField] {
+fn record_fields<'a>(types: &'a FlatTypeDeclarations, name: &TypeName) -> &'a [FlatField] {
     &types.record(name).expect("record must be declared").fields
 }
 
-fn enum_variants<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrVariant] {
+fn enum_variants<'a>(types: &'a FlatTypeDeclarations, name: &TypeName) -> &'a [FlatVariant] {
     &types
         .enumeration(name)
         .expect("enum must be declared")
@@ -82,16 +82,16 @@ fn enum_variants<'a>(types: &'a IrTypeDeclarations, name: &TypeName) -> &'a [IrV
 /// Panics if the type has no finite values at all, e.g. a record whose
 pub fn random_value(
     rng: &mut impl Rng,
-    ty: &IrDataType,
-    types: &IrTypeDeclarations,
+    ty: &FlatDataType,
+    types: &FlatTypeDeclarations,
 ) -> Value<'static> {
     random_value_at_depth(rng, ty, types, 0, &mut Vec::new())
 }
 
 fn random_value_at_depth(
     rng: &mut impl Rng,
-    ty: &IrDataType,
-    types: &IrTypeDeclarations,
+    ty: &FlatDataType,
+    types: &FlatTypeDeclarations,
     depth: usize,
     visiting: &mut Vec<TypeName>,
 ) -> Value<'static> {
@@ -112,17 +112,17 @@ fn random_value_at_depth(
 
 fn generate(
     rng: &mut impl Rng,
-    ty: &IrDataType,
-    types: &IrTypeDeclarations,
+    ty: &FlatDataType,
+    types: &FlatTypeDeclarations,
     depth: usize,
     visiting: &mut Vec<TypeName>,
 ) -> Value<'static> {
     match ty {
-        IrDataType::String => random_word(rng),
-        IrDataType::Bool => Value::Bool(rng.random_bool(0.5)),
-        IrDataType::Int => Value::Int(rng.random_range(0..=100)),
-        IrDataType::Float => Value::Float(rng.random_range(0.0..100.0)),
-        IrDataType::Array(inner) => {
+        FlatDataType::String => random_word(rng),
+        FlatDataType::Bool => Value::Bool(rng.random_bool(0.5)),
+        FlatDataType::Int => Value::Int(rng.random_range(0..=100)),
+        FlatDataType::Float => Value::Float(rng.random_range(0.0..100.0)),
+        FlatDataType::Array(inner) => {
             let len = if depth >= MAX_DEPTH {
                 0
             } else {
@@ -134,7 +134,7 @@ fn generate(
                 BoundedVec::new(elements).expect("the length is within the limit"),
             ))
         }
-        IrDataType::Option(inner) => {
+        FlatDataType::Option(inner) => {
             if depth < MAX_DEPTH && rng.random_bool(0.5) {
                 Value::Option(Some(Rc::new(random_value_at_depth(
                     rng,
@@ -147,13 +147,13 @@ fn generate(
                 Value::Option(None)
             }
         }
-        IrDataType::Tuple(elements) => Value::Tuple(
+        FlatDataType::Tuple(elements) => Value::Tuple(
             elements
                 .iter()
                 .map(|element| random_value_at_depth(rng, element, types, depth + 1, visiting))
                 .collect(),
         ),
-        IrDataType::Record(name) => {
+        FlatDataType::Record(name) => {
             let map = record_fields(types, name)
                 .iter()
                 .map(|field| {
@@ -165,12 +165,12 @@ fn generate(
                 .collect();
             Value::Record(map)
         }
-        IrDataType::Enum(name) => {
+        FlatDataType::Enum(name) => {
             let variants = enum_variants(types, name);
             let variant = if depth >= MAX_DEPTH {
                 // Nonempty since the type passed can_construct when it
                 // crossed MAX_DEPTH or was chosen by an enclosing filter
-                let candidates: Vec<&IrVariant> = variants
+                let candidates: Vec<&FlatVariant> = variants
                     .iter()
                     .filter(|v| {
                         v.fields
@@ -201,13 +201,13 @@ fn generate(
 mod tests {
     use super::*;
     use crate::hop::typing::Ty;
-    use crate::ir::ir_type_declarations_builder::IrTypeDeclarationsBuilder;
+    use crate::ir::flat_type_declarations_builder::FlatTypeDeclarationsBuilder;
     use rand::SeedableRng;
     use rand::rngs::SmallRng;
 
     #[test]
     fn recursive_enum_generation_terminates() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .enum_(
                 "Tree",
                 [
@@ -223,7 +223,7 @@ mod tests {
                 ],
             )
             .build();
-        let ty = IrDataType::Enum(TypeName::parse("Tree").unwrap());
+        let ty = FlatDataType::Enum(TypeName::parse("Tree").unwrap());
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, &types);
@@ -232,13 +232,13 @@ mod tests {
 
     #[test]
     fn recursive_record_through_option_terminates() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .record(
                 "Node",
                 [("value", Ty::Int), ("next", Ty::option(Ty::named("Node")))],
             )
             .build();
-        let ty = IrDataType::Record(TypeName::parse("Node").unwrap());
+        let ty = FlatDataType::Record(TypeName::parse("Node").unwrap());
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, &types);
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn mutually_recursive_enums_terminate() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .enum_(
                 "Expr",
                 [
@@ -266,7 +266,7 @@ mod tests {
                 ],
             )
             .build();
-        let ty = IrDataType::Enum(TypeName::parse("Expr").unwrap());
+        let ty = FlatDataType::Enum(TypeName::parse("Expr").unwrap());
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
             random_value(&mut rng, &ty, &types);
@@ -276,18 +276,18 @@ mod tests {
     #[test]
     #[should_panic(expected = "cannot generate a value")]
     fn uninhabited_recursive_record_panics() {
-        let types = IrTypeDeclarationsBuilder::new()
+        let types = FlatTypeDeclarationsBuilder::new()
             .record("Node", [("value", Ty::Int), ("next", Ty::named("Node"))])
             .build();
-        let ty = IrDataType::Record(TypeName::parse("Node").unwrap());
+        let ty = FlatDataType::Record(TypeName::parse("Node").unwrap());
         let mut rng = SmallRng::seed_from_u64(0);
         random_value(&mut rng, &ty, &types);
     }
 
     #[test]
     fn array_length_defaults_to_zero_through_five() {
-        let ty = IrDataType::Array(Box::new(IrDataType::Int));
-        let types = IrTypeDeclarations::default();
+        let ty = FlatDataType::Array(Box::new(FlatDataType::Int));
+        let types = FlatTypeDeclarations::default();
         for seed in 0..50 {
             let mut rng = SmallRng::seed_from_u64(seed);
             let value = random_value(&mut rng, &ty, &types);
