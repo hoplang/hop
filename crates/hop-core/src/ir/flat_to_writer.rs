@@ -49,9 +49,9 @@ use crate::symbols::type_name::TypeName;
 /// that only escapes and attribute values read is escaped now, part by
 /// part.
 ///
-/// Html is never part of another type and a function that returns a value
-/// has no Html parameter, so no value reads Html. Panics if one does all the
-/// same.
+/// Html is never part of another type, so a value reads none. What computes
+/// a value only passes Html on, as a call does, and Html that nothing writes
+/// is left out.
 ///
 /// A click never happens on a page rendered to a string, so the clicks are
 /// left out.
@@ -113,17 +113,13 @@ pub fn flat_to_writer(
         for param in &function.parameters {
             lowerer.analyze_parameter(&param.binder);
         }
-        if function.return_type == FlatType::HTML {
-            lowerer.analyze_html_block(&function.body);
-        } else {
-            lowerer.analyze_value_block(&function.body);
-        }
+        lowerer.analyze_block(&function.body);
     }
     for entrypoint in &entrypoints {
         for param in &entrypoint.parameters {
             lowerer.analyze_parameter(&param.widen().binder);
         }
-        lowerer.analyze_html_block(&entrypoint.body);
+        lowerer.analyze_block(&entrypoint.body);
     }
     let mut page_entrypoints: HashMap<EntrypointId, _> = (entrypoints.iter().enumerate())
         .map(|(index, entrypoint)| (EntrypointId::new(index), entrypoint))
@@ -177,17 +173,15 @@ fn parameter_type(typ: &FlatType) -> WriterType {
             parameters: Vec::new(),
             result: WriterResult::Writes,
         }),
-        FlatType::Function(signature) if *signature.result == FlatType::Html => {
-            WriterType::Function(WriterSignature {
-                parameters: signature.parameters.iter().map(parameter_type).collect(),
-                result: WriterResult::Writes,
-            })
-        }
         FlatType::Data(_) | FlatType::Function(_) => value_type(typ),
         FlatType::Cell(_) | FlatType::ElementId => {
             unreachable!("the typechecker rejects a parameter of a cell or an identity")
         }
     }
+}
+
+fn writes_html(typ: &FlatType) -> bool {
+    matches!(typ, FlatType::Function(signature) if *signature.result == FlatType::HTML)
 }
 
 fn is_mut_closure(typ: &FlatType) -> bool {
@@ -203,7 +197,7 @@ fn value_type(typ: &FlatType) -> WriterType {
             WriterType::Data(WriterDataType::UNIT)
         }
         FlatType::Function(signature) => WriterType::Function(WriterSignature {
-            parameters: signature.parameters.iter().map(value_type).collect(),
+            parameters: signature.parameters.iter().map(parameter_type).collect(),
             result: result_type(&signature.result),
         }),
         FlatType::Html | FlatType::Cell(_) | FlatType::ElementId => {
@@ -286,11 +280,11 @@ enum Reader {
 }
 
 fn html_bindings(block: &FlatBlock) -> impl Iterator<Item = &FlatBinding> {
-    (block.bindings.iter()).filter(|binding| binding.binder.typ.is_html_or_html_closure())
+    (block.bindings.iter()).filter(|binding| binding.binder.typ == FlatType::HTML)
 }
 
 fn value_bindings(block: &FlatBlock) -> impl Iterator<Item = &FlatBinding> {
-    (block.bindings.iter()).filter(|binding| !binding.binder.typ.is_html_or_html_closure())
+    (block.bindings.iter()).filter(|binding| binding.binder.typ != FlatType::HTML)
 }
 
 struct Lowerer<'a> {
@@ -373,15 +367,8 @@ impl<'a> Lowerer<'a> {
         self.read(match_.subject, reader);
     }
 
-    /// Record the binding and what it reads. Panics if it reads Html.
+    /// Record the binding and what it reads.
     fn analyze_value_binding(&mut self, binding: &'a FlatBinding) {
-        binding.op.for_each_operand(&mut |operand| {
-            assert!(
-                !self.is_html(operand),
-                "{:?} reads the Html of {operand:?} as a value",
-                binding.binder.var
-            );
-        });
         self.bindings.insert(binding.binder.var, binding);
         match &binding.op {
             FlatOp::Data(IrDataOp::StringConcat(parts)) => {
@@ -392,16 +379,12 @@ impl<'a> Lowerer<'a> {
             FlatOp::Data(op) => {
                 op.for_each_operand(&mut |operand| self.read(operand, Reader::Value));
             }
-            FlatOp::Call(_, args) => {
-                for arg in args {
-                    self.read(*arg, Reader::Value);
-                }
-            }
+            FlatOp::Call(_, args) => self.read_args(args),
             FlatOp::Match(match_) => {
                 self.read_subject(match_);
                 for arm in &match_.arms {
                     self.analyze_pattern(&arm.pattern);
-                    self.analyze_value_block(&arm.body);
+                    self.analyze_block(&arm.body);
                 }
             }
             // Rendered on the empty state, a click never runs what mutates,
@@ -412,7 +395,7 @@ impl<'a> Lowerer<'a> {
                 for param in &lambda.parameters {
                     self.analyze_parameter(param);
                 }
-                self.analyze_value_block(&lambda.body);
+                self.analyze_block(&lambda.body);
             }
             FlatOp::Apply(closure, args) => {
                 self.read(*closure, Reader::Value);
@@ -420,7 +403,7 @@ impl<'a> Lowerer<'a> {
             }
             // Rendered on the empty state, a cell and a read of it are the
             // initial value of the cell.
-            FlatOp::Cell(initial) => self.analyze_value_block(initial),
+            FlatOp::Cell(initial) => self.analyze_block(initial),
             FlatOp::CellRead(cell) => self.read(*cell, Reader::Value),
             FlatOp::Mint => {}
             FlatOp::Text(_)
@@ -431,18 +414,9 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Record the bindings of a block that produces a value, and what they
-    /// read. Such a block binds no Html.
-    fn analyze_value_block(&mut self, block: &'a FlatBlock) {
-        for binding in &block.bindings {
-            self.analyze_value_binding(binding);
-        }
-        self.read(block.result, Reader::Value);
-    }
-
     /// Record the bindings of the block and what they read. Its Html is
-    /// recorded first, so that a value that reads it is found.
-    fn analyze_html_block(&mut self, block: &'a FlatBlock) {
+    /// recorded first, so that a call that passes it on finds it.
+    fn analyze_block(&mut self, block: &'a FlatBlock) {
         for binding in html_bindings(block) {
             self.html.insert(binding.binder.var, binding);
         }
@@ -470,7 +444,7 @@ impl<'a> Lowerer<'a> {
                     self.read_subject(match_);
                     for arm in &match_.arms {
                         self.analyze_pattern(&arm.pattern);
-                        self.analyze_html_block(&arm.body);
+                        self.analyze_block(&arm.body);
                     }
                 }
                 FlatOp::For(FlatFor {
@@ -480,25 +454,23 @@ impl<'a> Lowerer<'a> {
                         self.analyze_binder(binder);
                     }
                     self.read(*array, Reader::Value);
-                    self.analyze_html_block(body);
+                    self.analyze_block(body);
                 }
                 FlatOp::Call(_, args) => self.read_args(args),
-                FlatOp::Lambda(lambda) => {
-                    for param in &lambda.parameters {
-                        self.analyze_parameter(param);
-                    }
-                    self.analyze_html_block(&lambda.body);
-                }
                 FlatOp::Apply(closure, args) => {
                     self.read(*closure, Reader::Value);
                     self.read_args(args);
                 }
+                FlatOp::Lambda(_) => unreachable!("a closure is bound, not written"),
                 FlatOp::Data(_)
                 | FlatOp::Cell(_)
                 | FlatOp::Mint
                 | FlatOp::CellUpdate(..)
                 | FlatOp::CellRead(_) => unreachable!("Html is not bound by an op of a value"),
             }
+        }
+        if !self.is_html(block.result) {
+            self.read(block.result, Reader::Value);
         }
     }
 
@@ -656,7 +628,9 @@ impl<'a> Lowerer<'a> {
         out: &mut Vec<IrBinding<WriterType, WriterOp>>,
     ) {
         for binding in bindings {
-            self.lower_value_binding(binding, out);
+            if binding.binder.typ != FlatType::HTML {
+                self.lower_value_binding(binding, out);
+            }
         }
     }
 
@@ -692,10 +666,10 @@ impl<'a> Lowerer<'a> {
                 WriterOp::Data(IrDataOp::Tuple(Vec::new()))
             }
             FlatOp::CellUpdate(..) => unreachable!("only what mutates updates a cell"),
-            FlatOp::Call(function, args) => WriterOp::Call(
-                self.callees[function].clone(),
-                args.iter().map(|arg| self.name(*arg)).collect(),
-            ),
+            FlatOp::Call(function, args) => {
+                let args = self.lower_args(args, out);
+                WriterOp::Call(self.callees[function].clone(), args)
+            }
             FlatOp::Data(op) => {
                 let mut op = op.clone();
                 op.for_each_operand_mut(&mut |name| *name = self.name(*name));
@@ -703,12 +677,18 @@ impl<'a> Lowerer<'a> {
             }
             FlatOp::Lambda(lambda) => {
                 let parameters = self.bind_parameters(&lambda.parameters);
-                let mut bindings = Vec::new();
-                self.lower_value_bindings(&lambda.body.bindings, &mut bindings);
-                let body = WriterFunctionBody::Returns(WriterBlock {
-                    bindings,
-                    result: self.name(lambda.body.result),
-                });
+                let body = if writes_html(binder_type) {
+                    let mut statements = Vec::new();
+                    self.write_block(&lambda.body, &mut statements);
+                    WriterFunctionBody::Writes(statements)
+                } else {
+                    let mut bindings = Vec::new();
+                    self.lower_value_bindings(&lambda.body.bindings, &mut bindings);
+                    WriterFunctionBody::Returns(WriterBlock {
+                        bindings,
+                        result: self.name(lambda.body.result),
+                    })
+                };
                 WriterOp::Lambda(IrLambda {
                     parameters: (parameters.into_iter())
                         .map(|param| IrBinder {
@@ -719,10 +699,10 @@ impl<'a> Lowerer<'a> {
                     body,
                 })
             }
-            FlatOp::Apply(closure, args) => WriterOp::Apply(
-                self.name(*closure),
-                args.iter().map(|arg| self.name(*arg)).collect(),
-            ),
+            FlatOp::Apply(closure, args) => {
+                let args = self.lower_args(args, out);
+                WriterOp::Apply(self.name(*closure), args)
+            }
             FlatOp::Text(_)
             | FlatOp::Escape(_)
             | FlatOp::Concat(_)
@@ -1100,37 +1080,11 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    /// Write a block: the lets of its values, then those of its closures,
-    /// then its result.
+    /// Write a block: the lets of its values, then its result.
     fn write_block(&mut self, block: &'a FlatBlock, out: &mut Vec<WriterStmt>) {
         let mut lets = Vec::new();
-        for binding in value_bindings(block) {
-            self.lower_value_binding(binding, &mut lets);
-        }
+        self.lower_value_bindings(&block.bindings, &mut lets);
         out.extend(lets.into_iter().map(WriterStmt::Let));
-        for binding in html_bindings(block) {
-            let FlatOp::Lambda(lambda) = &binding.op else {
-                continue;
-            };
-            let parameters = (self.bind_parameters(&lambda.parameters).into_iter())
-                .map(|param| IrBinder {
-                    var: param.var,
-                    typ: parameter_type(&param.typ),
-                })
-                .collect();
-            let mut statements = Vec::new();
-            self.write_block(&lambda.body, &mut statements);
-            out.push(WriterStmt::Let(IrBinding {
-                binder: IrBinder {
-                    var: self.bind(binding.binder.var),
-                    typ: parameter_type(&binding.binder.typ),
-                },
-                op: WriterOp::Lambda(IrLambda {
-                    parameters,
-                    body: WriterFunctionBody::Writes(statements),
-                }),
-            }));
-        }
         self.write_html(block.result, out);
     }
 
@@ -1660,7 +1614,6 @@ mod tests {
                   }
                 }
                 page Test(prefix@v11: String) {
-                  let v20: Int = 3
                   let v18: (Int) -> Html = fn(
                     v12: Int,
                   ) {
@@ -1670,6 +1623,7 @@ mod tests {
                     write_string(v13)
                     write("</li>")
                   }
+                  let v20: Int = 3
                   write("<ul>")
                   write_function f0(v20, v18)
                   write("</ul>")
@@ -1897,7 +1851,6 @@ mod tests {
                   }
                 }
                 page Test() {
-                  let v14: Int = 2
                   let v13: (() -> Html) -> Html = fn(
                     v10: () -> Html,
                   ) {
@@ -1905,7 +1858,244 @@ mod tests {
                     write_apply v10()
                     write("</b>")
                   }
+                  let v14: Int = 2
                   write_function f0(v14, v13)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn html_passed_to_a_function_that_returns_a_value() {
+        check_program(
+            FlatProgramBuilder::new()
+                .function(
+                    "Width",
+                    [("icon", Ty::Html), ("n", Ty::Int)],
+                    Ty::Int,
+                    |t| {
+                        t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
+                            m.arm(Pat::True, |t, _| t.int(0));
+                            m.arm(Pat::False, |t, _| {
+                                let rest = t.sub(NumericType::Int, t.param("n"), t.int(1));
+                                let rest = t.call("Width", [t.param("icon"), rest]);
+                                t.add(NumericType::Int, t.int(2), rest)
+                            });
+                        })
+                    },
+                )
+                .entrypoint("Test", [("label", Ty::String)], |t| {
+                    t.element(t.mint(), "i", [], Some(t.text("*")));
+                    let badge = t.element(t.mint(), "b", [], Some(t.escape(t.param("label"))));
+                    let width = t.call("Width", [badge, t.int(3)]);
+                    t.escape(t.int_to_string(width))
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- flat --
+                fn Width@f0(
+                  icon@v0: Html,
+                  n@v1: Int,
+                ) -> Int {
+                  let v2: Int = 0
+                  let v3: Bool = int_lt_eq(v1, v2)
+                  let v10: Int = match v3 {
+                    true => {
+                      let v4: Int = 0
+                      v4
+                    }
+                    false => {
+                      let v5: Int = 1
+                      let v6: Int = int_sub(v1, v5)
+                      let v7: Int = f0(v0, v6)
+                      let v8: Int = 2
+                      let v9: Int = int_add(v8, v7)
+                      v9
+                    }
+                  }
+                  v10
+                }
+                entrypoint Test@e0(
+                  label@v11: String,
+                ) -> Html {
+                  let v15: ElementId = mint()
+                  let v16: Html = escape(v11)
+                  let v17: Html = element(v15, "b", {}, v16)
+                  let v18: Int = 3
+                  let v19: Int = f0(v17, v18)
+                  let v20: String = int_to_string(v19)
+                  let v21: Html = escape(v20)
+                  v21
+                }
+
+                -- writer --
+                fn Width@f0(
+                  icon@v0: () -> Html,
+                  n@v1: Int,
+                ) -> Int {
+                  let v2: Int = 0
+                  let v3: Bool = int_lt_eq(v1, v2)
+                  let v23: Int = match v3 {
+                    true => {
+                      let v4: Int = 0
+                      v4
+                    }
+                    false => {
+                      let v5: Int = 1
+                      let v6: Int = int_sub(v1, v5)
+                      let v7: Int = f0(v0, v6)
+                      let v8: Int = 2
+                      let v9: Int = int_add(v8, v7)
+                      v9
+                    }
+                  }
+                  v23
+                }
+                page Test(label@v11: String) {
+                  let v18: Int = 3
+                  let v22: () -> Html = fn() {
+                    write("<b>")
+                    write_string(v11)
+                    write("</b>")
+                  }
+                  let v19: Int = f0(v22, v18)
+                  let v20: String = int_to_string(v19)
+                  write_string(v20)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn closure_that_renders_html_bound_in_a_block_that_produces_a_value() {
+        check_program(
+            FlatProgramBuilder::new()
+                .function(
+                    "Count",
+                    [
+                        ("n", Ty::Int),
+                        ("row", Ty::render_function([Ty::Int], Ty::Html)),
+                    ],
+                    Ty::Int,
+                    |t| {
+                        t.match_(t.lte(ComparableType::Int, t.param("n"), t.int(0)), |m| {
+                            m.arm(Pat::True, |t, _| t.int(0));
+                            m.arm(Pat::False, |t, _| {
+                                let rest = t.sub(NumericType::Int, t.param("n"), t.int(1));
+                                let rest = t.call("Count", [rest, t.param("row")]);
+                                t.add(NumericType::Int, t.int(1), rest)
+                            });
+                        })
+                    },
+                )
+                .entrypoint("Test", [("show", Ty::Bool)], |t| {
+                    let count = t.match_(t.param("show"), |m| {
+                        m.arm(Pat::True, |t, _| {
+                            let row = t.render_lambda([FlatType::INT], |t, params| {
+                                t.escape(t.int_to_string(params[0]))
+                            });
+                            t.call("Count", [t.int(3), row])
+                        });
+                        m.arm(Pat::False, |t, _| t.int(0));
+                    });
+                    t.escape(t.int_to_string(count))
+                })
+                .build()
+                .unwrap(),
+            expect![[r#"
+                -- flat --
+                fn Count@f0(
+                  n@v0: Int,
+                  row@v1: render (Int) -> Html,
+                ) -> Int {
+                  let v2: Int = 0
+                  let v3: Bool = int_lt_eq(v0, v2)
+                  let v10: Int = match v3 {
+                    true => {
+                      let v4: Int = 0
+                      v4
+                    }
+                    false => {
+                      let v5: Int = 1
+                      let v6: Int = int_sub(v0, v5)
+                      let v7: Int = f0(v6, v1)
+                      let v8: Int = 1
+                      let v9: Int = int_add(v8, v7)
+                      v9
+                    }
+                  }
+                  v10
+                }
+                entrypoint Test@e0(
+                  show@v11: Bool,
+                ) -> Html {
+                  let v19: Int = match v11 {
+                    true => {
+                      let v15: render (Int) -> Html = fn(
+                        v12: Int,
+                      ) {
+                        let v13: String = int_to_string(v12)
+                        let v14: Html = escape(v13)
+                        v14
+                      }
+                      let v16: Int = 3
+                      let v17: Int = f0(v16, v15)
+                      v17
+                    }
+                    false => {
+                      let v18: Int = 0
+                      v18
+                    }
+                  }
+                  let v20: String = int_to_string(v19)
+                  let v21: Html = escape(v20)
+                  v21
+                }
+
+                -- writer --
+                fn Count@f0(
+                  n@v0: Int,
+                  row@v1: (Int) -> Html,
+                ) -> Int {
+                  let v2: Int = 0
+                  let v3: Bool = int_lt_eq(v0, v2)
+                  let v23: Int = match v3 {
+                    true => {
+                      let v4: Int = 0
+                      v4
+                    }
+                    false => {
+                      let v5: Int = 1
+                      let v6: Int = int_sub(v0, v5)
+                      let v7: Int = f0(v6, v1)
+                      let v8: Int = 1
+                      let v9: Int = int_add(v8, v7)
+                      v9
+                    }
+                  }
+                  v23
+                }
+                page Test(show@v11: Bool) {
+                  let v22: Int = match v11 {
+                    true => {
+                      let v15: (Int) -> Html = fn(
+                        v12: Int,
+                      ) {
+                        let v13: String = int_to_string(v12)
+                        write_string(v13)
+                      }
+                      let v16: Int = 3
+                      let v17: Int = f0(v16, v15)
+                      v17
+                    }
+                    false => {
+                      let v18: Int = 0
+                      v18
+                    }
+                  }
+                  let v20: String = int_to_string(v22)
+                  write_string(v20)
                 }
             "#]],
         );

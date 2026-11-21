@@ -130,13 +130,6 @@ pub enum TypeErrorKind {
     #[error("A function cannot return {result}")]
     FunctionReturnsFunction { result: Type },
 
-    #[error("{typ} returns {result} and cannot take {parameter}")]
-    DataFunctionTakesHtml {
-        typ: Type,
-        result: Type,
-        parameter: Type,
-    },
-
     // Named types print without their module, so two different types can
     // print the same.
     #[error(
@@ -395,6 +388,17 @@ pub enum TypeErrorKind {
         }
     )]
     StateMacroNotAllowed { position: Position },
+
+    #[error(
+        "{}",
+        match position {
+            Position::PureFn => "Markup needs a render fn",
+            Position::MutFn => "Markup in a mut fn",
+            Position::InitialValue => "Markup in an initial value",
+            Position::Key => "Markup in a key",
+        }
+    )]
+    MarkupNotAllowed { position: Position },
 
     #[error("state! cannot hold {typ}")]
     StateMacroNotData { typ: Type },

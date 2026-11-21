@@ -59,21 +59,15 @@ pub enum FlatTypeError {
     /// A function or a lambda takes a cell or an identity, which only a
     /// cell binding or a mint binds.
     CellOrIdParameter,
-    /// A block has an effect that its modifier does not allow. A cell and a
-    /// mint render, a write of a cell mutates, and a call or an application
+    /// A block has an effect that its modifier does not allow. A cell, a
+    /// mint and a loop render, a write of a cell mutates, and a call or an application
     /// has the modifier of what it calls. A read of a cell is allowed in a
     /// block that renders or mutates. A pure block allows none of these, and
     /// a block that renders or mutates allows its own effect.
     EffectNotAllowed,
-    /// A function or a lambda returns Html without the render modifier.
-    HtmlOutsideRender,
     /// A function returns something other than Html or a value: a closure,
     /// a cell or an identity.
     ReturnsUnreturnable,
-    /// A block that produces a value binds Html or a closure that renders
-    /// it, or a function or closure that returns a value takes Html or such
-    /// a closure. The value can depend on none of them.
-    HtmlInValueBlock,
 }
 
 pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
@@ -88,22 +82,13 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
         checker.live.clear();
         checker.scoped(|checker| {
             let expected = BoundType::of(&function.return_type);
-            let returns_html = expected == BoundType::Html;
-            if returns_html && function.modifier != IrModifier::Render {
-                return Err(FlatTypeError::HtmlOutsideRender);
-            }
-            if !returns_html && !matches!(expected, BoundType::Data(_)) {
+            if !matches!(expected, BoundType::Html | BoundType::Data(_)) {
                 return Err(FlatTypeError::ReturnsUnreturnable);
             }
             for param in &function.parameters {
                 let typ = BoundType::of(&param.binder.typ);
                 if matches!(typ, BoundType::Cell(_) | BoundType::ElementId) {
                     return Err(FlatTypeError::CellOrIdParameter);
-                }
-                // Only Html depends on Html, so a function that returns a
-                // value takes none.
-                if !returns_html && !param.binder.typ.is_data_or_data_closure() {
-                    return Err(FlatTypeError::HtmlInValueBlock);
                 }
                 checker.bind(param.binder.var, typ)?;
             }
@@ -186,8 +171,7 @@ fn is_well_formed(signature: &FlatSignature) -> bool {
             _ => true,
         });
     let result = match *signature.result {
-        FlatType::Html => signature.modifier == IrModifier::Render,
-        FlatType::Data(_) => (signature.parameters.iter()).all(FlatType::is_data_or_data_closure),
+        FlatType::Html | FlatType::Data(_) => true,
         FlatType::Function(_) | FlatType::Cell(_) | FlatType::ElementId => false,
     };
     parameters && result
@@ -262,24 +246,11 @@ impl<'a> Checker<'a> {
         expected: BoundType<'a>,
         modifier: IrModifier,
     ) -> Result<(), FlatTypeError> {
-        self.bindings(&block.bindings, expected == BoundType::Html, modifier)?;
-        self.block_result(block.result, expected)
-    }
-
-    fn bindings(
-        &mut self,
-        bindings: &'a [FlatBinding],
-        returns_html: bool,
-        modifier: IrModifier,
-    ) -> Result<(), FlatTypeError> {
-        for binding in bindings {
-            // The value of a block depends on no Html, as no op looks into
-            // Html, so a block that produces a value binds none.
-            let typ = &binding.binder.typ;
-            if typ.is_html_or_html_closure() && !returns_html {
-                return Err(FlatTypeError::HtmlInValueBlock);
-            }
+        for binding in &block.bindings {
             self.binding(binding, modifier)?;
+        }
+        if self.read(block.result)? != expected {
+            return Err(FlatTypeError::BlockOfWrongType);
         }
         Ok(())
     }
@@ -290,7 +261,7 @@ impl<'a> Checker<'a> {
         modifier: IrModifier,
     ) -> Result<(), FlatTypeError> {
         let allowed = match binding.op {
-            FlatOp::Cell(_) | FlatOp::Mint => modifier == IrModifier::Render,
+            FlatOp::Cell(_) | FlatOp::Mint | FlatOp::For(_) => modifier == IrModifier::Render,
             FlatOp::CellRead(_) => modifier == IrModifier::Render,
             FlatOp::CellUpdate(..) => modifier == IrModifier::Mut,
             _ => true,
@@ -414,7 +385,9 @@ impl<'a> Checker<'a> {
                     }
                     if let Some(key) = &for_.key {
                         checker.scoped(|checker| {
-                            checker.bindings(&key.bindings, false, IrModifier::Pure)?;
+                            for binding in &key.bindings {
+                                checker.binding(binding, IrModifier::Pure)?;
+                            }
                             let typ = checker.read(key.result)?;
                             if !typ.is(&FlatType::INT) && !typ.is(&FlatType::STRING) {
                                 return Err(FlatTypeError::KeyNotIntOrString);
@@ -422,7 +395,7 @@ impl<'a> Checker<'a> {
                             Ok(())
                         })?;
                     }
-                    checker.block(&for_.body, BoundType::Html, IrModifier::Render)
+                    checker.block(&for_.body, BoundType::Html, modifier)
                 })?;
                 self.live = outer;
                 html
@@ -432,9 +405,6 @@ impl<'a> Checker<'a> {
                     return Err(FlatTypeError::IllTypedBinding);
                 };
                 let result = BoundType::of(&signature.result);
-                if result == BoundType::Html && signature.modifier != IrModifier::Render {
-                    return Err(FlatTypeError::HtmlOutsideRender);
-                }
                 // The body runs once per application, so it reads no Html
                 // bound outside of it.
                 let outer = std::mem::take(&mut self.live);
@@ -463,18 +433,6 @@ impl<'a> Checker<'a> {
             return Err(FlatTypeError::IllTypedBinding);
         }
         self.bind(binding.binder.var, declared)
-    }
-
-    fn block_result(
-        &mut self,
-        result: ValueId,
-        expected: BoundType<'a>,
-    ) -> Result<(), FlatTypeError> {
-        let found = self.read(result)?;
-        if found != expected {
-            return Err(FlatTypeError::BlockOfWrongType);
-        }
-        Ok(())
     }
 
     fn callee(&self, callee: FunctionId) -> Result<&'a FlatFunction, FlatTypeError> {
@@ -777,7 +735,7 @@ mod tests {
     use super::FlatTypeError;
     use crate::hop::typing::{ComparableType, EquatableType, NumericType, Ty};
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
-    use crate::ir::flat_type::FlatType;
+    use crate::ir::flat_type::{FlatType, IrModifier};
     use crate::ir::flat_type_declarations_builder::FlatTypeDeclarationsBuilder;
 
     #[test]
@@ -1526,8 +1484,58 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_html_in_a_function_that_renders_a_value() {
+    fn should_accept_a_function_that_returns_html_without_the_render_modifier() {
+        FlatProgramBuilder::new()
+            .function("Wrap", [("content", Ty::Html)], Ty::Html, |t| {
+                t.html_concat([t.text("["), t.param("content"), t.text("]")])
+            })
+            .function("width", [("content", Ty::Html)], Ty::Int, |t| {
+                t.call("Wrap", [t.param("content")]);
+                t.int(2)
+            })
+            .entrypoint("Test", [], |t| {
+                let pair = t.lambda([FlatType::HTML], |t, params| {
+                    t.html_concat([params[0], t.text("!")])
+                });
+                let width = t.call("width", [t.text("a")]);
+                let shown = t.apply(pair, [t.call("Wrap", [t.text("b")])]);
+                t.html_concat([t.escape(t.int_to_string(width)), shown])
+            })
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    fn should_reject_a_mint_in_a_function_that_returns_html_without_the_render_modifier() {
         let error = FlatProgramBuilder::new()
+            .function("Wrap", [("content", Ty::Html)], Ty::Html, |t| {
+                t.element(t.mint(), "b", [], Some(t.param("content")))
+            })
+            .entrypoint("Test", [], |t| t.call("Wrap", [t.text("a")]))
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
+    }
+
+    #[test]
+    fn should_reject_a_loop_in_a_function_without_the_render_modifier() {
+        let error = FlatProgramBuilder::new()
+            .function("count", [], Ty::Int, |t| {
+                let numbers = t.array_from_range(t.int(0), t.int(2));
+                t.html_for(numbers, |t, _| t.text("x"));
+                t.int(0)
+            })
+            .entrypoint("Test", [], |t| {
+                t.escape(t.int_to_string(t.call("count", [])))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
+    }
+
+    #[test]
+    fn should_accept_html_in_a_function_that_renders_a_value() {
+        FlatProgramBuilder::new()
             .render_function("count", [], Ty::Int, |t| {
                 t.text("x");
                 t.int(0)
@@ -1536,32 +1544,103 @@ mod tests {
                 t.escape(t.int_to_string(t.call("count", [])))
             })
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::HtmlInValueBlock);
+            .unwrap();
     }
 
     #[test]
-    fn should_reject_a_function_that_renders_a_value_from_html() {
-        let error = FlatProgramBuilder::new()
+    fn should_accept_a_function_that_renders_a_value_and_takes_html() {
+        FlatProgramBuilder::new()
             .render_function("count", [("content", Ty::Html)], Ty::Int, |t| t.int(0))
             .entrypoint("Test", [], |t| {
                 t.escape(t.int_to_string(t.call("count", [t.text("x")])))
             })
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::HtmlInValueBlock);
+            .unwrap();
     }
 
     #[test]
-    fn should_reject_html_parameter_of_a_function_without_the_render_modifier() {
-        let error = FlatProgramBuilder::new()
+    fn should_accept_an_html_parameter_of_a_function_that_returns_a_value() {
+        FlatProgramBuilder::new()
             .function("count", [("content", Ty::Html)], Ty::Int, |t| t.int(0))
             .entrypoint("Test", [], |t| {
                 t.escape(t.int_to_string(t.call("count", [t.text("x")])))
             })
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::HtmlInValueBlock);
+            .unwrap();
+    }
+
+    #[test]
+    fn should_accept_a_function_that_returns_a_value_and_takes_a_closure_that_renders_html() {
+        FlatProgramBuilder::new()
+            .function(
+                "count",
+                [("row", Ty::render_function([Ty::Int], Ty::Html))],
+                Ty::Int,
+                |t| t.int(0),
+            )
+            .entrypoint("Test", [], |t| {
+                let row = t.render_lambda([FlatType::INT], |t, _| t.text("x"));
+                t.escape(t.int_to_string(t.call("count", [row])))
+            })
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    fn should_accept_a_closure_that_returns_a_value_and_takes_a_closure_that_renders_html() {
+        FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let row = t.render_lambda([FlatType::HTML], |_, params| params[0]);
+                let wrap = FlatType::function(IrModifier::Render, [FlatType::HTML], FlatType::HTML);
+                let count = t.lambda([wrap], |t, _| t.int(0));
+                t.escape(t.int_to_string(t.apply(count, [row])))
+            })
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    fn should_accept_a_closure_that_renders_html_in_a_block_that_produces_a_value() {
+        FlatProgramBuilder::new()
+            .function(
+                "count",
+                [("row", Ty::render_function([], Ty::Html))],
+                Ty::Int,
+                |t| t.int(0),
+            )
+            .entrypoint("Test", [("show", Ty::Bool)], |t| {
+                let count = t.match_(t.param("show"), |m| {
+                    m.arm(Pat::True, |t, _| {
+                        let row = t.render_lambda([], |t, _| t.text("x"));
+                        t.call("count", [row])
+                    });
+                    m.arm(Pat::False, |t, _| t.int(0));
+                });
+                t.escape(t.int_to_string(count))
+            })
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    fn should_accept_an_application_of_a_closure_that_renders_html_in_a_block_that_produces_a_value()
+     {
+        FlatProgramBuilder::new()
+            .render_function(
+                "count",
+                [("row", Ty::render_function([], Ty::Html))],
+                Ty::Int,
+                |t| {
+                    t.apply(t.param("row"), []);
+                    t.int(0)
+                },
+            )
+            .entrypoint("Test", [], |t| {
+                let row = t.render_lambda([], |t, _| t.text("x"));
+                t.escape(t.int_to_string(t.call("count", [row])))
+            })
+            .build()
+            .unwrap();
     }
 
     #[test]
@@ -1593,8 +1672,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_html_in_a_closure_that_renders_a_value() {
-        let error = FlatProgramBuilder::new()
+    fn should_accept_html_in_a_closure_that_renders_a_value() {
+        FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.render_lambda([], |t, _| {
                     t.text("x");
@@ -1603,8 +1682,7 @@ mod tests {
                 t.escape(t.int_to_string(t.apply(count, [])))
             })
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::HtmlInValueBlock);
+            .unwrap();
     }
 
     #[test]
@@ -1620,15 +1698,14 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_closure_that_returns_a_value_and_takes_html() {
-        let error = FlatProgramBuilder::new()
+    fn should_accept_a_closure_that_returns_a_value_and_takes_html() {
+        FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 t.lambda([FlatType::HTML], |t, _| t.int(0));
                 t.text("x")
             })
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::IllTypedBinding);
+            .unwrap();
     }
 
     #[test]

@@ -80,25 +80,6 @@ impl FlatType {
             }
         }
     }
-
-    pub fn is_html_or_html_closure(&self) -> bool {
-        match self {
-            FlatType::Html => true,
-            FlatType::Function(signature) => *signature.result == FlatType::Html,
-            FlatType::Data(_) | FlatType::Cell(_) | FlatType::ElementId => false,
-        }
-    }
-
-    pub fn is_data_or_data_closure(&self) -> bool {
-        match self {
-            FlatType::Data(_) => true,
-            FlatType::Function(signature) => {
-                matches!(*signature.result, FlatType::Data(_))
-                    && (signature.parameters.iter()).all(FlatType::is_data_or_data_closure)
-            }
-            FlatType::Html | FlatType::Cell(_) | FlatType::ElementId => false,
-        }
-    }
 }
 
 impl FlatDataType {

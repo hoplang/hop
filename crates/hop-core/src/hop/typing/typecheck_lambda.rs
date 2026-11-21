@@ -192,16 +192,7 @@ pub fn typecheck_lambda(
         result: Box::new(body_type),
     };
     if let Some(error) = check_function_type(&function) {
-        // A parameter that renders Html is reported where it is written,
-        // and a result that is a function at the body.
-        let range = match &error {
-            TypeErrorKind::DataFunctionTakesHtml { .. } => typed_params
-                .iter()
-                .find(|(_, typ)| typ.renders_html())
-                .map_or(body.tail.range(), |(param, _)| &param.var_name_range),
-            _ => body.tail.range(),
-        };
-        errors.push(TypeError::new(error, range.clone()));
+        errors.push(TypeError::new(error, body.tail.range().clone()));
         return None;
     }
     Some(TypedExpr::Lambda {
@@ -244,7 +235,7 @@ pub fn typecheck_apply(
         ));
         return None;
     }
-    if function.modifier == Modifier::Render && !function.result.renders_html() {
+    if function.modifier == Modifier::Render {
         var_env.require(
             |_| false,
             |position| TypeErrorKind::RenderCallNotAllowed { position },

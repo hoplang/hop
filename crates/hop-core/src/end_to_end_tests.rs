@@ -7673,6 +7673,67 @@ fn lambda_passed_through_a_recursive_function() {
 
 #[test]
 #[ignore]
+fn lambda_that_renders_html_passed_to_what_computes_a_value() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            fn depth(n: Int, item: fn(Int) -> Html, measure: fn(fn(Int) -> Html, Int) -> Int) -> Int {
+              match n <= 0 {
+                true => measure(item, 0),
+                false => 1 + depth(n - 1, item, measure),
+              }
+            }
+
+            page Test() {
+              fn body() -> Html {
+                let scale = 10;
+                let item = fn(n: Int) { <b>{n.to_string()}</b> };
+                let total = match scale > 5 {
+                  true => {
+                    let measure = fn(_: fn(Int) -> Html, n: Int) { n + scale };
+                    depth(3, item, measure)
+                  },
+                  false => 0,
+                };
+                <>{total.to_string()}{item(1)}</>
+              }
+            }
+        "#},
+        "13<b>1</b>",
+    );
+}
+
+#[test]
+#[ignore]
+fn html_passed_to_what_computes_a_value() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            fn weigh(icon: Html, n: Int) -> Int {
+              match n <= 0 {
+                true => 0,
+                false => weigh(icon, n - 1) + 2,
+              }
+            }
+
+            render fn width(label: String) -> Int {
+              let badge = <b>{label}</b>;
+              weigh(badge, 3)
+            }
+
+            page Test() {
+              fn body() -> Html {
+                let measure = fn(_: Html, n: Int) { n * 10 };
+                <>{width("a").to_string()}<b>{measure(<i></i>, 2).to_string()}</b></>
+              }
+            }
+        "#},
+        "6<b>20</b>",
+    );
+}
+
+#[test]
+#[ignore]
 fn lambda_through_a_rest_specialization() {
     check(
         indoc! {r#"

@@ -59,11 +59,9 @@ use super::ir_parameter::IrParameter;
 /// A lambda compiles to a Lambda whose parameters are bound to fresh names,
 /// and an application of a variable to an Apply of its name.
 ///
-/// Html is never part of another type, so no value depends on Html, and
-/// what renders Html, Html or a function that returns it, is erased in an
-/// expression that computes a value. A function that returns a value has
-/// no parameter that renders Html, a call to it passes no argument for one,
-/// and a let of what renders Html whose body does not is its body.
+/// Html is never part of another type, so no value depends on Html. It is
+/// compiled all the same wherever it is written, and what computes a value
+/// only passes it on.
 pub fn typed_to_flat(
     pages: Vec<TypedPageDeclaration>,
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
@@ -223,11 +221,6 @@ impl<'a> Compiler<'a> {
 
         let mut parameters = Vec::with_capacity(decl.params.len() + shape.len());
         for param in &decl.params {
-            // What the function computes does not depend on Html, so only
-            // the erased parts of its body read the parameter.
-            if decl.return_type != Type::HTML && param.var_type.renders_html() {
-                continue;
-            }
             let var = self.bind(&param.var_name);
             self.params.insert(param.var_name.clone(), var);
             parameters.push(IrParameter {
@@ -325,8 +318,7 @@ impl<'a> Compiler<'a> {
     }
 
     /// The block of the bindings `f` pushes, whose result is the value `f`
-    /// returns. The Html of an expression that computes a value is erased,
-    /// so `f` pushes no Html.
+    /// returns.
     fn data_block(&mut self, f: impl FnOnce(&mut Self) -> ValueId) -> FlatBlock {
         let render = self.context == IrModifier::Render;
         let outer = std::mem::take(&mut self.bindings);
@@ -338,10 +330,6 @@ impl<'a> Compiler<'a> {
                 assert!(
                     render || !cell,
                     "a block that computes a value outside what renders binds no cell"
-                );
-                assert!(
-                    cell || binding.binder.typ.is_data_or_data_closure(),
-                    "a block that computes a value binds Html"
                 );
             })
             .collect();
@@ -364,7 +352,7 @@ impl<'a> Compiler<'a> {
     fn push(&mut self, typ: Type, op: FlatOp) -> ValueId {
         let typ = lower_type(self.registry, &typ);
         assert!(
-            typ.is_data_or_data_closure(),
+            matches!(typ, FlatType::Data(_) | FlatType::Function(_)),
             "an op of a value produces a value"
         );
         let name = self.value_id_counter.next();
@@ -840,12 +828,9 @@ impl<'a> Compiler<'a> {
                 ..
             } => {
                 // The typechecker orders the arguments as the callee
-                // declares its parameters. A callee that returns a value has
-                // no parameter that renders Html, so such arguments are
-                // erased.
+                // declares its parameters.
                 let mut compiled_args: Vec<ValueId> = args
                     .iter()
-                    .filter(|(_, value)| typ == Type::HTML || !value.typ().renders_html())
                     .map(|(_, value)| self.compile_expr(value))
                     .collect();
                 // The attributes supplied to the callee's rest select the
@@ -910,7 +895,6 @@ impl<'a> Compiler<'a> {
             // of its own, a getter that is a read of the cell, and a setter
             // that is a mut fn that updates the cell with the function it
             // takes.
-            // A let of Html in a block that does not render Html is erased.
             TypedExpr::Block { statements, tail } => {
                 self.push_scope();
                 for statement in statements {
@@ -961,15 +945,10 @@ impl<'a> Compiler<'a> {
                             continue;
                         }
                         TypedStatement::Expr(expr) => {
-                            if typ.renders_html() || !expr.typ().renders_html() {
-                                self.compile_expr(expr);
-                            }
+                            self.compile_expr(expr);
                             continue;
                         }
                     };
-                    if !typ.renders_html() && binding.value.typ().renders_html() {
-                        continue;
-                    }
                     let value = self.compile_expr(&binding.value);
                     match &binding.pattern {
                         Pattern::Binding(binder) => self.name(&binder.var, value),
@@ -1048,25 +1027,13 @@ impl<'a> Compiler<'a> {
                         typ: lower_type(self.registry, typ),
                     })
                     .collect();
-                if typ.renders_html() {
-                    let body = self.compile_html_block(body);
-                    self.pop_scope();
-                    self.context = outer;
-                    let binder_type = lower_type(self.registry, &typ);
-                    assert!(
-                        binder_type.is_html_or_html_closure(),
-                        "a lambda that renders Html is Html"
-                    );
-                    return self
-                        .bind_html(binder_type, FlatOp::Lambda(IrLambda { parameters, body }));
-                }
-                let body = self.compile_value_block(body);
+                let body = if typ.renders_html() {
+                    self.compile_html_block(body)
+                } else {
+                    self.compile_value_block(body)
+                };
                 self.pop_scope();
                 self.context = outer;
-                assert!(
-                    (parameters.iter()).all(|binder| binder.typ.is_data_or_data_closure()),
-                    "a lambda that computes a value takes values only"
-                );
                 FlatOp::Lambda(IrLambda { parameters, body })
             }
             TypedExpr::Apply { callee, args, .. } => {
@@ -1988,7 +1955,7 @@ mod tests {
     }
 
     #[test]
-    fn should_erase_the_html_of_a_function_that_returns_a_value() {
+    fn should_keep_the_html_of_a_function_that_returns_a_value() {
         check(
             indoc! {r#"
                 fn width(icon: Html, n: Int) -> Int {
@@ -1998,7 +1965,7 @@ mod tests {
                   }
                 }
 
-                fn label(icon: Html, name: String) -> String {
+                render fn label(icon: Html, name: String) -> String {
                   let badge = <b>{icon}</b>;
                   let n = width(badge, 3);
                   format!("{} {}", name, n.to_string())
@@ -2011,46 +1978,55 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                fn label@f0(
-                  name@v6: String,
+                render fn label@f0(
+                  icon@v10: Html,
+                  name@v11: String,
                 ) -> String {
-                  let v7: Int = 3
-                  let v8: Int = f1(v7)
-                  let v9: String = " "
-                  let v10: String = int_to_string(v8)
-                  let v11: String = string_concat(v6, v9, v10)
-                  v11
+                  let v12: Html = concat(v10)
+                  let v13: ElementId = mint()
+                  let v14: Html = element(v13, "b", {}, v12)
+                  let v15: Int = 3
+                  let v16: Int = f1(v14, v15)
+                  let v17: String = " "
+                  let v18: String = int_to_string(v16)
+                  let v19: String = string_concat(v11, v17, v18)
+                  v19
                 }
                 fn width@f1(
-                  n@v12: Int,
+                  icon@v20: Html,
+                  n@v21: Int,
                 ) -> Int {
-                  let v13: Int = 0
-                  let v14: Bool = int_lt_eq(v12, v13)
-                  let v21: Int = match v14 {
+                  let v22: Int = 0
+                  let v23: Bool = int_lt_eq(v21, v22)
+                  let v30: Int = match v23 {
                     true => {
-                      let v15: Int = 0
-                      v15
+                      let v24: Int = 0
+                      v24
                     }
                     false => {
-                      let v16: Int = 1
-                      let v17: Int = int_sub(v12, v16)
-                      let v18: Int = f1(v17)
-                      let v19: Int = 2
-                      let v20: Int = int_add(v18, v19)
-                      v20
+                      let v25: Int = 1
+                      let v26: Int = int_sub(v21, v25)
+                      let v27: Int = f1(v20, v26)
+                      let v28: Int = 2
+                      let v29: Int = int_add(v27, v28)
+                      v29
                     }
                   }
-                  v21
+                  v30
                 }
                 entrypoint body@e0(
                   name@v0: String,
                 ) -> Html {
-                  let v1: String = f0(v0)
-                  let v2: Html = escape(v1)
-                  let v3: Html = concat(v2)
-                  let v4: ElementId = mint()
-                  let v5: Html = element(v4, "p", {}, v3)
-                  v5
+                  let v1: Html = text("*")
+                  let v2: Html = concat(v1)
+                  let v3: ElementId = mint()
+                  let v4: Html = element(v3, "i", {}, v2)
+                  let v5: String = f0(v4, v0)
+                  let v6: Html = escape(v5)
+                  let v7: Html = concat(v6)
+                  let v8: ElementId = mint()
+                  let v9: Html = element(v8, "p", {}, v7)
+                  v9
                 }
                 page Test: e0
             "#]],
@@ -2124,7 +2100,7 @@ mod tests {
     }
 
     #[test]
-    fn should_erase_the_html_lambdas_of_a_function_that_returns_a_value() {
+    fn should_keep_the_html_lambdas_of_a_function_that_returns_a_value() {
         check(
             indoc! {r#"
                 fn width(icon: fn() -> Html, scale: fn(Int) -> Int, n: Int) -> Int {
@@ -2143,43 +2119,68 @@ mod tests {
             "#},
             expect![[r#"
                 fn width@f0(
-                  scale@v11: (Int) -> Int,
-                  n@v12: Int,
+                  icon@v16: render () -> Html,
+                  scale@v17: (Int) -> Int,
+                  n@v18: Int,
                 ) -> Int {
-                  let v13: Int = 0
-                  let v14: Bool = int_lt_eq(v12, v13)
-                  let v20: Int = match v14 {
+                  let v24: render (Html) -> Html = fn(
+                    v19: Html,
+                  ) {
+                    let v20: Html = v16()
+                    let v21: Html = concat(v19, v20)
+                    let v22: ElementId = mint()
+                    let v23: Html = element(v22, "b", {}, v21)
+                    v23
+                  }
+                  let v25: Int = 0
+                  let v26: Bool = int_lt_eq(v18, v25)
+                  let v38: Int = match v26 {
                     true => {
-                      let v15: Int = 2
-                      let v16: Int = v11(v15)
-                      v16
+                      let v27: Int = 2
+                      let v28: Int = v17(v27)
+                      v28
                     }
                     false => {
-                      let v17: Int = 1
-                      let v18: Int = int_sub(v12, v17)
-                      let v19: Int = f0(v11, v18)
-                      v19
+                      let v34: render () -> Html = fn() {
+                        let v29: Html = text("*")
+                        let v30: Html = concat(v29)
+                        let v31: ElementId = mint()
+                        let v32: Html = element(v31, "i", {}, v30)
+                        let v33: Html = v24(v32)
+                        v33
+                      }
+                      let v35: Int = 1
+                      let v36: Int = int_sub(v18, v35)
+                      let v37: Int = f0(v34, v17, v36)
+                      v37
                     }
                   }
-                  v20
+                  v38
                 }
                 entrypoint body@e0(
                   n@v0: Int,
                 ) -> Html {
-                  let v3: (Int) -> Int = fn(
-                    v1: Int,
-                  ) {
-                    let v2: Int = int_add(v1, v0)
-                    v2
+                  let v5: render () -> Html = fn() {
+                    let v1: Html = text("*")
+                    let v2: Html = concat(v1)
+                    let v3: ElementId = mint()
+                    let v4: Html = element(v3, "i", {}, v2)
+                    v4
                   }
-                  let v4: Int = 3
-                  let v5: Int = f0(v3, v4)
-                  let v6: String = int_to_string(v5)
-                  let v7: Html = escape(v6)
-                  let v8: Html = concat(v7)
-                  let v9: ElementId = mint()
-                  let v10: Html = element(v9, "p", {}, v8)
-                  v10
+                  let v8: (Int) -> Int = fn(
+                    v6: Int,
+                  ) {
+                    let v7: Int = int_add(v6, v0)
+                    v7
+                  }
+                  let v9: Int = 3
+                  let v10: Int = f0(v5, v8, v9)
+                  let v11: String = int_to_string(v10)
+                  let v12: Html = escape(v11)
+                  let v13: Html = concat(v12)
+                  let v14: ElementId = mint()
+                  let v15: Html = element(v14, "p", {}, v13)
+                  v15
                 }
                 page Test: e0
             "#]],
@@ -2187,7 +2188,128 @@ mod tests {
     }
 
     #[test]
-    fn should_erase_the_html_of_an_arm_that_computes_a_value() {
+    fn should_keep_the_html_of_a_block_that_produces_an_html_lambda_for_a_value() {
+        check(
+            indoc! {r#"
+                fn weigh(icon: Html, n: Int) -> Int {
+                  match n <= 0 {
+                    true => 0,
+                    false => weigh(icon, n - 1) + 2,
+                  }
+                }
+
+                fn count(mark: fn() -> Html, n: Int) -> Int {
+                  match n <= 0 {
+                    true => 0,
+                    false => count(mark, n - 1) + 1,
+                  }
+                }
+
+                render fn label(star: Html, name: String) -> String {
+                  let mark = {
+                    let badge = <b>{star}</b>;
+                    let weight = weigh(badge, 1);
+                    fn() { <i>{weight.to_string()}</i> }
+                  };
+                  format!("{} {}", name, count(mark, 3).to_string())
+                }
+
+                page Test(name: String) {
+                  fn body() -> Html {
+                    <p>{label(<i>*</i>, name)}</p>
+                  }
+                }
+            "#},
+            expect![[r#"
+                fn count@f2(
+                  mark@v39: render () -> Html,
+                  n@v40: Int,
+                ) -> Int {
+                  let v41: Int = 0
+                  let v42: Bool = int_lt_eq(v40, v41)
+                  let v49: Int = match v42 {
+                    true => {
+                      let v43: Int = 0
+                      v43
+                    }
+                    false => {
+                      let v44: Int = 1
+                      let v45: Int = int_sub(v40, v44)
+                      let v46: Int = f2(v39, v45)
+                      let v47: Int = 1
+                      let v48: Int = int_add(v46, v47)
+                      v48
+                    }
+                  }
+                  v49
+                }
+                render fn label@f0(
+                  star@v10: Html,
+                  name@v11: String,
+                ) -> String {
+                  let v12: Html = concat(v10)
+                  let v13: ElementId = mint()
+                  let v14: Html = element(v13, "b", {}, v12)
+                  let v15: Int = 1
+                  let v16: Int = f1(v14, v15)
+                  let v22: render () -> Html = fn() {
+                    let v17: String = int_to_string(v16)
+                    let v18: Html = escape(v17)
+                    let v19: Html = concat(v18)
+                    let v20: ElementId = mint()
+                    let v21: Html = element(v20, "i", {}, v19)
+                    v21
+                  }
+                  let v23: String = " "
+                  let v24: Int = 3
+                  let v25: Int = f2(v22, v24)
+                  let v26: String = int_to_string(v25)
+                  let v27: String = string_concat(v11, v23, v26)
+                  v27
+                }
+                fn weigh@f1(
+                  icon@v28: Html,
+                  n@v29: Int,
+                ) -> Int {
+                  let v30: Int = 0
+                  let v31: Bool = int_lt_eq(v29, v30)
+                  let v38: Int = match v31 {
+                    true => {
+                      let v32: Int = 0
+                      v32
+                    }
+                    false => {
+                      let v33: Int = 1
+                      let v34: Int = int_sub(v29, v33)
+                      let v35: Int = f1(v28, v34)
+                      let v36: Int = 2
+                      let v37: Int = int_add(v35, v36)
+                      v37
+                    }
+                  }
+                  v38
+                }
+                entrypoint body@e0(
+                  name@v0: String,
+                ) -> Html {
+                  let v1: Html = text("*")
+                  let v2: Html = concat(v1)
+                  let v3: ElementId = mint()
+                  let v4: Html = element(v3, "i", {}, v2)
+                  let v5: String = f0(v4, v0)
+                  let v6: Html = escape(v5)
+                  let v7: Html = concat(v6)
+                  let v8: ElementId = mint()
+                  let v9: Html = element(v8, "p", {}, v7)
+                  v9
+                }
+                page Test: e0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_keep_the_html_of_an_arm_that_computes_a_value() {
         check(
             indoc! {r#"
                 fn width(icon: Html, n: Int) -> Int {
@@ -2213,46 +2335,51 @@ mod tests {
             "#},
             expect![[r#"
                 fn width@f0(
-                  n@v10: Int,
+                  icon@v14: Html,
+                  n@v15: Int,
                 ) -> Int {
-                  let v11: Int = 0
-                  let v12: Bool = int_lt_eq(v10, v11)
-                  let v19: Int = match v12 {
+                  let v16: Int = 0
+                  let v17: Bool = int_lt_eq(v15, v16)
+                  let v24: Int = match v17 {
                     true => {
-                      let v13: Int = 0
-                      v13
-                    }
-                    false => {
-                      let v14: Int = 1
-                      let v15: Int = int_sub(v10, v14)
-                      let v16: Int = f0(v15)
-                      let v17: Int = 2
-                      let v18: Int = int_add(v16, v17)
+                      let v18: Int = 0
                       v18
                     }
+                    false => {
+                      let v19: Int = 1
+                      let v20: Int = int_sub(v15, v19)
+                      let v21: Int = f0(v14, v20)
+                      let v22: Int = 2
+                      let v23: Int = int_add(v21, v22)
+                      v23
+                    }
                   }
-                  v19
+                  v24
                 }
                 entrypoint body@e0(
                   flag@v0: Bool,
                 ) -> Html {
-                  let v5: String = match v0 {
+                  let v9: String = match v0 {
                     true => {
-                      let v1: Int = 1
-                      let v2: Int = f0(v1)
-                      let v3: String = int_to_string(v2)
-                      v3
+                      let v1: Html = text("*")
+                      let v2: Html = concat(v1)
+                      let v3: ElementId = mint()
+                      let v4: Html = element(v3, "i", {}, v2)
+                      let v5: Int = 1
+                      let v6: Int = f0(v4, v5)
+                      let v7: String = int_to_string(v6)
+                      v7
                     }
                     false => {
-                      let v4: String = "none"
-                      v4
+                      let v8: String = "none"
+                      v8
                     }
                   }
-                  let v6: Html = escape(v5)
-                  let v7: Html = concat(v6)
-                  let v8: ElementId = mint()
-                  let v9: Html = element(v8, "p", {}, v7)
-                  v9
+                  let v10: Html = escape(v9)
+                  let v11: Html = concat(v10)
+                  let v12: ElementId = mint()
+                  let v13: Html = element(v12, "p", {}, v11)
+                  v13
                 }
                 page Test: e0
             "#]],

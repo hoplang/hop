@@ -185,7 +185,7 @@ pub fn typecheck_call(
                 ));
                 return None;
             }
-            if signature.modifier == Modifier::Render && !signature.return_type.renders_html() {
+            if signature.modifier == Modifier::Render {
                 var_env.require(
                     |_| false,
                     |position| TypeErrorKind::RenderCallNotAllowed { position },

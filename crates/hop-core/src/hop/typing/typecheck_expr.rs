@@ -68,17 +68,29 @@ pub fn typecheck_expr(
             asset_references,
             errors,
         ),
-        ParsedExpr::Markup { markup } => typecheck_markup(
-            markup,
-            forwarded_params,
-            registry,
-            errors,
-            var_env,
-            type_env,
-            annotations,
-            definition_links,
-            asset_references,
-        ),
+        ParsedExpr::Markup { markup } => {
+            var_env.require(
+                |_| false,
+                |position| TypeErrorKind::MarkupNotAllowed { position },
+                markup.range(),
+                errors,
+            );
+            // Markup reported once is not reported again for its parts.
+            let outer = var_env.set_context(Context::Render);
+            let typed = typecheck_markup(
+                markup,
+                forwarded_params,
+                registry,
+                errors,
+                var_env,
+                type_env,
+                annotations,
+                definition_links,
+                asset_references,
+            );
+            var_env.set_context(outer);
+            typed
+        }
 
         ParsedExpr::VariableReference {
             value: var_name, ..
@@ -1194,6 +1206,13 @@ pub fn typecheck_expr(
                 }
                 Some(typed_key)
             });
+            var_env.require(
+                |_| false,
+                |position| TypeErrorKind::MarkupNotAllowed { position },
+                parsed_expr.range(),
+                errors,
+            );
+            let outer = var_env.set_context(Context::Render);
             var_env.enter_loop();
             let typed_body = typecheck_block(
                 body,
@@ -1208,6 +1227,7 @@ pub fn typecheck_expr(
                 errors,
             );
             var_env.exit_loop();
+            var_env.set_context(outer);
             if pushed {
                 let (name, entry) = var_env.pop();
                 if !entry.accessed {
@@ -6008,12 +6028,9 @@ mod tests {
     fn accepts_call_to_closure_variable() {
         accept(
             TypeRegistryBuilder::new(),
-            &[(
-                "redraw",
-                Ty::render_function([Ty::String, Ty::Int], Ty::Html),
-            )],
-            "redraw(\"a\", 1)",
-            expect!["Html"],
+            &[("measure", Ty::function([Ty::String, Ty::Int], Ty::Int))],
+            "measure(\"a\", 1)",
+            expect!["Int"],
         );
     }
 
@@ -6021,15 +6038,12 @@ mod tests {
     fn rejects_closure_call_with_mismatched_argument_type() {
         reject(
             TypeRegistryBuilder::new(),
-            &[(
-                "redraw",
-                Ty::render_function([Ty::String, Ty::Int], Ty::Html),
-            )],
-            "redraw(1, 1)",
+            &[("measure", Ty::function([Ty::String, Ty::Int], Ty::Int))],
+            "measure(1, 1)",
             expect![[r#"
                 error: Expected String got Int
-                redraw(1, 1)
-                       ^
+                measure(1, 1)
+                        ^
             "#]],
         );
     }

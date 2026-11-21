@@ -511,13 +511,16 @@ fn typecheck_fallback_value(
         ));
         return None;
     }
+    // Use a fresh variable scope, fallback values are constant and can't
+    // reference anything from the environment. The only markup among the
+    // constants is the empty fragment, which renders nothing.
+    let mut var_env = VariableScope::new();
+    var_env.set_context(Context::Render);
     let typed_fallback = typecheck_expr(
         fallback_expr,
         Some(param_type),
         &[],
-        // Use a fresh variable scope, fallback values are constant and can't
-        // reference anything from the environment.
-        &mut VariableScope::new(),
+        &mut var_env,
         type_env,
         registry,
         annotations,
@@ -14114,6 +14117,12 @@ mod tests {
                 }
             "},
             expect![[r#"
+                error: Markup needs a render fn
+                  --> main.hop (line 2, col 3)
+                 1 | fn card() -> String {
+                 2 |   <div></div>
+                   |   ^^^^^^^^^^^
+
                 error: Expected String got Html
                   --> main.hop (line 2, col 3)
                  1 | fn card() -> String {
@@ -14726,38 +14735,70 @@ mod tests {
     }
 
     #[test]
-    fn rejects_functions_that_return_data_and_take_html() {
-        reject(
+    fn accepts_functions_that_return_data_and_take_a_function_that_renders_html() {
+        accept(
             indoc! {r#"
                 -- main.hop --
-                fn Main(measure: fn(Html) -> Int) -> Html {
-                  let count = fn(content: Html, redraw: fn() -> Html) { 1 };
-                  <></>
+                fn Main(measure: fn(fn(Html) -> Html, Int) -> Int) -> Html {
+                  let count = fn(_: fn() -> Html, n: Int) { n + 1 };
+                  <>{measure(fn(content) { <b>{content}</b> }, count(fn() { <i></i> }, 1)).to_string()}</>
                 }
             "#},
             expect![[r#"
-                error: fn(Html) -> Int returns Int and cannot take Html
-                  --> main.hop (line 1, col 18)
-                1 | fn Main(measure: fn(Html) -> Int) -> Html {
-                  |                  ^^^^^^^^^^^^^^^
+                -- main.hop --
+                fn Main(measure: fn(fn(Html) -> Html, Int) -> Int) -> Html {
+                  let count = fn(_: fn() -> Html, n: Int) -> Int {
+                    add(n, 1)
+                  } in concat(
+                    escape(measure(fn(content: Html) -> Html {
+                      element(
+                        tag: "b",
+                        attrs: [],
+                        children: concat(
+                          content,
+                        ),
+                      )
+                    }, count(fn() -> Html {
+                      element(
+                        tag: "i",
+                        attrs: [],
+                        children: concat(),
+                      )
+                    }, 1)).to_string()),
+                  )
+                }
+            "#]],
+        );
+    }
 
-                warning: Unused variable content
-                  --> main.hop (line 2, col 18)
-                1 | fn Main(measure: fn(Html) -> Int) -> Html {
-                2 |   let count = fn(content: Html, redraw: fn() -> Html) { 1 };
-                  |                  ^^^^^^^
-
-                error: fn(Html, fn() -> Html) -> Int returns Int and cannot take Html
-                  --> main.hop (line 2, col 18)
-                1 | fn Main(measure: fn(Html) -> Int) -> Html {
-                2 |   let count = fn(content: Html, redraw: fn() -> Html) { 1 };
-                  |                  ^^^^^^^
-
-                warning: Unused variable redraw
-                  --> main.hop (line 2, col 33)
-                1 | fn Main(measure: fn(Html) -> Int) -> Html {
-                2 |   let count = fn(content: Html, redraw: fn() -> Html) { 1 };
-                  |                                 ^^^^^^
+    #[test]
+    fn accepts_functions_that_return_data_and_take_html() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(measure: fn(Html) -> Int) -> Html {
+                  let count = fn(_: Html, n: Int) { n + 1 };
+                  <>{measure(<b></b>).to_string()}{count(<i></i>, 1).to_string()}</>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(measure: fn(Html) -> Int) -> Html {
+                  let count = fn(_: Html, n: Int) -> Int {
+                    add(n, 1)
+                  } in concat(
+                    escape(measure(element(
+                      tag: "b",
+                      attrs: [],
+                      children: concat(),
+                    )).to_string()),
+                    escape(count(element(
+                      tag: "i",
+                      attrs: [],
+                      children: concat(),
+                    ), 1).to_string()),
+                  )
+                }
             "#]],
         );
     }
@@ -15603,17 +15644,17 @@ mod tests {
                  6 |     let shown = <>{for i in [1] { let (c, set_c) = state!(i); <p>{c.to_string()}</p> }}</>;
                    |         ^^^^^
 
+                error: Markup needs a render fn
+                  --> main.hop (line 6, col 17)
+                 5 |   let count = fn() {
+                 6 |     let shown = <>{for i in [1] { let (c, set_c) = state!(i); <p>{c.to_string()}</p> }}</>;
+                   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
                 warning: Unused variable set_c
                   --> main.hop (line 6, col 43)
                  5 |   let count = fn() {
                  6 |     let shown = <>{for i in [1] { let (c, set_c) = state!(i); <p>{c.to_string()}</p> }}</>;
                    |                                           ^^^^^
-
-                error: state! needs a render fn
-                  --> main.hop (line 6, col 52)
-                 5 |   let count = fn() {
-                 6 |     let shown = <>{for i in [1] { let (c, set_c) = state!(i); <p>{c.to_string()}</p> }}</>;
-                   |                                                    ^^^^^^
             "#]],
         );
     }
@@ -15743,6 +15784,191 @@ mod tests {
                 5 | mut fn writer() -> Tuple[] {
                 6 |   let (count, set_count) = state!(0);
                   |                            ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_markup_outside_a_render_fn() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn plain(names: Array[String]) -> Int {
+                  let list = <ul>{for name in names { <li>{name}</li> }}</ul>;
+                  let rows = for name in names { <>{name}</> };
+                  0
+                }
+                mut fn writer() -> Tuple[] {
+                  let note = <>saved</>;
+                  ()
+                }
+                fn Counter(names: Array[String]) -> Html {
+                  let (count, set_count) = state!({ let zero = <i></i>; 0 });
+                  <>{for name in names key { let k = <b></b>; name } { <>{name}{count.to_string()}</> }}</>
+                }
+            "#},
+            expect![[r#"
+                warning: Unused variable list
+                  --> main.hop (line 2, col 7)
+                 1 | fn plain(names: Array[String]) -> Int {
+                 2 |   let list = <ul>{for name in names { <li>{name}</li> }}</ul>;
+                   |       ^^^^
+
+                error: Markup needs a render fn
+                  --> main.hop (line 2, col 14)
+                 1 | fn plain(names: Array[String]) -> Int {
+                 2 |   let list = <ul>{for name in names { <li>{name}</li> }}</ul>;
+                   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                warning: Unused variable rows
+                  --> main.hop (line 3, col 7)
+                 2 |   let list = <ul>{for name in names { <li>{name}</li> }}</ul>;
+                 3 |   let rows = for name in names { <>{name}</> };
+                   |       ^^^^
+
+                error: Markup needs a render fn
+                  --> main.hop (line 3, col 14)
+                 2 |   let list = <ul>{for name in names { <li>{name}</li> }}</ul>;
+                 3 |   let rows = for name in names { <>{name}</> };
+                   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                warning: Unused variable note
+                  --> main.hop (line 7, col 7)
+                 6 | mut fn writer() -> Tuple[] {
+                 7 |   let note = <>saved</>;
+                   |       ^^^^
+
+                error: Markup in a mut fn
+                  --> main.hop (line 7, col 14)
+                 6 | mut fn writer() -> Tuple[] {
+                 7 |   let note = <>saved</>;
+                   |              ^^^^^^^^^^
+
+                warning: Unused variable set_count
+                  --> main.hop (line 11, col 15)
+                10 | fn Counter(names: Array[String]) -> Html {
+                11 |   let (count, set_count) = state!({ let zero = <i></i>; 0 });
+                   |               ^^^^^^^^^
+
+                warning: Unused variable zero
+                  --> main.hop (line 11, col 41)
+                10 | fn Counter(names: Array[String]) -> Html {
+                11 |   let (count, set_count) = state!({ let zero = <i></i>; 0 });
+                   |                                         ^^^^
+
+                error: Markup in an initial value
+                  --> main.hop (line 11, col 48)
+                10 | fn Counter(names: Array[String]) -> Html {
+                11 |   let (count, set_count) = state!({ let zero = <i></i>; 0 });
+                   |                                                ^^^^^^^
+
+                warning: Unused variable k
+                  --> main.hop (line 12, col 34)
+                11 |   let (count, set_count) = state!({ let zero = <i></i>; 0 });
+                12 |   <>{for name in names key { let k = <b></b>; name } { <>{name}{count.to_string()}</> }}</>
+                   |                                  ^
+
+                error: Markup in a key
+                  --> main.hop (line 12, col 38)
+                11 |   let (count, set_count) = state!({ let zero = <i></i>; 0 });
+                12 |   <>{for name in names key { let k = <b></b>; name } { <>{name}{count.to_string()}</> }}</>
+                   |                                      ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_markup_in_what_renders_inside_a_fn_that_does_not() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                render fn width(label: String) -> Int {
+                  let badge = <b>{label}</b>;
+                  weigh(badge, 1)
+                }
+                fn weigh(icon: Html, n: Int) -> Int {
+                  let again = fn() { <i>{n.to_string()}</i> };
+                  count(icon, again, n)
+                }
+                fn count(icon: Html, mark: fn() -> Html, n: Int) -> Int {
+                  match n <= 0 {
+                    true => 0,
+                    false => count(icon, mark, n - 1) + 1,
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn count(icon: Html, mark: fn() -> Html, n: Int) -> Int {
+                  match lt_eq(n, 0) {
+                    true => 0,
+                    false => add(count(icon: icon, mark: mark, n: sub(n, 1)), 1),
+                  }
+                }
+
+                fn weigh(icon: Html, n: Int) -> Int {
+                  let again = fn() -> Html {
+                    element(
+                      tag: "i",
+                      attrs: [],
+                      children: concat(
+                        escape(n.to_string()),
+                      ),
+                    )
+                  } in count(icon: icon, mark: again, n: n)
+                }
+
+                render fn width(label: String) -> Int {
+                  let badge = element(
+                    tag: "b",
+                    attrs: [],
+                    children: concat(
+                      escape(label),
+                    ),
+                  ) in weigh(icon: badge, n: 1)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_call_of_what_renders_html_outside_a_render_fn() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Badge(label: String) -> Html {
+                  <b>{label}</b>
+                }
+                fn plain(row: fn(String) -> Html) -> Int {
+                  let badge = Badge("a");
+                  let cell = row("b");
+                  0
+                }
+            "#},
+            expect![[r#"
+                warning: Unused variable badge
+                  --> main.hop (line 5, col 7)
+                4 | fn plain(row: fn(String) -> Html) -> Int {
+                5 |   let badge = Badge("a");
+                  |       ^^^^^
+
+                error: Render fn called from a non-render fn
+                  --> main.hop (line 5, col 15)
+                4 | fn plain(row: fn(String) -> Html) -> Int {
+                5 |   let badge = Badge("a");
+                  |               ^^^^^^^^^^
+
+                warning: Unused variable cell
+                  --> main.hop (line 6, col 7)
+                5 |   let badge = Badge("a");
+                6 |   let cell = row("b");
+                  |       ^^^^
+
+                error: Render fn called from a non-render fn
+                  --> main.hop (line 6, col 14)
+                5 |   let badge = Badge("a");
+                6 |   let cell = row("b");
+                  |              ^^^^^^^^
             "#]],
         );
     }
@@ -16057,6 +16283,12 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                error: Markup in an initial value
+                  --> main.hop (line 2, col 35)
+                1 | fn Counter() -> Html {
+                2 |   let (shown, set_shown) = state!(<p>x</p>);
+                  |                                   ^^^^^^^^
+
                 error: state! cannot hold Html
                   --> main.hop (line 2, col 35)
                 1 | fn Counter() -> Html {

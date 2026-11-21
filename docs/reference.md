@@ -111,8 +111,7 @@ Tuple[T1, T2, …]  (v1, v2, …)
 A function type `fn(T1, T2, …) -> R` is the type of a
 [lambda](#lambda-expressions) that takes arguments of the types `T1, T2, …` and
 evaluates to a value of type `R`. A function type whose result is a function
-type is a compile error, and so is one whose result is a data type and that
-takes `Html` or a function type whose result is `Html`:
+type is a compile error:
 
 ```hop
 fn Rows(row: fn(String, Int) -> Html) -> Html {

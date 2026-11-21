@@ -105,7 +105,7 @@ pub fn resolve_type(
 }
 
 /// The error a function type breaks, if any: its result is a function, or
-/// it computes data and takes a parameter that renders Html.
+/// it mutates and its result is not data.
 pub fn check_function_type(function: &FunctionType) -> Option<TypeErrorKind> {
     if let Type::Function(_) = *function.result {
         return Some(TypeErrorKind::FunctionReturnsFunction {
@@ -119,18 +119,7 @@ pub fn check_function_type(function: &FunctionType) -> Option<TypeErrorKind> {
             Modifier::Pure | Modifier::Render => {}
         }
     }
-    if function.result.renders_html() {
-        return None;
-    }
-    let parameter = function
-        .parameters
-        .iter()
-        .find(|parameter| parameter.renders_html())?;
-    Some(TypeErrorKind::DataFunctionTakesHtml {
-        typ: Type::Function(function.clone()),
-        result: function.result.as_ref().clone(),
-        parameter: parameter.clone(),
-    })
+    None
 }
 
 pub fn resolve_data_type(
