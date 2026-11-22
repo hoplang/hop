@@ -18,7 +18,6 @@ use crate::ir::flat_type_declarations::{
 };
 use crate::ir::flat_typecheck;
 use crate::ir::function_id::FunctionIdCounter;
-use crate::ir::index_vec::IndexVec;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
@@ -108,7 +107,7 @@ pub fn typed_to_flat(
     functions.sort_by_key(|(index, _)| *index);
     let functions: Vec<FlatFunction> = functions.into_iter().map(|(_, decl)| decl).collect();
 
-    let mut entrypoints = IndexVec::new();
+    let mut entrypoints = Vec::new();
     let pages = pages
         .into_iter()
         .map(|page| page.declare(&mut entrypoints))
@@ -148,14 +147,16 @@ struct CompiledPage {
 
 impl CompiledPage {
     /// Declare the head and the body as entrypoints and point the page at them.
-    fn declare(self, entrypoints: &mut IndexVec<EntrypointId, FlatEntrypoint>) -> IrPage {
+    fn declare(self, entrypoints: &mut Vec<FlatEntrypoint>) -> IrPage {
         let mut declare = |name: &str, (parameters, body)| {
+            let id = EntrypointId::new(entrypoints.len());
             entrypoints.push(FlatEntrypoint {
                 name: FunctionName::new(CheapString::new(name.to_string()))
                     .expect("a page member name is valid"),
                 parameters,
                 body,
-            })
+            });
+            id
         };
         let head = self.head.map(|head| declare("head", head));
         let body = declare("body", self.body);

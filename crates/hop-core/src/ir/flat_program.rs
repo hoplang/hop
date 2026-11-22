@@ -1,8 +1,6 @@
 use crate::document::CheapString;
-use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::FlatTypeDeclarations;
-use crate::ir::index_vec::IndexVec;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
@@ -19,7 +17,7 @@ use crate::symbols::function_name::FunctionName;
 pub struct FlatProgram {
     pub types: FlatTypeDeclarations,
     pub functions: Vec<FlatFunction>,
-    pub entrypoints: IndexVec<EntrypointId, FlatEntrypoint>,
+    pub entrypoints: Vec<FlatEntrypoint>,
     pub value_ids: ValueIdCounter,
 }
 
@@ -262,8 +260,8 @@ mod test_support {
             for function in &self.functions {
                 write!(f, "{function}")?;
             }
-            for (id, entrypoint) in self.entrypoints.iter_enumerated() {
-                write!(f, "entrypoint {}@e{}(", entrypoint.name, id)?;
+            for (index, entrypoint) in self.entrypoints.iter().enumerate() {
+                write!(f, "entrypoint {}@e{}(", entrypoint.name, index)?;
                 for parameter in &entrypoint.parameters {
                     write!(Indent::new(f), "\n{parameter},")?;
                 }

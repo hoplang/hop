@@ -94,7 +94,7 @@ pub(super) fn invoke_entrypoint<'a>(
     mut args: HashMap<AttributeName, Value<'a>>,
     mut render: RenderTransaction<'a>,
 ) -> Result<(Value<'a>, State<'a>), EvalError> {
-    let entrypoint = &program.entrypoints[entrypoint_id];
+    let entrypoint = &program.entrypoints[entrypoint_id.index()];
     let mut env = Env::default();
     for param in &entrypoint.parameters {
         let value = args
@@ -662,7 +662,6 @@ mod tests {
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
     use crate::ir::flat_type_declarations_builder::FlatTypeDeclarationsBuilder;
-    use crate::ir::index_vec::Idx;
     use crate::ir::runtime::clicks::clicks;
     use crate::ir::runtime::value_builder::ValueBuilder;
     use crate::symbols::function_name::FunctionName;

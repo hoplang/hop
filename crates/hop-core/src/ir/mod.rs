@@ -7,7 +7,6 @@ mod flat_transform;
 pub mod flat_type;
 pub mod flat_type_declarations;
 mod function_id;
-mod index_vec;
 mod ir_binder;
 pub mod ir_binding;
 mod ir_block;

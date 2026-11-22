@@ -1,14 +1,12 @@
-use crate::ir::index_vec::Idx;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntrypointId(usize);
 
-impl Idx for EntrypointId {
-    fn new(index: usize) -> Self {
+impl EntrypointId {
+    pub fn new(index: usize) -> Self {
         EntrypointId(index)
     }
 
-    fn index(self) -> usize {
+    pub fn index(self) -> usize {
         self.0
     }
 }

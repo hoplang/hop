@@ -109,7 +109,7 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
             checker.block(&function.body, expected, function.modifier)
         })?;
     }
-    for entrypoint in program.entrypoints.iter() {
+    for entrypoint in &program.entrypoints {
         checker.live.clear();
         checker.scoped(|checker| {
             for param in &entrypoint.parameters {

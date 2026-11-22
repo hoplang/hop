@@ -114,13 +114,15 @@ pub fn flat_to_writer(
             lowerer.analyze_value_block(&function.body);
         }
     }
-    for entrypoint in entrypoints.iter() {
+    for entrypoint in &entrypoints {
         for param in &entrypoint.parameters {
             lowerer.analyze_parameter(&param.widen().binder);
         }
         lowerer.analyze_html_block(&entrypoint.body);
     }
-    let mut page_entrypoints: HashMap<EntrypointId, _> = entrypoints.iter_enumerated().collect();
+    let mut page_entrypoints: HashMap<EntrypointId, _> = (entrypoints.iter().enumerate())
+        .map(|(index, entrypoint)| (EntrypointId::new(index), entrypoint))
+        .collect();
     let pages = pages
         .iter()
         .map(|page| {

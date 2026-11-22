@@ -7,7 +7,7 @@ use super::callees::collect_callees;
 
 pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
     let mut reached = BTreeSet::new();
-    for entrypoint in program.entrypoints.iter() {
+    for entrypoint in &program.entrypoints {
         collect_callees(&entrypoint.body, &mut reached);
     }
     let mut pending: Vec<FunctionId> = reached.iter().copied().collect();

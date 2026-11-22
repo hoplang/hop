@@ -3,7 +3,6 @@ use crate::hop::typing::{
     ComparableType, Constructor, EquatableType, NumericType, Pattern, PatternField, Ty,
 };
 use crate::html::HtmlElementKind;
-use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_program::{
     FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
 };
@@ -11,7 +10,6 @@ use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
 use crate::ir::flat_typecheck::{self, FlatTypeError};
 use crate::ir::function_id::FunctionIdCounter;
-use crate::ir::index_vec::IndexVec;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
@@ -34,7 +32,7 @@ pub struct FlatProgramBuilder {
     value_ids: RefCell<ValueIdCounter>,
     value_types: RefCell<Vec<FlatType>>,
     functions: Vec<DeclaredFunction>,
-    entrypoints: IndexVec<EntrypointId, FlatEntrypoint>,
+    entrypoints: Vec<FlatEntrypoint>,
 }
 
 impl Default for FlatProgramBuilder {
@@ -55,7 +53,7 @@ impl FlatProgramBuilder {
             value_ids: RefCell::new(ValueIdCounter::new()),
             value_types: RefCell::new(Vec::new()),
             functions: Vec::new(),
-            entrypoints: IndexVec::new(),
+            entrypoints: Vec::new(),
         }
     }
 

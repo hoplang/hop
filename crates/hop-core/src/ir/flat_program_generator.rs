@@ -450,8 +450,9 @@ pub fn random_entrypoint_args(
     let mut rng = SmallRng::seed_from_u64(u.arbitrary()?);
     Ok(program
         .entrypoints
-        .iter_enumerated()
-        .map(|(id, decl)| {
+        .iter()
+        .enumerate()
+        .map(|(index, decl)| {
             let args = decl
                 .parameters
                 .iter()
@@ -460,7 +461,7 @@ pub fn random_entrypoint_args(
                     (param.name.clone(), value)
                 })
                 .collect();
-            (id, args)
+            (EntrypointId::new(index), args)
         })
         .collect())
 }

@@ -11,6 +11,7 @@ pub struct IrPage {
 #[cfg(test)]
 mod test_support {
     use super::IrPage;
+    use crate::ir::entrypoint_id::EntrypointId;
     use crate::ir::flat_program::FlatProgram;
     use crate::symbols::type_name::TypeName;
     use std::fmt;
@@ -19,12 +20,13 @@ mod test_support {
         pub fn for_entrypoints(program: &FlatProgram) -> Vec<IrPage> {
             program
                 .entrypoints
-                .iter_enumerated()
-                .map(|(id, decl)| IrPage {
+                .iter()
+                .enumerate()
+                .map(|(index, decl)| IrPage {
                     name: TypeName::parse(decl.name.as_str())
                         .expect("a test entrypoint is named like a page"),
                     head: None,
-                    body: id,
+                    body: EntrypointId::new(index),
                 })
                 .collect()
         }
