@@ -101,15 +101,13 @@ impl FlatProgramBuilder {
             .into_iter()
             .map(|(name, typ)| {
                 let typ = self.types.ty(typ);
+                let var = self.binder(typ.clone());
                 let FlatType::Data(typ) = typ else {
                     panic!("an entrypoint parameter must have a data type");
                 };
                 IrParameter {
                     name: AttributeName::parse(name).unwrap(),
-                    binder: IrBinder {
-                        var: self.binder(FlatType::Data(typ.clone())),
-                        typ,
-                    },
+                    binder: IrBinder { var, typ },
                 }
             })
             .collect();
@@ -180,7 +178,7 @@ impl FlatProgramBuilder {
         let declared = &self.functions[index];
         assert!(declared.body.is_none());
         let body = FlatBlockBuilder::build(&self, &declared.parameters, |t| body_fn(t, declared));
-        self.functions[index].body = Some(body);
+        self.functions[index].body = Some(body.into_block());
         self
     }
 
@@ -201,7 +199,7 @@ impl FlatProgramBuilder {
                 modifier: declared.modifier,
                 parameters: declared.parameters,
                 return_type: declared.return_type,
-                body: declared.body.unwrap().into_block(),
+                body: declared.body.unwrap(),
             })
             .collect();
         let program = FlatProgram {
@@ -220,7 +218,7 @@ pub struct DeclaredFunction {
     pub parameters: Vec<IrParameter<FlatType>>,
     pub return_type: FlatType,
     pub modifier: IrModifier,
-    body: Option<BuiltBlock>,
+    body: Option<FlatBlock>,
 }
 
 struct BuiltBlock {
@@ -519,14 +517,7 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         arms_fn(&mut arms);
         let MatchExprArms { arms, typ, .. } = arms;
-        let typ = typ.unwrap();
-        let arms = (arms.into_iter())
-            .map(|arm| IrMatchArm {
-                pattern: arm.pattern,
-                body: arm.body.into_block(),
-            })
-            .collect();
-        self.push(typ, FlatOp::Match(IrMatch { subject, arms }))
+        self.push(typ.unwrap(), FlatOp::Match(IrMatch { subject, arms }))
     }
 
     fn resolve_pat(&self, typ: &FlatType, pat: Pat, bindings: &mut ArmBindings) -> IrPattern {
@@ -556,9 +547,7 @@ impl<'a> FlatBlockBuilder<'a> {
                     self.resolve_pat(&FlatType::Data((**inner_type).clone()), *inner, bindings);
                 constructor(Constructor::OptionSome, vec![inner])
             }
-            (Pat::Tuple(elements), Some(FlatDataType::Tuple(element_types)))
-                if elements.len() == element_types.len() =>
-            {
+            (Pat::Tuple(elements), Some(FlatDataType::Tuple(element_types))) => {
                 let args = elements
                     .into_iter()
                     .zip(element_types)
@@ -781,15 +770,10 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn cell_read(&self, cell: ValueId) -> ValueId {
-        let typ = FlatType::Data(self.cell_of(cell));
-        self.push(typ, FlatOp::CellRead(cell))
-    }
-
-    fn cell_of(&self, cell: ValueId) -> FlatDataType {
         let FlatType::Cell(typ) = self.typ(cell) else {
             panic!("{cell} is not a cell");
         };
-        typ
+        self.push(FlatType::Data(typ), FlatOp::CellRead(cell))
     }
 
     pub fn attr_value(&self, name: &str, value: ValueId) -> (AttributeName, IrAttribute) {
@@ -873,9 +857,6 @@ impl<'a> FlatBlockBuilder<'a> {
             .unwrap();
         let function = callee.function.clone();
         let args = args.into_iter().collect();
-        if callee.return_type == FlatType::HTML {
-            return self.push_html(FlatOp::Call(function, args));
-        }
         self.push(callee.return_type.clone(), FlatOp::Call(function, args))
     }
 
@@ -941,15 +922,10 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn apply(&self, closure: ValueId, args: impl IntoIterator<Item = ValueId>) -> ValueId {
         let args = args.into_iter().collect();
-        match self.typ(closure) {
-            FlatType::Function(signature) if *signature.result == FlatType::Html => {
-                self.push_html(FlatOp::Apply(closure, args))
-            }
-            FlatType::Function(signature) => {
-                self.push((*signature.result).clone(), FlatOp::Apply(closure, args))
-            }
-            typ => panic!("{closure} is a {typ}, not a closure"),
-        }
+        let FlatType::Function(signature) = self.typ(closure) else {
+            panic!("{closure} is not a closure");
+        };
+        self.push(*signature.result, FlatOp::Apply(closure, args))
     }
 }
 
@@ -1010,7 +986,7 @@ impl Pat {
 pub struct MatchExprArms<'a> {
     builder: &'a FlatBlockBuilder<'a>,
     subject_type: FlatType,
-    arms: Vec<IrMatchArm<BuiltBlock>>,
+    arms: Vec<IrMatchArm<FlatBlock>>,
     typ: Option<FlatType>,
 }
 
@@ -1042,6 +1018,9 @@ impl MatchExprArms<'_> {
             .resolve_pat(&self.subject_type, pat, &mut bindings);
         let body = self.builder.block(|t| body_fn(t, &bindings));
         self.typ.get_or_insert(body.typ.clone());
-        self.arms.push(IrMatchArm { pattern, body });
+        self.arms.push(IrMatchArm {
+            pattern,
+            body: body.into_block(),
+        });
     }
 }
