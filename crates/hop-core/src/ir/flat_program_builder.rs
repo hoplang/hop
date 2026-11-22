@@ -762,10 +762,10 @@ impl<'a> FlatBlockBuilder<'a> {
         self.push(typ, FlatOp::Cell(initial.into_block()))
     }
 
-    pub fn cell_write(&self, cell: ValueId, value: ValueId) -> ValueId {
+    pub fn cell_update(&self, cell: ValueId, update: ValueId) -> ValueId {
         self.push(
             FlatType::Data(FlatDataType::UNIT),
-            FlatOp::CellWrite(cell, value),
+            FlatOp::CellUpdate(cell, update),
         )
     }
 

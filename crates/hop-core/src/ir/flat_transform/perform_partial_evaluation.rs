@@ -447,7 +447,7 @@ impl<'a> Evaluator<'a> {
             FlatOp::Cell(initial) => FlatOp::Cell(self.block(initial)),
             op @ (FlatOp::Call(..)
             | FlatOp::Mint
-            | FlatOp::CellWrite(..)
+            | FlatOp::CellUpdate(..)
             | FlatOp::CellRead(_)
             | FlatOp::Text(_)) => op,
         };

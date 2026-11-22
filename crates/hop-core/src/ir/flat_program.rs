@@ -55,9 +55,11 @@ pub enum FlatOp {
     /// Bind an identity, which the node of the element that takes it keeps
     /// across renders. `ElementId`.
     Mint,
-    /// Write a cell. `(Cell[T], T) -> Tuple[]`.
-    CellWrite(ValueId, ValueId),
-    /// Read the value of a cell. `Cell[T] -> T`.
+    /// Update a cell to what the closure gives for the value the cell has
+    /// then, which earlier updates of the same click have given it.
+    /// `(Cell[T], fn(T) -> T) -> Tuple[]`.
+    CellUpdate(ValueId, ValueId),
+    /// Read the value a render gives a cell. `Cell[T] -> T`.
     CellRead(ValueId),
     /// Render text as written. `Html`.
     Text(CheapString),
@@ -139,9 +141,9 @@ impl FlatOp {
             FlatOp::Data(op) => op.for_each_operand(f),
             FlatOp::Text(_) | FlatOp::Lambda(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
             FlatOp::CellRead(name) | FlatOp::Escape(name) => f(*name),
-            FlatOp::CellWrite(first, second) => {
-                f(*first);
-                f(*second);
+            FlatOp::CellUpdate(cell, update) => {
+                f(*cell);
+                f(*update);
             }
             FlatOp::Call(_, names) | FlatOp::Concat(names) => {
                 for name in names {
@@ -174,9 +176,9 @@ impl FlatOp {
             FlatOp::Data(op) => op.for_each_operand_mut(f),
             FlatOp::Text(_) | FlatOp::Lambda(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
             FlatOp::CellRead(name) | FlatOp::Escape(name) => f(name),
-            FlatOp::CellWrite(first, second) => {
-                f(first);
-                f(second);
+            FlatOp::CellUpdate(cell, update) => {
+                f(cell);
+                f(update);
             }
             FlatOp::Call(_, names) | FlatOp::Concat(names) => {
                 for name in names {
@@ -275,7 +277,7 @@ mod test_support {
                     f.write_str("\n}")
                 }
                 FlatOp::Mint => f.write_str("mint()"),
-                FlatOp::CellWrite(cell, value) => write!(f, "cell_write({cell}, {value})"),
+                FlatOp::CellUpdate(cell, update) => write!(f, "cell_update({cell}, {update})"),
                 FlatOp::CellRead(cell) => write!(f, "cell_read({cell})"),
                 FlatOp::Text(content) => write!(f, "text({:?})", content.as_str()),
                 FlatOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),

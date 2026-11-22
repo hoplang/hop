@@ -522,14 +522,17 @@ mod tests {
     }
 
     #[test]
-    fn should_give_each_copy_of_a_cell_a_fresh_cell_that_its_writes_write() {
+    fn should_give_each_copy_of_a_cell_a_fresh_cell_that_its_updates_update() {
         check(
             FlatProgramBuilder::new()
                 .render_function("counter", [], Ty::Html, |t| {
                     let n = t.cell(|t| t.int(0));
                     let count = t.cell_read(n);
                     let bump = t.event_handler(|t| {
-                        t.cell_write(n, t.add(NumericType::Int, count, t.int(1)))
+                        let incr = t.lambda([FlatType::INT], |t, params| {
+                            t.add(NumericType::Int, params[0], t.int(1))
+                        });
+                        t.cell_update(n, incr)
                     });
                     t.element_on_click(
                         t.mint(),
@@ -552,59 +555,74 @@ mod tests {
                     v0
                   }
                   let v2: Int = cell_read(v1)
-                  let v6: mut () -> Tuple[] = fn() {
-                    let v3: Int = 1
-                    let v4: Int = int_add(v2, v3)
-                    let v5: Tuple[] = cell_write(v1, v4)
-                    v5
+                  let v8: mut () -> Tuple[] = fn() {
+                    let v6: (Int) -> Int = fn(
+                      v3: Int,
+                    ) {
+                      let v4: Int = 1
+                      let v5: Int = int_add(v3, v4)
+                      v5
+                    }
+                    let v7: Tuple[] = cell_update(v1, v6)
+                    v7
                   }
-                  let v7: ElementId = mint()
-                  let v8: String = int_to_string(v2)
-                  let v9: Html = escape(v8)
-                  let v10: Html = element(v7, "button", {}, v9) on_click v6
-                  v10
+                  let v9: ElementId = mint()
+                  let v10: String = int_to_string(v2)
+                  let v11: Html = escape(v10)
+                  let v12: Html = element(v9, "button", {}, v11) on_click v8
+                  v12
                 }
                 entrypoint Test@e0() -> Html {
-                  let v11: Html = f0()
-                  let v12: Html = f0()
-                  let v13: Html = concat(v11, v12)
-                  v13
+                  let v13: Html = f0()
+                  let v14: Html = f0()
+                  let v15: Html = concat(v13, v14)
+                  v15
                 }
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v15: Cell[Int] = cell {
-                    let v14: Int = 0
-                    v14
+                  let v17: Cell[Int] = cell {
+                    let v16: Int = 0
+                    v16
                   }
-                  let v16: Int = cell_read(v15)
-                  let v20: mut () -> Tuple[] = fn() {
-                    let v17: Int = 1
-                    let v18: Int = int_add(v16, v17)
-                    let v19: Tuple[] = cell_write(v15, v18)
-                    v19
+                  let v18: Int = cell_read(v17)
+                  let v24: mut () -> Tuple[] = fn() {
+                    let v22: (Int) -> Int = fn(
+                      v19: Int,
+                    ) {
+                      let v20: Int = 1
+                      let v21: Int = int_add(v19, v20)
+                      v21
+                    }
+                    let v23: Tuple[] = cell_update(v17, v22)
+                    v23
                   }
-                  let v21: ElementId = mint()
-                  let v22: String = int_to_string(v16)
-                  let v23: Html = escape(v22)
-                  let v24: Html = element(v21, "button", {}, v23) on_click v20
-                  let v26: Cell[Int] = cell {
-                    let v25: Int = 0
-                    v25
+                  let v25: ElementId = mint()
+                  let v26: String = int_to_string(v18)
+                  let v27: Html = escape(v26)
+                  let v28: Html = element(v25, "button", {}, v27) on_click v24
+                  let v30: Cell[Int] = cell {
+                    let v29: Int = 0
+                    v29
                   }
-                  let v27: Int = cell_read(v26)
-                  let v31: mut () -> Tuple[] = fn() {
-                    let v28: Int = 1
-                    let v29: Int = int_add(v27, v28)
-                    let v30: Tuple[] = cell_write(v26, v29)
-                    v30
+                  let v31: Int = cell_read(v30)
+                  let v37: mut () -> Tuple[] = fn() {
+                    let v35: (Int) -> Int = fn(
+                      v32: Int,
+                    ) {
+                      let v33: Int = 1
+                      let v34: Int = int_add(v32, v33)
+                      v34
+                    }
+                    let v36: Tuple[] = cell_update(v30, v35)
+                    v36
                   }
-                  let v32: ElementId = mint()
-                  let v33: String = int_to_string(v27)
-                  let v34: Html = escape(v33)
-                  let v35: Html = element(v32, "button", {}, v34) on_click v31
-                  let v13: Html = concat(v24, v35)
-                  v13
+                  let v38: ElementId = mint()
+                  let v39: String = int_to_string(v31)
+                  let v40: Html = escape(v39)
+                  let v41: Html = element(v38, "button", {}, v40) on_click v37
+                  let v15: Html = concat(v28, v41)
+                  v15
                 }
             "#]],
         );
@@ -630,12 +648,17 @@ mod tests {
                     let count = t.cell(|t| t.int(0));
                     let on = t.cell(|t| t.bool(false));
                     let n = t.cell_read(count);
-                    let is_on = t.cell_read(on);
                     let both = t.event_handler(|t| {
                         let bump = t.mut_lambda([], |t, _| {
-                            t.cell_write(count, t.add(NumericType::Int, n, t.int(1)))
+                            let incr = t.lambda([FlatType::INT], |t, params| {
+                                t.add(NumericType::Int, params[0], t.int(1))
+                            });
+                            t.cell_update(count, incr)
                         });
-                        let flip = t.mut_lambda([], |t, _| t.cell_write(on, t.not(is_on)));
+                        let flip = t.mut_lambda([], |t, _| {
+                            let not = t.lambda([FlatType::BOOL], |t, params| t.not(params[0]));
+                            t.cell_update(on, not)
+                        });
                         t.call("both", [bump, flip])
                     });
                     t.element_on_click(
@@ -668,27 +691,36 @@ mod tests {
                     v6
                   }
                   let v8: Int = cell_read(v5)
-                  let v9: Bool = cell_read(v7)
-                  let v18: mut () -> Tuple[] = fn() {
-                    let v13: mut () -> Tuple[] = fn() {
-                      let v10: Int = 1
-                      let v11: Int = int_add(v8, v10)
-                      let v12: Tuple[] = cell_write(v5, v11)
-                      v12
+                  let v21: mut () -> Tuple[] = fn() {
+                    let v14: mut () -> Tuple[] = fn() {
+                      let v12: (Int) -> Int = fn(
+                        v9: Int,
+                      ) {
+                        let v10: Int = 1
+                        let v11: Int = int_add(v9, v10)
+                        v11
+                      }
+                      let v13: Tuple[] = cell_update(v5, v12)
+                      v13
                     }
-                    let v16: mut () -> Tuple[] = fn() {
-                      let v14: Bool = bool_not(v9)
-                      let v15: Tuple[] = cell_write(v7, v14)
-                      v15
+                    let v19: mut () -> Tuple[] = fn() {
+                      let v17: (Bool) -> Bool = fn(
+                        v15: Bool,
+                      ) {
+                        let v16: Bool = bool_not(v15)
+                        v16
+                      }
+                      let v18: Tuple[] = cell_update(v7, v17)
+                      v18
                     }
-                    let v17: Tuple[] = f0(v13, v16)
-                    v17
+                    let v20: Tuple[] = f0(v14, v19)
+                    v20
                   }
-                  let v19: ElementId = mint()
-                  let v20: String = int_to_string(v8)
-                  let v21: Html = escape(v20)
-                  let v22: Html = element(v19, "button", {}, v21) on_click v18
-                  v22
+                  let v22: ElementId = mint()
+                  let v23: String = int_to_string(v8)
+                  let v24: Html = escape(v23)
+                  let v25: Html = element(v22, "button", {}, v24) on_click v21
+                  v25
                 }
 
                 -- after --
@@ -702,28 +734,37 @@ mod tests {
                     v6
                   }
                   let v8: Int = cell_read(v5)
-                  let v9: Bool = cell_read(v7)
-                  let v18: mut () -> Tuple[] = fn() {
-                    let v13: mut () -> Tuple[] = fn() {
-                      let v10: Int = 1
-                      let v11: Int = int_add(v8, v10)
-                      let v12: Tuple[] = cell_write(v5, v11)
-                      v12
+                  let v21: mut () -> Tuple[] = fn() {
+                    let v14: mut () -> Tuple[] = fn() {
+                      let v12: (Int) -> Int = fn(
+                        v9: Int,
+                      ) {
+                        let v10: Int = 1
+                        let v11: Int = int_add(v9, v10)
+                        v11
+                      }
+                      let v13: Tuple[] = cell_update(v5, v12)
+                      v13
                     }
-                    let v16: mut () -> Tuple[] = fn() {
-                      let v14: Bool = bool_not(v9)
-                      let v15: Tuple[] = cell_write(v7, v14)
-                      v15
+                    let v19: mut () -> Tuple[] = fn() {
+                      let v17: (Bool) -> Bool = fn(
+                        v15: Bool,
+                      ) {
+                        let v16: Bool = bool_not(v15)
+                        v16
+                      }
+                      let v18: Tuple[] = cell_update(v7, v17)
+                      v18
                     }
-                    let v23: Tuple[] = v13()
-                    let v24: Tuple[] = v16()
-                    v24
+                    let v26: Tuple[] = v14()
+                    let v27: Tuple[] = v19()
+                    v27
                   }
-                  let v19: ElementId = mint()
-                  let v20: String = int_to_string(v8)
-                  let v21: Html = escape(v20)
-                  let v22: Html = element(v19, "button", {}, v21) on_click v18
-                  v22
+                  let v22: ElementId = mint()
+                  let v23: String = int_to_string(v8)
+                  let v24: Html = escape(v23)
+                  let v25: Html = element(v22, "button", {}, v24) on_click v21
+                  v25
                 }
             "#]],
         );

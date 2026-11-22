@@ -277,20 +277,25 @@ fn evaluate_op<'a>(
             Value::Id(render.bind_element(var))
         }
 
-        FlatOp::CellWrite(cell, value) => {
-            let mutations = context.mutations("writes a cell");
-            mutations.write(env[cell].as_cell(), env[value].clone());
+        FlatOp::CellUpdate(cell, update) => {
+            let mutations = context.mutations("updates a cell");
+            let cell = env[cell].as_cell();
+            let current = mutations.read(cell).clone();
+            let value = evaluate_apply(
+                env[update].as_closure(),
+                vec![current],
+                functions,
+                Context::Pure,
+                depth,
+                op_count,
+            )?;
+            mutations.write(cell, value);
             Value::Tuple(Rc::new([]))
         }
 
         FlatOp::CellRead(cell) => {
-            let cell = env[cell].as_cell();
-            match context {
-                Context::Render(render) => render.read(cell),
-                Context::Mut(mutations) => mutations.read(cell),
-                Context::Pure => panic!("only a block that renders or mutates reads a cell"),
-            }
-            .clone()
+            let render = context.render("reads a cell");
+            render.read(env[cell].as_cell()).clone()
         }
 
         FlatOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.as_str()))?),
@@ -706,8 +711,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 1610587 allocations
-            program evaluation: 21252 allocations
+            program generation: 1732729 allocations
+            program evaluation: 35515 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"

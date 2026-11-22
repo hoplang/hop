@@ -291,8 +291,8 @@ impl<'a> Checker<'a> {
     ) -> Result<(), FlatTypeError> {
         let allowed = match binding.op {
             FlatOp::Cell(_) | FlatOp::Mint => modifier == IrModifier::Render,
-            FlatOp::CellRead(_) => modifier != IrModifier::Pure,
-            FlatOp::CellWrite(..) => modifier == IrModifier::Mut,
+            FlatOp::CellRead(_) => modifier == IrModifier::Render,
+            FlatOp::CellUpdate(..) => modifier == IrModifier::Mut,
             _ => true,
         };
         if !allowed {
@@ -349,10 +349,13 @@ impl<'a> Checker<'a> {
                 _ => false,
             },
             FlatOp::Mint => declared == BoundType::ElementId,
-            FlatOp::CellWrite(cell, value) => match self.read(*cell)? {
-                BoundType::Cell(data) => {
+            FlatOp::CellUpdate(cell, update) => match (self.read(*cell)?, self.read(*update)?) {
+                (BoundType::Cell(data), BoundType::Function(signature)) => {
+                    let data = FlatType::Data(data.clone());
                     declared == BoundType::Data(&FlatDataType::UNIT)
-                        && self.read(*value)? == BoundType::Data(data)
+                        && signature.modifier == IrModifier::Pure
+                        && signature.parameters == [data.clone()]
+                        && *signature.result == data
                 }
                 _ => false,
             },
@@ -1138,7 +1141,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_cell_write_of_a_cell_of_an_arm_after_the_match() {
+    fn should_reject_a_cell_update_of_a_cell_of_an_arm_after_the_match() {
         let inner = Cell::new(None);
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [("on", Ty::Bool)], |t| {
@@ -1150,7 +1153,8 @@ mod tests {
                     });
                     m.arm(Pat::False, |t, _| t.text("off"));
                 });
-                let reset = t.event_handler(|t| t.cell_write(inner.get().unwrap(), t.int(0)));
+                let zero = t.lambda([FlatType::INT], |t, _| t.int(0));
+                let reset = t.event_handler(|t| t.cell_update(inner.get().unwrap(), zero));
                 let button =
                     t.element_on_click(t.mint(), "button", vec![], reset, Some(t.text("x")));
                 t.html_concat([picked, button])
@@ -1161,11 +1165,12 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_cell_write_of_a_value() {
+    fn should_reject_a_cell_update_of_a_value() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.int(0);
-                let reset = t.event_handler(|t| t.cell_write(count, t.int(1)));
+                let one = t.lambda([FlatType::INT], |t, _| t.int(1));
+                let reset = t.event_handler(|t| t.cell_update(count, one));
                 t.element_on_click(t.mint(), "button", vec![], reset, Some(t.text("x")))
             })
             .build()
@@ -1174,16 +1179,47 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_cell_write_of_a_value_of_another_type() {
+    fn should_reject_a_cell_update_with_a_closure_of_another_type() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
-                let flip = t.event_handler(|t| t.cell_write(count, t.bool(true)));
+                let not = t.lambda([FlatType::BOOL], |t, params| t.not(params[0]));
+                let flip = t.event_handler(|t| t.cell_update(count, not));
                 t.element_on_click(t.mint(), "button", vec![], flip, Some(t.text("x")))
             })
             .build()
             .unwrap_err();
         assert_eq!(error, FlatTypeError::IllTypedBinding);
+    }
+
+    #[test]
+    fn should_reject_a_cell_update_with_a_closure_that_mutates() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.cell(|t| t.int(0));
+                let same = t.mut_lambda([FlatType::INT], |_, params| params[0]);
+                let keep = t.event_handler(|t| t.cell_update(count, same));
+                t.element_on_click(t.mint(), "button", vec![], keep, Some(t.text("x")))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::IllTypedBinding);
+    }
+
+    #[test]
+    fn should_reject_a_cell_read_in_a_body_that_mutates() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let count = t.cell(|t| t.int(0));
+                let read = t.event_handler(|t| {
+                    t.cell_read(count);
+                    t.tuple([])
+                });
+                t.element_on_click(t.mint(), "button", vec![], read, Some(t.text("x")))
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::EffectNotAllowed);
     }
 
     #[test]
@@ -1226,7 +1262,11 @@ mod tests {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
-                let set = t.mut_lambda([FlatType::INT], |t, params| t.cell_write(count, params[0]));
+                let set = t.mut_lambda([FlatType::INT], |t, params| {
+                    let value = params[0];
+                    let to_value = t.lambda([FlatType::INT], |_, _| value);
+                    t.cell_update(count, to_value)
+                });
                 t.element_on_click(t.mint(), "button", vec![], set, Some(t.text("x")))
             })
             .build()
@@ -1604,11 +1644,12 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_write_outside_of_a_body_that_mutates() {
+    fn should_reject_an_update_outside_of_a_body_that_mutates() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
-                t.lambda([], |t, _| t.cell_write(count, t.int(1)));
+                let one = t.lambda([FlatType::INT], |t, _| t.int(1));
+                t.lambda([], |t, _| t.cell_update(count, one));
                 t.text("x")
             })
             .build()
@@ -1621,7 +1662,8 @@ mod tests {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
-                let bump = t.mut_lambda([], |t, _| t.cell_write(count, t.int(1)));
+                let one = t.lambda([FlatType::INT], |t, _| t.int(1));
+                let bump = t.mut_lambda([], |t, _| t.cell_update(count, one));
                 t.apply(bump, []);
                 t.text("x")
             })

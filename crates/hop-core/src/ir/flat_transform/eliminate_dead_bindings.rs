@@ -16,10 +16,10 @@ use crate::ir::value_id::ValueId;
 /// Every op outside of a body that mutates is pure, so a binding there
 /// whose name no later binding, nested block or result reads computes
 /// nothing anyone sees, and goes away with the blocks nested in it. A body
-/// that mutates keeps every binding. A cell nothing reads or writes has a value
+/// that mutates keeps every binding. A cell nothing reads or updates has a value
 /// nobody sees, and an element whose Html nothing reads is never shown, so
 /// the state of its node is never seen. A click reads its handler, a cell
-/// write the cell and the value it writes, and a handler nothing applies
+/// update the cell and the closure it updates it with, and a handler nothing applies
 /// goes away. A loop variable or binding of a
 /// pattern that nothing reads any more goes away too, and becomes `_`.
 pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
@@ -193,12 +193,13 @@ mod tests {
     }
 
     #[test]
-    fn should_keep_a_cell_that_a_click_writes_and_nothing_reads() {
+    fn should_keep_a_cell_that_a_click_updates_and_the_closure_it_updates_it_with() {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
                     let n = t.cell(|t| t.int(0));
-                    let set = t.event_handler(|t| t.cell_write(n, t.int(1)));
+                    let one = t.lambda([FlatType::INT], |t, _| t.int(1));
+                    let set = t.event_handler(|t| t.cell_update(n, one));
                     t.element_on_click(t.mint(), "button", [], set, Some(t.text("x")))
                 })
                 .build()
@@ -210,15 +211,20 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v4: mut () -> Tuple[] = fn() {
-                    let v2: Int = 1
-                    let v3: Tuple[] = cell_write(v1, v2)
+                  let v4: (Int) -> Int = fn(
+                    v2: Int,
+                  ) {
+                    let v3: Int = 1
                     v3
                   }
-                  let v5: ElementId = mint()
-                  let v6: Html = text("x")
-                  let v7: Html = element(v5, "button", {}, v6) on_click v4
-                  v7
+                  let v6: mut () -> Tuple[] = fn() {
+                    let v5: Tuple[] = cell_update(v1, v4)
+                    v5
+                  }
+                  let v7: ElementId = mint()
+                  let v8: Html = text("x")
+                  let v9: Html = element(v7, "button", {}, v8) on_click v6
+                  v9
                 }
 
                 -- after --
@@ -227,31 +233,41 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v4: mut () -> Tuple[] = fn() {
-                    let v2: Int = 1
-                    let v3: Tuple[] = cell_write(v1, v2)
+                  let v4: (Int) -> Int = fn(
+                    v2: Int,
+                  ) {
+                    let v3: Int = 1
                     v3
                   }
-                  let v5: ElementId = mint()
-                  let v6: Html = text("x")
-                  let v7: Html = element(v5, "button", {}, v6) on_click v4
-                  v7
+                  let v6: mut () -> Tuple[] = fn() {
+                    let v5: Tuple[] = cell_update(v1, v4)
+                    v5
+                  }
+                  let v7: ElementId = mint()
+                  let v8: Html = text("x")
+                  let v9: Html = element(v7, "button", {}, v8) on_click v6
+                  v9
                 }
             "#]],
         );
     }
 
     #[test]
-    fn should_drop_a_closure_that_mutates_and_nothing_applies_and_keep_the_cell_a_click_writes() {
+    fn should_drop_a_closure_that_mutates_and_nothing_applies_and_keep_the_cell_a_click_updates() {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
                     let n = t.cell(|t| t.int(0));
                     let unseen = t.cell(|t| t.int(0));
-                    let _idle = t.mut_lambda([], |t, _| t.cell_write(unseen, t.int(1)));
-                    let shown = t.cell_read(n);
+                    let _idle = t.mut_lambda([], |t, _| {
+                        let one = t.lambda([FlatType::INT], |t, _| t.int(1));
+                        t.cell_update(unseen, one)
+                    });
                     let bump = t.event_handler(|t| {
-                        t.cell_write(n, t.add(NumericType::Int, shown, t.int(1)))
+                        let incr = t.lambda([FlatType::INT], |t, params| {
+                            t.add(NumericType::Int, params[0], t.int(1))
+                        });
+                        t.cell_update(n, incr)
                     });
                     t.element_on_click(t.mint(), "button", [], bump, Some(t.text("x")))
                 })
@@ -268,22 +284,31 @@ mod tests {
                     let v2: Int = 0
                     v2
                   }
-                  let v6: mut () -> Tuple[] = fn() {
-                    let v4: Int = 1
-                    let v5: Tuple[] = cell_write(v3, v4)
-                    v5
+                  let v8: mut () -> Tuple[] = fn() {
+                    let v6: (Int) -> Int = fn(
+                      v4: Int,
+                    ) {
+                      let v5: Int = 1
+                      v5
+                    }
+                    let v7: Tuple[] = cell_update(v3, v6)
+                    v7
                   }
-                  let v7: Int = cell_read(v1)
-                  let v11: mut () -> Tuple[] = fn() {
-                    let v8: Int = 1
-                    let v9: Int = int_add(v7, v8)
-                    let v10: Tuple[] = cell_write(v1, v9)
-                    v10
+                  let v14: mut () -> Tuple[] = fn() {
+                    let v12: (Int) -> Int = fn(
+                      v9: Int,
+                    ) {
+                      let v10: Int = 1
+                      let v11: Int = int_add(v9, v10)
+                      v11
+                    }
+                    let v13: Tuple[] = cell_update(v1, v12)
+                    v13
                   }
-                  let v12: ElementId = mint()
-                  let v13: Html = text("x")
-                  let v14: Html = element(v12, "button", {}, v13) on_click v11
-                  v14
+                  let v15: ElementId = mint()
+                  let v16: Html = text("x")
+                  let v17: Html = element(v15, "button", {}, v16) on_click v14
+                  v17
                 }
 
                 -- after --
@@ -292,17 +317,21 @@ mod tests {
                     let v0: Int = 0
                     v0
                   }
-                  let v7: Int = cell_read(v1)
-                  let v11: mut () -> Tuple[] = fn() {
-                    let v8: Int = 1
-                    let v9: Int = int_add(v7, v8)
-                    let v10: Tuple[] = cell_write(v1, v9)
-                    v10
+                  let v14: mut () -> Tuple[] = fn() {
+                    let v12: (Int) -> Int = fn(
+                      v9: Int,
+                    ) {
+                      let v10: Int = 1
+                      let v11: Int = int_add(v9, v10)
+                      v11
+                    }
+                    let v13: Tuple[] = cell_update(v1, v12)
+                    v13
                   }
-                  let v12: ElementId = mint()
-                  let v13: Html = text("x")
-                  let v14: Html = element(v12, "button", {}, v13) on_click v11
-                  v14
+                  let v15: ElementId = mint()
+                  let v16: Html = text("x")
+                  let v17: Html = element(v15, "button", {}, v16) on_click v14
+                  v17
                 }
             "#]],
         );

@@ -827,13 +827,10 @@ impl FlatGenerator<'_, '_> {
                 return;
             }
             let (cell, subst) = cells.swap_remove(self.index(cells.len()));
-            let typ = subst[&0].clone();
-            let value = if self.coin() {
-                self.literal(b, scope, &typ, MAX_LITERAL_DEPTH)
-            } else {
-                self.data_op(b, scope, &typ, depth, nesting - 1)
-            };
-            b.cell_write(cell, value);
+            let typ = FlatType::Data(subst[&0].clone());
+            let update_type = FlatType::function(IrModifier::Pure, [typ.clone()], typ);
+            let update = self.op_of_type(b, scope, &update_type, depth, nesting - 1);
+            b.cell_update(cell, update);
         }
     }
 
@@ -1038,13 +1035,6 @@ impl FlatGenerator<'_, '_> {
     ) -> ValueId {
         if let Some(name) = self.name_in_scope(b, scope, &FlatType::Data(typ.clone())) {
             return self.cell(b, scope, name);
-        }
-        if scope.modifier == IrModifier::Mut && self.coin() {
-            let mut cells = Self::candidates(b, scope, Layer::Cell, &TyPat::Ground(typ.clone()));
-            if !cells.is_empty() {
-                let (cell, _) = cells.swap_remove(self.index(cells.len()));
-                return scope.push(b.cell_read(cell));
-            }
         }
         self.literal(b, scope, typ, depth)
     }
@@ -1394,10 +1384,10 @@ impl FlatGenerator<'_, '_> {
         value
     }
 
-    // A cell, a click handler that writes a literal to it and a match on it
+    // A cell, a click handler that updates it to a literal and a match on it
     // that renders Html, in an element with the handler. The handler is in
     // scope for the arms, so a click on an element of an arm can take the
-    // element away. A handler writing a value that a match on the cell gives
+    // element away. A handler updating it to a value that a match on the cell gives
     // instead, or the handler only in scope and not around the match, makes
     // far fewer clicks switch an arm.
     fn toggle(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
@@ -1408,8 +1398,11 @@ impl FlatGenerator<'_, '_> {
         let value = scope.push(b.cell_read(cell));
         let mut inner = scope.inner(&b.value_types(), IrModifier::Pure);
         let handler = b.event_handler(|b| {
-            let value = self.literal(b, &mut inner, &subject_ty, MAX_LITERAL_DEPTH);
-            b.cell_write(cell, value)
+            let typ = FlatType::Data(subject_ty.clone());
+            let update = b.lambda([typ], |b, _| {
+                self.literal(b, &mut inner, &subject_ty, MAX_LITERAL_DEPTH)
+            });
+            b.cell_update(cell, update)
         });
         let handler = scope.push(handler);
         let shown = self.match_on(b, scope, value, subject_ty, &FlatType::HTML, depth);
@@ -2220,78 +2213,78 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            11972 of 65536 input bytes consumed per program on average, at most 65536
-            1 of 32 programs exhaust the input
+            9017 of 65536 input bytes consumed per program on average, at most 30492
+            0 of 32 programs exhaust the input
 
             -- sizes --
-            under 256     6  ########################
-            under 1K      2  ########
-            under 4K      6  ########################
-            under 16K    10  ########################################
-            under 64K     7  ############################
-            at 64K        1  ####
+            under 256     5  ############
+            under 1K      2  #####
+            under 4K      4  ##########
+            under 16K    16  ########################################
+            under 64K     5  ############
+            at 64K        0
 
             -- programs --
-            95 of 6018 Html bindings have more than one reference
-            6 of 1525 mints have more than one reference
-            2.3 arms per match on average, at least 2 and at most 8
-            4838 of 13091 match arms bind names
-            11525 cells
-            233 of 422 loops have a key
-            1050 of 1327 elements have a click
-            162 handlers have more than one click
-            423 clicks apply a handler bound outside their block, 103 of them a parameter
+            63 of 4115 Html bindings have more than one reference
+            3 of 1064 mints have more than one reference
+            2.4 arms per match on average, at least 2 and at most 13
+            3810 of 10221 match arms bind names
+            9619 cells
+            155 of 270 loops have a key
+            777 of 930 elements have a click
+            124 handlers have more than one click
+            177 clicks apply a handler bound outside their block, 53 of them a parameter
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      166.0    84.4    92.3    71.3
-            Array                      196.2    84.4    90.7    23.2
-            ArrayEnumerate               2.4    46.9    97.4    60.3
-            ArrayFromRange              14.5    87.5    88.6     0.0
-            ArrayGet                    40.8    81.2    86.8    48.7
-            ArrayIsEmpty                 2.6    62.5    89.0    54.9
-            ArrayLength                 91.4    78.1    90.5    46.5
-            BoolLiteral                 55.3    81.2    90.8     0.0
-            BoolNegation                 3.0    65.6    92.8    52.6
-            Call                        23.0    50.0    94.8    77.7
-            Cell                       360.2    96.9    89.6    47.8
-            CellRead                   366.4    96.9    89.7    47.8
-            CellWrite                   82.8    75.0    96.3    64.6
-            Enum                        83.7    65.6    87.6    21.9
-            Equals                       3.0    56.2    93.8    80.4
-            FieldAccess                 12.5    43.8    89.0    61.9
-            FloatLiteral                88.6    84.4    90.3     0.0
-            FloatToInt                  90.0    81.2    91.6    49.7
-            HtmlApply                    5.8    65.6    98.9    82.6
-            HtmlConcat                  55.5    84.4    92.8    45.4
-            HtmlElement                 41.5    84.4    93.6    65.0
-            HtmlEscape                  26.3    93.8    94.8    52.1
-            HtmlFor                     13.2    81.2    96.4    74.4
-            HtmlLambda                  11.1    65.6    97.5    56.5
-            HtmlText                    13.5    81.2    92.8     0.0
-            IntLiteral                 113.4    93.8    90.4     0.0
-            IntToFloat                 103.5    78.1    90.1    53.9
-            IntToString                 64.2    87.5    93.7    48.3
-            Lambda                     196.7    84.4    91.6    50.9
-            LessThan                     3.0    56.2    91.6    63.2
-            LessThanOrEqual              2.9    56.2    91.3    67.4
-            Match                      174.4    84.4    91.7    83.9
-            Mint                        47.7    96.9    80.7     0.0
-            MutLambda                   32.3    90.6    95.4    38.1
-            NumericAdd                 191.9    81.2    91.4    67.5
-            NumericMultiply            196.1    75.0    91.2    68.2
-            NumericNegation            198.8    81.2    90.9    54.0
-            NumericSubtract            195.2    81.2    91.1    67.6
-            OptionIsNone                 3.5    50.0    92.8    64.9
-            OptionIsSome                 3.0    53.1    93.8    57.3
-            OptionNone                  51.8    81.2    88.5     0.0
-            OptionSome                  48.1    81.2    88.3    24.4
-            Record                     107.0    62.5    92.1    23.6
-            StringConcat                63.2    78.1    93.8    46.6
-            StringIsEmpty                3.3    50.0    90.5    44.8
-            StringLiteral               45.3    90.6    89.2     0.0
-            Tuple                      182.9    90.6    89.0    26.6
-            TupleIndex                  61.5    75.0    89.0    66.3
+            Apply                      130.5    87.5    93.6    70.1
+            Array                      139.0    87.5    90.0    25.6
+            ArrayEnumerate               1.4    53.1    93.2    47.7
+            ArrayFromRange              11.0    87.5    92.1     0.0
+            ArrayGet                    30.9    84.4    85.0    50.1
+            ArrayIsEmpty                 1.7    65.6    86.8    50.9
+            ArrayLength                 70.2    87.5    93.4    51.7
+            BoolLiteral                 42.0    84.4    93.0     0.0
+            BoolNegation                 1.5    62.5    93.8    52.1
+            Call                        14.0    53.1    89.7    63.2
+            Cell                       300.6    90.6    90.5    47.2
+            CellRead                   300.6    90.6    90.5    47.2
+            CellUpdate                  40.5    75.0    95.1    61.3
+            Enum                        71.2    68.8    89.1    25.4
+            Equals                       1.9    59.4    90.0    60.0
+            FieldAccess                  5.8    46.9    94.6    70.7
+            FloatLiteral                62.7    87.5    92.7     0.0
+            FloatToInt                  71.7    87.5    94.6    48.5
+            HtmlApply                    4.1    65.6    98.5    81.8
+            HtmlConcat                  35.6    84.4    95.5    42.5
+            HtmlElement                 29.1    84.4    95.5    60.6
+            HtmlEscape                  18.0    87.5    96.2    41.6
+            HtmlFor                      8.4    87.5    93.0    68.9
+            HtmlLambda                   9.7    65.6    90.3    46.6
+            HtmlText                     9.6    84.4    93.5     0.0
+            IntLiteral                  82.2    93.8    90.9     0.0
+            IntToFloat                  79.8    84.4    95.3    53.4
+            IntToString                 45.2    90.6    95.6    43.2
+            Lambda                     180.9    87.5    93.2    49.2
+            LessThan                     2.2    68.8    92.8    60.9
+            LessThanOrEqual              1.7    59.4    94.3    60.4
+            Match                      135.2    87.5    93.1    82.8
+            Mint                        33.2    96.9    83.0     0.0
+            MutLambda                   22.1    90.6    94.9    39.2
+            NumericAdd                 149.3    87.5    94.9    68.5
+            NumericMultiply            146.0    81.2    95.3    67.9
+            NumericNegation            152.0    87.5    95.6    54.7
+            NumericSubtract            147.1    87.5    95.3    68.1
+            OptionIsNone                 2.1    59.4    92.4    68.2
+            OptionIsSome                 1.6    62.5    96.1    58.8
+            OptionNone                  41.1    84.4    84.1     0.0
+            OptionSome                  37.3    84.4    86.2    22.5
+            Record                      65.4    65.6    89.1    22.2
+            StringConcat                46.2    81.2    93.7    40.1
+            StringIsEmpty                1.9    53.1    91.7    45.0
+            StringLiteral               35.7    90.6    90.0     0.0
+            Tuple                      131.7    90.6    86.7    25.9
+            TupleIndex                  36.8    84.4    84.7    60.1
         "#]]
         .assert_eq(&report);
     }

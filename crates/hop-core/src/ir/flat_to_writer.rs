@@ -407,7 +407,7 @@ impl<'a> Lowerer<'a> {
             // Rendered on the empty state, a click never runs what mutates,
             // so it reads nothing.
             FlatOp::Lambda(_) if is_mut_closure(&binding.binder.typ) => {}
-            FlatOp::CellWrite(..) => unreachable!("only what mutates writes a cell"),
+            FlatOp::CellUpdate(..) => unreachable!("only what mutates updates a cell"),
             FlatOp::Lambda(lambda) => {
                 for param in &lambda.parameters {
                     self.analyze_parameter(param);
@@ -496,7 +496,7 @@ impl<'a> Lowerer<'a> {
                 FlatOp::Data(_)
                 | FlatOp::Cell(_)
                 | FlatOp::Mint
-                | FlatOp::CellWrite(..)
+                | FlatOp::CellUpdate(..)
                 | FlatOp::CellRead(_) => unreachable!("Html is not bound by an op of a value"),
             }
         }
@@ -691,7 +691,7 @@ impl<'a> Lowerer<'a> {
             FlatOp::Lambda(_) if is_mut_closure(binder_type) => {
                 WriterOp::Data(IrDataOp::Tuple(Vec::new()))
             }
-            FlatOp::CellWrite(..) => unreachable!("only what mutates writes a cell"),
+            FlatOp::CellUpdate(..) => unreachable!("only what mutates updates a cell"),
             FlatOp::Call(function, args) => WriterOp::Call(
                 self.callees[function].clone(),
                 args.iter().map(|arg| self.name(*arg)).collect(),
@@ -1227,7 +1227,7 @@ impl<'a> Lowerer<'a> {
             FlatOp::Data(_)
             | FlatOp::Cell(_)
             | FlatOp::Mint
-            | FlatOp::CellWrite(..)
+            | FlatOp::CellUpdate(..)
             | FlatOp::CellRead(_) => unreachable!("Html is not bound by an op of a value"),
         }
     }
@@ -1463,7 +1463,10 @@ mod tests {
                     let count = t.cell(|t| t.int(0));
                     let n = t.cell_read(count);
                     let bump = t.event_handler(|t| {
-                        t.cell_write(count, t.add(NumericType::Int, n, t.int(1)))
+                        let incr = t.lambda([FlatType::INT], |t, params| {
+                            t.add(NumericType::Int, params[0], t.int(1))
+                        });
+                        t.cell_update(count, incr)
                     });
                     let buttons = t.call("Buttons", [t.int(2), bump]);
                     let shown = t.escape(t.int_to_string(n));
@@ -1504,18 +1507,23 @@ mod tests {
                     v14
                   }
                   let v16: Int = cell_read(v15)
-                  let v20: mut () -> Tuple[] = fn() {
-                    let v17: Int = 1
-                    let v18: Int = int_add(v16, v17)
-                    let v19: Tuple[] = cell_write(v15, v18)
-                    v19
+                  let v22: mut () -> Tuple[] = fn() {
+                    let v20: (Int) -> Int = fn(
+                      v17: Int,
+                    ) {
+                      let v18: Int = 1
+                      let v19: Int = int_add(v17, v18)
+                      v19
+                    }
+                    let v21: Tuple[] = cell_update(v15, v20)
+                    v21
                   }
-                  let v21: Int = 2
-                  let v22: Html = f0(v21, v20)
-                  let v23: String = int_to_string(v16)
-                  let v24: Html = escape(v23)
-                  let v25: Html = concat(v24, v22)
-                  v25
+                  let v23: Int = 2
+                  let v24: Html = f0(v23, v22)
+                  let v25: String = int_to_string(v16)
+                  let v26: Html = escape(v25)
+                  let v27: Html = concat(v26, v24)
+                  v27
                 }
 
                 -- writer --
@@ -1541,11 +1549,11 @@ mod tests {
                 }
                 page Test() {
                   let v14: Int = 0
-                  let v20: Tuple[] = ()
-                  let v21: Int = 2
-                  let v23: String = int_to_string(v14)
-                  write_string(v23)
-                  write_function f0(v21, v20)
+                  let v22: Tuple[] = ()
+                  let v23: Int = 2
+                  let v25: String = int_to_string(v14)
+                  write_string(v25)
+                  write_function f0(v23, v22)
                 }
             "#]],
         );
