@@ -1,4 +1,6 @@
 use crate::document::CheapString;
+use crate::hop::typing::Pattern;
+use crate::ir::flat_html_element::FlatHtmlElement;
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::FlatTypeDeclarations;
 use crate::ir::ir_binder::IrBinder;
@@ -6,9 +8,7 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_html_element::IrHtmlElement;
 use crate::ir::ir_lambda::IrLambda;
-use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::function_name::FunctionName;
@@ -47,7 +47,7 @@ pub enum FlatOp {
     /// Invoke a function.
     Call(IrFunction, Vec<ValueId>),
     /// Match exhaustively.
-    Match(IrMatch<FlatBlock>),
+    Match(FlatMatch),
     /// Bind a cell. Only when its path is new does the block run, and the
     /// cell takes the value it gives. `Cell[T]`.
     Cell(FlatBlock),
@@ -67,7 +67,7 @@ pub enum FlatOp {
     /// Bind a Html element, whose node its identity keeps across renders. A
     /// void element has no children, and every other element has them.
     /// `(ElementId, Html) -> Html`, or `ElementId -> Html` for a void element.
-    Element(IrHtmlElement<Option<ValueId>>),
+    Element(FlatHtmlElement),
     /// Run a fold-map over an array, where each iteration produces a Html value.
     /// The key, when there is one, gives each element the identity its
     /// cells and elements keep across renders. `Array[T] -> Html`.
@@ -84,6 +84,52 @@ pub struct FlatFor {
     pub array: ValueId,
     pub key: Option<FlatBlock>,
     pub body: FlatBlock,
+}
+
+#[derive(Debug, Clone)]
+pub struct FlatMatch {
+    pub subject: ValueId,
+    pub arms: Vec<FlatMatchArm>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FlatMatchArm {
+    pub pattern: FlatPattern,
+    pub body: FlatBlock,
+}
+
+pub type FlatPattern = Pattern<IrBinder<FlatDataType>>;
+
+impl FlatPattern {
+    pub fn for_each_binding(&self, f: &mut impl FnMut(&IrBinder<FlatDataType>)) {
+        match self {
+            Pattern::Wildcard => {}
+            Pattern::Binding(binder) => f(binder),
+            Pattern::Constructor { args, fields, .. } => {
+                for arg in args {
+                    arg.for_each_binding(f);
+                }
+                for field in fields {
+                    field.pattern.for_each_binding(f);
+                }
+            }
+        }
+    }
+
+    pub fn for_each_binding_mut(&mut self, f: &mut impl FnMut(&mut FlatPattern)) {
+        match self {
+            Pattern::Wildcard => {}
+            Pattern::Binding(_) => f(self),
+            Pattern::Constructor { args, fields, .. } => {
+                for arg in args {
+                    arg.for_each_binding_mut(f);
+                }
+                for field in fields {
+                    field.pattern.for_each_binding_mut(f);
+                }
+            }
+        }
+    }
 }
 
 impl FlatOp {
@@ -163,18 +209,65 @@ mod test_support {
     use super::FlatFor;
     use super::FlatFunction;
     use super::FlatOp;
+    use super::FlatPattern;
     use super::FlatProgram;
-    use crate::display::{Indent, join};
-    use crate::ir::ir_function_declaration::test_support::write_function;
-    use crate::ir::ir_html_element::IrAttribute;
+    use crate::display::{Indent, join, write_tuple};
+    use crate::hop::typing::{Constructor, Pattern, PatternField};
+    use crate::ir::flat_html_element::FlatAttribute;
+    use crate::ir::flat_type::FlatDataType;
+    use crate::ir::ir_binder::IrBinder;
     use std::fmt::{self, Write};
+
+    impl fmt::Display for PatternField<IrBinder<FlatDataType>> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match &self.pattern {
+                Pattern::Binding(binder) => write!(f, "{}@{binder}", self.name.as_str()),
+                pattern => write!(f, "{}: {pattern}", self.name.as_str()),
+            }
+        }
+    }
+
+    impl fmt::Display for FlatPattern {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Pattern::Wildcard => f.write_str("_"),
+                Pattern::Binding(binder) => write!(f, "{binder}"),
+                Pattern::Constructor {
+                    constructor,
+                    args,
+                    fields,
+                } => match constructor {
+                    Constructor::Tuple => write_tuple(f, args),
+                    Constructor::OptionSome => write!(f, "Some({})", join(args, ", ")),
+                    Constructor::Record { .. } => {
+                        write!(f, "{constructor} {{{}}}", join(fields, ", "))
+                    }
+                    Constructor::EnumVariant { .. } if !fields.is_empty() => {
+                        write!(f, "{constructor} {{{}}}", join(fields, ", "))
+                    }
+                    _ => write!(f, "{constructor}"),
+                },
+            }
+        }
+    }
 
     impl fmt::Display for FlatOp {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 FlatOp::Data(op) => write!(f, "{op}"),
                 FlatOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
-                FlatOp::Match(match_) => match_.write(f, |block, w| write!(w, "\n{block}")),
+                FlatOp::Match(match_) => {
+                    write!(f, "match {} {{", match_.subject)?;
+                    {
+                        let mut arms = Indent::new(f);
+                        for arm in &match_.arms {
+                            write!(arms, "\n{} => {{", arm.pattern)?;
+                            write!(Indent::new(&mut arms), "\n{}", arm.body)?;
+                            arms.write_str("\n}")?;
+                        }
+                    }
+                    f.write_str("\n}")
+                }
                 FlatOp::Cell(initial) => {
                     f.write_str("cell {")?;
                     write!(Indent::new(f), "\n{initial}")?;
@@ -197,13 +290,13 @@ mod test_support {
                         let sep = if i > 0 { ", " } else { "" };
                         write!(f, "{sep}{}", name.as_str())?;
                         match attribute {
-                            IrAttribute::Value(value) | IrAttribute::Presence(value) => {
+                            FlatAttribute::Value(value) | FlatAttribute::Presence(value) => {
                                 write!(f, ": {value}")?;
                             }
-                            IrAttribute::Constant(Some(value)) => {
+                            FlatAttribute::Constant(Some(value)) => {
                                 write!(f, ": {:?}", value.as_str())?;
                             }
-                            IrAttribute::Constant(None) => {}
+                            FlatAttribute::Constant(None) => {}
                         }
                     }
                     match element.children {
@@ -242,16 +335,16 @@ mod test_support {
 
     impl fmt::Display for FlatFunction {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.modifier)?;
-            write_function(
-                f,
-                &self.function,
-                &self.parameters,
-                &self.return_type,
-                &self.body,
-                |block, w| write!(w, "\n{block}"),
-            )?;
-            writeln!(f)
+            write!(f, "{}fn {}(", self.modifier, self.function)?;
+            for parameter in &self.parameters {
+                write!(Indent::new(f), "\n{parameter},")?;
+            }
+            if !self.parameters.is_empty() {
+                f.write_str("\n")?;
+            }
+            write!(f, ") -> {} {{", self.return_type)?;
+            write!(Indent::new(f), "\n{}", self.body)?;
+            writeln!(f, "\n}}")
         }
     }
 

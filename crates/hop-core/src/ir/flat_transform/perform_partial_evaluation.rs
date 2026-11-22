@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use crate::document::CheapString;
 use crate::hop::typing::{Constructor, Pattern};
 use crate::html::write_escaped_html;
+use crate::ir::flat_html_element::FlatAttribute;
 use crate::ir::flat_program::{
-    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatLambda, FlatOp, FlatProgram,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatLambda, FlatMatch,
+    FlatMatchArm, FlatOp, FlatPattern, FlatProgram,
 };
 use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::flat_type::FlatType;
@@ -12,9 +14,7 @@ use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
-use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::ir_lambda::IrLambda;
-use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::field_name::FieldName;
 
@@ -212,7 +212,7 @@ impl<'a> Evaluator<'a> {
     /// with the name of the part it binds.
     fn match_known(
         &self,
-        pattern: &IrPattern,
+        pattern: &FlatPattern,
         name: ValueId,
         bound: &mut Vec<(ValueId, ValueId)>,
     ) -> Option<bool> {
@@ -278,7 +278,7 @@ impl<'a> Evaluator<'a> {
     /// The first arm the subject surely matches, with each binding of its
     /// pattern and the part it binds, unless an arm before it may match as
     /// well.
-    fn selected_arm<B>(&self, match_: &IrMatch<B>) -> Option<(usize, Vec<(ValueId, ValueId)>)> {
+    fn selected_arm(&self, match_: &FlatMatch) -> Option<(usize, Vec<(ValueId, ValueId)>)> {
         for (index, arm) in match_.arms.iter().enumerate() {
             let mut bound = Vec::new();
             match self.match_known(&arm.pattern, match_.subject, &mut bound) {
@@ -292,12 +292,12 @@ impl<'a> Evaluator<'a> {
 
     /// Take the selected arm of a match, after letting the readers of the
     /// names its pattern binds read the parts they bind.
-    fn take_arm<B>(
+    fn take_arm(
         &mut self,
-        match_: IrMatch<B>,
+        match_: FlatMatch,
         index: usize,
         bound: Vec<(ValueId, ValueId)>,
-    ) -> B {
+    ) -> FlatBlock {
         self.renames.extend(bound);
         match_
             .arms
@@ -307,13 +307,13 @@ impl<'a> Evaluator<'a> {
             .body
     }
 
-    fn evaluate_arms(&mut self, match_: IrMatch<FlatBlock>) -> IrMatch<FlatBlock> {
-        IrMatch {
+    fn evaluate_arms(&mut self, match_: FlatMatch) -> FlatMatch {
+        FlatMatch {
             subject: match_.subject,
             arms: match_
                 .arms
                 .into_iter()
-                .map(|arm| IrMatchArm {
+                .map(|arm| FlatMatchArm {
                     pattern: arm.pattern,
                     body: self.block(arm.body),
                 })
@@ -422,23 +422,23 @@ impl<'a> Evaluator<'a> {
             FlatOp::Element(mut element) => {
                 let values = &self.values;
                 element.attributes.retain(|_, attribute| {
-                    !matches!(attribute, IrAttribute::Presence(present)
+                    !matches!(attribute, FlatAttribute::Presence(present)
                         if matches!(values.get(present), Some(IrDataOp::BoolLiteral(false))))
                 });
                 for attribute in element.attributes.values_mut() {
                     let constant = match attribute {
-                        IrAttribute::Value(value) => match values.get(value) {
+                        FlatAttribute::Value(value) => match values.get(value) {
                             Some(IrDataOp::StringLiteral(value)) => Some(Some(value.clone())),
                             _ => None,
                         },
-                        IrAttribute::Presence(present) => match values.get(present) {
+                        FlatAttribute::Presence(present) => match values.get(present) {
                             Some(IrDataOp::BoolLiteral(true)) => Some(None),
                             _ => None,
                         },
-                        IrAttribute::Constant(_) => None,
+                        FlatAttribute::Constant(_) => None,
                     };
                     if let Some(constant) = constant {
-                        *attribute = IrAttribute::Constant(constant);
+                        *attribute = FlatAttribute::Constant(constant);
                     }
                 }
                 FlatOp::Element(element)

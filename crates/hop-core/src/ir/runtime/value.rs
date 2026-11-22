@@ -3,9 +3,8 @@ use std::rc::Rc;
 
 use crate::hop::typing::{Constructor, Pattern};
 use crate::html::{HtmlElementKind, write_escaped_html};
-use crate::ir::flat_program::FlatLambda;
+use crate::ir::flat_program::{FlatLambda, FlatPattern};
 use crate::ir::flat_type::IrModifier;
-use crate::ir::ir_match::IrPattern;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::state::{CellId, ElementId};
@@ -240,7 +239,7 @@ impl<'a> Value<'a> {
     /// Whether the value matches the pattern. Each binding of a pattern
     /// that matches is pushed to `bound` with the part of the value it
     /// binds. Panics if the value does not have the pattern's type.
-    pub fn matches(&self, pattern: &IrPattern, bound: &mut Vec<(ValueId, Value<'a>)>) -> bool {
+    pub fn matches(&self, pattern: &FlatPattern, bound: &mut Vec<(ValueId, Value<'a>)>) -> bool {
         let (constructor, args, fields) = match pattern {
             Pattern::Wildcard => return true,
             Pattern::Binding(binder) => {

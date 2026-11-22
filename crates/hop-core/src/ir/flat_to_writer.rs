@@ -6,25 +6,24 @@ use crate::hop::typing::{
 use crate::html::write_escaped_html;
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::entrypoint_id::EntrypointId;
+use crate::ir::flat_html_element::{FlatAttribute, FlatHtmlElement};
 use crate::ir::flat_program::{
-    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatMatch, FlatMatchArm, FlatOp,
+    FlatPattern, FlatProgram,
 };
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_data_op::IrDataOp;
-use crate::ir::ir_for::IrFor;
-use crate::ir::ir_function_declaration::IrFunctionDeclaration;
-use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
-use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::ir::writer_program::{
-    WriterBlock, WriterFunctionBody, WriterOp, WriterPageDeclaration, WriterProgram, WriterStmt,
+    WriterBlock, WriterFor, WriterFunctionBody, WriterFunctionDeclaration, WriterOp,
+    WriterPageDeclaration, WriterProgram, WriterStmt,
 };
 use crate::ir::writer_type::{
     WriterDataType, WriterEnum, WriterField, WriterRecord, WriterResult, WriterSignature,
@@ -353,7 +352,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Record that a match reads its subject, as a whole or taken apart.
-    fn read_subject<B>(&mut self, match_: &IrMatch<B>) {
+    fn read_subject(&mut self, match_: &FlatMatch) {
         let bound_whole = match_
             .arms
             .iter()
@@ -446,16 +445,16 @@ impl<'a> Lowerer<'a> {
             match &binding.op {
                 FlatOp::Text(_) | FlatOp::Concat(_) => {}
                 FlatOp::Escape(string) => self.read(*string, Reader::Escaped),
-                FlatOp::Element(IrHtmlElement { attributes, .. }) => {
+                FlatOp::Element(FlatHtmlElement { attributes, .. }) => {
                     for attribute in attributes.values() {
                         match attribute {
-                            IrAttribute::Value(value) => {
+                            FlatAttribute::Value(value) => {
                                 self.read(*value, Reader::Escaped);
                             }
-                            IrAttribute::Presence(present) => {
+                            FlatAttribute::Presence(present) => {
                                 self.read(*present, Reader::Value);
                             }
-                            IrAttribute::Constant(_) => {}
+                            FlatAttribute::Constant(_) => {}
                         }
                     }
                 }
@@ -496,7 +495,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Record the types of the names a pattern binds.
-    fn analyze_pattern(&mut self, pattern: &IrPattern) {
+    fn analyze_pattern(&mut self, pattern: &FlatPattern) {
         pattern.for_each_binding(&mut |binder| self.analyze_binder(binder));
     }
 
@@ -600,14 +599,11 @@ impl<'a> Lowerer<'a> {
     /// Lower a function declaration, choosing the calling convention from
     /// its kind. Html compiles to destination passing, a value to an
     /// ordinary value returning function.
-    fn lower_function(
-        &mut self,
-        decl: &'a FlatFunction,
-    ) -> IrFunctionDeclaration<WriterType, WriterResult, WriterFunctionBody> {
+    fn lower_function(&mut self, decl: &'a FlatFunction) -> WriterFunctionDeclaration {
         if decl.return_type == FlatType::HTML {
             let mut statements = Vec::new();
             self.write_block(&decl.body, &mut statements);
-            return IrFunctionDeclaration {
+            return WriterFunctionDeclaration {
                 function: decl.function.clone(),
                 parameters: (decl.parameters.iter())
                     .map(|param| IrParameter {
@@ -625,7 +621,7 @@ impl<'a> Lowerer<'a> {
         let body = &decl.body;
         let mut bindings = Vec::new();
         self.lower_value_bindings(&body.bindings, &mut bindings);
-        IrFunctionDeclaration {
+        WriterFunctionDeclaration {
             function: decl.function.clone(),
             parameters: (decl.parameters.iter())
                 .map(|param| IrParameter {
@@ -789,9 +785,9 @@ impl<'a> Lowerer<'a> {
     /// The decision tree of a match, the case variables its leaves use and
     /// the parts of the subject bound before the tree, which is the subject
     /// itself.
-    fn compile_match<B>(
+    fn compile_match(
         &self,
-        match_: &IrMatch<B>,
+        match_: &FlatMatch,
     ) -> (
         Decision<IrBinder<FlatDataType>, FlatDataType>,
         HashSet<CaseVar>,
@@ -906,7 +902,7 @@ impl<'a> Lowerer<'a> {
     /// that compute it appended to `lets`.
     fn lower_data_match(
         &mut self,
-        match_: &'a IrMatch<FlatBlock>,
+        match_: &'a FlatMatch,
         typ: &WriterType,
         lets: &mut Vec<IrBinding<WriterType, WriterOp>>,
     ) -> ValueId {
@@ -922,7 +918,7 @@ impl<'a> Lowerer<'a> {
     fn lower_data_decision(
         &mut self,
         decision: &Decision<IrBinder<FlatDataType>, FlatDataType>,
-        arms: &'a [IrMatchArm<FlatBlock>],
+        arms: &'a [FlatMatchArm],
         typ: &WriterType,
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
@@ -1195,7 +1191,7 @@ impl<'a> Lowerer<'a> {
                 });
                 let mut statements = Vec::new();
                 self.write_block(body, &mut statements);
-                out.push(WriterStmt::HtmlFor(IrFor {
+                out.push(WriterStmt::HtmlFor(WriterFor {
                     var,
                     array,
                     body: statements,
@@ -1225,12 +1221,8 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn write_element(
-        &mut self,
-        element: &'a IrHtmlElement<Option<ValueId>>,
-        out: &mut Vec<WriterStmt>,
-    ) {
-        let IrHtmlElement {
+    fn write_element(&mut self, element: &'a FlatHtmlElement, out: &mut Vec<WriterStmt>) {
+        let FlatHtmlElement {
             identity: _,
             element,
             attributes,
@@ -1244,12 +1236,12 @@ impl<'a> Lowerer<'a> {
         write(&mut unit, &format!("<{}", element.as_str()));
         for (name, attribute) in attributes {
             match attribute {
-                IrAttribute::Value(value) => {
+                FlatAttribute::Value(value) => {
                     write(&mut unit, &format!(" {}=\"", name.as_str()));
                     self.write_escaped(*value, &mut unit);
                     write(&mut unit, "\"");
                 }
-                IrAttribute::Presence(present) => {
+                FlatAttribute::Presence(present) => {
                     let mut true_body = Vec::new();
                     write(&mut true_body, &format!(" {}", name.as_str()));
                     unit.push(WriterStmt::Match(IrSwitch::Bool {
@@ -1258,12 +1250,12 @@ impl<'a> Lowerer<'a> {
                         false_body: Vec::new(),
                     }));
                 }
-                IrAttribute::Constant(Some(value)) => {
+                FlatAttribute::Constant(Some(value)) => {
                     let mut escaped = String::new();
                     write_escaped_html(value.as_str(), &mut escaped);
                     write(&mut unit, &format!(" {}=\"{escaped}\"", name.as_str()));
                 }
-                IrAttribute::Constant(None) => write(&mut unit, &format!(" {}", name.as_str())),
+                FlatAttribute::Constant(None) => write(&mut unit, &format!(" {}", name.as_str())),
             }
         }
         write(&mut unit, ">");
@@ -1285,7 +1277,7 @@ impl<'a> Lowerer<'a> {
     fn write_decision(
         &mut self,
         decision: &Decision<IrBinder<FlatDataType>, FlatDataType>,
-        arms: &'a [IrMatchArm<FlatBlock>],
+        arms: &'a [FlatMatchArm],
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
         out: &mut Vec<WriterStmt>,
@@ -2275,7 +2267,7 @@ mod tests {
                     | WriterStmt::WriteString(_)
                     | WriterStmt::WriteFunction(..)
                     | WriterStmt::WriteApply(..) => {}
-                    WriterStmt::HtmlFor(IrFor { var, body, .. }) => {
+                    WriterStmt::HtmlFor(WriterFor { var, body, .. }) => {
                         if let Some(var) = var {
                             self.binder(var);
                         }

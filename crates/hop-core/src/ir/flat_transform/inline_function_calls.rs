@@ -2,7 +2,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::dependency_graph::DependencyGraph;
 use crate::ir::flat_program::{
-    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatMatch, FlatMatchArm, FlatOp,
+    FlatProgram,
 };
 use crate::ir::flat_transform::callees::collect_callees;
 use crate::ir::flat_transform::freshener::Freshener;
@@ -11,7 +12,6 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
-use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// A pass that replaces a call to a non-recursive function with the
@@ -178,12 +178,12 @@ impl<'a> Inliner<'a> {
                 }
                 None => FlatOp::Call(function, args),
             },
-            FlatOp::Match(match_) => FlatOp::Match(IrMatch {
+            FlatOp::Match(match_) => FlatOp::Match(FlatMatch {
                 subject: match_.subject,
                 arms: match_
                     .arms
                     .into_iter()
-                    .map(|arm| IrMatchArm {
+                    .map(|arm| FlatMatchArm {
                         pattern: arm.pattern,
                         body: self.block(arm.body),
                     })

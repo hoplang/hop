@@ -9,8 +9,10 @@ use crate::hop::typing::{
     TypedParameter, TypedPattern, TypedRecordUpdateField, TypedStatement,
 };
 use crate::ir::entrypoint_id::EntrypointId;
+use crate::ir::flat_html_element::{FlatAttribute, FlatHtmlElement};
 use crate::ir::flat_program::{
-    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatMatch, FlatMatchArm, FlatOp,
+    FlatPattern, FlatProgram,
 };
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{
@@ -23,9 +25,7 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
-use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::attribute_name::AttributeName;
@@ -393,18 +393,18 @@ impl<'a> Compiler<'a> {
 
     /// Compile the arms of a match, each body as a block of `compile_block`
     /// with the names its pattern binds in scope.
-    fn compile_arms<B>(
+    fn compile_arms(
         &mut self,
         arms: &[(TypedPattern, TypedExpr)],
-        compile_block: impl Fn(&mut Self, &TypedExpr) -> B,
-    ) -> Vec<IrMatchArm<B>> {
+        compile_block: impl Fn(&mut Self, &TypedExpr) -> FlatBlock,
+    ) -> Vec<FlatMatchArm> {
         arms.iter()
             .map(|(pattern, body)| {
                 self.push_scope();
                 let pattern = self.compile_pattern(pattern);
                 let body = compile_block(self, body);
                 self.pop_scope();
-                IrMatchArm { pattern, body }
+                FlatMatchArm { pattern, body }
             })
             .collect()
     }
@@ -490,7 +490,7 @@ impl<'a> Compiler<'a> {
 
     /// Bind the variables of a pattern in the current scope, and return the
     /// pattern with each binding binding the name of its variable.
-    fn compile_pattern(&mut self, pattern: &TypedPattern) -> IrPattern {
+    fn compile_pattern(&mut self, pattern: &TypedPattern) -> FlatPattern {
         match pattern {
             Pattern::Wildcard => Pattern::Wildcard,
             Pattern::Binding(binder) => {
@@ -650,10 +650,10 @@ impl<'a> Compiler<'a> {
             }
             // The right operand runs only when the left one is true, so it
             // becomes the true arm. The false arm is false.
-            TypedExpr::BoolLogicalAnd { left, right, .. } => FlatOp::Match(IrMatch {
+            TypedExpr::BoolLogicalAnd { left, right, .. } => FlatOp::Match(FlatMatch {
                 subject: self.compile_expr(left),
                 arms: vec![
-                    IrMatchArm {
+                    FlatMatchArm {
                         pattern: Pattern::Constructor {
                             constructor: Constructor::BoolTrue,
                             args: Vec::new(),
@@ -661,7 +661,7 @@ impl<'a> Compiler<'a> {
                         },
                         body: self.compile_value_block(right),
                     },
-                    IrMatchArm {
+                    FlatMatchArm {
                         pattern: Pattern::Constructor {
                             constructor: Constructor::BoolFalse,
                             args: Vec::new(),
@@ -675,10 +675,10 @@ impl<'a> Compiler<'a> {
             }),
             // The right operand runs only when the left one is false, so it
             // becomes the false arm. The true arm is true.
-            TypedExpr::BoolLogicalOr { left, right, .. } => FlatOp::Match(IrMatch {
+            TypedExpr::BoolLogicalOr { left, right, .. } => FlatOp::Match(FlatMatch {
                 subject: self.compile_expr(left),
                 arms: vec![
-                    IrMatchArm {
+                    FlatMatchArm {
                         pattern: Pattern::Constructor {
                             constructor: Constructor::BoolTrue,
                             args: Vec::new(),
@@ -688,7 +688,7 @@ impl<'a> Compiler<'a> {
                             cx.push(Type::BOOL, FlatOp::Data(IrDataOp::BoolLiteral(true)))
                         }),
                     },
-                    IrMatchArm {
+                    FlatMatchArm {
                         pattern: Pattern::Constructor {
                             constructor: Constructor::BoolFalse,
                             args: Vec::new(),
@@ -742,10 +742,10 @@ impl<'a> Compiler<'a> {
                 let subject = self.compile_expr(subject);
                 if typ == Type::HTML {
                     let arms = self.compile_arms(arms, Self::compile_html_block);
-                    return self.push_html(FlatOp::Match(IrMatch { subject, arms }));
+                    return self.push_html(FlatOp::Match(FlatMatch { subject, arms }));
                 }
                 let arms = self.compile_arms(arms, Self::compile_value_block);
-                FlatOp::Match(IrMatch { subject, arms })
+                FlatOp::Match(FlatMatch { subject, arms })
             }
             TypedExpr::Option { value, .. } => FlatOp::Data(match value {
                 Some(value) => IrDataOp::OptionSome(self.compile_expr(value)),
@@ -786,10 +786,10 @@ impl<'a> Compiler<'a> {
                 for (name, attr) in &attrs.attributes {
                     let attribute = match attr {
                         TypedAttribute::Value(value) => {
-                            IrAttribute::Value(self.compile_expr(value))
+                            FlatAttribute::Value(self.compile_expr(value))
                         }
                         TypedAttribute::Presence(present) => {
-                            IrAttribute::Presence(self.compile_expr(present))
+                            FlatAttribute::Presence(self.compile_expr(present))
                         }
                     };
                     attributes.insert(name.clone(), attribute);
@@ -802,8 +802,8 @@ impl<'a> Compiler<'a> {
                 if attrs.spread.is_some() {
                     for (name, typ, value) in self.rest.clone() {
                         let attribute = match typ {
-                            Type::BOOL => IrAttribute::Presence(value),
-                            _ => IrAttribute::Value(value),
+                            Type::BOOL => FlatAttribute::Presence(value),
+                            _ => FlatAttribute::Value(value),
                         };
                         let previous = attributes.insert(name, attribute);
                         assert!(previous.is_none(), "an attribute is set twice");
@@ -823,7 +823,7 @@ impl<'a> Compiler<'a> {
                     },
                     op: FlatOp::Mint,
                 });
-                return self.push_html(FlatOp::Element(IrHtmlElement {
+                return self.push_html(FlatOp::Element(FlatHtmlElement {
                     identity,
                     element: element.clone(),
                     attributes,
@@ -1115,10 +1115,10 @@ impl<'a> Compiler<'a> {
                 };
                 let subject = self.compile_expr(option);
                 let binding = self.value_id_counter.next();
-                FlatOp::Match(IrMatch {
+                FlatOp::Match(FlatMatch {
                     subject,
                     arms: vec![
-                        IrMatchArm {
+                        FlatMatchArm {
                             pattern: Pattern::Constructor {
                                 constructor: Constructor::OptionSome,
                                 args: vec![Pattern::Binding(IrBinder {
@@ -1129,7 +1129,7 @@ impl<'a> Compiler<'a> {
                             },
                             body: self.data_block(|_| binding),
                         },
-                        IrMatchArm {
+                        FlatMatchArm {
                             pattern: Pattern::Constructor {
                                 constructor: Constructor::OptionNone,
                                 args: Vec::new(),

@@ -4,12 +4,13 @@ use std::rc::Rc;
 use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::document_shell::DocumentShell;
 use crate::ir::entrypoint_id::EntrypointId;
-use crate::ir::flat_program::{FlatBinding, FlatBlock, FlatFor, FlatFunction, FlatOp, FlatProgram};
+use crate::ir::flat_html_element::{FlatAttribute, FlatHtmlElement};
+use crate::ir::flat_program::{
+    FlatBinding, FlatBlock, FlatFor, FlatFunction, FlatMatch, FlatOp, FlatProgram,
+};
 use crate::ir::flat_type::{FlatType, IrModifier};
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
-use crate::ir::ir_match::IrMatch;
 use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
@@ -231,7 +232,7 @@ pub(super) fn run_handlers<'a>(
     Ok(())
 }
 
-fn enter_arm<'a, B>(match_: &'a IrMatch<B>, env: &mut Env<'a>) -> (usize, &'a B, Env<'a>) {
+fn enter_arm<'a>(match_: &'a FlatMatch, env: &mut Env<'a>) -> (usize, &'a FlatBlock, Env<'a>) {
     let subject = &env[&match_.subject];
     let (index, arm, bound) = match_
         .arms
@@ -310,7 +311,7 @@ fn evaluate_op<'a>(
                 .collect(),
         ))?),
 
-        FlatOp::Element(IrHtmlElement {
+        FlatOp::Element(FlatHtmlElement {
             identity,
             element,
             attributes,
@@ -320,11 +321,11 @@ fn evaluate_op<'a>(
             let mut rendered = Vec::new();
             for (name, attribute) in attributes {
                 match attribute {
-                    IrAttribute::Value(value) => rendered.push(HtmlAttribute {
+                    FlatAttribute::Value(value) => rendered.push(HtmlAttribute {
                         name: name.clone(),
                         value: Some(env[value].as_string().clone()),
                     }),
-                    IrAttribute::Presence(present) => {
+                    FlatAttribute::Presence(present) => {
                         if env[present].as_bool() {
                             rendered.push(HtmlAttribute {
                                 name: name.clone(),
@@ -332,7 +333,7 @@ fn evaluate_op<'a>(
                             });
                         }
                     }
-                    IrAttribute::Constant(value) => rendered.push(HtmlAttribute {
+                    FlatAttribute::Constant(value) => rendered.push(HtmlAttribute {
                         name: name.clone(),
                         value: value.as_ref().map(|value| value.as_str().into()),
                     }),

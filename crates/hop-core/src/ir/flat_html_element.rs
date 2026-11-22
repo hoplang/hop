@@ -6,16 +6,16 @@ use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 
 #[derive(Debug, Clone)]
-pub struct IrHtmlElement<Children> {
+pub struct FlatHtmlElement {
     pub identity: ValueId,
     pub element: HtmlElementKind,
-    pub attributes: IndexMap<AttributeName, IrAttribute>,
-    pub children: Children,
+    pub attributes: IndexMap<AttributeName, FlatAttribute>,
+    pub children: Option<ValueId>,
     pub on_click: Option<ValueId>,
 }
 
 #[derive(Debug, Clone)]
-pub enum IrAttribute {
+pub enum FlatAttribute {
     /// Must name a String.
     Value(ValueId),
     /// Must name a Bool.
@@ -25,12 +25,12 @@ pub enum IrAttribute {
     Constant(Option<CheapString>),
 }
 
-impl<Children> IrHtmlElement<Children> {
+impl FlatHtmlElement {
     pub fn for_each_attribute_operand(&self, f: &mut impl FnMut(ValueId)) {
         for attribute in self.attributes.values() {
             match attribute {
-                IrAttribute::Value(name) | IrAttribute::Presence(name) => f(*name),
-                IrAttribute::Constant(_) => {}
+                FlatAttribute::Value(name) | FlatAttribute::Presence(name) => f(*name),
+                FlatAttribute::Constant(_) => {}
             }
         }
     }
@@ -38,8 +38,8 @@ impl<Children> IrHtmlElement<Children> {
     pub fn for_each_attribute_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         for attribute in self.attributes.values_mut() {
             match attribute {
-                IrAttribute::Value(name) | IrAttribute::Presence(name) => f(name),
-                IrAttribute::Constant(_) => {}
+                FlatAttribute::Value(name) | FlatAttribute::Presence(name) => f(name),
+                FlatAttribute::Constant(_) => {}
             }
         }
     }

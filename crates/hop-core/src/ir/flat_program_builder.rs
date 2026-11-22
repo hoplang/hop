@@ -3,8 +3,10 @@ use crate::hop::typing::{
     ComparableType, Constructor, EquatableType, NumericType, Pattern, PatternField, Ty,
 };
 use crate::html::HtmlElementKind;
+use crate::ir::flat_html_element::{FlatAttribute, FlatHtmlElement};
 use crate::ir::flat_program::{
-    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatMatch, FlatMatchArm, FlatOp,
+    FlatPattern, FlatProgram,
 };
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
@@ -15,9 +17,7 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_html_element::{IrAttribute, IrHtmlElement};
 use crate::ir::ir_lambda::IrLambda;
-use crate::ir::ir_match::{IrMatch, IrMatchArm, IrPattern};
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::attribute_name::AttributeName;
@@ -517,11 +517,11 @@ impl<'a> FlatBlockBuilder<'a> {
         };
         arms_fn(&mut arms);
         let MatchExprArms { arms, typ, .. } = arms;
-        self.push(typ.unwrap(), FlatOp::Match(IrMatch { subject, arms }))
+        self.push(typ.unwrap(), FlatOp::Match(FlatMatch { subject, arms }))
     }
 
-    fn resolve_pat(&self, typ: &FlatType, pat: Pat, bindings: &mut ArmBindings) -> IrPattern {
-        let constructor = |constructor: Constructor, args: Vec<IrPattern>| Pattern::Constructor {
+    fn resolve_pat(&self, typ: &FlatType, pat: Pat, bindings: &mut ArmBindings) -> FlatPattern {
+        let constructor = |constructor: Constructor, args: Vec<FlatPattern>| Pattern::Constructor {
             constructor,
             args,
             fields: Vec::new(),
@@ -719,7 +719,7 @@ impl<'a> FlatBlockBuilder<'a> {
         &self,
         identity: ValueId,
         tag: &str,
-        attributes: impl IntoIterator<Item = (AttributeName, IrAttribute)>,
+        attributes: impl IntoIterator<Item = (AttributeName, FlatAttribute)>,
         children: Option<ValueId>,
     ) -> ValueId {
         self.push_element(identity, tag, attributes, children, None)
@@ -729,7 +729,7 @@ impl<'a> FlatBlockBuilder<'a> {
         &self,
         identity: ValueId,
         tag: &str,
-        attributes: impl IntoIterator<Item = (AttributeName, IrAttribute)>,
+        attributes: impl IntoIterator<Item = (AttributeName, FlatAttribute)>,
         event_handler: ValueId,
         children: Option<ValueId>,
     ) -> ValueId {
@@ -740,11 +740,11 @@ impl<'a> FlatBlockBuilder<'a> {
         &self,
         identity: ValueId,
         tag: &str,
-        attributes: impl IntoIterator<Item = (AttributeName, IrAttribute)>,
+        attributes: impl IntoIterator<Item = (AttributeName, FlatAttribute)>,
         children: Option<ValueId>,
         on_click: Option<ValueId>,
     ) -> ValueId {
-        self.push_html(FlatOp::Element(IrHtmlElement {
+        self.push_html(FlatOp::Element(FlatHtmlElement {
             identity,
             element: HtmlElementKind::parse(tag).unwrap(),
             attributes: attributes.into_iter().collect(),
@@ -776,17 +776,17 @@ impl<'a> FlatBlockBuilder<'a> {
         self.push(FlatType::Data(typ), FlatOp::CellRead(cell))
     }
 
-    pub fn attr_value(&self, name: &str, value: ValueId) -> (AttributeName, IrAttribute) {
+    pub fn attr_value(&self, name: &str, value: ValueId) -> (AttributeName, FlatAttribute) {
         (
             AttributeName::parse(name).unwrap(),
-            IrAttribute::Value(value),
+            FlatAttribute::Value(value),
         )
     }
 
-    pub fn attr_presence(&self, name: &str, present: ValueId) -> (AttributeName, IrAttribute) {
+    pub fn attr_presence(&self, name: &str, present: ValueId) -> (AttributeName, FlatAttribute) {
         (
             AttributeName::parse(name).unwrap(),
-            IrAttribute::Presence(present),
+            FlatAttribute::Presence(present),
         )
     }
 
@@ -986,7 +986,7 @@ impl Pat {
 pub struct MatchExprArms<'a> {
     builder: &'a FlatBlockBuilder<'a>,
     subject_type: FlatType,
-    arms: Vec<IrMatchArm<FlatBlock>>,
+    arms: Vec<FlatMatchArm>,
     typ: Option<FlatType>,
 }
 
@@ -1018,7 +1018,7 @@ impl MatchExprArms<'_> {
             .resolve_pat(&self.subject_type, pat, &mut bindings);
         let body = self.builder.block(|t| body_fn(t, &bindings));
         self.typ.get_or_insert(body.typ.clone());
-        self.arms.push(IrMatchArm {
+        self.arms.push(FlatMatchArm {
             pattern,
             body: body.into_block(),
         });

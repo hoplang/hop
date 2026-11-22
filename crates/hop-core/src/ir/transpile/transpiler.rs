@@ -2,16 +2,15 @@ use crate::hop::typing::{ComparableType, EquatableType, NumericType};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_data_op::IrDataOp;
-use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_switch::IrSwitch;
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
-    WriterBlock, WriterFunctionBody, WriterOp, WriterPageDeclaration, WriterProgram, WriterStmt,
+    WriterBlock, WriterFor, WriterFunctionBody, WriterFunctionDeclaration, WriterOp,
+    WriterPageDeclaration, WriterProgram, WriterStmt,
 };
-use crate::ir::writer_type::{WriterDataType, WriterResult, WriterSignature, WriterType};
+use crate::ir::writer_type::{WriterDataType, WriterSignature, WriterType};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use pretty::Arena;
@@ -39,7 +38,7 @@ pub trait Transpiler {
     fn transpile_function_def<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        function: &'a IrFunctionDeclaration<WriterType, WriterResult, WriterFunctionBody>,
+        function: &'a WriterFunctionDeclaration,
     ) -> Doc<'a>;
 
     // Statements
@@ -84,7 +83,7 @@ pub trait Transpiler {
             WriterStmt::WriteFunction(function, args) => {
                 self.transpile_write_function_statement(arena, function, args)
             }
-            WriterStmt::HtmlFor(IrFor { var, array, body }) => {
+            WriterStmt::HtmlFor(WriterFor { var, array, body }) => {
                 self.transpile_for_statement(arena, var.as_ref(), *array, body)
             }
             WriterStmt::Match(match_) => self.transpile_match_statement(arena, match_),

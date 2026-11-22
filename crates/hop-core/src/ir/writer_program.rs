@@ -1,16 +1,14 @@
+use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
-use crate::ir::ir_for::IrFor;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
+use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::IrSwitch;
 use crate::ir::value_id::ValueId;
-use crate::ir::writer_type::{WriterResult, WriterType, WriterTypeDeclarations};
+use crate::ir::writer_type::{WriterDataType, WriterResult, WriterType, WriterTypeDeclarations};
 use crate::symbols::type_name::TypeName;
-
-use super::ir_parameter::IrParameter;
 
 /// A Writer program.
 ///
@@ -25,7 +23,15 @@ use super::ir_parameter::IrParameter;
 pub struct WriterProgram {
     pub types: WriterTypeDeclarations,
     pub pages: Vec<WriterPageDeclaration>,
-    pub functions: Vec<IrFunctionDeclaration<WriterType, WriterResult, WriterFunctionBody>>,
+    pub functions: Vec<WriterFunctionDeclaration>,
+}
+
+#[derive(Debug)]
+pub struct WriterFunctionDeclaration {
+    pub function: IrFunction,
+    pub parameters: Vec<IrParameter<WriterType>>,
+    pub return_type: WriterResult,
+    pub body: WriterFunctionBody,
 }
 
 #[derive(Debug)]
@@ -50,8 +56,15 @@ pub enum WriterStmt {
     WriteString(ValueId),
     WriteFunction(IrFunction, Vec<ValueId>),
     WriteApply(ValueId, Vec<ValueId>),
-    HtmlFor(IrFor<Vec<WriterStmt>>),
+    HtmlFor(WriterFor),
     Match(IrSwitch<Vec<WriterStmt>>),
+}
+
+#[derive(Debug)]
+pub struct WriterFor {
+    pub var: Option<IrBinder<WriterDataType>>,
+    pub array: ValueId,
+    pub body: Vec<WriterStmt>,
 }
 
 #[derive(Debug)]
@@ -65,7 +78,9 @@ pub enum WriterOp {
 
 #[cfg(test)]
 mod test_support {
+    use super::WriterFor;
     use super::WriterFunctionBody;
+    use super::WriterFunctionDeclaration;
     use super::WriterOp;
     use super::WriterPageDeclaration;
     use super::WriterProgram;
@@ -92,7 +107,14 @@ mod test_support {
                 WriterStmt::WriteApply(closure, args) => {
                     write!(f, "write_apply {closure}({})", join(args, ", "))
                 }
-                WriterStmt::HtmlFor(for_) => for_.write(f, |body, w| write_stmts(body, w)),
+                WriterStmt::HtmlFor(WriterFor { var, array, body }) => {
+                    match var {
+                        Some(binder) => write!(f, "for {binder} in {array} {{")?,
+                        None => write!(f, "for _ in {array} {{")?,
+                    }
+                    write_stmts(body, &mut Indent::new(f))?;
+                    f.write_str("\n}")
+                }
                 WriterStmt::Match(match_) => match_.write(f, |body, w| write_stmts(body, w)),
             }
         }
@@ -121,6 +143,21 @@ mod test_support {
         }
     }
 
+    impl fmt::Display for WriterFunctionDeclaration {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "fn {}(", self.function)?;
+            for parameter in &self.parameters {
+                write!(Indent::new(f), "\n{parameter},")?;
+            }
+            if !self.parameters.is_empty() {
+                f.write_str("\n")?;
+            }
+            write!(f, ") -> {} {{", self.return_type)?;
+            self.body.write(&mut Indent::new(f))?;
+            f.write_str("\n}")
+        }
+    }
+
     impl fmt::Display for WriterPageDeclaration {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(
@@ -137,8 +174,7 @@ mod test_support {
     impl fmt::Display for WriterProgram {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             for function in &self.functions {
-                function.write(f, WriterFunctionBody::write)?;
-                writeln!(f)?;
+                writeln!(f, "{function}")?;
             }
             for page in &self.pages {
                 write!(f, "{page}")?;

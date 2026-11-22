@@ -1,14 +1,15 @@
 use crate::hop::typing::{
     ComparableType, Constructor, EquatableType, NumericType, Pattern, compile_arms,
 };
-use crate::ir::flat_program::{FlatBinding, FlatBlock, FlatFunction, FlatOp, FlatProgram};
+use crate::ir::flat_html_element::FlatAttribute;
+use crate::ir::flat_program::{
+    FlatBinding, FlatBlock, FlatFunction, FlatMatch, FlatOp, FlatPattern, FlatProgram,
+};
 use crate::ir::flat_type::{FlatDataType, FlatSignature, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_html_element::IrAttribute;
-use crate::ir::ir_match::{IrMatch, IrPattern};
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 
@@ -370,9 +371,9 @@ impl<'a> Checker<'a> {
                 }
                 let attributes = try_all(element.attributes.values(), |attribute| {
                     Ok(match attribute {
-                        IrAttribute::Value(name) => self.read(*name)?.is(&FlatType::STRING),
-                        IrAttribute::Presence(name) => self.read(*name)?.is(&FlatType::BOOL),
-                        IrAttribute::Constant(_) => true,
+                        FlatAttribute::Value(name) => self.read(*name)?.is(&FlatType::STRING),
+                        FlatAttribute::Presence(name) => self.read(*name)?.is(&FlatType::BOOL),
+                        FlatAttribute::Constant(_) => true,
                     })
                 })?;
                 if let Some(handler) = element.on_click {
@@ -676,8 +677,9 @@ impl<'a> Checker<'a> {
             })?)
     }
 
-    fn arms<B>(&self, match_: &IrMatch<B>, subject: &FlatDataType) -> Result<(), FlatTypeError> {
-        let patterns: Vec<IrPattern> = match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
+    fn arms(&self, match_: &FlatMatch, subject: &FlatDataType) -> Result<(), FlatTypeError> {
+        let patterns: Vec<FlatPattern> =
+            match_.arms.iter().map(|arm| arm.pattern.clone()).collect();
         let (_, reachable, missing) = compile_arms(self.declarations, &patterns, subject.clone());
         if !missing.is_empty() {
             return Err(FlatTypeError::NoArmMatches);
@@ -690,7 +692,7 @@ impl<'a> Checker<'a> {
 
     fn data_pattern(
         &mut self,
-        pattern: &'a IrPattern,
+        pattern: &'a FlatPattern,
         typ: &FlatDataType,
     ) -> Result<(), FlatTypeError> {
         match pattern {

@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
 use crate::hop::typing::Pattern;
-use crate::ir::flat_program::{FlatBlock, FlatFor, FlatOp};
+use crate::ir::flat_program::{FlatBlock, FlatFor, FlatMatch, FlatMatchArm, FlatOp};
 use crate::ir::flat_type::FlatType;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_lambda::IrLambda;
-use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// Copies a block with fresh names, so the copy shares none of the names
@@ -45,8 +44,8 @@ impl<'a> Freshener<'a> {
 
     /// Copy the arms of a match, each pattern binding fresh names, and its
     /// subject.
-    fn freshen_match(&mut self, match_: &IrMatch<FlatBlock>) -> IrMatch<FlatBlock> {
-        IrMatch {
+    fn freshen_match(&mut self, match_: &FlatMatch) -> FlatMatch {
+        FlatMatch {
             subject: self.name(match_.subject),
             arms: match_
                 .arms
@@ -58,7 +57,7 @@ impl<'a> Freshener<'a> {
                             *binder = self.fresh_binder(binder);
                         }
                     });
-                    IrMatchArm {
+                    FlatMatchArm {
                         pattern,
                         body: self.freshen_block(&arm.body),
                     }

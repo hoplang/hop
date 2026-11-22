@@ -1,5 +1,6 @@
 use crate::hop::typing::{ComparableType, EquatableType, NumericType, Ty};
 use crate::ir::entrypoint_id::EntrypointId;
+use crate::ir::flat_html_element::FlatAttribute;
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::flat_program_builder::{
     DeclaredFunction, FlatBlockBuilder, FlatProgramBuilder, Pat,
@@ -7,7 +8,6 @@ use crate::ir::flat_program_builder::{
 use crate::ir::flat_type::{FlatDataType, FlatSignature, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
 use crate::ir::flat_type_declarations_builder::FlatTypeDeclarationsBuilder;
-use crate::ir::ir_html_element::IrAttribute;
 use crate::ir::runtime::random::random_value;
 use crate::ir::runtime::value::Value;
 use crate::ir::value_id::ValueId;
@@ -1010,7 +1010,7 @@ impl FlatGenerator<'_, '_> {
         b: &FlatBlockBuilder<'_>,
         scope: &mut Scope,
         tag: &str,
-        attributes: Vec<(AttributeName, IrAttribute)>,
+        attributes: Vec<(AttributeName, FlatAttribute)>,
         children: Option<ValueId>,
         depth: usize,
         nesting: usize,
@@ -1867,7 +1867,7 @@ mod tests {
     }
 
     fn nested(binding: &FlatBinding) -> Vec<(Vec<ValueId>, &FlatBlock)> {
-        let bound = |pattern: &crate::ir::ir_match::IrPattern| {
+        let bound = |pattern: &crate::ir::flat_program::FlatPattern| {
             let mut names = Vec::new();
             pattern.for_each_binding(&mut |binder| names.push(binder.var));
             names

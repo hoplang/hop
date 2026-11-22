@@ -2,13 +2,13 @@ use std::collections::HashSet;
 
 use crate::hop::typing::Pattern;
 use crate::ir::flat_program::{
-    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatOp, FlatProgram,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatMatch, FlatMatchArm, FlatOp,
+    FlatProgram,
 };
 use crate::ir::flat_type::{FlatType, IrModifier};
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_lambda::IrLambda;
-use crate::ir::ir_match::{IrMatch, IrMatchArm};
 use crate::ir::value_id::ValueId;
 
 /// A pass that removes the bindings nothing reads from every body.
@@ -109,12 +109,8 @@ fn eliminate_binding(
     Some(IrBinding { binder, op })
 }
 
-fn eliminate_match(
-    match_: IrMatch<FlatBlock>,
-    live: &mut HashSet<ValueId>,
-    keep: bool,
-) -> IrMatch<FlatBlock> {
-    IrMatch {
+fn eliminate_match(match_: FlatMatch, live: &mut HashSet<ValueId>, keep: bool) -> FlatMatch {
+    FlatMatch {
         subject: match_.subject,
         arms: match_
             .arms
@@ -129,7 +125,7 @@ fn eliminate_match(
                         *binding = Pattern::Wildcard;
                     }
                 });
-                IrMatchArm { pattern, body }
+                FlatMatchArm { pattern, body }
             })
             .collect(),
     }

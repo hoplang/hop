@@ -7,13 +7,13 @@ use super::transpiler::Transpiler;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_function_declaration::IrFunctionDeclaration;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
-    WriterBlock, WriterFunctionBody, WriterOp, WriterPageDeclaration, WriterProgram, WriterStmt,
+    WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterOp, WriterPageDeclaration,
+    WriterProgram, WriterStmt,
 };
 use crate::ir::writer_type::{
     WriterDataType, WriterEnum, WriterRecord, WriterResult, WriterSignature, WriterType,
@@ -747,7 +747,7 @@ impl Transpiler for TsTranspiler {
     fn transpile_function_def<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        function: &'a IrFunctionDeclaration<WriterType, WriterResult, WriterFunctionBody>,
+        function: &'a WriterFunctionDeclaration,
     ) -> Doc<'a> {
         let param_docs: Vec<_> = function
             .parameters
