@@ -7,9 +7,9 @@ use crate::ir::flat_program::{
 };
 use crate::ir::flat_type::{FlatDataType, FlatSignature, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
+use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
-use crate::ir::ir_function::IrFunction;
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
 
@@ -306,7 +306,7 @@ impl<'a> Checker<'a> {
                 _ => false,
             },
             FlatOp::Call(callee, args) => {
-                let callee = self.callee(callee)?;
+                let callee = self.callee(*callee)?;
                 if !modifier.allows(callee.modifier) {
                     return Err(FlatTypeError::EffectNotAllowed);
                 }
@@ -474,10 +474,10 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
-    fn callee(&self, callee: &IrFunction) -> Result<&'a FlatFunction, FlatTypeError> {
+    fn callee(&self, callee: FunctionId) -> Result<&'a FlatFunction, FlatTypeError> {
         self.functions
             .iter()
-            .find(|declared| declared.function.id == callee.id)
+            .find(|declared| declared.function.id == callee)
             .ok_or(FlatTypeError::UndeclaredCallee)
     }
 

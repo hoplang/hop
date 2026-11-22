@@ -13,9 +13,11 @@ use crate::ir::flat_program::{
 };
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
+use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_data_op::IrDataOp;
+use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_parameter::IrParameter;
@@ -89,8 +91,12 @@ pub fn flat_to_writer(
         entrypoints,
         value_ids,
     } = program;
+    let callees = (functions.iter())
+        .map(|function| (function.function.id, function.function.clone()))
+        .collect();
     let mut lowerer = Lowerer {
         types: &types,
+        callees,
         value_ids,
         bindings: HashMap::new(),
         html: HashMap::new(),
@@ -289,6 +295,8 @@ fn value_bindings(block: &FlatBlock) -> impl Iterator<Item = &FlatBinding> {
 
 struct Lowerer<'a> {
     types: &'a FlatTypeDeclarations,
+    /// Every function of the program, by id, to name it where it is called.
+    callees: HashMap<FunctionId, IrFunction>,
     value_ids: ValueIdCounter,
     /// Every value binding of the program, by name and by the fresh name of
     /// each copy of it. Names are unique, so one map serves every block.
@@ -685,7 +693,7 @@ impl<'a> Lowerer<'a> {
             }
             FlatOp::CellWrite(..) => unreachable!("only what mutates writes a cell"),
             FlatOp::Call(function, args) => WriterOp::Call(
-                function.clone(),
+                self.callees[function].clone(),
                 args.iter().map(|arg| self.name(*arg)).collect(),
             ),
             FlatOp::Data(op) => {
@@ -1202,7 +1210,10 @@ impl<'a> Lowerer<'a> {
                 let mut lets = Vec::new();
                 let args = self.lower_args(args, &mut lets);
                 out.extend(lets.into_iter().map(WriterStmt::Let));
-                out.push(WriterStmt::WriteFunction(function.clone(), args));
+                out.push(WriterStmt::WriteFunction(
+                    self.callees[function].clone(),
+                    args,
+                ));
             }
 
             FlatOp::Apply(closure, args) => {

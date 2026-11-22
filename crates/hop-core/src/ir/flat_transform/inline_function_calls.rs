@@ -10,7 +10,6 @@ use crate::ir::flat_transform::freshener::Freshener;
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
-use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
@@ -126,11 +125,11 @@ impl<'a> Inliner<'a> {
 
     /// The declaration of the callee when the call is inlined, which it is
     /// unless the callee is recursive or is the function being inlined.
-    fn inlined(&self, function: &IrFunction) -> Option<&'a FlatFunction> {
+    fn inlined(&self, function: FunctionId) -> Option<&'a FlatFunction> {
         let decls = self.decls;
         decls
-            .get(&function.id)
-            .filter(|_| !self.recursive.contains(&function.id))
+            .get(&function)
+            .filter(|_| !self.recursive.contains(&function))
     }
 
     /// A freshener that reads each argument of the call for the parameter
@@ -167,7 +166,7 @@ impl<'a> Inliner<'a> {
         let IrBinding { binder, mut op } = binding;
         op.for_each_operand_mut(&mut |operand| *operand = self.rename(*operand));
         let op = match op {
-            FlatOp::Call(function, args) => match self.inlined(&function) {
+            FlatOp::Call(function, args) => match self.inlined(function) {
                 Some(decl) => {
                     let body = self.freshener(decl, args).freshen_block(&decl.body);
                     out.extend(body.bindings);

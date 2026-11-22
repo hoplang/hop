@@ -7,7 +7,7 @@ pub fn collect_callees(block: &FlatBlock, out: &mut BTreeSet<FunctionId>) {
     for binding in &block.bindings {
         match &binding.op {
             FlatOp::Call(function, ..) => {
-                out.insert(function.id);
+                out.insert(*function);
             }
             FlatOp::Match(match_) => {
                 for arm in &match_.arms {

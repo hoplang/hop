@@ -19,7 +19,7 @@ use crate::ir::flat_type_declarations::{
     FlatEnum, FlatField, FlatRecord, FlatTypeDeclarations, FlatVariant,
 };
 use crate::ir::flat_typecheck;
-use crate::ir::function_id::FunctionIdCounter;
+use crate::ir::function_id::{FunctionId, FunctionIdCounter};
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
@@ -99,8 +99,9 @@ pub fn typed_to_flat(
     let mut functions: Vec<(usize, FlatFunction)> = Vec::new();
     let mut next = 0;
     while let Some(request) = compiler.specializations.get(next).cloned() {
-        let (index, decl) = source[&(request.module, request.name)];
-        let function = compiler.compile_function_decl(decl, request.shape, request.function);
+        let (index, decl) = source[&(request.module, request.name.clone())];
+        let function = IrFunction::new(request.id, request.name);
+        let function = compiler.compile_function_decl(decl, request.shape, function);
         functions.push((index, function));
         next += 1;
     }
@@ -134,7 +135,7 @@ struct Specialization {
     /// they render: those written at the call, then those the call forwards
     /// from the rest of the calling function.
     shape: Vec<(AttributeName, Type)>,
-    function: IrFunction,
+    id: FunctionId,
 }
 
 /// A page whose head and body are compiled but not yet declared as
@@ -883,24 +884,23 @@ impl<'a> Compiler<'a> {
                             a.as_str() == b.as_str() && a_typ == b_typ
                         })
                 });
-                let function = match existing {
-                    Some(existing) => existing.function.clone(),
+                let id = match existing {
+                    Some(existing) => existing.id,
                     None => {
-                        let function =
-                            IrFunction::new(self.function_id_counter.next(), function_name.clone());
+                        let id = self.function_id_counter.next();
                         self.specializations.push(Specialization {
                             module: module.clone(),
                             name: function_name.clone(),
                             shape,
-                            function: function.clone(),
+                            id,
                         });
-                        function
+                        id
                     }
                 };
                 if typ == Type::HTML {
-                    return self.push_html(FlatOp::Call(function, compiled_args));
+                    return self.push_html(FlatOp::Call(id, compiled_args));
                 }
-                FlatOp::Call(function, compiled_args)
+                FlatOp::Call(id, compiled_args)
             }
             // A let binds nothing. Its variable is the name of its value, in
             // a scope that the block's lets share and that holds the tail,

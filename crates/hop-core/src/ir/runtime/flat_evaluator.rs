@@ -10,7 +10,6 @@ use crate::ir::flat_program::{
 };
 use crate::ir::flat_type::{FlatType, IrModifier};
 use crate::ir::ir_data_op::IrDataOp;
-use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
@@ -119,7 +118,7 @@ pub(super) fn invoke_entrypoint<'a>(
 
 fn evaluate_function<'a>(
     functions: &'a [FlatFunction],
-    function: &IrFunction,
+    decl: &'a FlatFunction,
     args: Vec<Value<'a>>,
     context: Context<'_, 'a>,
     depth: usize,
@@ -130,10 +129,6 @@ fn evaluate_function<'a>(
             limit: MAX_CALL_DEPTH,
         });
     }
-    let decl = functions
-        .iter()
-        .find(|decl| decl.function.id == function.id)
-        .unwrap();
     let bindings = (decl.parameters.iter())
         .map(|param| param.binder.var)
         .zip(args)
@@ -357,7 +352,7 @@ fn evaluate_op<'a>(
             let values = args.iter().map(|arg| env[arg].clone()).collect();
             let callee = functions
                 .iter()
-                .find(|decl| decl.function.id == function.id)
+                .find(|decl| decl.function.id == *function)
                 .unwrap();
             match callee.modifier {
                 IrModifier::Render => {
@@ -365,7 +360,7 @@ fn evaluate_op<'a>(
                     render.enter(Step::Call(var));
                     let value = evaluate_function(
                         functions,
-                        function,
+                        callee,
                         values,
                         Context::Render(&mut *render),
                         depth,
@@ -375,10 +370,10 @@ fn evaluate_op<'a>(
                     value
                 }
                 IrModifier::Mut => {
-                    evaluate_function(functions, function, values, context, depth, op_count)?
+                    evaluate_function(functions, callee, values, context, depth, op_count)?
                 }
                 IrModifier::Pure => {
-                    evaluate_function(functions, function, values, Context::Pure, depth, op_count)?
+                    evaluate_function(functions, callee, values, Context::Pure, depth, op_count)?
                 }
             }
         }

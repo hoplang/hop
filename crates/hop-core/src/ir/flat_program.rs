@@ -3,6 +3,7 @@ use crate::hop::typing::Pattern;
 use crate::ir::flat_html_element::FlatHtmlElement;
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::FlatTypeDeclarations;
+use crate::ir::function_id::FunctionId;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
@@ -45,7 +46,7 @@ pub type FlatLambda = IrLambda<FlatType, FlatBlock>;
 pub enum FlatOp {
     Data(IrDataOp),
     /// Invoke a function.
-    Call(IrFunction, Vec<ValueId>),
+    Call(FunctionId, Vec<ValueId>),
     /// Match exhaustively.
     Match(FlatMatch),
     /// Bind a cell. Only when its path is new does the block run, and the
@@ -255,7 +256,7 @@ mod test_support {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 FlatOp::Data(op) => write!(f, "{op}"),
-                FlatOp::Call(function, args) => write!(f, "f{}({})", function.id, join(args, ", ")),
+                FlatOp::Call(function, args) => write!(f, "f{}({})", function, join(args, ", ")),
                 FlatOp::Match(match_) => {
                     write!(f, "match {} {{", match_.subject)?;
                     {

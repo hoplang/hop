@@ -855,9 +855,11 @@ impl<'a> FlatBlockBuilder<'a> {
             .iter()
             .find(|callee| callee.function.name.as_str() == name)
             .unwrap();
-        let function = callee.function.clone();
         let args = args.into_iter().collect();
-        self.push(callee.return_type.clone(), FlatOp::Call(function, args))
+        self.push(
+            callee.return_type.clone(),
+            FlatOp::Call(callee.function.id, args),
+        )
     }
 
     pub fn lambda<F>(&self, parameters: impl IntoIterator<Item = FlatType>, body_fn: F) -> ValueId
