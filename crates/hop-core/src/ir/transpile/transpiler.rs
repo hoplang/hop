@@ -4,12 +4,12 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
-use crate::ir::ir_switch::IrSwitch;
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
     WriterBlock, WriterFor, WriterFunctionBody, WriterFunctionDeclaration, WriterOp,
     WriterPageDeclaration, WriterProgram, WriterStmt,
 };
+use crate::ir::writer_switch::WriterSwitch;
 use crate::ir::writer_type::{WriterDataType, WriterSignature, WriterType};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -69,7 +69,7 @@ pub trait Transpiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<Vec<WriterStmt>>,
+        match_: &'a WriterSwitch<Vec<WriterStmt>>,
     ) -> Doc<'a>;
     fn transpile_statement<'a>(
         &mut self,
@@ -323,7 +323,7 @@ pub trait Transpiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<WriterBlock>,
+        match_: &'a WriterSwitch<WriterBlock>,
     ) -> Doc<'a>;
     fn transpile_function_call_value<'a>(
         &mut self,

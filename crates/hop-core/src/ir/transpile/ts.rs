@@ -9,12 +9,12 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
-use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
     WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterOp, WriterPageDeclaration,
     WriterProgram, WriterStmt,
 };
+use crate::ir::writer_switch::{WriterEnumMatchArm, WriterEnumPattern, WriterSwitch};
 use crate::ir::writer_type::{
     WriterDataType, WriterEnum, WriterRecord, WriterResult, WriterSignature, WriterType,
 };
@@ -242,7 +242,7 @@ impl TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         subject: ValueId,
-        arms: &'a [EnumMatchArm<Body>],
+        arms: &'a [WriterEnumMatchArm<Body>],
         mut body: impl FnMut(&mut Self, &'a Body) -> Doc<'a>,
         tail: &'static str,
     ) -> Doc<'a> {
@@ -255,7 +255,7 @@ impl TsTranspiler {
         let case_docs: Vec<_> = arms
             .iter()
             .map(|arm| {
-                let EnumPattern::Variant { variant_name, .. } = &arm.pattern;
+                let WriterEnumPattern::Variant { variant_name, .. } = &arm.pattern;
                 for (_, binder) in &arm.bindings {
                     self.name_types
                         .insert(binder.var, WriterType::Data(binder.typ.clone()));
@@ -886,10 +886,10 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<Vec<WriterStmt>>,
+        match_: &'a WriterSwitch<Vec<WriterStmt>>,
     ) -> Doc<'a> {
         match match_ {
-            IrSwitch::Bool {
+            WriterSwitch::Bool {
                 subject,
                 true_body,
                 false_body,
@@ -909,7 +909,7 @@ impl Transpiler for TsTranspiler {
                         .append(arena.text("}"))
                 }
             }
-            IrSwitch::Option {
+            WriterSwitch::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
@@ -923,7 +923,7 @@ impl Transpiler for TsTranspiler {
                 |this, body| this.transpile_statements(arena, body),
                 "break;",
             ),
-            IrSwitch::Enum { subject, arms } => self.transpile_enum_cases(
+            WriterSwitch::Enum { subject, arms } => self.transpile_enum_cases(
                 arena,
                 *subject,
                 arms,
@@ -1331,10 +1331,10 @@ impl Transpiler for TsTranspiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<WriterBlock>,
+        match_: &'a WriterSwitch<WriterBlock>,
     ) -> Doc<'a> {
         match match_ {
-            IrSwitch::Bool {
+            WriterSwitch::Bool {
                 subject,
                 true_body,
                 false_body,
@@ -1369,7 +1369,7 @@ impl Transpiler for TsTranspiler {
                     .append(arena.text("}"));
                 self.transpile_iife(arena, body)
             }
-            IrSwitch::Option {
+            WriterSwitch::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
@@ -1386,7 +1386,7 @@ impl Transpiler for TsTranspiler {
                 );
                 self.transpile_iife(arena, body)
             }
-            IrSwitch::Enum { subject, arms } => {
+            WriterSwitch::Enum { subject, arms } => {
                 let body = self.transpile_enum_cases(
                     arena,
                     *subject,

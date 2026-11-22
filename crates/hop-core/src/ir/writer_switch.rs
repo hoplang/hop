@@ -5,7 +5,7 @@ use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
 #[derive(Debug)]
-pub enum EnumPattern {
+pub enum WriterEnumPattern {
     Variant {
         type_name: TypeName,
         variant_name: TypeName,
@@ -13,17 +13,17 @@ pub enum EnumPattern {
 }
 
 #[derive(Debug)]
-pub struct EnumMatchArm<Body> {
-    pub pattern: EnumPattern,
+pub struct WriterEnumMatchArm<Body> {
+    pub pattern: WriterEnumPattern,
     pub bindings: Vec<(FieldName, IrBinder<WriterDataType>)>,
     pub body: Body,
 }
 
 #[derive(Debug)]
-pub enum IrSwitch<Body> {
+pub enum WriterSwitch<Body> {
     Enum {
         subject: ValueId,
-        arms: Vec<EnumMatchArm<Body>>,
+        arms: Vec<WriterEnumMatchArm<Body>>,
     },
     Bool {
         subject: ValueId,
@@ -40,21 +40,21 @@ pub enum IrSwitch<Body> {
 
 #[cfg(test)]
 mod test_support {
-    use super::EnumPattern;
-    use super::IrSwitch;
+    use super::WriterEnumPattern;
+    use super::WriterSwitch;
     use crate::display::Indent;
     use std::fmt::{self, Write};
 
-    impl<Body> IrSwitch<Body> {
+    impl<Body> WriterSwitch<Body> {
         pub fn write(
             &self,
             w: &mut dyn Write,
             write_body: impl Fn(&Body, &mut dyn Write) -> fmt::Result,
         ) -> fmt::Result {
-            let (IrSwitch::Bool { subject, .. }
-            | IrSwitch::Option { subject, .. }
-            | IrSwitch::Enum { subject, .. }) = self;
-            if let IrSwitch::Enum { arms, .. } = self
+            let (WriterSwitch::Bool { subject, .. }
+            | WriterSwitch::Option { subject, .. }
+            | WriterSwitch::Enum { subject, .. }) = self;
+            if let WriterSwitch::Enum { arms, .. } = self
                 && arms.is_empty()
             {
                 return write!(w, "match {subject} {{}}");
@@ -68,7 +68,7 @@ mod test_support {
                     arms.write_str("\n}")
                 };
                 match self {
-                    IrSwitch::Bool {
+                    WriterSwitch::Bool {
                         true_body,
                         false_body,
                         ..
@@ -78,7 +78,7 @@ mod test_support {
                         arms.write_str("\nfalse")?;
                         arm_body(&mut arms, false_body)?;
                     }
-                    IrSwitch::Option {
+                    WriterSwitch::Option {
                         some_arm_binding,
                         some_arm_body,
                         none_arm_body,
@@ -92,11 +92,11 @@ mod test_support {
                         arms.write_str("\nNone")?;
                         arm_body(&mut arms, none_arm_body)?;
                     }
-                    IrSwitch::Enum {
+                    WriterSwitch::Enum {
                         arms: enum_arms, ..
                     } => {
                         for enum_arm in enum_arms {
-                            let EnumPattern::Variant {
+                            let WriterEnumPattern::Variant {
                                 type_name,
                                 variant_name,
                             } = &enum_arm.pattern;

@@ -5,8 +5,8 @@ use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
-use crate::ir::ir_switch::IrSwitch;
 use crate::ir::value_id::ValueId;
+use crate::ir::writer_switch::WriterSwitch;
 use crate::ir::writer_type::{WriterDataType, WriterResult, WriterType, WriterTypeDeclarations};
 use crate::symbols::type_name::TypeName;
 
@@ -57,7 +57,7 @@ pub enum WriterStmt {
     WriteFunction(IrFunction, Vec<ValueId>),
     WriteApply(ValueId, Vec<ValueId>),
     HtmlFor(WriterFor),
-    Match(IrSwitch<Vec<WriterStmt>>),
+    Match(WriterSwitch<Vec<WriterStmt>>),
 }
 
 #[derive(Debug)]
@@ -71,7 +71,7 @@ pub struct WriterFor {
 pub enum WriterOp {
     Data(IrDataOp),
     Call(IrFunction, Vec<ValueId>),
-    Match(IrSwitch<WriterBlock>),
+    Match(WriterSwitch<WriterBlock>),
     Lambda(IrLambda<WriterType, WriterFunctionBody>),
     Apply(ValueId, Vec<ValueId>),
 }

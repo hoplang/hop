@@ -19,12 +19,12 @@ use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_page::IrPage;
 use crate::ir::ir_parameter::IrParameter;
-use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::ir::writer_program::{
     WriterBlock, WriterFor, WriterFunctionBody, WriterFunctionDeclaration, WriterOp,
     WriterPageDeclaration, WriterProgram, WriterStmt,
 };
+use crate::ir::writer_switch::{WriterEnumMatchArm, WriterEnumPattern, WriterSwitch};
 use crate::ir::writer_type::{
     WriterDataType, WriterEnum, WriterField, WriterRecord, WriterResult, WriterSignature,
     WriterType, WriterTypeDeclarations, WriterVariant,
@@ -970,7 +970,7 @@ impl<'a> Lowerer<'a> {
                     parts,
                     &mut false_lets,
                 );
-                IrSwitch::Bool {
+                WriterSwitch::Bool {
                     subject: parts[&variable.id],
                     true_body: WriterBlock {
                         bindings: true_lets,
@@ -1008,7 +1008,7 @@ impl<'a> Lowerer<'a> {
                     parts,
                     &mut none_lets,
                 );
-                IrSwitch::Option {
+                WriterSwitch::Option {
                     subject: parts[&variable.id],
                     some_arm_binding,
                     some_arm_body: WriterBlock {
@@ -1042,8 +1042,8 @@ impl<'a> Lowerer<'a> {
                         parts,
                         &mut case_lets,
                     );
-                    enum_arms.push(EnumMatchArm {
-                        pattern: EnumPattern::Variant {
+                    enum_arms.push(WriterEnumMatchArm {
+                        pattern: WriterEnumPattern::Variant {
                             type_name: case.type_name.clone(),
                             variant_name: case.variant_name.clone(),
                         },
@@ -1054,7 +1054,7 @@ impl<'a> Lowerer<'a> {
                         },
                     });
                 }
-                IrSwitch::Enum {
+                WriterSwitch::Enum {
                     subject: parts[&variable.id],
                     arms: enum_arms,
                 }
@@ -1244,7 +1244,7 @@ impl<'a> Lowerer<'a> {
                 FlatAttribute::Presence(present) => {
                     let mut true_body = Vec::new();
                     write(&mut true_body, &format!(" {}", name.as_str()));
-                    unit.push(WriterStmt::Match(IrSwitch::Bool {
+                    unit.push(WriterStmt::Match(WriterSwitch::Bool {
                         subject: self.name(*present),
                         true_body,
                         false_body: Vec::new(),
@@ -1317,7 +1317,7 @@ impl<'a> Lowerer<'a> {
                 self.write_decision(&true_case.body, arms, used, parts, &mut true_body);
                 let mut false_body = Vec::new();
                 self.write_decision(&false_case.body, arms, used, parts, &mut false_body);
-                IrSwitch::Bool {
+                WriterSwitch::Bool {
                     subject: parts[&variable.id],
                     true_body,
                     false_body,
@@ -1335,7 +1335,7 @@ impl<'a> Lowerer<'a> {
                 self.write_decision(&some_case.body, arms, used, parts, &mut some_arm_body);
                 let mut none_arm_body = Vec::new();
                 self.write_decision(&none_case.body, arms, used, parts, &mut none_arm_body);
-                IrSwitch::Option {
+                WriterSwitch::Option {
                     subject: parts[&variable.id],
                     some_arm_binding,
                     some_arm_body,
@@ -1356,8 +1356,8 @@ impl<'a> Lowerer<'a> {
                     }
                     let mut body = Vec::new();
                     self.write_decision(&case.body, arms, used, parts, &mut body);
-                    enum_arms.push(EnumMatchArm {
-                        pattern: EnumPattern::Variant {
+                    enum_arms.push(WriterEnumMatchArm {
+                        pattern: WriterEnumPattern::Variant {
                             type_name: case.type_name.clone(),
                             variant_name: case.variant_name.clone(),
                         },
@@ -1365,7 +1365,7 @@ impl<'a> Lowerer<'a> {
                         body,
                     });
                 }
-                IrSwitch::Enum {
+                WriterSwitch::Enum {
                     subject: parts[&variable.id],
                     arms: enum_arms,
                 }
@@ -2303,9 +2303,9 @@ mod tests {
             }
         }
 
-        fn switch<Body>(&mut self, switch: &IrSwitch<Body>, body: fn(&mut Self, &Body)) {
+        fn switch<Body>(&mut self, switch: &WriterSwitch<Body>, body: fn(&mut Self, &Body)) {
             match switch {
-                IrSwitch::Enum { arms, .. } => {
+                WriterSwitch::Enum { arms, .. } => {
                     for arm in arms {
                         for (_, binder) in &arm.bindings {
                             self.binder(binder);
@@ -2313,7 +2313,7 @@ mod tests {
                         body(self, &arm.body);
                     }
                 }
-                IrSwitch::Bool {
+                WriterSwitch::Bool {
                     true_body,
                     false_body,
                     ..
@@ -2321,7 +2321,7 @@ mod tests {
                     body(self, true_body);
                     body(self, false_body);
                 }
-                IrSwitch::Option {
+                WriterSwitch::Option {
                     some_arm_binding,
                     some_arm_body,
                     none_arm_body,

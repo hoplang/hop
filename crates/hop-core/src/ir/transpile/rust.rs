@@ -10,12 +10,12 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
-use crate::ir::ir_switch::{EnumMatchArm, EnumPattern, IrSwitch};
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_program::{
     WriterBlock, WriterFunctionBody, WriterFunctionDeclaration, WriterOp, WriterPageDeclaration,
     WriterProgram, WriterStmt,
 };
+use crate::ir::writer_switch::{WriterEnumMatchArm, WriterEnumPattern, WriterSwitch};
 use crate::ir::writer_type::{
     WriterDataType, WriterEnum, WriterRecord, WriterResult, WriterSignature, WriterType,
     WriterTypeDeclarations, WriterVariant,
@@ -360,10 +360,10 @@ impl RustTranspiler {
     fn enum_arm_pattern(
         &mut self,
         variants: &[WriterVariant],
-        arm_pattern: &EnumPattern,
+        arm_pattern: &WriterEnumPattern,
         bindings: &[(FieldName, IrBinder<WriterDataType>)],
     ) -> String {
-        let EnumPattern::Variant {
+        let WriterEnumPattern::Variant {
             type_name,
             variant_name,
         } = arm_pattern;
@@ -1096,10 +1096,10 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<Vec<WriterStmt>>,
+        match_: &'a WriterSwitch<Vec<WriterStmt>>,
     ) -> Doc<'a> {
         match match_ {
-            IrSwitch::Bool {
+            WriterSwitch::Bool {
                 subject,
                 true_body,
                 false_body,
@@ -1117,7 +1117,7 @@ impl Transpiler for RustTranspiler {
                         .append(self.transpile_braced_statements(arena, false_body))
                 }
             }
-            IrSwitch::Option {
+            WriterSwitch::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
@@ -1172,7 +1172,7 @@ impl Transpiler for RustTranspiler {
                     .append(arena.hardline())
                     .append(arena.text("}"))
             }
-            IrSwitch::Enum { subject, arms } => {
+            WriterSwitch::Enum { subject, arms } => {
                 let variants = self.subject_variants(*subject);
                 let arm_docs: Vec<Doc<'a>> = arms
                     .iter()
@@ -1802,10 +1802,10 @@ impl Transpiler for RustTranspiler {
     fn transpile_match_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        match_: &'a IrSwitch<WriterBlock>,
+        match_: &'a WriterSwitch<WriterBlock>,
     ) -> Doc<'a> {
         match match_ {
-            IrSwitch::Bool {
+            WriterSwitch::Bool {
                 subject,
                 true_body,
                 false_body,
@@ -1834,7 +1834,7 @@ impl Transpiler for RustTranspiler {
                     .append(arena.hardline())
                     .append(arena.text("}"))
             }
-            IrSwitch::Option {
+            WriterSwitch::Option {
                 subject,
                 some_arm_binding,
                 some_arm_body,
@@ -1875,12 +1875,12 @@ impl Transpiler for RustTranspiler {
                     .append(arena.hardline())
                     .append(arena.text("}"))
             }
-            IrSwitch::Enum { subject, arms } => {
+            WriterSwitch::Enum { subject, arms } => {
                 let variants = self.subject_variants(*subject);
                 let subject_doc = self.name_ref(arena, *subject);
                 let arm_docs: Vec<Doc<'a>> = arms
                     .iter()
-                    .map(|arm: &'a EnumMatchArm<WriterBlock>| {
+                    .map(|arm: &'a WriterEnumMatchArm<WriterBlock>| {
                         let pattern = self.enum_arm_pattern(&variants, &arm.pattern, &arm.bindings);
                         arena
                             .text(pattern)
