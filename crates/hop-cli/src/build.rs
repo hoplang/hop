@@ -1334,11 +1334,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {

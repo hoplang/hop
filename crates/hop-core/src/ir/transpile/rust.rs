@@ -638,11 +638,9 @@ impl Transpiler for RustTranspiler {
                 arena.text("pub trait Arena {"),
                 arena.text("    fn alloc<T: Copy>(&self, value: T) -> &T;"),
                 arena.text("    fn alloc_str(&self, value: &str) -> &str;"),
-                arena.text("    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];"),
-                arena.text("    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]"),
-                arena.text("    where"),
-                arena.text("        I: IntoIterator<Item = T>,"),
-                arena.text("        I::IntoIter: ExactSizeIterator;"),
+                arena.text(
+                    "    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];",
+                ),
                 arena.text("}"),
             ],
             arena.hardline(),
@@ -1278,7 +1276,7 @@ impl Transpiler for RustTranspiler {
                 .map(|e| arena.text(name_ident(*e)))
                 .collect();
             arena
-                .text("arena.alloc_slice(&[")
+                .text("arena.alloc([")
                 .append(arena.intersperse(items, arena.text(", ")))
                 .append(arena.text("])"))
         }
@@ -1291,11 +1289,11 @@ impl Transpiler for RustTranspiler {
         end: ValueId,
     ) -> Doc<'a> {
         arena
-            .text("arena.alloc_slice(&(")
+            .text("arena.alloc_iter(")
             .append(arena.text(name_ident(start)))
             .append(arena.text("..="))
             .append(arena.text(name_ident(end)))
-            .append(arena.text(").collect::<Vec<i32>>())"))
+            .append(arena.text(")"))
     }
 
     fn transpile_tuple_literal<'a>(
@@ -1862,11 +1860,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -1969,11 +1963,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2085,11 +2075,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2170,11 +2156,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2286,11 +2268,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2409,11 +2387,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2502,11 +2476,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2589,11 +2559,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2634,7 +2600,7 @@ mod tests {
                         let v_1: () = ();
                         let v_2: Holder = Holder { nothing: v_1 };
                         let v_3: () = v_2.nothing;
-                        let v_4: &'a [()] = arena.alloc_slice(&[v_0, v_3]);
+                        let v_4: &'a [()] = arena.alloc([v_0, v_3]);
                         let v_5: i32 = v_4.len() as i32;
                         let v_6: &'a str = arena.alloc_str(&v_5.to_string());
                         write_escaped_html(v_6, output);
@@ -2662,11 +2628,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2715,11 +2677,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2794,11 +2752,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2848,11 +2802,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2884,7 +2834,7 @@ mod tests {
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let v_0: i32 = 1_i32;
                         let v_1: i32 = 3_i32;
-                        let v_2: &'a [i32] = arena.alloc_slice(&(v_0..=v_1).collect::<Vec<i32>>());
+                        let v_2: &'a [i32] = arena.alloc_iter(v_0..=v_1);
                         for v_3 in v_2.iter().copied() {
                             let v_4: &'a str = arena.alloc_str(&v_3.to_string());
                             write_escaped_html(v_4, output);
@@ -2916,11 +2866,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -2988,11 +2934,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3063,11 +3005,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3141,11 +3079,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3200,11 +3134,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3290,11 +3220,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3380,11 +3306,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3472,11 +3394,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3554,11 +3472,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3642,11 +3556,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3737,11 +3647,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3863,11 +3769,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -3975,11 +3877,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -4061,11 +3959,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -4139,11 +4033,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -4232,11 +4122,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -4317,11 +4203,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -4393,11 +4275,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -4460,11 +4338,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -4538,11 +4412,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -4593,11 +4463,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -4668,11 +4534,7 @@ mod tests {
                 pub trait Arena {
                     fn alloc<T: Copy>(&self, value: T) -> &T;
                     fn alloc_str(&self, value: &str) -> &str;
-                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
-                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-                    where
-                        I: IntoIterator<Item = T>,
-                        I::IntoIter: ExactSizeIterator;
+                    fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T];
                 }
 
                 pub trait View<'a> {
@@ -4711,7 +4573,7 @@ mod tests {
                         let v_0: i32 = 0_i32;
                         let v_1: i32 = -7_i32;
                         let v_2: i32 = render_foo_0(arena, v_1);
-                        let v_3: &'a [i32] = arena.alloc_slice(&(v_0..=v_2).collect::<Vec<i32>>());
+                        let v_3: &'a [i32] = arena.alloc_iter(v_0..=v_2);
                         let v_10: i32 = 10_i32;
                         let v_11: i32 = render_foo_0(arena, v_10);
                         let v_12: &'a str = arena.alloc_str(&v_11.to_string());

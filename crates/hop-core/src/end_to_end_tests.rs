@@ -90,12 +90,7 @@ fn execute_rust(code: &str) -> Result<String, String> {
         impl Arena for Leak {{
             fn alloc<T: Copy>(&self, value: T) -> &T {{ Box::leak(Box::new(value)) }}
             fn alloc_str(&self, value: &str) -> &str {{ String::leak(value.to_string()) }}
-            fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T] {{ Vec::leak(values.to_vec()) }}
-            fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
-            where
-                I: IntoIterator<Item = T>,
-                I::IntoIter: ExactSizeIterator,
-            {{
+            fn alloc_iter<T: Copy>(&self, values: impl IntoIterator<Item = T>) -> &[T] {{
                 Vec::leak(values.into_iter().collect())
             }}
         }}
