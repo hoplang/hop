@@ -259,8 +259,6 @@ impl ParsedStatement {
 /// A let statement in a block, which binds the names of its pattern.
 ///
 /// ```text
-/// let name: String = "World";
-/// ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// let (count, set_count) = state!(0);
 /// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
@@ -322,8 +320,6 @@ pub enum Precedence {
     Multiplicative,
     Prefix,
     Postfix,
-    /// Expressions that never need parentheses as an operand, either
-    /// because they are atomic or because they are delimited.
     Atom,
 }
 
