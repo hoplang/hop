@@ -87,7 +87,6 @@ impl RustTranspiler {
             .replace('\t', "\\t")
     }
 
-    /// Collect the named types that `t` stores inline.
     fn inline_refs(t: &WriterDataType, out: &mut BTreeSet<TypeName>) {
         match t {
             WriterDataType::Record(name) | WriterDataType::Enum(name) => {
@@ -103,8 +102,6 @@ impl RustTranspiler {
         }
     }
 
-    /// The field positions that need indirection for every declared type to be
-    /// finitely sized, as `(declaring type, referenced type)` pairs.
     fn compute_indirect_edges(types: &WriterTypeDeclarations) -> HashSet<(TypeName, TypeName)> {
         let mut graph = DependencyGraph::new();
         for WriterRecord { name, fields } in &types.records {
@@ -137,10 +134,6 @@ impl RustTranspiler {
         edges
     }
 
-    /// Whether a field of `owner` declaring type `t` carries indirection, which is
-    /// the case when the field names inline a type `owner` has an indirect
-    /// edge to. Mirrors `inline_refs`: descend `Option` and tuples, stop at
-    /// `Array`.
     fn field_type_is_indirect(&self, t: &WriterDataType, owner: &str) -> bool {
         match t {
             WriterDataType::Record(name) | WriterDataType::Enum(name) => self
@@ -205,7 +198,6 @@ impl RustTranspiler {
         }
     }
 
-    /// Transpile a field type, inserting `&'a` where the field needs it.
     fn transpile_field_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -221,9 +213,6 @@ impl RustTranspiler {
         }
     }
 
-    /// Transpile a value stored into a field of `owner`, allocating it in the
-    /// arena where the field carries indirection. The IR is well typed, so the
-    /// value's own type is the field's declared type.
     fn transpile_field_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -239,7 +228,6 @@ impl RustTranspiler {
         }
     }
 
-    /// Whether reads of `field` off `record` go through a reference.
     fn field_access_is_indirect(&self, record: ValueId, field: &FieldName) -> bool {
         let WriterType::Data(WriterDataType::Record(name)) = self.name_type(record) else {
             unreachable!("field access objects are records");
@@ -256,9 +244,6 @@ impl RustTranspiler {
         self.field_type_is_indirect(field_type, name.as_str())
     }
 
-    /// The pattern of an enum arm, and the bindings it introduces recorded.
-    /// A field carrying indirection is matched through its reference, so
-    /// every binding holds a copy of the value.
     fn enum_arm_pattern(
         &mut self,
         variants: &[WriterVariant],
@@ -321,7 +306,6 @@ impl RustTranspiler {
         }
     }
 
-    /// The variants of the enum a match subject holds.
     fn subject_variants(&self, subject: ValueId) -> Vec<WriterVariant> {
         let WriterType::Data(WriterDataType::Enum(name)) = self.name_type(subject) else {
             unreachable!("Enum match subject must have an Enum type")
@@ -333,8 +317,6 @@ impl RustTranspiler {
             .clone()
     }
 
-    // A closure is a reference to a trait object in the arena, and an Html
-    // closure takes the buffer it writes to first, as an Html function does.
     fn transpile_fn_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -428,7 +410,6 @@ impl RustTranspiler {
         }
     }
 
-    // An empty block is `{}`, which leaves no line of only indentation.
     fn transpile_braced_statements<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -449,8 +430,6 @@ impl RustTranspiler {
             .append(arena.text("}"))
     }
 
-    /// A value block as the body of a match arm: the result alone when the
-    /// block binds nothing, otherwise a block expression.
     fn transpile_arm_block<'a>(&mut self, arena: &'a Arena<'a>, block: &'a WriterBlock) -> Doc<'a> {
         if block.bindings.is_empty() {
             return arena.text(name_ident(block.result));
@@ -1128,8 +1107,6 @@ impl Transpiler for RustTranspiler {
         }
     }
 
-    // A closure is moved into the arena. It captures only values that are
-    // Copy and live as long as the arena, which makes it Copy too.
     fn transpile_lambda<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -1190,8 +1167,6 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(")"))
     }
 
-    // The buffer is reborrowed, since a call through `Fn` takes its
-    // arguments as a tuple, where a `&mut` is not reborrowed by itself.
     fn transpile_write_apply_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -1724,8 +1699,6 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(".is_empty()"))
     }
 
-    /// A negative index fails the conversion to `usize`, so it reads as
-    /// out of bounds.
     fn transpile_array_get<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -1805,8 +1778,7 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    // Builder programs reach closures that hop source cannot write yet.
-    fn check_program(program: FlatProgram, expected: Expect) {
+    fn check_flat(program: FlatProgram, expected: Expect) {
         let pages = IrPage::for_entrypoints(&program);
         let writer = flat_to_writer(optimize_flat(program), &pages, None);
         let output = RustTranspiler::new().transpile_program(&writer);
@@ -1815,8 +1787,7 @@ mod tests {
 
     #[test]
     fn closure_that_a_recursive_function_writes_for_each_number() {
-        // The function is recursive, so the inliner keeps the closure.
-        check_program(
+        check_flat(
             FlatProgramBuilder::new()
                 .render_function(
                     "Countdown",
@@ -1923,7 +1894,7 @@ mod tests {
 
     #[test]
     fn closure_that_matches_on_a_name_it_captures() {
-        check_program(
+        check_flat(
             FlatProgramBuilder::new()
                 .function(
                     "Sum",
@@ -2039,7 +2010,7 @@ mod tests {
 
     #[test]
     fn closure_that_takes_html() {
-        check_program(
+        check_flat(
             FlatProgramBuilder::new()
                 .render_function(
                     "Wrap",
@@ -2123,7 +2094,7 @@ mod tests {
 
     #[test]
     fn html_passed_to_a_function_that_returns_a_value() {
-        check_program(
+        check_flat(
             FlatProgramBuilder::new()
                 .function(
                     "Width",
@@ -2226,7 +2197,7 @@ mod tests {
 
     #[test]
     fn closure_that_renders_html_bound_in_a_block_that_produces_a_value() {
-        check_program(
+        check_flat(
             FlatProgramBuilder::new()
                 .function(
                     "Count",
