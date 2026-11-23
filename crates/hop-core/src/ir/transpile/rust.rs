@@ -333,7 +333,7 @@ impl RustTranspiler {
             .clone()
     }
 
-    // A closure is passed as a reference to a trait object, and an Html
+    // A closure is a reference to a trait object in the arena, and an Html
     // closure takes the buffer it writes to first, as an Html function does.
     fn transpile_fn_type<'a>(
         &mut self,
@@ -347,13 +347,14 @@ impl RustTranspiler {
             param_docs.push(self.transpile_type(arena, param));
         }
         let doc = arena
-            .text("&dyn Fn(")
+            .text("&'a (dyn Fn(")
             .append(arena.intersperse(param_docs, arena.text(", ")))
             .append(arena.text(")"));
-        match result {
+        let doc = match result {
             Some(result) => doc.append(arena.text(" -> ")).append(result),
             None => doc,
-        }
+        };
+        doc.append(arena.text(" + 'a)"))
     }
 
     fn transpile_params<'a>(
@@ -1129,9 +1130,8 @@ impl Transpiler for RustTranspiler {
         }
     }
 
-    // A closure is bound as a reference to it, which its let extends to the
-    // enclosing block. It captures by reference, which that block outlives,
-    // since a closure is never returned or held.
+    // A closure is moved into the arena. It captures only values that are
+    // Copy and live as long as the arena, which makes it Copy too.
     fn transpile_lambda<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -1144,13 +1144,13 @@ impl Transpiler for RustTranspiler {
         }
         params.extend(self.transpile_params(arena, &lambda.parameters));
         let head = arena
-            .text("&|")
+            .text("move |")
             .append(arena.intersperse(params, arena.text(", ")))
             .append(arena.text("|"));
-        let (head, body) = match (&lambda.body, typ) {
+        let closure = match (&lambda.body, typ) {
             (WriterFunctionBody::Writes(statements), _) => {
                 let body = self.transpile_braced_statements(arena, statements);
-                return head.append(arena.text(" ")).append(body);
+                head.append(arena.text(" ")).append(body)
             }
             (
                 WriterFunctionBody::Returns(block),
@@ -1160,19 +1160,22 @@ impl Transpiler for RustTranspiler {
                 }),
             ) => {
                 let result = self.transpile_data_type(arena, result);
-                (
-                    head.append(arena.text(" -> ")).append(result),
-                    self.transpile_value_block(arena, block),
-                )
+                let body = self.transpile_value_block(arena, block);
+                head.append(arena.text(" -> "))
+                    .append(result)
+                    .append(arena.text(" {"))
+                    .append(arena.hardline().append(body).nest(4))
+                    .append(arena.hardline())
+                    .append(arena.text("}"))
             }
             (WriterFunctionBody::Returns(_), _) => {
                 unreachable!("a lambda that returns has the type of a closure of a value")
             }
         };
-        head.append(arena.text(" {"))
-            .append(arena.hardline().append(body).nest(4))
-            .append(arena.hardline())
-            .append(arena.text("}"))
+        arena
+            .text("arena.alloc(")
+            .append(closure)
+            .append(arena.text(")"))
     }
 
     fn transpile_apply<'a>(
@@ -1887,7 +1890,7 @@ mod tests {
                     pub prefix: &'a str,
                 }
 
-                fn render_countdown_0<'a>(arena: &'a impl Arena, output: &mut String, v_0: i32, v_1: &dyn Fn(&mut String, i32)) {
+                fn render_countdown_0<'a>(arena: &'a impl Arena, output: &mut String, v_0: i32, v_1: &'a (dyn Fn(&mut String, i32) + 'a)) {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_0 <= v_2;
                     if v_3 {} else {
@@ -1907,13 +1910,13 @@ mod tests {
 
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { prefix: v_11 } = self;
-                        let v_18: &dyn Fn(&mut String, i32) = &|output: &mut String, v_12: i32| {
+                        let v_18: &'a (dyn Fn(&mut String, i32) + 'a) = arena.alloc(move |output: &mut String, v_12: i32| {
                             let v_13: &'a str = arena.alloc_str(&v_12.to_string());
                             output.push_str("<li>");
                             write_escaped_html(v_11, output);
                             write_escaped_html(v_13, output);
                             output.push_str("</li>");
-                        };
+                        });
                         let v_20: i32 = 3_i32;
                         output.push_str("<ul>");
                         render_countdown_0(arena, output, v_20, v_18);
@@ -1994,7 +1997,7 @@ mod tests {
                     pub double: bool,
                 }
 
-                fn render_sum_0<'a>(arena: &'a impl Arena, v_0: i32, v_1: &dyn Fn(i32) -> i32) -> i32 {
+                fn render_sum_0<'a>(arena: &'a impl Arena, v_0: i32, v_1: &'a (dyn Fn(i32) -> i32 + 'a)) -> i32 {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_0 <= v_2;
                     let v_22: i32 = match v_3 {
@@ -2023,7 +2026,7 @@ mod tests {
 
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { double: v_11 } = self;
-                        let v_16: &dyn Fn(i32) -> i32 = &|v_12: i32| -> i32 {
+                        let v_16: &'a (dyn Fn(i32) -> i32 + 'a) = arena.alloc(move |v_12: i32| -> i32 {
                             let v_21: i32 = match v_11 {
                                 true => {
                                     let v_13: i32 = 2_i32;
@@ -2033,7 +2036,7 @@ mod tests {
                                 false => v_12,
                             };
                             v_21
-                        };
+                        });
                         let v_17: i32 = 3_i32;
                         let v_18: i32 = render_sum_0(arena, v_17, v_16);
                         let v_19: &'a str = arena.alloc_str(&v_18.to_string());
@@ -2096,7 +2099,7 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_wrap_0<'a>(arena: &'a impl Arena, output: &mut String, v_0: i32, v_1: &dyn Fn(&mut String, &dyn Fn(&mut String))) {
+                fn render_wrap_0<'a>(arena: &'a impl Arena, output: &mut String, v_0: i32, v_1: &'a (dyn Fn(&mut String, &'a (dyn Fn(&mut String) + 'a)) + 'a)) {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_0 <= v_2;
                     if v_3 {
@@ -2104,9 +2107,9 @@ mod tests {
                     } else {
                         let v_5: i32 = 1_i32;
                         let v_6: i32 = v_0.wrapping_sub(v_5);
-                        let v_16: &dyn Fn(&mut String) = &|output: &mut String| {
+                        let v_16: &'a (dyn Fn(&mut String) + 'a) = arena.alloc(move |output: &mut String| {
                             render_wrap_0(arena, output, v_6, v_1);
-                        };
+                        });
                         v_1(&mut *output, v_16);
                     }
                 }
@@ -2119,11 +2122,11 @@ mod tests {
                     }
 
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
-                        let v_13: &dyn Fn(&mut String, &dyn Fn(&mut String)) = &|output: &mut String, v_10: &dyn Fn(&mut String)| {
+                        let v_13: &'a (dyn Fn(&mut String, &'a (dyn Fn(&mut String) + 'a)) + 'a) = arena.alloc(move |output: &mut String, v_10: &'a (dyn Fn(&mut String) + 'a)| {
                             output.push_str("<b>");
                             v_10(&mut *output);
                             output.push_str("</b>");
-                        };
+                        });
                         let v_14: i32 = 2_i32;
                         render_wrap_0(arena, output, v_14, v_13);
                     }
@@ -2195,7 +2198,7 @@ mod tests {
                     pub label: &'a str,
                 }
 
-                fn render_width_0<'a>(arena: &'a impl Arena, v_0: &dyn Fn(&mut String), v_1: i32) -> i32 {
+                fn render_width_0<'a>(arena: &'a impl Arena, v_0: &'a (dyn Fn(&mut String) + 'a), v_1: i32) -> i32 {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_1 <= v_2;
                     let v_23: i32 = match v_3 {
@@ -2225,11 +2228,11 @@ mod tests {
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { label: v_11 } = self;
                         let v_18: i32 = 3_i32;
-                        let v_22: &dyn Fn(&mut String) = &|output: &mut String| {
+                        let v_22: &'a (dyn Fn(&mut String) + 'a) = arena.alloc(move |output: &mut String| {
                             output.push_str("<b>");
                             write_escaped_html(v_11, output);
                             output.push_str("</b>");
-                        };
+                        });
                         let v_19: i32 = render_width_0(arena, v_22, v_18);
                         let v_20: &'a str = arena.alloc_str(&v_19.to_string());
                         write_escaped_html(v_20, output);
@@ -2311,7 +2314,7 @@ mod tests {
                     pub show: bool,
                 }
 
-                fn render_count_0<'a>(arena: &'a impl Arena, v_0: i32, v_1: &dyn Fn(&mut String, i32)) -> i32 {
+                fn render_count_0<'a>(arena: &'a impl Arena, v_0: i32, v_1: &'a (dyn Fn(&mut String, i32) + 'a)) -> i32 {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_0 <= v_2;
                     let v_23: i32 = match v_3 {
@@ -2342,10 +2345,10 @@ mod tests {
                         let Test { show: v_11 } = self;
                         let v_22: i32 = match v_11 {
                             true => {
-                                let v_15: &dyn Fn(&mut String, i32) = &|output: &mut String, v_12: i32| {
+                                let v_15: &'a (dyn Fn(&mut String, i32) + 'a) = arena.alloc(move |output: &mut String, v_12: i32| {
                                     let v_13: &'a str = arena.alloc_str(&v_12.to_string());
                                     write_escaped_html(v_13, output);
-                                };
+                                });
                                 let v_16: i32 = 3_i32;
                                 let v_17: i32 = render_count_0(arena, v_16, v_15);
                                 v_17
@@ -2433,7 +2436,7 @@ mod tests {
                     pub name: &'a str,
                 }
 
-                fn render_nest_0<'a>(arena: &'a impl Arena, output: &mut String, v_8: i32, v_9: &dyn Fn(&mut String)) {
+                fn render_nest_0<'a>(arena: &'a impl Arena, output: &mut String, v_8: i32, v_9: &'a (dyn Fn(&mut String) + 'a)) {
                     let v_10: i32 = 0_i32;
                     let v_11: bool = v_10 < v_8;
                     if v_11 {
@@ -2457,11 +2460,11 @@ mod tests {
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { name: v_0 } = self;
                         let v_1: i32 = 2_i32;
-                        let v_20: &dyn Fn(&mut String) = &|output: &mut String| {
+                        let v_20: &'a (dyn Fn(&mut String) + 'a) = arena.alloc(move |output: &mut String| {
                             output.push_str("<b>");
                             write_escaped_html(v_0, output);
                             output.push_str("</b>");
-                        };
+                        });
                         render_nest_0(arena, output, v_1, v_20);
                     }
                 }
