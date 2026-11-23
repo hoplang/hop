@@ -127,9 +127,6 @@ pub enum TypeErrorKind {
     #[error("{typ} is not allowed inside another type")]
     NotData { typ: Type },
 
-    #[error("A function cannot return {result}")]
-    FunctionReturnsFunction { result: Type },
-
     // Named types print without their module, so two different types can
     // print the same.
     #[error(

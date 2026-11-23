@@ -248,8 +248,7 @@ impl<'a> Compiler<'a> {
         let outer = std::mem::replace(&mut self.context, modifier);
         let body = match &decl.return_type {
             Type::Html(_) => self.compile_html_block(&decl.body),
-            Type::Data(_) => self.compile_value_block(&decl.body),
-            Type::Function(_) => unreachable!("a function returns data or Html"),
+            Type::Data(_) | Type::Function(_) => self.compile_value_block(&decl.body),
         };
         self.context = outer;
         let return_type = lower_type(self.registry, &decl.return_type);

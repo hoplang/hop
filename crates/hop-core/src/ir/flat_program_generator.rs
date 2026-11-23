@@ -43,6 +43,15 @@ const CLICK_ODDS: u8 = 204;
 /// How often a function that returns a value has the render modifier.
 const RENDER_VALUE_ODDS: u8 = 64;
 
+/// How often a function or a closure that returns a value returns a
+/// closure instead.
+const CLOSURE_RESULT_ODDS: u8 = 48;
+
+/// How often a closure is produced by a call of a function or an
+/// application of a closure in scope that returns one, if any does, rather
+/// than by a lambda.
+const PRODUCED_CLOSURE_ODDS: u8 = 128;
+
 /// How often a loop that binds its variable has a key.
 const KEY_ODDS: u8 = 204;
 
@@ -360,15 +369,15 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
     let function_names: Vec<String> = (0..g.count(0..=2)).map(|i| format!("C{i}")).collect();
     for name in &function_names {
         let html = g.coin();
-        let return_type = if html {
-            FlatType::HTML
-        } else {
-            g.random_result_type()
-        };
         let render_modifier = if html {
             g.index(4) != 0
         } else {
             g.chance(RENDER_VALUE_ODDS)
+        };
+        let return_type = if html {
+            FlatType::HTML
+        } else {
+            g.random_result_type(render_modifier, 1)
         };
         let modifier = if render_modifier {
             IrModifier::Render
@@ -640,7 +649,7 @@ impl FlatGenerator<'_, '_> {
                 }
             })
             .collect();
-        let result = result.unwrap_or_else(|| self.random_result_type());
+        let result = result.unwrap_or_else(|| self.random_result_type(render, depth));
         FlatSignature {
             modifier: if render && self.chance(RENDER_VALUE_ODDS) {
                 IrModifier::Render
@@ -652,8 +661,12 @@ impl FlatGenerator<'_, '_> {
         }
     }
 
-    fn random_result_type(&mut self) -> FlatType {
-        FlatType::Data(self.random_data_type(1))
+    fn random_result_type(&mut self, render: bool, depth: usize) -> FlatType {
+        if depth > 0 && self.chance(CLOSURE_RESULT_ODDS) {
+            self.random_closure_type(true, render, depth - 1)
+        } else {
+            FlatType::Data(self.random_data_type(1))
+        }
     }
 
     fn random_html_signature(&mut self, depth: usize) -> FlatSignature {
@@ -858,9 +871,7 @@ impl FlatGenerator<'_, '_> {
             FlatType::Html => self.html_block(b, scope, depth),
             FlatType::Cell(_) => unreachable!("a block produces no cell"),
             FlatType::ElementId => unreachable!("a block produces no identity"),
-            FlatType::Function(_) => {
-                unreachable!("a block produces no closure")
-            }
+            FlatType::Function(_) => self.closure_op(b, scope, typ, depth, MAX_EXPRESSION_DEPTH),
         }
     }
 
@@ -897,6 +908,28 @@ impl FlatGenerator<'_, '_> {
         if let Some(name) = self.name_in_scope(b, scope, typ) {
             return name;
         }
+        if nesting > 0 && self.chance(PRODUCED_CLOSURE_ODDS) {
+            let types = b.value_types();
+            let producers: Vec<ValueId> = (scope.names_where(&types, |candidate| {
+                matches!(candidate, FlatType::Function(signature)
+                    if *signature.result == *typ && scope.modifier.allows(signature.modifier))
+            }))
+            .collect();
+            drop(types);
+            let callees = Self::callees(b, scope, typ).len();
+            let choice = self.index(callees + producers.len() + 1);
+            if choice < callees {
+                let value = self.call(b, scope, typ, depth, nesting);
+                return scope.push(value);
+            }
+            if let Some(&closure) = producers.get(choice - callees) {
+                let parameters = Self::closure_parameters(&b.value_types()[closure.index()]);
+                let args: Vec<ValueId> = (parameters.iter())
+                    .map(|parameter| self.op_of_type(b, scope, parameter, depth, nesting - 1))
+                    .collect();
+                return scope.push(b.apply(closure, args));
+            }
+        }
         let parameters = Self::closure_parameters(typ);
         let FlatType::Function(signature) = typ else {
             unreachable!("{typ} is not a closure type");
@@ -916,6 +949,13 @@ impl FlatGenerator<'_, '_> {
                     self.data_op(b, &mut inner, result, depth, nesting)
                 }
                 FlatType::Data(result) => self.data_op(b, &mut inner, result, depth, nesting),
+                FlatType::Function(_) if mutates => {
+                    self.writes(b, &mut inner, 1..=3, depth, nesting);
+                    self.closure_op(b, &mut inner, &signature.result, depth, nesting)
+                }
+                FlatType::Function(_) => {
+                    self.closure_op(b, &mut inner, &signature.result, depth, nesting)
+                }
                 _ => self.html_op(b, &mut inner, depth, nesting),
             }
         };
@@ -961,6 +1001,11 @@ impl FlatGenerator<'_, '_> {
                     }
                     FlatType::Function(signature)
                 }
+                FlatType::Function(_) => FlatType::Function(self.random_value_signature(
+                    scope.modifier.allows(IrModifier::Render),
+                    0,
+                    Some(result.clone()),
+                )),
                 _ => FlatType::Function(self.random_html_signature(1)),
             };
             self.closure_op(b, scope, &typ, depth, nesting - 1)
@@ -2249,78 +2294,78 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            14712 of 65536 input bytes consumed per program on average, at most 65536
+            16422 of 65536 input bytes consumed per program on average, at most 65536
             2 of 32 programs exhaust the input
 
             -- sizes --
-            under 256     3  #############
-            under 1K      1  ####
-            under 4K      9  ########################################
-            under 16K     9  ########################################
-            under 64K     8  ###################################
-            at 64K        2  ########
+            under 256     4  ##############
+            under 1K      0
+            under 4K      5  ##################
+            under 16K    11  ########################################
+            under 64K    10  ####################################
+            at 64K        2  #######
 
             -- programs --
-            166 of 13545 Html bindings have more than one reference
-            8 of 2096 mints have more than one reference
-            2.5 arms per match on average, at least 2 and at most 18
-            5456 of 14470 match arms bind names
-            16583 cells
-            265 of 439 loops have a key
-            1536 of 1916 elements have a click
-            275 handlers have more than one click
-            420 clicks apply a handler bound outside their block, 58 of them a parameter
+            416 of 26799 Html bindings have more than one reference
+            7 of 3901 mints have more than one reference
+            2.5 arms per match on average, at least 2 and at most 12
+            6539 of 15168 match arms bind names
+            14144 cells
+            256 of 445 loops have a key
+            2929 of 3699 elements have a click
+            493 handlers have more than one click
+            1096 clicks apply a handler bound outside their block, 45 of them a parameter
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      159.6    90.6    93.0    70.2
-            Array                      203.3    93.8    91.1    29.0
-            ArrayEnumerate               2.4    53.1    88.2    52.6
-            ArrayFromRange              14.4    87.5    92.0     0.0
-            ArrayGet                    40.5    87.5    90.7    52.4
-            ArrayIsEmpty                 2.7    75.0    86.2    44.8
-            ArrayLength                101.4    87.5    91.5    47.4
-            BoolLiteral                 55.7    90.6    90.8     0.0
-            BoolNegation                 3.6    68.8    90.5    49.1
-            Call                        34.6    56.2    91.1    76.2
-            Cell                       518.2    93.8    91.1    52.1
-            CellRead                   518.2    93.8    91.0    52.1
-            CellUpdate                  61.7    87.5    93.6    64.5
-            Enum                       126.5    78.1    90.5    29.2
-            Equals                       3.3    71.9    88.7    63.2
-            FieldAccess                 29.3    50.0    94.8    34.3
-            FloatLiteral                89.7    93.8    92.9     0.0
-            FloatToInt                  99.6    90.6    91.3    51.2
-            HtmlApply                    7.0    81.2    93.3    72.6
-            HtmlConcat                 144.4    93.8    89.4    39.6
-            HtmlElement                 59.9    90.6    88.9    58.2
-            HtmlEscape                  90.4    93.8    90.7    44.7
-            HtmlFor                     13.7    93.8    92.9    71.8
-            HtmlLambda                  37.3    90.6    93.6    54.0
-            HtmlText                    33.8    96.9    89.4     0.0
-            IntLiteral                 135.5    93.8    90.7     0.0
-            IntToFloat                 137.2    87.5    93.6    47.7
-            IntToString                121.1    93.8    89.7    46.5
-            Lambda                     218.5    90.6    93.0    51.8
-            LessThan                     3.0    65.6    90.7    73.2
-            LessThanOrEqual              3.2    78.1    97.0    74.3
-            Match                      177.6    93.8    93.1    83.2
-            Mint                        65.5    96.9    81.1     0.0
-            MutLambda                   41.1    93.8    91.4    23.4
-            NumericAdd                 237.7    90.6    93.0    69.6
-            NumericMultiply            241.7    87.5    93.2    69.5
-            NumericNegation            243.8    93.8    93.3    54.6
-            NumericSubtract            241.2    93.8    93.1    68.8
-            OptionIsNone                 4.1    53.1    92.3    53.1
-            OptionIsSome                 3.3    68.8    93.4    59.4
-            OptionNone                  61.3    90.6    91.5     0.0
-            OptionSome                  58.8    90.6    91.6    37.0
-            Record                      64.8    71.9    88.0    36.2
-            StringConcat               124.2    90.6    88.8    42.5
-            StringIsEmpty                3.3    78.1    90.5    51.4
-            StringLiteral               60.1    93.8    89.3     0.0
-            Tuple                      202.8    93.8    91.3    27.6
-            TupleIndex                  53.0    84.4    94.5    66.2
+            Apply                      160.5    90.6    90.4    69.2
+            Array                      183.7    93.8    87.7    26.8
+            ArrayEnumerate               2.3    59.4    94.5    75.3
+            ArrayFromRange              13.2    87.5    90.1     0.0
+            ArrayGet                    54.3    87.5    89.1    56.1
+            ArrayIsEmpty                 4.4    71.9    85.8    53.2
+            ArrayLength                120.1    87.5    84.4    53.7
+            BoolLiteral                 58.7    90.6    91.1     0.0
+            BoolNegation                 4.4    78.1    85.1    47.5
+            Call                        65.2    56.2    92.6    86.9
+            Cell                       442.0    90.6    86.0    48.0
+            CellRead                   442.0    90.6    86.0    48.0
+            CellUpdate                  84.6    84.4    93.4    72.0
+            Enum                       101.2    75.0    88.9    27.7
+            Equals                       3.9    68.8    84.1    56.3
+            FieldAccess                 18.5    56.2    91.0    82.9
+            FloatLiteral                89.8    93.8    88.0     0.0
+            FloatToInt                 120.1    90.6    85.0    44.8
+            HtmlApply                    7.9    87.5    91.7    66.7
+            HtmlConcat                 308.2    96.9    83.4    33.2
+            HtmlElement                115.6    93.8    89.5    60.4
+            HtmlEscape                 183.7    90.6    82.0    43.8
+            HtmlFor                     13.9    87.5    92.6    71.2
+            HtmlLambda                  60.3    87.5    92.1    47.9
+            HtmlText                    84.0    93.8    86.2     0.0
+            IntLiteral                 143.7    90.6    89.6     0.0
+            IntToFloat                 110.8    87.5    83.9    49.1
+            IntToString                172.7    90.6    84.1    49.6
+            Lambda                     220.7    90.6    91.2    54.1
+            LessThan                     4.2    81.2    85.1    64.2
+            LessThanOrEqual              4.4    71.9    86.6    73.2
+            Match                      192.0    90.6    88.2    80.3
+            Mint                       121.9    96.9    84.9     0.0
+            MutLambda                   62.8    90.6    90.3    41.6
+            NumericAdd                 229.6    90.6    83.4    59.9
+            NumericMultiply            220.4    87.5    83.0    60.8
+            NumericNegation            229.3    90.6    83.2    48.6
+            NumericSubtract            229.7    90.6    83.8    60.7
+            OptionIsNone                 3.9    81.2    87.2    49.6
+            OptionIsSome                 4.4    71.9    86.4    57.9
+            OptionNone                  60.8    87.5    87.8     0.0
+            OptionSome                  56.4    87.5    88.0    35.7
+            Record                      65.7    71.9    90.5    37.6
+            StringConcat               177.9    87.5    84.1    41.7
+            StringIsEmpty                3.9    78.1    88.7    46.8
+            StringLiteral               71.9    90.6    90.2     0.0
+            Tuple                      202.5    93.8    90.0    25.9
+            TupleIndex                  83.4    90.6    78.6    63.8
         "#]]
         .assert_eq(&report);
     }
@@ -2375,61 +2420,60 @@ mod tests {
 
                 render fn C0@f0(
                   p0@v0: Tuple[Tuple[Bool, E1]],
-                  p1@v1: (() -> R1) -> Option[R1],
-                  p2@v2: Array[Array[Int]],
+                  p1@v1: (() -> R1) -> Tuple[E0],
+                  p2@v2: Int,
                   p3@v3: Html,
                 ) -> Html {
                   let v8: ElementId = mint()
-                  let v9: Int = -2147483648
-                  let v10: Cell[Int] = cell {
-                    v9
+                  let v9: Cell[Int] = cell {
+                    v2
                   }
-                  let v11: Int = cell_read(v10)
+                  let v10: Int = cell_read(v9)
                   v3
                 }
                 render fn C1@f1(
-                  p0@v4: render () -> Tuple[],
-                  p1@v5: Array[R0],
+                  p0@v4: () -> E1,
+                  p1@v5: Tuple[],
                   p2@v6: E0,
                   p3@v7: Option[Option[E1]],
                 ) -> Html {
-                  let v12: ElementId = mint()
-                  let v13: Int = -2147483648
-                  let v14: Cell[Int] = cell {
-                    v13
+                  let v11: ElementId = mint()
+                  let v12: Int = -2147483648
+                  let v13: Cell[Int] = cell {
+                    v12
                   }
-                  let v15: Int = cell_read(v14)
-                  let v16: Html = concat()
-                  v16
+                  let v14: Int = cell_read(v13)
+                  let v15: Html = concat()
+                  v15
                 }
                 entrypoint V0@e0(
-                  p0@v17: String,
+                  p0@v16: String,
                 ) -> Html {
-                  let v18: ElementId = mint()
-                  let v19: Int = -2147483648
-                  let v20: Cell[Int] = cell {
-                    v19
+                  let v17: ElementId = mint()
+                  let v18: Int = -2147483648
+                  let v19: Cell[Int] = cell {
+                    v18
                   }
-                  let v21: Int = cell_read(v20)
-                  let v22: Html = concat()
-                  v22
+                  let v20: Int = cell_read(v19)
+                  let v21: Html = concat()
+                  v21
                 }
                 entrypoint V1@e1(
-                  p0@v23: Tuple[Tuple[E1, R1, E0], Tuple[Int], Int],
-                  p1@v24: Int,
-                  p2@v25: Int,
-                  p3@v26: Int,
-                  p4@v27: Int,
-                  p5@v28: Int,
-                  p6@v29: Int,
+                  p0@v22: Tuple[Tuple[E1, R1, E0], Tuple[Int], Int],
+                  p1@v23: Int,
+                  p2@v24: Int,
+                  p3@v25: Int,
+                  p4@v26: Int,
+                  p5@v27: Int,
+                  p6@v28: Int,
                 ) -> Html {
-                  let v30: ElementId = mint()
-                  let v31: Cell[Int] = cell {
-                    v24
+                  let v29: ElementId = mint()
+                  let v30: Cell[Int] = cell {
+                    v23
                   }
-                  let v32: Int = cell_read(v31)
-                  let v33: Html = concat()
-                  v33
+                  let v31: Int = cell_read(v30)
+                  let v32: Html = concat()
+                  v32
                 }
             "#]],
         );

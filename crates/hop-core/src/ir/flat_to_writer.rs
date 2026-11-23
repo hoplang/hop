@@ -56,12 +56,12 @@ use crate::symbols::type_name::TypeName;
 /// A click never happens on a page rendered to a string, so the clicks are
 /// left out.
 ///
-/// Every closure is a lambda or a parameter, since no match, call or
-/// application produces one. Such a closure outlives everything that reads
-/// it, so a backend can have every closure borrow the names it captures. A
-/// lambda becomes a let at the start of its block, with the body a function
-/// that writes or returns would have. Its Html parameters take closures, as
-/// those of a function do.
+/// A closure is a lambda, a parameter, or the result of a call or an
+/// application, never of a match. It may outlive the function or closure
+/// that made it, so a backend keeps what a closure captures alive as long
+/// as the closure. A lambda becomes a let at the start of its block, with
+/// the body a function that writes or returns would have. Its Html
+/// parameters take closures, as those of a function do.
 ///
 /// A match compiles to a decision tree. A switch of the tree becomes a
 /// Writer switch on the part of the subject it tests, a record or tuple the
@@ -207,13 +207,15 @@ fn value_type(typ: &FlatType) -> WriterType {
 }
 
 /// What a function or a closure produces in the Writer: Html it writes, or
-/// the value it returns.
+/// the value or closure it returns.
 fn result_type(typ: &FlatType) -> WriterResult {
     match typ {
         FlatType::Html => WriterResult::Writes,
-        FlatType::Data(data) => WriterResult::Returns(data_type(data)),
-        FlatType::Function(_) | FlatType::Cell(_) | FlatType::ElementId => {
-            unreachable!("a function returns Html or data, not {typ:?}")
+        FlatType::Data(_) | FlatType::Function(_) => {
+            WriterResult::Returns(Box::new(value_type(typ)))
+        }
+        FlatType::Cell(_) | FlatType::ElementId => {
+            unreachable!("a function returns Html, data or a closure, not {typ:?}")
         }
     }
 }

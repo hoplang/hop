@@ -787,7 +787,7 @@ impl Transpiler for TsTranspiler {
                 let WriterResult::Returns(return_type) = &function.return_type else {
                     unreachable!("a function that returns has the type of a value as its result");
                 };
-                let return_type = self.transpile_data_type(arena, return_type);
+                let return_type = self.transpile_type(arena, return_type);
                 let body = self.transpile_value_block(arena, block);
                 head.append(arena.text("): "))
                     .append(return_type)
@@ -1500,7 +1500,7 @@ impl Transpiler for TsTranspiler {
     ) -> Doc<'a> {
         let result = match &signature.result {
             WriterResult::Writes => arena.text("string"),
-            WriterResult::Returns(result) => self.transpile_data_type(arena, result),
+            WriterResult::Returns(result) => self.transpile_type(arena, result),
         };
         self.transpile_function_type(arena, &signature.parameters, result)
     }
@@ -1541,7 +1541,7 @@ impl Transpiler for TsTranspiler {
                     ..
                 }),
             ) => (
-                self.transpile_data_type(arena, result),
+                self.transpile_type(arena, result),
                 self.transpile_value_block(arena, block),
             ),
             (WriterFunctionBody::Returns(_), _) => {

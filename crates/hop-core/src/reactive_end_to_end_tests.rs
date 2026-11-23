@@ -1395,3 +1395,98 @@ fn a_let_pattern_takes_apart_state_that_holds_a_tuple() {
         "#]],
     );
 }
+
+#[test]
+fn each_closure_a_render_fn_returns_reads_and_writes_the_state_of_its_own_call() {
+    check(
+        indoc! {r#"
+            render fn counter() -> render fn(String) -> Html {
+              let (count, set_count) = state!(0);
+              let incr_count = mut fn() {
+                set_count(fn(curr) { curr + 1 })
+              };
+
+              fn(label) {
+                <button on:click={incr_count}>
+                  {label}:{count.to_string()}
+                </button>
+              }
+            }
+
+            page Test {
+              fn body() -> Html {
+                let a = counter();
+                let b = counter();
+
+                <>
+                  {a("a")}
+                  {b("b")}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <button@e1>a:0</button>
+            <button@e2>b:0</button>
+            -- click button@e1 --
+            <button@e1>a:1</button>
+            <button@e2>b:0</button>
+            -- click button@e1 --
+            <button@e1>a:2</button>
+            <button@e2>b:0</button>
+            -- click button@e2 --
+            <button@e1>a:2</button>
+            <button@e2>b:1</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_handler_a_render_fn_returns_writes_the_state_of_its_own_call() {
+    check(
+        indoc! {r#"
+            render fn incrementer(step: Int, set_total: mut fn(fn(Int) -> Int) -> Tuple[]) -> mut fn() -> Tuple[] {
+              let (clicks, set_clicks) = state!(0);
+              mut fn() {
+                set_clicks(fn(curr) { curr + 1 });
+                set_total(fn(curr) { curr + step * (clicks + 1) })
+              }
+            }
+
+            page Test {
+              fn body() -> Html {
+                let (total, set_total) = state!(0);
+                let by_one = incrementer(1, set_total);
+                let by_ten = incrementer(10, set_total);
+
+                <>
+                  <button on:click={by_one}>one</button>
+                  <button on:click={by_ten}>ten</button>
+                  <p>{total.to_string()}</p>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <button@e1>one</button>
+            <button@e2>ten</button>
+            <p@e3>0</p>
+            -- click button@e1 --
+            <button@e1>one</button>
+            <button@e2>ten</button>
+            <p@e3>1</p>
+            -- click button@e1 --
+            <button@e1>one</button>
+            <button@e2>ten</button>
+            <p@e3>3</p>
+            -- click button@e2 --
+            <button@e1>one</button>
+            <button@e2>ten</button>
+            <p@e3>13</p>
+        "#]],
+    );
+}

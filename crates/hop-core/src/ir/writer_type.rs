@@ -29,7 +29,7 @@ pub struct WriterSignature {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WriterResult {
     Writes,
-    Returns(WriterDataType),
+    Returns(Box<WriterType>),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -106,7 +106,7 @@ mod test_support {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 WriterResult::Writes => f.write_str("Html"),
-                WriterResult::Returns(data) => data.fmt(f),
+                WriterResult::Returns(typ) => typ.fmt(f),
             }
         }
     }

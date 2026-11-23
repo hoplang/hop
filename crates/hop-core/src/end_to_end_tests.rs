@@ -7796,3 +7796,73 @@ fn lambda_bound_by_let_and_applied_in_a_loop() {
         r#"<div><p class="2"><b>1</b></p><p class="4"><b>2</b></p></div>"#,
     );
 }
+
+#[test]
+#[ignore]
+fn closure_returned_by_a_function_keeps_the_argument_it_captures() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            fn adder(n: Int) -> fn(Int) -> Int {
+              fn(m) { n + m }
+            }
+
+            page Test() {
+              fn body() -> Html {
+                let add_one = adder(1);
+                let add_ten = adder(10);
+                <>{add_one(5).to_string()}/{add_ten(5).to_string()}</>
+              }
+            }
+        "#},
+        "6/15",
+    );
+}
+
+#[test]
+#[ignore]
+fn closure_that_renders_html_returned_by_a_function() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            fn Decorate(suffix: String) -> fn(String) -> Html {
+              fn(label) { <b>{label}{suffix}</b> }
+            }
+
+            page Test() {
+              fn body() -> Html {
+                let loud = Decorate("!");
+                <ul>
+                  {for label in ["a", "b"] {
+                    <li>{loud(label)}</li>
+                  }}
+                </ul>
+              }
+            }
+        "#},
+        "<ul><li><b>a!</b></li><li><b>b!</b></li></ul>",
+    );
+}
+
+#[test]
+#[ignore]
+fn closure_built_from_closures_a_function_takes() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            fn compose(f: fn(Int) -> Int, g: fn(Int) -> Int) -> fn(Int) -> Int {
+              fn(x) { g(f(x)) }
+            }
+
+            page Test() {
+              fn body() -> Html {
+                let double = fn(x: Int) { x * 2 };
+                let quadruple = compose(double, double);
+                let octuple = compose(quadruple, double);
+                <>{octuple(5).to_string()}</>
+              }
+            }
+        "#},
+        "40",
+    );
+}

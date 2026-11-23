@@ -104,14 +104,9 @@ pub fn resolve_type(
     Some(Type::Data(typ))
 }
 
-/// The error a function type breaks, if any: its result is a function, or
-/// it mutates and its result is not data.
+/// The error a function type breaks, if any: it mutates and its result is
+/// not data.
 pub fn check_function_type(function: &FunctionType) -> Option<TypeErrorKind> {
-    if let Type::Function(_) = *function.result {
-        return Some(TypeErrorKind::FunctionReturnsFunction {
-            result: function.result.as_ref().clone(),
-        });
-    }
     if function.result.as_data().is_none() {
         let result = function.result.as_ref().clone();
         match function.modifier {

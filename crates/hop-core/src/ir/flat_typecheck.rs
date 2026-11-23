@@ -65,8 +65,7 @@ pub enum FlatTypeError {
     /// block that renders or mutates. A pure block allows none of these, and
     /// a block that renders or mutates allows its own effect.
     EffectNotAllowed,
-    /// A function returns something other than Html or a value: a closure,
-    /// a cell or an identity.
+    /// A function returns a cell or an identity.
     ReturnsUnreturnable,
 }
 
@@ -82,7 +81,7 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
         checker.live.clear();
         checker.scoped(|checker| {
             let expected = BoundType::of(&function.return_type);
-            if !matches!(expected, BoundType::Html | BoundType::Data(_)) {
+            if matches!(expected, BoundType::Cell(_) | BoundType::ElementId) {
                 return Err(FlatTypeError::ReturnsUnreturnable);
             }
             for param in &function.parameters {
@@ -170,9 +169,10 @@ fn is_well_formed(signature: &FlatSignature) -> bool {
             FlatType::Function(signature) => is_well_formed(signature),
             _ => true,
         });
-    let result = match *signature.result {
+    let result = match &*signature.result {
         FlatType::Html | FlatType::Data(_) => true,
-        FlatType::Function(_) | FlatType::Cell(_) | FlatType::ElementId => false,
+        FlatType::Function(signature) => is_well_formed(signature),
+        FlatType::Cell(_) | FlatType::ElementId => false,
     };
     parameters && result
 }
@@ -1709,15 +1709,14 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_function_that_renders_a_closure() {
-        let error = FlatProgramBuilder::new()
+    fn should_accept_a_function_that_renders_a_closure() {
+        FlatProgramBuilder::new()
             .render_function("make", [], Ty::function([], Ty::Int), |t| {
                 t.lambda([], |t, _| t.int(0))
             })
             .entrypoint("Test", [], |t| t.text("x"))
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::ReturnsUnreturnable);
+            .unwrap();
     }
 
     #[test]
@@ -1765,27 +1764,25 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_function_that_mutates_and_returns_a_closure() {
-        let error = FlatProgramBuilder::new()
+    fn should_accept_a_function_that_mutates_and_returns_a_closure() {
+        FlatProgramBuilder::new()
             .mut_function("nothing", [], Ty::mut_function([], Ty::tuple([])), |t| {
                 t.event_handler(|t| t.tuple([]))
             })
             .entrypoint("Test", [], |t| t.text("x"))
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::ReturnsUnreturnable);
+            .unwrap();
     }
 
     #[test]
-    fn should_reject_a_closure_that_mutates_and_returns_a_closure() {
-        let error = FlatProgramBuilder::new()
+    fn should_accept_a_closure_that_mutates_and_returns_a_closure() {
+        FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 t.mut_lambda([], |t, _| t.event_handler(|t| t.tuple([])));
                 t.text("x")
             })
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::IllTypedBinding);
+            .unwrap();
     }
 
     #[test]

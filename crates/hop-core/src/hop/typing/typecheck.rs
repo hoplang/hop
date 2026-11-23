@@ -761,15 +761,6 @@ fn create_function_signature<'a>(
     }
 
     let return_type = resolve_type(&function.return_type, names, definition_links, errors)?;
-    if let Type::Function(_) = return_type {
-        errors.push(TypeError::new(
-            TypeErrorKind::FunctionReturnsFunction {
-                result: return_type,
-            },
-            function.return_type.range().clone(),
-        ));
-        return None;
-    }
     let modifier = Modifier::of(function.modifier.as_ref().map(|(m, _)| *m), &return_type);
     if return_type.as_data().is_none() {
         let error = match modifier {
@@ -14701,8 +14692,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_functions_that_return_functions() {
-        reject(
+    fn accepts_functions_that_return_functions() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn curry() -> fn(Int) -> Int {
@@ -14710,26 +14701,30 @@ mod tests {
                 }
                 fn Main(make: fn() -> fn() -> Html) -> Html {
                   let add = fn(a: Int) { fn(b: Int) { a + b } };
-                  <></>
+                  let row = make();
+                  let add_one = add(1);
+                  let identity = curry();
+                  <>{row()}{add_one(identity(2)).to_string()}</>
                 }
             "#},
             expect![[r#"
-                error: A function cannot return fn(Int) -> Int
-                  --> main.hop (line 1, col 15)
-                1 | fn curry() -> fn(Int) -> Int {
-                  |               ^^^^^^^^^^^^^^
+                -- main.hop --
+                fn Main(make: fn() -> fn() -> Html) -> Html {
+                  let add = fn(a: Int) -> fn(Int) -> Int {
+                    fn(b: Int) -> Int {
+                      add(a, b)
+                    }
+                  } in let row = make() in let add_one = add(1) in let identity = curry() in concat(
+                    row(),
+                    escape(add_one(identity(2)).to_string()),
+                  )
+                }
 
-                error: A function cannot return fn() -> Html
-                  --> main.hop (line 4, col 15)
-                3 | }
-                4 | fn Main(make: fn() -> fn() -> Html) -> Html {
-                  |               ^^^^^^^^^^^^^^^^^^^^
-
-                error: A function cannot return fn(Int) -> Int
-                  --> main.hop (line 5, col 26)
-                4 | fn Main(make: fn() -> fn() -> Html) -> Html {
-                5 |   let add = fn(a: Int) { fn(b: Int) { a + b } };
-                  |                          ^^^^^^^^^^^^^^^^^^^^
+                fn curry() -> fn(Int) -> Int {
+                  fn(n: Int) -> Int {
+                    n
+                  }
+                }
             "#]],
         );
     }

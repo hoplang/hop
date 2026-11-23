@@ -110,12 +110,15 @@ Tuple[T1, T2, …]  (v1, v2, …)
 
 A function type `fn(T1, T2, …) -> R` is the type of a
 [lambda](#lambda-expressions) that takes arguments of the types `T1, T2, …` and
-evaluates to a value of type `R`. A function type whose result is a function
-type is a compile error:
+evaluates to a value of type `R`. `R` may itself be a function type:
 
 ```hop
 fn Rows(row: fn(String, Int) -> Html) -> Html {
   row("a", 1)
+}
+
+fn adder(n: Int) -> fn(Int) -> Int {
+  fn(m) { n + m }
 }
 ```
 
@@ -1016,13 +1019,9 @@ twice(fn(n) { n + offset }, 3) // 5
 let triple = fn(n) { n * 3 };  // error: The type of parameter n cannot be inferred
 ```
 
-A lambda whose type breaks the rules for function types is a compile error, as
-is a lambda whose body uses an `Html` value bound outside it, which is
-explained under [variable references](#variable-reference-expressions):
-
-```hop
-let add = fn(a: Int) { fn(b: Int) { a + b } }; // error: A function cannot return fn(Int) -> Int
-```
+A lambda whose body uses an `Html` value bound outside it is a compile error,
+which is explained under
+[variable references](#variable-reference-expressions).
 
 <a id="markup-expressions"></a>
 
@@ -1600,14 +1599,6 @@ A function body that does not have the declared return type is a compile error:
 ```hop
 fn answer() -> Int {
   "x" // error: Expected Int got String
-}
-```
-
-A return type that is a [function type](#types) is a compile error:
-
-```hop
-fn adder() -> fn(Int) -> Int { // error: A function cannot return fn(Int) -> Int
-  fn(n: Int) { n + 1 }
 }
 ```
 
