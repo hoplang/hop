@@ -748,35 +748,6 @@ fn rest_chains_through_a_function_to_an_element() {
 
 #[test]
 #[ignore]
-fn rest_reaches_a_spread_target_nested_in_control_flow() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            fn Wrapper(
-              show: Bool,
-              ...rest,
-            ) -> Html {
-              match show {
-                true => {
-                  <div ...rest>
-                  </div>
-                },
-                false => <></>,
-              }
-            }
-
-            page Test() {
-              fn body() -> Html {
-                <Wrapper show={true} id="x"/>
-              }
-            }
-        "#},
-        r#"<div id="x"></div>"#,
-    );
-}
-
-#[test]
-#[ignore]
 fn rest_named_after_a_parameter_it_forwards() {
     check(
         indoc! {r#"
@@ -1568,39 +1539,6 @@ fn accepts_forwarded_optional_param_through_rest() {
 
 #[test]
 #[ignore]
-fn accepts_forwarded_fallback_materialized_once_in_chain() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            fn Leaf(
-              label?: String = "x",
-              ...rest,
-            ) -> Html {
-              <span ...rest>
-                {label}
-              </span>
-            }
-
-            fn Mid(...rest) -> Html {
-              <Leaf ...rest/>
-            }
-
-            fn Top(...rest) -> Html {
-              <Mid ...rest/>
-            }
-
-            page Test() {
-              fn body() -> Html {
-                <Top/>
-              }
-            }
-        "#},
-        r#"<span>x</span>"#,
-    );
-}
-
-#[test]
-#[ignore]
 fn accepts_forwarded_attr_distinct_from_pinned() {
     check(
         indoc! {r#"
@@ -1934,32 +1872,6 @@ fn option_match_as_some_value() {
             }
         "#},
         "inner",
-    );
-}
-
-#[test]
-#[ignore]
-fn function_binding_duplicated_by_inlining_at_two_call_sites() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            fn Tag(text: String) -> Html {
-              let label: String = text;
-              <div>
-                {label}
-              </div>
-            }
-
-            page Test() {
-              fn body() -> Html {
-                <>
-                  <Tag text="a"/>
-                  <Tag text="b"/>
-                </>
-              }
-            }
-        "#},
-        "<div>a</div><div>b</div>",
     );
 }
 
@@ -2429,61 +2341,6 @@ fn for_loop() {
 
 #[test]
 #[ignore]
-fn for_expression_over_array() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                for item in ["a", "b", "c"] {
-                  <>{item},</>
-                }
-              }
-            }
-        "#},
-        "a,b,c,",
-    );
-}
-
-#[test]
-#[ignore]
-fn for_expression_over_range() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                for i in 1..=3 {
-                  <>{i.to_string()},</>
-                }
-              }
-            }
-        "#},
-        "1,2,3,",
-    );
-}
-
-#[test]
-#[ignore]
-fn for_expression_with_underscore() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                let items: Array[String] = ["a", "b", "c"];
-                for _ in items {
-                  <>*</>
-                }
-              }
-            }
-        "#},
-        "***",
-    );
-}
-
-#[test]
-#[ignore]
 fn for_expression_with_let_in_body() {
     check(
         indoc! {r#"
@@ -2618,32 +2475,6 @@ fn let_binding() {
             }
         "#},
         "Hello from let",
-    );
-}
-
-#[test]
-#[ignore]
-fn string_concat_folds_constants_around_a_dynamic_part() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                for name in ["a", "b"] {
-                  <span class={
-                    join!(
-                      name,
-                      "px-2",
-                      "py-1",
-                    )
-                  }>
-                    {name + "!" + "?"}
-                  </span>
-                }
-              }
-            }
-        "#},
-        "<span class=\"a px-2 py-1\">a!?</span><span class=\"b px-2 py-1\">b!?</span>",
     );
 }
 
@@ -3128,29 +2959,6 @@ fn enum_match_test_and_wildcard_in_field() {
             }
         "#},
         "abc",
-    );
-}
-
-#[test]
-#[ignore]
-fn option_match_nested_constant_folding() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                let inner_opt: Option[String] = Some("inner");
-                let outer: Option[String] = Some(
-                  match inner_opt {Some(x) => x, None => "default"}
-                );
-                match outer {
-                  Some(s) => <>{s}</>,
-                  None => <>none</>,
-                }
-              }
-            }
-        "#},
-        "inner",
     );
 }
 
@@ -3727,30 +3535,6 @@ fn for_loop_with_underscore_range() {
             }
         "#},
         "xxx",
-    );
-}
-
-#[test]
-#[ignore]
-fn for_loop_variable_left_unused_by_optimization_becomes_underscore() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                for x in ["a", "b"] {
-                  <>
-                    {match false {
-                      true => <>{x}</>,
-                      false => <></>,
-                    }}
-                    y
-                  </>
-                }
-              }
-            }
-        "#},
-        "yy",
     );
 }
 
@@ -6490,38 +6274,6 @@ fn children_can_be_bound_to_a_variable() {
 
 #[test]
 #[ignore]
-fn nested_children_forwarding() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            fn Inner(children: Html) -> Html {
-              <em>
-                {children}
-              </em>
-            }
-
-            fn Outer(children: Html) -> Html {
-              <section>
-                <Inner>
-                  {children}
-                </Inner>
-              </section>
-            }
-
-            page Test() {
-              fn body() -> Html {
-                <Outer>
-                  z
-                </Outer>
-              }
-            }
-        "#},
-        "<section><em>z</em></section>",
-    );
-}
-
-#[test]
-#[ignore]
 fn recursive_function_carries_a_rest() {
     check(
         indoc! {r#"
@@ -7125,32 +6877,6 @@ fn record_spread_with_all_fields_overridden() {
             }
         "#},
         r#"b2"#,
-    );
-}
-
-#[test]
-#[ignore]
-fn record_spread_field_access_folds_through_literal() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            record State {
-              query: String,
-              num: Int,
-            }
-
-            page Test() {
-              fn body() -> Html {
-                for s in [State {query: "a", num: 7}] {
-                  <>
-                    {State {...s, query: "x"}.query}
-                    {State {...s, query: "x"}.num.to_string()}
-                  </>
-                }
-              }
-            }
-        "#},
-        r#"x7"#,
     );
 }
 
