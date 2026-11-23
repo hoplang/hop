@@ -469,7 +469,7 @@ fn let_statements_in_body_arm_and_interpolation() {
             page Test() {
               fn body() -> Html {
                 let first = "foo";
-                let title: Option[String] = Some("bar");
+                let title = Some("bar");
                 let prefix = match title {
                   Some(t) => {
                     let spaced = t + " ";
@@ -579,9 +579,13 @@ fn let_in_interpolation_with_markup_tail() {
               fn body() -> Html {
                 <ul>
                   {
-                    let label = "Item";
-                    let count = 2;
-                    <li class={ let base = "row"; base + "-" + "odd" }>{label}: {count.to_string()}</li>
+                    let (label, count) = ("Item", 2);
+                    <li class={
+                      let base = "row";
+                      base + "-" + "odd"
+                    }>
+                      {label}: {count.to_string()}
+                    </li>
                   }
                 </ul>
               }
@@ -672,8 +676,6 @@ fn rest_spread_forwards_attribute_to_html() {
 #[test]
 #[ignore]
 fn rest_chains_past_a_call_cycle() {
-    // First and Second call each other, so they share a call cycle, but
-    // the rests run straight down to Leaf's div. Both pick up `title`.
     check(
         indoc! {r#"
             -- main.hop --
@@ -1177,7 +1179,7 @@ fn accepts_record_param_forwarded_through_rest() {
 
             page Test() {
               fn body() -> Html {
-                let user: User = User {name: "Ada"};
+                let user = User {name: "Ada"};
                 <Wrapper user={user}/>
               }
             }
@@ -1198,7 +1200,7 @@ fn accepts_user_variable_with_underscore_without_collisions() {
 
             page Test() {
               fn body() -> Html {
-                let v_1: String = "outer";
+                let v_1 = "outer";
                 for f in [Flag {value: "x"}] {
                   match f {
                     Flag {value: b} => {
@@ -1753,8 +1755,8 @@ fn option_match_returning_options() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let inner: Option[String] = Some("hello");
-                let mapped: Option[String] = match inner {
+                let inner = Some("hello");
+                let mapped = match inner {
                   Some(x) => Some(x),
                   None => None,
                 };
@@ -1791,13 +1793,12 @@ fn record_match_on_expression_subject() {
                   Point {x: a, y: _} => a,
                 };
                 <>
-                  got:
                   {result}
                 </>
               }
             }
         "#},
-        "got:hi",
+        "hi",
     );
 }
 
@@ -1814,41 +1815,16 @@ fn bind_all_match_on_expression_subject() {
 
             page Test() {
               fn body() -> Html {
-                let result: String = match (Point {x: "hi", y: "bye"}) {
+                let result = match (Point {x: "hi", y: "bye"}) {
                   p => p.x,
                 };
                 <>
-                  got:
                   {result}
                 </>
               }
             }
         "#},
-        "got:hi",
-    );
-}
-
-#[test]
-#[ignore]
-fn match_on_expression_subject() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                match Some("hi") {
-                  Some(x) => {
-                    <>
-                      got:
-                      {x}
-                    </>
-                  },
-                  None => <>none</>,
-                }
-              }
-            }
-        "#},
-        "got:hi",
+        "hi",
     );
 }
 
@@ -1860,8 +1836,8 @@ fn option_match_as_some_value() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let inner_opt: Option[String] = Some("inner");
-                let outer: Option[String] = Some(
+                let inner_opt = Some("inner");
+                let outer = Some(
                   match inner_opt {Some(x) => x, None => "default"}
                 );
                 match outer {
@@ -1892,8 +1868,8 @@ fn function_arguments_are_bound_simultaneously() {
 
             page Test() {
               fn body() -> Html {
-                let a: String = "A";
-                let b: String = "B";
+                let a = "A";
+                let b = "B";
                 <Swap a={b} b={a}/>
               }
             }
@@ -1957,27 +1933,6 @@ fn bool_match_expr() {
 
 #[test]
 #[ignore]
-fn bool_match_expr_with_binary_subject() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                let path: String = "";
-                let git_ref: String = "main";
-                <>{match path == "" {
-                  true => git_ref,
-                  _ => git_ref + " - " + path,
-                }}</>
-              }
-            }
-        "#},
-        "main",
-    );
-}
-
-#[test]
-#[ignore]
 fn option_literal_inline_match_expr() {
     check(
         indoc! {r#"
@@ -2014,19 +1969,23 @@ fn nested_bool_match_expr() {
                   {
                     let outer: Bool = true;
                     let inner: Bool = false;
-                    <>{match outer {
-                      true => match inner {true => "TT", false => "TF"},
-                      false => "F",
-                    }}</>
+                    <>
+                      {match outer {
+                        true => match inner {true => "TT", false => "TF"},
+                        false => "F",
+                      }}
+                    </>
                   }
                   ,
                   {
                     let outer2: Bool = false;
                     let inner2: Bool = true;
-                    <>{match outer2 {
-                      true => match inner2 {true => "TT", false => "TF"},
-                      false => "F",
-                    }}</>
+                    <>
+                      {match outer2 {
+                        true => match inner2 {true => "TT", false => "TF"},
+                        false => "F",
+                      }}
+                    </>
                   }
                 </>
               }
@@ -2206,14 +2165,12 @@ fn range_loops_at_bounds() {
                 <>
                   {for i in max - 1..=max {
                     <>
-                      {i.to_string()}
-                      ,
+                      {format!("{},", i)}
                     </>
                   }}
                   {for i in min..=min + 1 {
                     <>
-                      {i.to_string()}
-                      ,
+                      {format!("{},", i)}
                     </>
                   }}
                   {for _ in 3..=1 {
@@ -2227,24 +2184,6 @@ fn range_loops_at_bounds() {
             }
         "#},
         "2147483646,2147483647,-2147483648,-2147483647,",
-    );
-}
-
-#[test]
-#[ignore]
-fn simple_html() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                <h1>
-                  Hello, World!
-                </h1>
-              }
-            }
-        "#},
-        "<h1>Hello, World!</h1>",
     );
 }
 
@@ -2272,35 +2211,13 @@ fn html_comment() {
 
 #[test]
 #[ignore]
-fn with_let_binding() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                let name: String = "Alice";
-                <>
-                  Hello,
-                  {" "}
-                  {name}
-                  !
-                </>
-              }
-            }
-        "#},
-        "Hello, Alice!",
-    );
-}
-
-#[test]
-#[ignore]
 fn conditional() {
     check(
         indoc! {r#"
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let show: Bool = true;
+                let show = true;
                 <>
                   {match show {
                     true => <>Visible</>,
@@ -2328,8 +2245,7 @@ fn for_loop() {
               fn body() -> Html {
                 for item in ["a", "b", "c"] {
                   <>
-                    {item}
-                    ,
+                    {format!("{},", item)}
                   </>
                 }
               }
@@ -2389,8 +2305,7 @@ fn for_loop_with_range() {
               fn body() -> Html {
                 for i in 1..=3 {
                   <>
-                    {i.to_string()}
-                    ,
+                    {format!("{},", i)}
                   </>
                 }
               }
@@ -2429,11 +2344,7 @@ fn for_loop_with_range_nested() {
                 for i in 1..=2 {
                   for j in 1..=2 {
                     <>
-                      (
-                      {i.to_string()}
-                      ,
-                      {j.to_string()}
-                      )
+                      {format!("({},{})", i, j)}
                     </>
                   }
                 }
@@ -2452,29 +2363,12 @@ fn html_escaping() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let text: String = "<div>Hello & world</div>";
+                let text = "<div>Hello & world</div>";
                 <>{text}</>
               }
             }
         "#},
         "&lt;div&gt;Hello &amp; world&lt;/div&gt;",
-    );
-}
-
-#[test]
-#[ignore]
-fn let_binding() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                let message: String = "Hello from let";
-                <>{message}</>
-              }
-            }
-        "#},
-        "Hello from let",
     );
 }
 
@@ -2486,36 +2380,12 @@ fn string_concatenation() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let first: String = "Hello";
-                let second: String = " World";
-                <>{first + second}</>
+                let (first, second) = ("Hello", "World");
+                <>{first + " " + second}</>
               }
             }
         "#},
         "Hello World",
-    );
-}
-
-#[test]
-#[ignore]
-fn complex_nested_structure() {
-    check(
-        indoc! {r#"
-            -- main.hop --
-            page Test() {
-              fn body() -> Html {
-                for item in ["A", "B"] {
-                  let prefix: String = "[";
-                  <>
-                    {prefix}
-                    {item}
-                    ]
-                  </>
-                }
-              }
-            }
-        "#},
-        "[A][B]",
     );
 }
 
@@ -2595,7 +2465,7 @@ fn field_access() {
 
             page Test() {
               fn body() -> Html {
-                let person: Person = Person {name: "Alice", age: 30};
+                let person = Person {name: "Alice", age: 30};
                 <>
                   {person.name}
                   {match person.age == 30 {
@@ -2623,7 +2493,7 @@ fn record_literal_with_fields_out_of_declaration_order() {
 
             page Test() {
               fn body() -> Html {
-                let pair: Pair = Pair {second: "b", first: "a"};
+                let pair = Pair {second: "b", first: "a"};
                 <>
                   {pair.first}
                   -
@@ -2686,7 +2556,7 @@ fn nested_record() {
 
             page Test() {
               fn body() -> Html {
-                let person: Person = Person {
+                let person = Person {
                   name: "Alice",
                   address: Address {city: "Paris", zip: "75001"},
                 };
@@ -2710,8 +2580,7 @@ fn numeric_add() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let a: Int = 3;
-                let b: Int = 7;
+                let (a, b) = (3, 7);
                 match a + b == 10 {
                   true => <>correct</>,
                   false => <></>,
@@ -2731,8 +2600,7 @@ fn numeric_subtract() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let a: Int = 10;
-                let b: Int = 3;
+                let (a, b) = (10, 3);
                 match a - b == 7 {
                   true => <>correct</>,
                   false => <></>,
@@ -2752,8 +2620,7 @@ fn numeric_multiply() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let a: Int = 4;
-                let b: Int = 5;
+                let (a, b) = (4, 5);
                 match a * b == 20 {
                   true => <>correct</>,
                   false => <></>,
@@ -2773,8 +2640,7 @@ fn bool_logical_and() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let a: Bool = true;
-                let b: Bool = true;
+                let (a, b) = (true, true);
                 match a && b {
                   true => <>TT</>,
                   false => <></>,
@@ -2794,8 +2660,8 @@ fn bool_logical_or() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let a: Bool = false;
-                let b: Bool = true;
+                let a = false;
+                let b = true;
                 match a || b {
                   true => <>FT</>,
                   false => <></>,
@@ -2844,7 +2710,7 @@ fn option_literal() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let some_val: Option[String] = Some("hello");
+                let some_val = Some("hello");
                 match some_val {
                   Some(s) => <>{s}</>,
                   None => <>none</>,
@@ -2864,7 +2730,7 @@ fn option_match_wildcard_pattern() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let opt: Option[String] = Some("hello");
+                let opt = Some("hello");
                 match opt {
                   Some(_) => <>some</>,
                   None => <>none</>,
@@ -3015,12 +2881,14 @@ fn enum_match_expr() {
 
             page Test() {
               fn body() -> Html {
-                let color: Color = Color::Green;
-                <>{match color {
-                  Color::Red => "red",
-                  Color::Green => "green",
-                  Color::Blue => "blue",
-                }}</>
+                let color = Color::Green;
+                <>
+                  {match color {
+                    Color::Red => "red",
+                    Color::Green => "green",
+                    Color::Blue => "blue",
+                  }}
+                </>
               }
             }
         "#},
@@ -3045,7 +2913,7 @@ fn enum_match_with_field_bindings() {
 
             page Test() {
               fn body() -> Html {
-                let result: Outcome = Outcome::Success {value: "hello"};
+                let result = Outcome::Success {value: "hello"};
                 match result {
                   Outcome::Success {value: v} => <>{format!("Ok: {}", v)}</>,
                   Outcome::Failure {message: m} => <>{format!("Err: {}", m)}</>,
@@ -3072,7 +2940,7 @@ fn enum_with_field_named_tag() {
 
             page Test() {
               fn body() -> Html {
-                let item: Item = Item::Tagged {tag: "news"};
+                let item = Item::Tagged {tag: "news"};
                 match item {
                   Item::Tagged {tag: t} => <>{format!("tag: {}", t)}</>,
                   Item::Plain => <>plain</>,
@@ -3101,7 +2969,7 @@ fn enum_with_fields_match_on_expression_subject() {
 
             page Test() {
               fn body() -> Html {
-                let result: String = match (Outcome::Success {value: "hi"}) {
+                let result = match (Outcome::Success {value: "hi"}) {
                   Outcome::Success {value: v} => v,
                   Outcome::Failure {message: m} => m,
                 };
@@ -3160,7 +3028,7 @@ fn enum_match_err_variant_with_bindings() {
 
             page Test() {
               fn body() -> Html {
-                let result: Outcome = Outcome::Failure {
+                let result = Outcome::Failure {
                   message: "something went wrong",
                 };
                 match result {
@@ -3224,7 +3092,7 @@ fn enum_match_with_shorthand_field_destructuring() {
 
             page Test() {
               fn body() -> Html {
-                let result: Outcome = Outcome::Success {value: "hello"};
+                let result = Outcome::Success {value: "hello"};
                 match result {
                   Outcome::Success {value} => <>{format!("Ok: {}", value)}</>,
                   Outcome::Failure {message} => <>{format!("Err: {}", message)}</>,
@@ -3244,7 +3112,7 @@ fn array_get_in_bounds() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let items: Array[String] = ["a", "b", "c"];
+                let items = ["a", "b", "c"];
                 <>{items.get(1).unwrap_or("none")}</>
               }
             }
@@ -3261,7 +3129,7 @@ fn array_get_out_of_bounds() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let items: Array[String] = ["a", "b"];
+                let items = ["a", "b"];
                 <>
                   {for i in -1..=2 {
                     match items.get(i) {
@@ -3285,7 +3153,7 @@ fn array_enumerate_in_for_loop() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let items: Array[String] = ["a", "b", "c"];
+                let items = ["a", "b", "c"];
                 <>
                   {for pair in items.enumerate() {
                     match pair {
@@ -3325,7 +3193,7 @@ fn array_length_simple() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let items: Array[String] = ["a", "b", "c"];
+                let items = ["a", "b", "c"];
                 <>{items.len().to_string()}</>
               }
             }
@@ -3359,7 +3227,7 @@ fn array_length_in_comparison() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let items: Array[String] = ["x", "y"];
+                let items = ["x", "y"];
                 match items.len() == 2 {
                   true => <>has two</>,
                   false => <></>,
@@ -3379,7 +3247,7 @@ fn array_length_less_than() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let items: Array[String] = ["a"];
+                let items = ["a"];
                 match items.len() < 5 {
                   true => <>less than 5</>,
                   false => <></>,
@@ -3399,7 +3267,7 @@ fn array_length_int_array() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let numbers: Array[Int] = [1, 2, 3, 4, 5];
+                let numbers = [1, 2, 3, 4, 5];
                 <>{numbers.len().to_string()}</>
               }
             }
@@ -3436,7 +3304,7 @@ fn array_is_empty_false() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let items: Array[String] = ["a", "b"];
+                let items = ["a", "b"];
                 match items.is_empty() {
                   true => <>empty</>,
                   false => <>not empty</>,
@@ -3456,7 +3324,7 @@ fn array_is_empty_int_array() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let numbers: Array[Int] = [1, 2, 3];
+                let numbers = [1, 2, 3];
                 match numbers.is_empty() {
                   true => <>no numbers</>,
                   false => <>has numbers</>,
@@ -3476,7 +3344,7 @@ fn int_to_string_simple() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let count: Int = 42;
+                let count = 42;
                 <>{count.to_string()}</>
               }
             }
@@ -3493,7 +3361,7 @@ fn int_to_string_zero() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let num: Int = 0;
+                let num = 0;
                 <>{num.to_string()}</>
               }
             }
@@ -3546,7 +3414,7 @@ fn for_loop_with_underscore_array() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let items: Array[String] = ["a", "b", "c"];
+                let items = ["a", "b", "c"];
                 for _ in items {
                   <>*</>
                 }
@@ -3659,7 +3527,7 @@ fn nested_option_match() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let nested: Option[Option[String]] = Some(Some("deep"));
+                let nested = Some(Some("deep"));
                 match nested {
                   Some(Some(x)) => <>{x}</>,
                   Some(None) => <>some-none</>,
@@ -3680,7 +3548,7 @@ fn option_wildcard_match_expr_some_input() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let opt: Option[String] = Some("x");
+                let opt = Some("x");
                 <>{match opt {Some(_) => "some", None => "none"}}</>
               }
             }
@@ -4980,7 +4848,7 @@ fn matching_a_boxed_enum_field() {
                 };
                 match tree {
                   Tree::Node {label: l, left: lt, right: r} => {
-                    let s: Step = Step {t: lt, rest: r};
+                    let s = Step {t: lt, rest: r};
                     <>
                       {l}
                       {match s.rest {
@@ -6539,7 +6407,7 @@ fn nested_option_bool_literal_patterns() {
             -- main.hop --
             page Test() {
               fn body() -> Html {
-                let x: Option[Option[Bool]] = Some(Some(true));
+                let x = Some(Some(true));
                 match x {
                   Some(Some(true)) => <>tt</>,
                   Some(Some(false)) => <>tf</>,
@@ -6676,7 +6544,7 @@ fn record_field_named_class() {
 
             page Test() {
               fn body() -> Html {
-                let foo: Foo = Foo {class: "a"};
+                let foo = Foo {class: "a"};
                 <div>
                   {foo.class}
                 </div>
@@ -6699,7 +6567,7 @@ fn record_field_named_function() {
 
             page Test() {
               fn body() -> Html {
-                let f: Foo = Foo {function: "a"};
+                let f = Foo {function: "a"};
                 <div>
                   {f.function}
                 </div>
@@ -6722,7 +6590,7 @@ fn record_field_named_protected() {
 
             page Test() {
               fn body() -> Html {
-                let f: Foo = Foo {protected: "a"};
+                let f = Foo {protected: "a"};
                 <div>
                   {f.protected}
                 </div>
@@ -6745,7 +6613,7 @@ fn record_field_named_eval() {
 
             page Test() {
               fn body() -> Html {
-                let f: Foo = Foo {eval: "a"};
+                let f = Foo {eval: "a"};
                 <div>
                   {f.eval}
                 </div>
@@ -6770,7 +6638,7 @@ fn enum_payload_field_named_class() {
 
             page Test() {
               fn body() -> Html {
-                let e: E = E::A {class: "a"};
+                let e = E::A {class: "a"};
                 match e {
                   E::A {class: v} => {
                     <div>
@@ -6797,8 +6665,8 @@ fn record_named_math_does_not_shadow_the_js_math_global() {
 
             page Test() {
               fn body() -> Html {
-                let m: Math = Math {x: 4};
-                let b: Int = 5;
+                let m = Math {x: 4};
+                let b = 5;
                 <>{(m.x * b).to_string()}</>
               }
             }
@@ -6819,7 +6687,7 @@ fn record_named_number_does_not_shadow_the_js_number_global() {
 
             page Test() {
               fn body() -> Html {
-                let n: Number = Number {x: 3.7};
+                let n = Number {x: 3.7};
                 <>{n.x.to_int().to_string()}</>
               }
             }
