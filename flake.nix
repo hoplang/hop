@@ -17,7 +17,7 @@
             pname = "hop";
             version = "0.2.0";
             src = ./.;
-            cargoHash = "sha256-qVsc3+vXuy7VH4gFeIh6UNDBqCMR804BjJHvHKXlmsI=";
+            cargoHash = "sha256-me5IicTH1681ym6DnK+XWa1nmifbxP8f7qMVunkBOls=";
             buildAndTestSubdir = "crates/hop-cli";
           };
         };
