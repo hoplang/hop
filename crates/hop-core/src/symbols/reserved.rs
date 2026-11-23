@@ -100,13 +100,14 @@ pub(super) fn is_reserved_name(name: &str) -> bool {
 /// `Vec` which are emitted unqualified by the Rust transpiler. These could be
 /// unreserved in the future by using qualified names in the transpiler.
 ///
-/// A special case is the type name `View` which is reserved since a trait of
-/// the name View is part of the public interface emitted by the Rust
-/// transpiler.
+/// Special cases are the type names `Arena` and `View` which are reserved
+/// since traits of those names are part of the public interface emitted by
+/// the Rust transpiler.
 pub(super) fn is_reserved_type_name(name: &str) -> bool {
     matches!(
         name,
         "Any"
+            | "Arena"
             | "Arr"
             | "Array"
             | "Async"

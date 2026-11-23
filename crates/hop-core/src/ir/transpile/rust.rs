@@ -7,7 +7,6 @@ use super::transpiler::Transpiler;
 use crate::dependency_graph::DependencyGraph;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
-use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
 use crate::ir::ir_lambda::IrLambda;
 use crate::ir::value_id::ValueId;
@@ -27,8 +26,8 @@ use crate::symbols::type_name::TypeName;
 /// in the IR rather than the source name.
 ///
 /// Names are unique across the program, so no hop identifier can shadow
-/// another, and no name can collide with a keyword or with the `output`
-/// buffer.
+/// another, and no name can collide with a keyword, the `output` buffer or
+/// the `arena`.
 fn name_ident(name: ValueId) -> String {
     format!("v_{}", name.index())
 }
@@ -41,42 +40,18 @@ fn function_ident(function: &IrFunction) -> String {
     )
 }
 
-/// What a binding in the generated code holds.
-///
-/// Function parameters and pattern bindings are references into a value the
-/// generated code does not own, so holding the value is not the common case.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Binding {
-    /// Bound to the value.
-    Owned,
-    /// Bound to a reference to the value, or to an unsized view of it.
-    Borrowed,
-    /// Bound to a reference to a `Box` holding the value, which is how a
-    /// pattern binds a field that carries `Box` indirection.
-    BorrowedBoxed,
-}
-
-/// What a value transpiles to, before any demand is placed on it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NaturalForm {
-    /// A reference to the value: a string literal, a borrowed binding.
-    Reference,
-    /// A place holding the value: an owned binding, a field read.
-    Place,
-    /// A temporary: a fresh value, which nothing else holds.
-    Temporary,
-}
-
 pub struct RustTranspiler {
     /// Tracks whether escape_html function is used during transpilation
     needs_escape_html: bool,
-    /// Field positions carrying `Box` indirection.
+    /// Field positions carrying `&'a` indirection.
     /// We box in both directions for mutually recursive types.
     boxed_edges: HashSet<(TypeName, TypeName)>,
+    /// The declared types that hold a reference, and so take `<'a>`.
+    borrowing_types: HashSet<TypeName>,
     types: WriterTypeDeclarations,
-    /// What the binding for every name holds, and the name's type. Every
-    /// parameter, let and binder inserts its entry before anything reads it.
-    names: HashMap<ValueId, (Binding, WriterType)>,
+    /// The type of every name. Every parameter, let and binder inserts its
+    /// entry before anything reads it.
+    names: HashMap<ValueId, WriterType>,
 }
 
 impl RustTranspiler {
@@ -84,6 +59,7 @@ impl RustTranspiler {
         Self {
             needs_escape_html: false,
             boxed_edges: HashSet::new(),
+            borrowing_types: HashSet::new(),
             types: WriterTypeDeclarations::default(),
             names: HashMap::new(),
         }
@@ -111,126 +87,6 @@ impl RustTranspiler {
             .replace('\t', "\\t")
     }
 
-    fn name_binding(&self, name: ValueId) -> Binding {
-        self.names
-            .get(&name)
-            .map(|(binding, _)| *binding)
-            .unwrap_or_else(|| unreachable!("every name records a binding, and {name:?} has none"))
-    }
-
-    /// What the op a let binds transpiles to.
-    fn natural_form(&self, op: &WriterOp) -> NaturalForm {
-        match op {
-            WriterOp::Data(IrDataOp::StringLiteral(_)) => NaturalForm::Reference,
-            WriterOp::Data(IrDataOp::FieldAccess(..) | IrDataOp::TupleIndex(..)) => {
-                NaturalForm::Place
-            }
-            WriterOp::Data(
-                IrDataOp::IntLiteral(_)
-                | IrDataOp::FloatLiteral(_)
-                | IrDataOp::BoolLiteral(_)
-                | IrDataOp::Array(_)
-                | IrDataOp::Tuple(_)
-                | IrDataOp::Record(..)
-                | IrDataOp::Enum(..)
-                | IrDataOp::OptionSome(_)
-                | IrDataOp::OptionNone
-                | IrDataOp::StringConcat(_)
-                | IrDataOp::NumericAdd(..)
-                | IrDataOp::NumericSubtract(..)
-                | IrDataOp::NumericMultiply(..)
-                | IrDataOp::Equals(..)
-                | IrDataOp::LessThan(..)
-                | IrDataOp::LessThanOrEqual(..)
-                | IrDataOp::ArrayFromRange(..)
-                | IrDataOp::NumericNegation(..)
-                | IrDataOp::BoolNegation(_)
-                | IrDataOp::ArrayLength(_)
-                | IrDataOp::ArrayIsEmpty(_)
-                | IrDataOp::ArrayGet(..)
-                | IrDataOp::ArrayEnumerate(_)
-                | IrDataOp::StringIsEmpty(_)
-                | IrDataOp::OptionIsSome(_)
-                | IrDataOp::OptionIsNone(_)
-                | IrDataOp::IntToString(_)
-                | IrDataOp::FloatToInt(_)
-                | IrDataOp::IntToFloat(_),
-            )
-            | WriterOp::Call(..)
-            | WriterOp::Match(_)
-            | WriterOp::Lambda(_)
-            | WriterOp::Apply(..) => NaturalForm::Temporary,
-        }
-    }
-
-    /// A name where a reference to its value is wanted.
-    fn name_ref<'a>(&self, arena: &'a Arena<'a>, name: ValueId) -> Doc<'a> {
-        match self.name_binding(name) {
-            Binding::Borrowed => arena.text(name_ident(name)),
-            Binding::Owned => arena.text("&").append(arena.text(name_ident(name))),
-            Binding::BorrowedBoxed => arena.text("&**").append(arena.text(name_ident(name))),
-        }
-    }
-
-    /// A name where the place holding its value is wanted as an operand: of
-    /// an operator, a cast, a range, a condition or a match.
-    ///
-    /// Operands are why this is not left to auto-dereferencing, which covers
-    /// receivers and field reads but not operators: `&i32 < i32` does not
-    /// typecheck. A `Box` is stripped here rather than left in place:
-    /// patterns do not auto-dereference, so a match would not see past it.
-    /// A dereference binds tighter than any operator, so it needs no
-    /// parentheses. Receivers and field reads take the binding itself, since
-    /// auto-dereferencing sees through references and `Box` alike.
-    fn name_place<'a>(&self, arena: &'a Arena<'a>, name: ValueId) -> Doc<'a> {
-        match self.name_binding(name) {
-            Binding::Borrowed if Self::is_scalar(self.name_type(name)) => {
-                arena.text("*").append(arena.text(name_ident(name)))
-            }
-            Binding::Borrowed | Binding::Owned => arena.text(name_ident(name)),
-            Binding::BorrowedBoxed => arena.text("**").append(arena.text(name_ident(name))),
-        }
-    }
-
-    /// A name where an owned value is wanted. A scalar copies, and anything
-    /// else clones, since the binding keeps holding the value. `Clone`
-    /// resolves on a `Box` itself, handing back a `Box` where the value is
-    /// wanted, so a boxed binding is dereferenced before the clone.
-    fn name_owned<'a>(&self, arena: &'a Arena<'a>, name: ValueId) -> Doc<'a> {
-        let typ = self.name_type(name);
-        if Self::is_scalar(typ) {
-            return self.name_place(arena, name);
-        }
-        let method = match typ {
-            WriterType::Data(WriterDataType::Array(_)) => ".to_vec()",
-            WriterType::Data(WriterDataType::String) => ".to_string()",
-            _ => ".clone()",
-        };
-        let receiver = match self.name_binding(name) {
-            Binding::Owned | Binding::Borrowed => arena.text(name_ident(name)),
-            Binding::BorrowedBoxed => arena
-                .text("(**")
-                .append(arena.text(name_ident(name)))
-                .append(arena.text(")")),
-        };
-        receiver.append(arena.text(method))
-    }
-
-    /// The expression a value block produces. A result the block itself
-    /// bound and owns moves out, since nothing after the block can read it.
-    /// Anything else is copied or cloned.
-    fn block_result<'a>(&self, arena: &'a Arena<'a>, block: &WriterBlock) -> Doc<'a> {
-        let bound_here = block
-            .bindings
-            .iter()
-            .any(|let_| let_.binder.var == block.result);
-        if bound_here && self.name_binding(block.result) == Binding::Owned {
-            arena.text(name_ident(block.result))
-        } else {
-            self.name_owned(arena, block.result)
-        }
-    }
-
     /// Collect the named types that `t` stores inline.
     fn inline_refs(t: &WriterDataType, out: &mut BTreeSet<TypeName>) {
         match t {
@@ -247,7 +103,7 @@ impl RustTranspiler {
         }
     }
 
-    /// The field positions that need `Box` for every declared type to be
+    /// The field positions that need indirection for every declared type to be
     /// finitely sized, as `(declaring type, referenced type)` pairs.
     fn compute_boxed_edges(types: &WriterTypeDeclarations) -> HashSet<(TypeName, TypeName)> {
         let mut graph = DependencyGraph::new();
@@ -281,7 +137,7 @@ impl RustTranspiler {
         edges
     }
 
-    /// Whether a field of `owner` declaring type `t` carries a `Box`, which is
+    /// Whether a field of `owner` declaring type `t` carries indirection, which is
     /// the case when the field stores an inline reference to a type `owner`
     /// boxes. Mirrors `inline_refs`: descend `Option` and tuples, stop at
     /// `Array`.
@@ -299,7 +155,57 @@ impl RustTranspiler {
         }
     }
 
-    /// Transpile a field type, inserting `Box` where the field needs it.
+    fn compute_borrowing_types(&self) -> HashSet<TypeName> {
+        let fields = |name: &TypeName| -> Vec<WriterDataType> {
+            match self.types.record(name) {
+                Some(record) => record.fields.iter().map(|f| f.typ.clone()).collect(),
+                None => (self.types.enumeration(name).into_iter())
+                    .flat_map(|e| e.variants.iter())
+                    .flat_map(|v| v.fields.iter().map(|f| f.typ.clone()))
+                    .collect(),
+            }
+        };
+        let names: Vec<TypeName> = (self.types.records.iter().map(|r| r.name.clone()))
+            .chain(self.types.enums.iter().map(|e| e.name.clone()))
+            .collect();
+        let mut borrowing = HashSet::new();
+        loop {
+            let before = borrowing.len();
+            for name in &names {
+                if fields(name).iter().any(|t| {
+                    self.field_type_is_boxed(t, name.as_str())
+                        || Self::holds_reference(&borrowing, t)
+                }) {
+                    borrowing.insert(name.clone());
+                }
+            }
+            if borrowing.len() == before {
+                return borrowing;
+            }
+        }
+    }
+
+    fn holds_reference(borrowing: &HashSet<TypeName>, t: &WriterDataType) -> bool {
+        match t {
+            WriterDataType::Bool | WriterDataType::Int | WriterDataType::Float => false,
+            WriterDataType::String | WriterDataType::Array(_) => true,
+            WriterDataType::Option(inner) => Self::holds_reference(borrowing, inner),
+            WriterDataType::Tuple(elements) => {
+                (elements.iter()).any(|element| Self::holds_reference(borrowing, element))
+            }
+            WriterDataType::Record(name) | WriterDataType::Enum(name) => borrowing.contains(name),
+        }
+    }
+
+    fn named_type<'a>(&self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
+        if self.borrowing_types.iter().any(|t| t.as_str() == name) {
+            arena.text(format!("{name}<'a>"))
+        } else {
+            arena.text(name.to_string())
+        }
+    }
+
+    /// Transpile a field type, inserting `&'a` where the field needs it.
     fn transpile_field_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -308,17 +214,16 @@ impl RustTranspiler {
     ) -> Doc<'a> {
         if self.field_type_is_boxed(t, owner) {
             arena
-                .text("Box<")
+                .text("&'a ")
                 .append(self.transpile_data_type(arena, t))
-                .append(arena.text(">"))
         } else {
             self.transpile_data_type(arena, t)
         }
     }
 
-    /// Transpile a value stored into a field of `owner`, adding the `Box`
-    /// wrapping the field's declared type expects. The IR is well typed, so the
-    /// value's own type is that declared type.
+    /// Transpile a value stored into a field of `owner`, allocating it in the
+    /// arena where the field carries indirection. The IR is well typed, so the
+    /// value's own type is the field's declared type.
     fn transpile_field_value<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -328,16 +233,13 @@ impl RustTranspiler {
         if let WriterType::Data(value_type) = self.name_type(value)
             && self.field_type_is_boxed(value_type, owner)
         {
-            arena
-                .text("Box::new(")
-                .append(self.name_owned(arena, value))
-                .append(arena.text(")"))
+            arena.text(format!("arena.alloc({})", name_ident(value)))
         } else {
-            self.name_owned(arena, value)
+            arena.text(name_ident(value))
         }
     }
 
-    /// Whether reads of `field` off `record` have to strip a `Box`.
+    /// Whether reads of `field` off `record` go through a reference.
     fn field_access_is_boxed(&self, record: ValueId, field: &FieldName) -> bool {
         let WriterType::Data(WriterDataType::Record(name)) = self.name_type(record) else {
             unreachable!("field access objects are records");
@@ -355,8 +257,8 @@ impl RustTranspiler {
     }
 
     /// The pattern of an enum arm, and the bindings it introduces recorded.
-    /// Matching is on a reference, so a binding is a reference into the
-    /// subject, one `Box` deeper when the field carries indirection.
+    /// A field carrying indirection is matched through its reference, so
+    /// every binding holds a copy of the value.
     fn enum_arm_pattern(
         &mut self,
         variants: &[WriterVariant],
@@ -368,13 +270,8 @@ impl RustTranspiler {
             variant_name,
         } = arm_pattern;
         for (_, binder) in bindings {
-            let binding = if self.field_type_is_boxed(&binder.typ, type_name.as_str()) {
-                Binding::BorrowedBoxed
-            } else {
-                Binding::Borrowed
-            };
             self.names
-                .insert(binder.var, (binding, WriterType::Data(binder.typ.clone())));
+                .insert(binder.var, WriterType::Data(binder.typ.clone()));
         }
         if bindings.is_empty() {
             let has_fields = variants
@@ -391,9 +288,15 @@ impl RustTranspiler {
             let bound: Vec<String> = bindings
                 .iter()
                 .map(|(field, binder)| {
+                    let deref = if self.field_type_is_boxed(&binder.typ, type_name.as_str()) {
+                        "&"
+                    } else {
+                        ""
+                    };
                     format!(
-                        "{}: {}",
+                        "{}: {}{}",
                         Self::escape_ident(field.as_str()),
+                        deref,
                         name_ident(binder.var)
                     )
                 })
@@ -430,64 +333,7 @@ impl RustTranspiler {
             .clone()
     }
 
-    /// Whether `t` is one of hop's scalar types.
-    fn is_scalar(t: &WriterType) -> bool {
-        match t {
-            WriterType::Data(
-                WriterDataType::Bool | WriterDataType::Int | WriterDataType::Float,
-            ) => true,
-            WriterType::Data(
-                WriterDataType::String
-                | WriterDataType::Array(_)
-                | WriterDataType::Tuple(_)
-                | WriterDataType::Record(_)
-                | WriterDataType::Enum(_)
-                | WriterDataType::Option(_),
-            )
-            | WriterType::Function(_) => false,
-        }
-    }
-
-    /// Transpile a type for use in function parameters (uses references without explicit lifetimes)
-    fn transpile_param_type<'a>(&mut self, arena: &'a Arena<'a>, t: &WriterType) -> Doc<'a> {
-        match t {
-            WriterType::Data(WriterDataType::Bool) => arena.text("bool"),
-            WriterType::Data(WriterDataType::String) => arena.text("&str"),
-            WriterType::Data(WriterDataType::Float) => arena.text("f64"),
-            WriterType::Data(WriterDataType::Int) => arena.text("i32"),
-            WriterType::Data(WriterDataType::Array(elem)) => arena
-                .text("&[")
-                .append(self.transpile_data_type(arena, elem))
-                .append(arena.text("]")),
-            WriterType::Data(WriterDataType::Option(inner)) => arena
-                .text("&Option<")
-                .append(self.transpile_data_type(arena, inner))
-                .append(arena.text(">")),
-            WriterType::Data(WriterDataType::Tuple(_)) => {
-                arena.text("&").append(self.transpile_type(arena, t))
-            }
-            WriterType::Data(WriterDataType::Record(name) | WriterDataType::Enum(name)) => arena
-                .text("&")
-                .append(arena.text(name.as_str().to_string())),
-            WriterType::Function(WriterSignature {
-                parameters,
-                result: WriterResult::Writes,
-            }) => {
-                let output = arena.text("&mut String");
-                self.transpile_fn_type(arena, Some(output), parameters, None)
-            }
-            WriterType::Function(WriterSignature {
-                parameters,
-                result: WriterResult::Returns(result),
-            }) => {
-                let result = self.transpile_data_type(arena, result);
-                self.transpile_fn_type(arena, None, parameters, Some(result))
-            }
-        }
-    }
-
-    // A closure is passed as a reference to a trait object, with its
-    // parameters of the types a function's parameters have, and an Html
+    // A closure is passed as a reference to a trait object, and an Html
     // closure takes the buffer it writes to first, as an Html function does.
     fn transpile_fn_type<'a>(
         &mut self,
@@ -498,7 +344,7 @@ impl RustTranspiler {
     ) -> Doc<'a> {
         let mut param_docs: Vec<Doc<'a>> = output.into_iter().collect();
         for param in parameters {
-            param_docs.push(self.transpile_param_type(arena, param));
+            param_docs.push(self.transpile_type(arena, param));
         }
         let doc = arena
             .text("&dyn Fn(")
@@ -510,68 +356,29 @@ impl RustTranspiler {
         }
     }
 
-    // The parameters of a lambda, recorded as those of a function are.
-    fn transpile_lambda_params<'a>(
+    fn transpile_params<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        parameters: &'a [IrBinder<WriterType>],
+        parameters: impl IntoIterator<Item = &'a IrBinder<WriterType>>,
     ) -> Vec<Doc<'a>> {
-        (parameters.iter())
+        (parameters.into_iter())
             .map(|param| {
-                let binding = if Self::is_scalar(&param.typ) {
-                    Binding::Owned
-                } else {
-                    Binding::Borrowed
-                };
-                self.names.insert(param.var, (binding, param.typ.clone()));
+                self.names.insert(param.var, param.typ.clone());
                 arena
                     .text(name_ident(param.var))
                     .append(arena.text(": "))
-                    .append(self.transpile_param_type(arena, &param.typ))
+                    .append(self.transpile_type(arena, &param.typ))
             })
             .collect()
     }
 
-    /// The parameters of a function, recorded as owned scalars and borrowed
-    /// everything else.
-    fn transpile_function_params<'a>(
-        &mut self,
-        arena: &'a Arena<'a>,
-        parameters: &'a [crate::ir::ir_parameter::IrParameter<WriterType>],
-    ) -> Vec<Doc<'a>> {
-        parameters
-            .iter()
-            .map(|param| {
-                let binding = if Self::is_scalar(&param.binder.typ) {
-                    Binding::Owned
-                } else {
-                    Binding::Borrowed
-                };
-                self.names
-                    .insert(param.binder.var, (binding, param.binder.typ.clone()));
-                arena
-                    .text(name_ident(param.binder.var))
-                    .append(arena.text(": "))
-                    .append(self.transpile_param_type(arena, &param.binder.typ))
-            })
-            .collect()
-    }
-
-    /// The arguments of a call: scalars by value, everything else by
-    /// reference.
     fn transpile_arguments<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         args: &'a [ValueId],
     ) -> Vec<Doc<'a>> {
         args.iter()
-            .map(|arg| {
-                if Self::is_scalar(self.name_type(*arg)) {
-                    self.name_owned(arena, *arg)
-                } else {
-                    self.name_ref(arena, *arg)
-                }
-            })
+            .map(|arg| arena.text(name_ident(*arg)))
             .collect()
     }
 
@@ -580,11 +387,11 @@ impl RustTranspiler {
         arena: &'a Arena<'a>,
         page: &'a WriterPageDeclaration,
     ) -> Doc<'a> {
-        let struct_name = page.name.as_str();
+        let struct_name = self.page_type(arena, page);
         if page.parameters.is_empty() {
             arena
                 .text("pub struct ")
-                .append(arena.text(struct_name))
+                .append(struct_name)
                 .append(arena.text(" {}"))
         } else {
             let fields = arena.intersperse(
@@ -600,11 +407,23 @@ impl RustTranspiler {
             );
             arena
                 .text("pub struct ")
-                .append(arena.text(struct_name))
+                .append(struct_name)
                 .append(arena.text(" {"))
                 .append(arena.hardline().append(fields).nest(4))
                 .append(arena.hardline())
                 .append(arena.text("}"))
+        }
+    }
+
+    fn page_type<'a>(&self, arena: &'a Arena<'a>, page: &WriterPageDeclaration) -> Doc<'a> {
+        let borrows = page.parameters.iter().any(|param| match &param.binder.typ {
+            WriterType::Data(t) => Self::holds_reference(&self.borrowing_types, t),
+            WriterType::Function(_) => unreachable!("a page parameter is data"),
+        });
+        if borrows {
+            arena.text(format!("{}<'a>", page.name.as_str()))
+        } else {
+            arena.text(page.name.as_str().to_string())
         }
     }
 
@@ -633,7 +452,7 @@ impl RustTranspiler {
     /// block binds nothing, otherwise a block expression.
     fn transpile_arm_block<'a>(&mut self, arena: &'a Arena<'a>, block: &'a WriterBlock) -> Doc<'a> {
         if block.bindings.is_empty() {
-            return self.block_result(arena, block);
+            return arena.text(name_ident(block.result));
         }
         arena
             .text("{")
@@ -658,7 +477,6 @@ impl Transpiler for RustTranspiler {
     fn name_type(&self, name: ValueId) -> &WriterType {
         self.names
             .get(&name)
-            .map(|(_, typ)| typ)
             .unwrap_or_else(|| unreachable!("every name records its type, and {name:?} has none"))
     }
 
@@ -667,6 +485,7 @@ impl Transpiler for RustTranspiler {
         self.boxed_edges = Self::compute_boxed_edges(&program.types);
         self.types = program.types.clone();
         self.names.clear();
+        self.borrowing_types = self.compute_borrowing_types();
 
         let arena = &Arena::new();
 
@@ -680,10 +499,10 @@ impl Transpiler for RustTranspiler {
         } in &program.types.enums
         {
             result = result
-                .append(arena.text("#[derive(Clone, Debug)]"))
+                .append(arena.text("#[derive(Clone, Copy, Debug)]"))
                 .append(arena.line())
                 .append(arena.text("pub enum "))
-                .append(arena.text(enum_name.as_str()))
+                .append(self.named_type(arena, enum_name.as_str()))
                 .append(arena.text(" {"))
                 .append(arena.line());
 
@@ -730,10 +549,10 @@ impl Transpiler for RustTranspiler {
         } in &program.types.records
         {
             result = result
-                .append(arena.text("#[derive(Clone, Debug)]"))
+                .append(arena.text("#[derive(Clone, Copy, Debug)]"))
                 .append(arena.line())
                 .append(arena.text("pub struct "))
-                .append(arena.text(record_name.as_str()))
+                .append(self.named_type(arena, record_name.as_str()))
                 .append(arena.text(" {"))
                 .append(arena.line());
 
@@ -800,9 +619,9 @@ impl Transpiler for RustTranspiler {
         if !program.pages.is_empty() {
             let view_trait = arena.intersperse(
                 [
-                    arena.text("pub trait View {"),
-                    arena.text("    fn render(self) -> String;"),
-                    arena.text("    fn write(self, output: &mut String);"),
+                    arena.text("pub trait View<'a> {"),
+                    arena.text("    fn render(self, arena: &'a impl Arena) -> String;"),
+                    arena.text("    fn write(self, arena: &'a impl Arena, output: &mut String);"),
                     arena.text("}"),
                 ],
                 arena.hardline(),
@@ -813,11 +632,30 @@ impl Transpiler for RustTranspiler {
                 .append(result);
         }
 
+        let arena_trait = arena.intersperse(
+            [
+                arena.text("pub trait Arena {"),
+                arena.text("    fn alloc<T: Copy>(&self, value: T) -> &T;"),
+                arena.text("    fn alloc_str(&self, value: &str) -> &str;"),
+                arena.text("    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];"),
+                arena.text("    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]"),
+                arena.text("    where"),
+                arena.text("        I: IntoIterator<Item = T>,"),
+                arena.text("        I::IntoIter: ExactSizeIterator;"),
+                arena.text("}"),
+            ],
+            arena.hardline(),
+        );
+        result = arena_trait
+            .append(arena.hardline())
+            .append(arena.hardline())
+            .append(result);
+
         let preamble = arena.intersperse(
             [
                 arena.text("// Code generated by the hop compiler. DO NOT EDIT."),
                 arena.text("#![cfg_attr(rustfmt, rustfmt_skip)]"),
-                arena.text("#![allow(unused_parens, dead_code, clippy::all)]"),
+                arena.text("#![allow(unused_parens, unused_variables, dead_code, clippy::all)]"),
             ],
             arena.hardline(),
         );
@@ -842,6 +680,7 @@ impl Transpiler for RustTranspiler {
         page: &'a WriterPageDeclaration,
     ) -> Doc<'a> {
         let struct_name = name.as_str();
+        let struct_type = self.page_type(arena, page);
 
         let mut write_body = arena.nil();
 
@@ -857,7 +696,7 @@ impl Transpiler for RustTranspiler {
             );
             for param in &page.parameters {
                 self.names
-                    .insert(param.binder.var, (Binding::Owned, param.binder.typ.clone()));
+                    .insert(param.binder.var, param.binder.typ.clone());
             }
             write_body = write_body
                 .append(arena.text("let "))
@@ -871,20 +710,20 @@ impl Transpiler for RustTranspiler {
         write_body = write_body.append(self.transpile_statements(arena, &page.body));
 
         let write_fn = arena
-            .text("fn write(self, output: &mut String) {")
+            .text("fn write(self, arena: &'a impl Arena, output: &mut String) {")
             .append(arena.hardline().append(write_body).nest(4))
             .append(arena.hardline())
             .append(arena.text("}"));
 
         let render_fn = arena
-            .text("fn render(self) -> String {")
+            .text("fn render(self, arena: &'a impl Arena) -> String {")
             .append(
                 arena
                     .nil()
                     .append(arena.hardline())
                     .append(arena.text("let mut output: String = String::new();"))
                     .append(arena.hardline())
-                    .append(arena.text("self.write(&mut output);"))
+                    .append(arena.text("self.write(arena, &mut output);"))
                     .append(arena.hardline())
                     .append(arena.text("output"))
                     .nest(4),
@@ -893,8 +732,8 @@ impl Transpiler for RustTranspiler {
             .append(arena.text("}"));
 
         arena
-            .text("impl View for ")
-            .append(arena.text(struct_name))
+            .text("impl<'a> View<'a> for ")
+            .append(struct_type)
             .append(arena.text(" {"))
             .append(arena.hardline().append(render_fn).nest(4))
             .append(arena.hardline())
@@ -910,7 +749,7 @@ impl Transpiler for RustTranspiler {
         function: &'a IrFunction,
         args: &'a [ValueId],
     ) -> Doc<'a> {
-        let mut all_args: Vec<Doc<'a>> = vec![arena.text("output")];
+        let mut all_args: Vec<Doc<'a>> = vec![arena.text("arena"), arena.text("output")];
         all_args.extend(self.transpile_arguments(arena, args));
         arena
             .text(function_ident(function))
@@ -926,12 +765,17 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         let result = arena
             .text("fn ")
-            .append(arena.text(function_ident(&function.function)));
+            .append(arena.text(function_ident(&function.function)))
+            .append(arena.text("<'a>"));
+        let binders = function.parameters.iter().map(|param| &param.binder);
 
         match &function.body {
             WriterFunctionBody::Writes(statements) => {
-                let mut params: Vec<Doc<'a>> = vec![arena.text("output: &mut String")];
-                params.extend(self.transpile_function_params(arena, &function.parameters));
+                let mut params: Vec<Doc<'a>> = vec![
+                    arena.text("arena: &'a impl Arena"),
+                    arena.text("output: &mut String"),
+                ];
+                params.extend(self.transpile_params(arena, binders));
 
                 let result = result
                     .append(arena.text("("))
@@ -947,7 +791,8 @@ impl Transpiler for RustTranspiler {
                     .append(arena.hardline())
             }
             WriterFunctionBody::Returns(block) => {
-                let params = self.transpile_function_params(arena, &function.parameters);
+                let mut params: Vec<Doc<'a>> = vec![arena.text("arena: &'a impl Arena")];
+                params.extend(self.transpile_params(arena, binders));
                 let WriterResult::Returns(return_type) = &function.return_type else {
                     unreachable!("a function that returns has the type of a value as its result");
                 };
@@ -976,7 +821,8 @@ impl Transpiler for RustTranspiler {
         function: &'a IrFunction,
         args: &'a [ValueId],
     ) -> Doc<'a> {
-        let all_args = self.transpile_arguments(arena, args);
+        let mut all_args: Vec<Doc<'a>> = vec![arena.text("arena")];
+        all_args.extend(self.transpile_arguments(arena, args));
         arena
             .text(function_ident(function))
             .append(arena.text("("))
@@ -999,7 +845,7 @@ impl Transpiler for RustTranspiler {
         self.needs_escape_html = true;
         arena
             .text("write_escaped_html(")
-            .append(self.name_ref(arena, name))
+            .append(arena.text(name_ident(name)))
             .append(arena.text(", output);"))
     }
 
@@ -1020,13 +866,11 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(var_name))
             .append(arena.text(" in "))
             .append(arena.text(name_ident(array)))
-            .append(arena.text(".iter() {"));
+            .append(arena.text(".iter().copied() {"));
 
         if let Some(binder) = var {
-            self.names.insert(
-                binder.var,
-                (Binding::Borrowed, WriterType::Data(binder.typ.clone())),
-            );
+            self.names
+                .insert(binder.var, WriterType::Data(binder.typ.clone()));
         }
         doc.append(
             arena
@@ -1038,58 +882,19 @@ impl Transpiler for RustTranspiler {
         .append(arena.text("}"))
     }
 
-    /// Bind the value, and record how. A value something else already holds
-    /// is bound by reference, since nothing mutates it, and a use that wants
-    /// it owned copies at that use instead of here. A scalar is bound by
-    /// copy either way.
-    ///
-    /// A borrowed binding is annotated with the type a borrowed parameter
-    /// has, so a reference to a `String` or a `Vec` coerces to its unsized
-    /// view and every borrowed binding of a type has the same Rust type.
     fn transpile_let_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         let_: &'a IrBinding<WriterType, WriterOp>,
     ) -> Doc<'a> {
-        if let WriterOp::Lambda(lambda) = &let_.op {
-            self.names
-                .insert(let_.binder.var, (Binding::Owned, let_.binder.typ.clone()));
-            return arena
-                .text("let ")
-                .append(arena.text(name_ident(let_.binder.var)))
-                .append(arena.text(" = "))
-                .append(self.transpile_lambda(arena, lambda, &let_.binder.typ))
-                .append(arena.text(";"));
-        }
-        let natural = self.natural_form(&let_.op);
-        let scalar = Self::is_scalar(&let_.binder.typ);
-        let binding = match natural {
-            NaturalForm::Temporary => Binding::Owned,
-            NaturalForm::Reference | NaturalForm::Place if scalar => Binding::Owned,
-            NaturalForm::Reference | NaturalForm::Place => Binding::Borrowed,
-        };
-        self.names
-            .insert(let_.binder.var, (binding, let_.binder.typ.clone()));
-        let typ = match binding {
-            Binding::Owned => self.transpile_type(arena, &let_.binder.typ),
-            Binding::Borrowed => self.transpile_param_type(arena, &let_.binder.typ),
-            Binding::BorrowedBoxed => unreachable!("a let never binds through a Box"),
-        };
-        let value = self.transpile_op(arena, &let_.op, &let_.binder.typ);
-        let value = match natural {
-            NaturalForm::Temporary => value,
-            NaturalForm::Reference if scalar => arena.text("*").append(value),
-            NaturalForm::Reference | NaturalForm::Place if scalar => value,
-            NaturalForm::Reference => value,
-            NaturalForm::Place => arena.text("&").append(value),
-        };
+        self.names.insert(let_.binder.var, let_.binder.typ.clone());
         arena
             .text("let ")
             .append(arena.text(name_ident(let_.binder.var)))
             .append(arena.text(": "))
-            .append(typ)
+            .append(self.transpile_type(arena, &let_.binder.typ))
             .append(arena.text(" = "))
-            .append(value)
+            .append(self.transpile_op(arena, &let_.op, &let_.binder.typ))
             .append(arena.text(";"))
     }
 
@@ -1106,7 +911,7 @@ impl Transpiler for RustTranspiler {
             } => {
                 let if_doc = arena
                     .text("if ")
-                    .append(self.name_place(arena, *subject))
+                    .append(arena.text(name_ident(*subject)))
                     .append(arena.text(" "))
                     .append(self.transpile_braced_statements(arena, true_body));
                 if false_body.is_empty() {
@@ -1128,10 +933,8 @@ impl Transpiler for RustTranspiler {
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
-                    self.names.insert(
-                        binder.var,
-                        (Binding::Borrowed, WriterType::Data(binder.typ.clone())),
-                    );
+                    self.names
+                        .insert(binder.var, WriterType::Data(binder.typ.clone()));
                 }
 
                 let some_arm = arena
@@ -1159,7 +962,7 @@ impl Transpiler for RustTranspiler {
 
                 arena
                     .text("match ")
-                    .append(self.name_ref(arena, *subject))
+                    .append(arena.text(name_ident(*subject)))
                     .append(arena.text(" {"))
                     .append(
                         arena
@@ -1194,7 +997,7 @@ impl Transpiler for RustTranspiler {
 
                 arena
                     .text("match ")
-                    .append(self.name_ref(arena, *subject))
+                    .append(arena.text(name_ident(*subject)))
                     .append(arena.text(" {"))
                     .append(
                         arena
@@ -1229,7 +1032,7 @@ impl Transpiler for RustTranspiler {
         for let_ in &block.bindings {
             docs.push(self.transpile_let_statement(arena, let_));
         }
-        docs.push(self.block_result(arena, block));
+        docs.push(arena.text(name_ident(block.result)));
         arena.intersperse(docs, arena.hardline())
     }
 
@@ -1238,7 +1041,7 @@ impl Transpiler for RustTranspiler {
     }
 
     fn transpile_string_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
-        arena.text("String")
+        arena.text("&'a str")
     }
 
     fn transpile_float_type<'a>(&mut self, arena: &'a Arena<'a>) -> Doc<'a> {
@@ -1255,9 +1058,9 @@ impl Transpiler for RustTranspiler {
         element_type: &WriterDataType,
     ) -> Doc<'a> {
         arena
-            .text("Vec<")
+            .text("&'a [")
             .append(self.transpile_data_type(arena, element_type))
-            .append(arena.text(">"))
+            .append(arena.text("]"))
     }
 
     fn transpile_tuple_type<'a>(
@@ -1296,11 +1099,11 @@ impl Transpiler for RustTranspiler {
     }
 
     fn transpile_record_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
-        arena.text(name.to_string())
+        self.named_type(arena, name)
     }
 
     fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a> {
-        arena.text(name.to_string())
+        self.named_type(arena, name)
     }
 
     fn transpile_closure_type<'a>(
@@ -1308,13 +1111,27 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         signature: &WriterSignature,
     ) -> Doc<'a> {
-        self.transpile_param_type(arena, &WriterType::Function(signature.clone()))
+        match signature {
+            WriterSignature {
+                parameters,
+                result: WriterResult::Writes,
+            } => {
+                let output = arena.text("&mut String");
+                self.transpile_fn_type(arena, Some(output), parameters, None)
+            }
+            WriterSignature {
+                parameters,
+                result: WriterResult::Returns(result),
+            } => {
+                let result = self.transpile_data_type(arena, result);
+                self.transpile_fn_type(arena, None, parameters, Some(result))
+            }
+        }
     }
 
-    // The parameter types are written out, which makes the closure take
-    // references of any lifetime, as `&dyn Fn` asks. It captures by
-    // reference, which its let outlives, since a closure is never returned
-    // or held.
+    // A closure is bound as a reference to it, which its let extends to the
+    // enclosing block. It captures by reference, which that block outlives,
+    // since a closure is never returned or held.
     fn transpile_lambda<'a>(
         &mut self,
         arena: &'a Arena<'a>,
@@ -1325,9 +1142,9 @@ impl Transpiler for RustTranspiler {
         if matches!(lambda.body, WriterFunctionBody::Writes(_)) {
             params.push(arena.text("output: &mut String"));
         }
-        params.extend(self.transpile_lambda_params(arena, &lambda.parameters));
+        params.extend(self.transpile_params(arena, &lambda.parameters));
         let head = arena
-            .text("|")
+            .text("&|")
             .append(arena.intersperse(params, arena.text(", ")))
             .append(arena.text("|"));
         let (head, body) = match (&lambda.body, typ) {
@@ -1448,22 +1265,19 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        elem_type: &'a WriterDataType,
+        _elem_type: &'a WriterDataType,
     ) -> Doc<'a> {
         if elements.is_empty() {
-            arena
-                .text("Vec::<")
-                .append(self.transpile_data_type(arena, elem_type))
-                .append(arena.text(">::new()"))
+            arena.text("&[]")
         } else {
             let items: Vec<Doc<'a>> = elements
                 .iter()
-                .map(|e| self.name_owned(arena, *e))
+                .map(|e| arena.text(name_ident(*e)))
                 .collect();
             arena
-                .text("vec![")
+                .text("arena.alloc_slice(&[")
                 .append(arena.intersperse(items, arena.text(", ")))
-                .append(arena.text("]"))
+                .append(arena.text("])"))
         }
     }
 
@@ -1474,11 +1288,11 @@ impl Transpiler for RustTranspiler {
         end: ValueId,
     ) -> Doc<'a> {
         arena
-            .text("(")
-            .append(self.name_place(arena, start))
+            .text("arena.alloc_slice(&(")
+            .append(arena.text(name_ident(start)))
             .append(arena.text("..="))
-            .append(self.name_place(arena, end))
-            .append(arena.text(").collect::<Vec<i32>>()"))
+            .append(arena.text(name_ident(end)))
+            .append(arena.text(").collect::<Vec<i32>>())"))
     }
 
     fn transpile_tuple_literal<'a>(
@@ -1489,7 +1303,7 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         let items: Vec<Doc<'a>> = elements
             .iter()
-            .map(|e| self.name_owned(arena, *e))
+            .map(|e| arena.text(name_ident(*e)))
             .collect();
         arena
             .text("(")
@@ -1520,12 +1334,10 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        // Strings compare by reference. The operands arrive as a mix of
-        // `String`, `str` and `&str`, and `str` compares with neither `&str`
-        // nor itself behind a reference, but `&_` compares across all of them.
-        self.name_ref(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" == "))
-            .append(self.name_ref(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_bool_equals<'a>(
@@ -1534,9 +1346,10 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        self.name_place(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" == "))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_int_equals<'a>(
@@ -1545,9 +1358,10 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        self.name_place(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" == "))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_float_equals<'a>(
@@ -1556,9 +1370,10 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        self.name_place(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" == "))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_int_less_than<'a>(
@@ -1567,9 +1382,10 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        self.name_place(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" < "))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_float_less_than<'a>(
@@ -1578,9 +1394,10 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        self.name_place(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" < "))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_int_less_than_or_equal<'a>(
@@ -1589,9 +1406,10 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        self.name_place(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" <= "))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_float_less_than_or_equal<'a>(
@@ -1600,13 +1418,14 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        self.name_place(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" <= "))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_not<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a> {
-        arena.text("!").append(self.name_place(arena, operand))
+        arena.text("!").append(arena.text(name_ident(operand)))
     }
 
     fn transpile_int_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a> {
@@ -1616,7 +1435,7 @@ impl Transpiler for RustTranspiler {
     }
 
     fn transpile_float_negation<'a>(&mut self, arena: &'a Arena<'a>, operand: ValueId) -> Doc<'a> {
-        arena.text("-").append(self.name_place(arena, operand))
+        arena.text("-").append(arena.text(name_ident(operand)))
     }
 
     fn transpile_string_concat<'a>(
@@ -1625,28 +1444,13 @@ impl Transpiler for RustTranspiler {
         parts: &'a [ValueId],
     ) -> Doc<'a> {
         if parts.is_empty() {
-            return arena.text("String::new()");
+            return arena.text("\"\"");
         }
-        let mut body = arena
-            .nil()
-            .append(arena.hardline())
-            .append(arena.text("let mut s: String = String::new();"));
-        for part in parts {
-            body = body
-                .append(arena.hardline())
-                .append(arena.text("s.push_str("))
-                .append(self.name_ref(arena, *part))
-                .append(arena.text(");"));
-        }
+        let parts = parts.iter().map(|part| arena.text(name_ident(*part)));
         arena
-            .text("{")
-            .append(
-                body.append(arena.hardline())
-                    .append(arena.text("s"))
-                    .nest(4),
-            )
-            .append(arena.hardline())
-            .append(arena.text("}"))
+            .text("arena.alloc_str(&[")
+            .append(arena.intersperse(parts, arena.text(", ")))
+            .append(arena.text("].concat())"))
     }
 
     fn transpile_int_add<'a>(
@@ -1658,7 +1462,7 @@ impl Transpiler for RustTranspiler {
         arena
             .text(name_ident(left))
             .append(arena.text(".wrapping_add("))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
             .append(arena.text(")"))
     }
 
@@ -1668,9 +1472,10 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        self.name_place(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" + "))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_int_subtract<'a>(
@@ -1682,7 +1487,7 @@ impl Transpiler for RustTranspiler {
         arena
             .text(name_ident(left))
             .append(arena.text(".wrapping_sub("))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
             .append(arena.text(")"))
     }
 
@@ -1692,9 +1497,10 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        self.name_place(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" - "))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_int_multiply<'a>(
@@ -1706,7 +1512,7 @@ impl Transpiler for RustTranspiler {
         arena
             .text(name_ident(left))
             .append(arena.text(".wrapping_mul("))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
             .append(arena.text(")"))
     }
 
@@ -1716,9 +1522,10 @@ impl Transpiler for RustTranspiler {
         left: ValueId,
         right: ValueId,
     ) -> Doc<'a> {
-        self.name_place(arena, left)
+        arena
+            .text(name_ident(left))
             .append(arena.text(" * "))
-            .append(self.name_place(arena, right))
+            .append(arena.text(name_ident(right)))
     }
 
     fn transpile_record_literal<'a>(
@@ -1790,7 +1597,7 @@ impl Transpiler for RustTranspiler {
         match value {
             Some(inner) => arena
                 .text("Some(")
-                .append(self.name_owned(arena, inner))
+                .append(arena.text(name_ident(inner)))
                 .append(arena.text(")")),
             None => arena
                 .text("None::<")
@@ -1810,7 +1617,7 @@ impl Transpiler for RustTranspiler {
                 true_body,
                 false_body,
             } => {
-                let subject_doc = self.name_place(arena, *subject);
+                let subject_doc = arena.text(name_ident(*subject));
                 let true_arm = arena
                     .text("true => ")
                     .append(self.transpile_arm_block(arena, true_body))
@@ -1845,12 +1652,10 @@ impl Transpiler for RustTranspiler {
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
-                    self.names.insert(
-                        binder.var,
-                        (Binding::Borrowed, WriterType::Data(binder.typ.clone())),
-                    );
+                    self.names
+                        .insert(binder.var, WriterType::Data(binder.typ.clone()));
                 }
-                let subject_doc = self.name_ref(arena, *subject);
+                let subject_doc = arena.text(name_ident(*subject));
                 let some_arm = arena
                     .text(some_pattern)
                     .append(arena.text(" => "))
@@ -1877,7 +1682,7 @@ impl Transpiler for RustTranspiler {
             }
             WriterSwitch::Enum { subject, arms } => {
                 let variants = self.subject_variants(*subject);
-                let subject_doc = self.name_ref(arena, *subject);
+                let subject_doc = arena.text(name_ident(*subject));
                 let arm_docs: Vec<Doc<'a>> = arms
                     .iter()
                     .map(|arm: &'a WriterEnumMatchArm<WriterBlock>| {
@@ -1929,25 +1734,24 @@ impl Transpiler for RustTranspiler {
     ) -> Doc<'a> {
         arena
             .text("usize::try_from(")
-            .append(self.name_place(arena, index))
+            .append(arena.text(name_ident(index)))
             .append(arena.text(").ok().and_then(|index| "))
             .append(arena.text(name_ident(array)))
-            .append(arena.text(".get(index)).cloned()"))
+            .append(arena.text(".get(index)).copied()"))
     }
 
     fn transpile_array_enumerate<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         array: ValueId,
-        element_type: &'a WriterDataType,
+        _element_type: &'a WriterDataType,
     ) -> Doc<'a> {
         arena
-            .text(name_ident(array))
+            .text("arena.alloc_iter(")
+            .append(arena.text(name_ident(array)))
             .append(arena.text(
-                ".iter().cloned().enumerate().map(|(index, element)| (index as i32, element)).collect::<Vec<(i32, ",
+                ".iter().copied().enumerate().map(|(index, element)| (index as i32, element)))",
             ))
-            .append(self.transpile_data_type(arena, element_type))
-            .append(arena.text(")>>()"))
     }
 
     fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a> {
@@ -1970,16 +1774,17 @@ impl Transpiler for RustTranspiler {
 
     fn transpile_int_to_string<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a> {
         arena
-            .text(name_ident(value))
-            .append(arena.text(".to_string()"))
+            .text("arena.alloc_str(&")
+            .append(arena.text(name_ident(value)))
+            .append(arena.text(".to_string())"))
     }
 
     fn transpile_float_to_int<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a> {
-        self.name_place(arena, value).append(arena.text(" as i32"))
+        arena.text(name_ident(value)).append(arena.text(" as i32"))
     }
 
     fn transpile_int_to_float<'a>(&mut self, arena: &'a Arena<'a>, value: ValueId) -> Doc<'a> {
-        self.name_place(arena, value).append(arena.text(" as f64"))
+        arena.text(name_ident(value)).append(arena.text(" as f64"))
     }
 }
 
@@ -2049,11 +1854,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -2068,40 +1883,40 @@ mod tests {
                     }
                 }
 
-                pub struct Test {
-                    pub prefix: String,
+                pub struct Test<'a> {
+                    pub prefix: &'a str,
                 }
 
-                fn render_countdown_0(output: &mut String, v_0: i32, v_1: &dyn Fn(&mut String, i32)) {
+                fn render_countdown_0<'a>(arena: &'a impl Arena, output: &mut String, v_0: i32, v_1: &dyn Fn(&mut String, i32)) {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_0 <= v_2;
                     if v_3 {} else {
                         let v_6: i32 = 1_i32;
                         let v_7: i32 = v_0.wrapping_sub(v_6);
                         v_1(&mut *output, v_0);
-                        render_countdown_0(output, v_7, v_1);
+                        render_countdown_0(arena, output, v_7, v_1);
                     }
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { prefix: v_11 } = self;
-                        let v_18 = |output: &mut String, v_12: i32| {
-                            let v_13: String = v_12.to_string();
+                        let v_18: &dyn Fn(&mut String, i32) = &|output: &mut String, v_12: i32| {
+                            let v_13: &'a str = arena.alloc_str(&v_12.to_string());
                             output.push_str("<li>");
-                            write_escaped_html(&v_11, output);
-                            write_escaped_html(&v_13, output);
+                            write_escaped_html(v_11, output);
+                            write_escaped_html(v_13, output);
                             output.push_str("</li>");
                         };
                         let v_20: i32 = 3_i32;
                         output.push_str("<ul>");
-                        render_countdown_0(output, v_20, &v_18);
+                        render_countdown_0(arena, output, v_20, v_18);
                         output.push_str("</ul>");
                     }
                 }
@@ -2146,11 +1961,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -2169,7 +1994,7 @@ mod tests {
                     pub double: bool,
                 }
 
-                fn render_sum_0(v_0: i32, v_1: &dyn Fn(i32) -> i32) -> i32 {
+                fn render_sum_0<'a>(arena: &'a impl Arena, v_0: i32, v_1: &dyn Fn(i32) -> i32) -> i32 {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_0 <= v_2;
                     let v_22: i32 = match v_3 {
@@ -2181,7 +2006,7 @@ mod tests {
                             let v_5: i32 = v_1(v_0);
                             let v_6: i32 = 1_i32;
                             let v_7: i32 = v_0.wrapping_sub(v_6);
-                            let v_8: i32 = render_sum_0(v_7, v_1);
+                            let v_8: i32 = render_sum_0(arena, v_7, v_1);
                             let v_9: i32 = v_5.wrapping_add(v_8);
                             v_9
                         },
@@ -2189,16 +2014,16 @@ mod tests {
                     v_22
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { double: v_11 } = self;
-                        let v_16 = |v_12: i32| -> i32 {
+                        let v_16: &dyn Fn(i32) -> i32 = &|v_12: i32| -> i32 {
                             let v_21: i32 = match v_11 {
                                 true => {
                                     let v_13: i32 = 2_i32;
@@ -2210,9 +2035,9 @@ mod tests {
                             v_21
                         };
                         let v_17: i32 = 3_i32;
-                        let v_18: i32 = render_sum_0(v_17, &v_16);
-                        let v_19: String = v_18.to_string();
-                        write_escaped_html(&v_19, output);
+                        let v_18: i32 = render_sum_0(arena, v_17, v_16);
+                        let v_19: &'a str = arena.alloc_str(&v_18.to_string());
+                        write_escaped_html(v_19, output);
                     }
                 }
             "#]],
@@ -2252,16 +2077,26 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 pub struct Test {}
 
-                fn render_wrap_0(output: &mut String, v_0: i32, v_1: &dyn Fn(&mut String, &dyn Fn(&mut String))) {
+                fn render_wrap_0<'a>(arena: &'a impl Arena, output: &mut String, v_0: i32, v_1: &dyn Fn(&mut String, &dyn Fn(&mut String))) {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_0 <= v_2;
                     if v_3 {
@@ -2269,28 +2104,28 @@ mod tests {
                     } else {
                         let v_5: i32 = 1_i32;
                         let v_6: i32 = v_0.wrapping_sub(v_5);
-                        let v_16 = |output: &mut String| {
-                            render_wrap_0(output, v_6, v_1);
+                        let v_16: &dyn Fn(&mut String) = &|output: &mut String| {
+                            render_wrap_0(arena, output, v_6, v_1);
                         };
-                        v_1(&mut *output, &v_16);
+                        v_1(&mut *output, v_16);
                     }
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
-                        let v_13 = |output: &mut String, v_10: &dyn Fn(&mut String)| {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
+                        let v_13: &dyn Fn(&mut String, &dyn Fn(&mut String)) = &|output: &mut String, v_10: &dyn Fn(&mut String)| {
                             output.push_str("<b>");
                             v_10(&mut *output);
                             output.push_str("</b>");
                         };
                         let v_14: i32 = 2_i32;
-                        render_wrap_0(output, v_14, &v_13);
+                        render_wrap_0(arena, output, v_14, v_13);
                     }
                 }
             "#]],
@@ -2327,11 +2162,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -2346,11 +2191,11 @@ mod tests {
                     }
                 }
 
-                pub struct Test {
-                    pub label: String,
+                pub struct Test<'a> {
+                    pub label: &'a str,
                 }
 
-                fn render_width_0(v_0: &dyn Fn(&mut String), v_1: i32) -> i32 {
+                fn render_width_0<'a>(arena: &'a impl Arena, v_0: &dyn Fn(&mut String), v_1: i32) -> i32 {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_1 <= v_2;
                     let v_23: i32 = match v_3 {
@@ -2361,7 +2206,7 @@ mod tests {
                         false => {
                             let v_5: i32 = 1_i32;
                             let v_6: i32 = v_1.wrapping_sub(v_5);
-                            let v_7: i32 = render_width_0(v_0, v_6);
+                            let v_7: i32 = render_width_0(arena, v_0, v_6);
                             let v_8: i32 = 2_i32;
                             let v_9: i32 = v_8.wrapping_add(v_7);
                             v_9
@@ -2370,24 +2215,24 @@ mod tests {
                     v_23
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { label: v_11 } = self;
                         let v_18: i32 = 3_i32;
-                        let v_22 = |output: &mut String| {
+                        let v_22: &dyn Fn(&mut String) = &|output: &mut String| {
                             output.push_str("<b>");
-                            write_escaped_html(&v_11, output);
+                            write_escaped_html(v_11, output);
                             output.push_str("</b>");
                         };
-                        let v_19: i32 = render_width_0(&v_22, v_18);
-                        let v_20: String = v_19.to_string();
-                        write_escaped_html(&v_20, output);
+                        let v_19: i32 = render_width_0(arena, v_22, v_18);
+                        let v_20: &'a str = arena.alloc_str(&v_19.to_string());
+                        write_escaped_html(v_20, output);
                     }
                 }
             "#]],
@@ -2433,11 +2278,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -2456,7 +2311,7 @@ mod tests {
                     pub show: bool,
                 }
 
-                fn render_count_0(v_0: i32, v_1: &dyn Fn(&mut String, i32)) -> i32 {
+                fn render_count_0<'a>(arena: &'a impl Arena, v_0: i32, v_1: &dyn Fn(&mut String, i32)) -> i32 {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_0 <= v_2;
                     let v_23: i32 = match v_3 {
@@ -2467,7 +2322,7 @@ mod tests {
                         false => {
                             let v_5: i32 = 1_i32;
                             let v_6: i32 = v_0.wrapping_sub(v_5);
-                            let v_7: i32 = render_count_0(v_6, v_1);
+                            let v_7: i32 = render_count_0(arena, v_6, v_1);
                             let v_8: i32 = 1_i32;
                             let v_9: i32 = v_8.wrapping_add(v_7);
                             v_9
@@ -2476,23 +2331,23 @@ mod tests {
                     v_23
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { show: v_11 } = self;
                         let v_22: i32 = match v_11 {
                             true => {
-                                let v_15 = |output: &mut String, v_12: i32| {
-                                    let v_13: String = v_12.to_string();
-                                    write_escaped_html(&v_13, output);
+                                let v_15: &dyn Fn(&mut String, i32) = &|output: &mut String, v_12: i32| {
+                                    let v_13: &'a str = arena.alloc_str(&v_12.to_string());
+                                    write_escaped_html(v_13, output);
                                 };
                                 let v_16: i32 = 3_i32;
-                                let v_17: i32 = render_count_0(v_16, &v_15);
+                                let v_17: i32 = render_count_0(arena, v_16, v_15);
                                 v_17
                             },
                             false => {
@@ -2500,8 +2355,8 @@ mod tests {
                                 v_18
                             },
                         };
-                        let v_20: String = v_22.to_string();
-                        write_escaped_html(&v_20, output);
+                        let v_20: &'a str = arena.alloc_str(&v_22.to_string());
+                        write_escaped_html(v_20, output);
                     }
                 }
             "#]],
@@ -2545,11 +2400,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -2564,40 +2429,40 @@ mod tests {
                     }
                 }
 
-                pub struct Test {
-                    pub name: String,
+                pub struct Test<'a> {
+                    pub name: &'a str,
                 }
 
-                fn render_nest_0(output: &mut String, v_8: i32, v_9: &dyn Fn(&mut String)) {
+                fn render_nest_0<'a>(arena: &'a impl Arena, output: &mut String, v_8: i32, v_9: &dyn Fn(&mut String)) {
                     let v_10: i32 = 0_i32;
                     let v_11: bool = v_10 < v_8;
                     if v_11 {
                         let v_12: i32 = 1_i32;
                         let v_13: i32 = v_8.wrapping_sub(v_12);
                         output.push_str("<div>");
-                        render_nest_0(output, v_13, v_9);
+                        render_nest_0(arena, output, v_13, v_9);
                         output.push_str("</div>");
                     } else {
                         v_9(&mut *output);
                     }
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { name: v_0 } = self;
                         let v_1: i32 = 2_i32;
-                        let v_20 = |output: &mut String| {
+                        let v_20: &dyn Fn(&mut String) = &|output: &mut String| {
                             output.push_str("<b>");
-                            write_escaped_html(&v_0, output);
+                            write_escaped_html(v_0, output);
                             output.push_str("</b>");
                         };
-                        render_nest_0(output, v_1, &v_20);
+                        render_nest_0(arena, output, v_1, v_20);
                     }
                 }
             "#]],
@@ -2622,11 +2487,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -2641,7 +2516,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Debug)]
+                #[derive(Clone, Copy, Debug)]
                 pub struct Holder {
                     pub nothing: (),
                 }
@@ -2650,22 +2525,22 @@ mod tests {
                     pub unit: (),
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { unit: v_0 } = self;
                         let v_1: () = ();
-                        let v_2: Holder = Holder { nothing: v_1.clone() };
-                        let v_3: &() = &v_2.nothing;
-                        let v_4: Vec<()> = vec![v_0.clone(), v_3.clone()];
+                        let v_2: Holder = Holder { nothing: v_1 };
+                        let v_3: () = v_2.nothing;
+                        let v_4: &'a [()] = arena.alloc_slice(&[v_0, v_3]);
                         let v_5: i32 = v_4.len() as i32;
-                        let v_6: String = v_5.to_string();
-                        write_escaped_html(&v_6, output);
+                        let v_6: &'a str = arena.alloc_str(&v_5.to_string());
+                        write_escaped_html(v_6, output);
                     }
                 }
             "#]],
@@ -2685,23 +2560,33 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 pub struct Test {}
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         output.push_str("<h1>Hello, World!</h1>");
                     }
                 }
@@ -2728,11 +2613,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -2749,32 +2644,32 @@ mod tests {
 
                 pub struct First {}
 
-                pub struct Second {
-                    pub title: String,
+                pub struct Second<'a> {
+                    pub title: &'a str,
                 }
 
-                impl View for First {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for First {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         output.push_str("<h1>First</h1>");
                     }
                 }
 
-                impl View for Second {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Second<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Second { title: v_4 } = self;
-                        write_escaped_html(&v_4, output);
+                        write_escaped_html(v_4, output);
                     }
                 }
             "#]],
@@ -2797,25 +2692,35 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 pub struct Test {
                     pub show: bool,
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { show: v_0 } = self;
                         if v_0 {
                             output.push_str("<h1>Visible</h1>");
@@ -2841,11 +2746,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -2862,20 +2777,20 @@ mod tests {
 
                 pub struct Test {}
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let v_0: i32 = 1_i32;
                         let v_1: i32 = 3_i32;
-                        let v_2: Vec<i32> = (v_0..=v_1).collect::<Vec<i32>>();
-                        for v_3 in v_2.iter() {
-                            let v_4: String = v_3.to_string();
-                            write_escaped_html(&v_4, output);
+                        let v_2: &'a [i32] = arena.alloc_slice(&(v_0..=v_1).collect::<Vec<i32>>());
+                        for v_3 in v_2.iter().copied() {
+                            let v_4: &'a str = arena.alloc_str(&v_3.to_string());
+                            write_escaped_html(v_4, output);
                         }
                     }
                 }
@@ -2899,11 +2814,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -2920,17 +2845,17 @@ mod tests {
 
                 pub struct Test {}
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
-                        let v_0: &str = "x";
-                        let v_1: Option<String> = Some(v_0.to_string());
-                        match &v_1 {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
+                        let v_0: &'a str = "x";
+                        let v_1: Option<&'a str> = Some(v_0);
+                        match v_1 {
                             Some(v_9) => {
                                 output.push_str("some: ");
                                 write_escaped_html(v_9, output);
@@ -2961,11 +2886,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -2980,20 +2915,20 @@ mod tests {
                     }
                 }
 
-                pub struct Test {
-                    pub opt: Option<String>,
+                pub struct Test<'a> {
+                    pub opt: Option<&'a str>,
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { opt: v_0 } = self;
-                        match &v_0 {
+                        match v_0 {
                             Some(v_8) => {
                                 output.push_str("some: ");
                                 write_escaped_html(v_8, output);
@@ -3009,7 +2944,7 @@ mod tests {
     }
 
     #[test]
-    fn recursive_record_boxes_recursive_field() {
+    fn recursive_record_refers_to_recursive_field() {
         check(
             indoc! {r#"
                 record Node {
@@ -3026,11 +2961,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -3045,28 +2990,28 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Debug)]
-                pub struct Node {
+                #[derive(Clone, Copy, Debug)]
+                pub struct Node<'a> {
                     pub value: i32,
-                    pub next: Box<Option<Node>>,
+                    pub next: &'a Option<Node<'a>>,
                 }
 
-                pub struct Test {
-                    pub node: Node,
+                pub struct Test<'a> {
+                    pub node: Node<'a>,
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { node: v_0 } = self;
                         let v_1: i32 = v_0.value;
-                        let v_2: String = v_1.to_string();
-                        write_escaped_html(&v_2, output);
+                        let v_2: &'a str = arena.alloc_str(&v_1.to_string());
+                        write_escaped_html(v_2, output);
                     }
                 }
             "#]],
@@ -3074,7 +3019,7 @@ mod tests {
     }
 
     #[test]
-    fn recursive_enum_boxes_recursive_field() {
+    fn recursive_enum_refers_to_recursive_field() {
         check(
             indoc! {r#"
                 enum IntList {
@@ -3094,29 +3039,39 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
                 }
 
-                #[derive(Clone, Debug)]
-                pub enum IntList {
-                    Cons { head: i32, tail: Box<IntList> },
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
+                }
+
+                #[derive(Clone, Copy, Debug)]
+                pub enum IntList<'a> {
+                    Cons { head: i32, tail: &'a IntList<'a> },
                     Nil,
                 }
 
                 pub struct Test {}
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         output.push_str("hello");
                     }
                 }
@@ -3125,7 +3080,7 @@ mod tests {
     }
 
     #[test]
-    fn recursive_record_literal_boxes_field_values() {
+    fn recursive_record_literal_allocates_field_values() {
         check(
             indoc! {r#"
                 record Node {
@@ -3143,11 +3098,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -3162,31 +3127,31 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Debug)]
-                pub struct Node {
+                #[derive(Clone, Copy, Debug)]
+                pub struct Node<'a> {
                     pub value: i32,
-                    pub next: Box<Option<Node>>,
+                    pub next: &'a Option<Node<'a>>,
                 }
 
                 pub struct Test {}
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let v_0: i32 = 2_i32;
                         let v_1: i32 = 1_i32;
-                        let v_2: Option<Node> = None::<Node>;
-                        let v_3: Node = Node { value: v_1, next: Box::new(v_2.clone()) };
-                        let v_4: Option<Node> = Some(v_3.clone());
-                        let v_5: Node = Node { value: v_0, next: Box::new(v_4.clone()) };
+                        let v_2: Option<Node<'a>> = None::<Node<'a>>;
+                        let v_3: Node<'a> = Node { value: v_1, next: arena.alloc(v_2) };
+                        let v_4: Option<Node<'a>> = Some(v_3);
+                        let v_5: Node<'a> = Node { value: v_0, next: arena.alloc(v_4) };
                         let v_6: i32 = v_5.value;
-                        let v_7: String = v_6.to_string();
-                        write_escaped_html(&v_7, output);
+                        let v_7: &'a str = arena.alloc_str(&v_6.to_string());
+                        write_escaped_html(v_7, output);
                     }
                 }
             "#]],
@@ -3194,7 +3159,7 @@ mod tests {
     }
 
     #[test]
-    fn matching_a_boxed_enum_field_derefs_past_the_box() {
+    fn matching_a_recursive_enum_field_derefs_the_reference() {
         check(
             indoc! {r#"
                 enum Expr {
@@ -3223,11 +3188,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -3242,31 +3217,31 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Debug)]
-                pub enum Expr {
-                    Literal { value: String },
-                    Neg { inner: Box<Expr> },
+                #[derive(Clone, Copy, Debug)]
+                pub enum Expr<'a> {
+                    Literal { value: &'a str },
+                    Neg { inner: &'a Expr<'a> },
                 }
 
-                pub struct Test {
-                    pub e: Expr,
+                pub struct Test<'a> {
+                    pub e: Expr<'a>,
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { e: v_0 } = self;
-                        match &v_0 {
+                        match v_0 {
                             Expr::Literal { .. } => {
                                 output.push_str("lit");
                             }
-                            Expr::Neg { inner: v_11 } => {
-                                match &**v_11 {
+                            Expr::Neg { inner: &v_11 } => {
+                                match v_11 {
                                     Expr::Literal { value: v_12 } => {
                                         write_escaped_html(v_12, output);
                                     }
@@ -3283,7 +3258,7 @@ mod tests {
     }
 
     #[test]
-    fn matching_a_boxed_option_field_derefs_past_the_box() {
+    fn matching_a_recursive_option_field_derefs_the_reference() {
         check(
             indoc! {r#"
                 record Node {
@@ -3303,11 +3278,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -3322,29 +3307,29 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Debug)]
-                pub struct Node {
-                    pub value: String,
-                    pub next: Box<Option<Node>>,
+                #[derive(Clone, Copy, Debug)]
+                pub struct Node<'a> {
+                    pub value: &'a str,
+                    pub next: &'a Option<Node<'a>>,
                 }
 
-                pub struct Test {
-                    pub node: Node,
+                pub struct Test<'a> {
+                    pub node: Node<'a>,
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { node: v_0 } = self;
-                        let v_1: &Option<Node> = &*v_0.next;
+                        let v_1: Option<Node<'a>> = *v_0.next;
                         match v_1 {
                             Some(v_9) => {
-                                let v_3: &str = &v_9.value;
+                                let v_3: &'a str = v_9.value;
                                 write_escaped_html(v_3, output);
                             }
                             None => {
@@ -3358,7 +3343,7 @@ mod tests {
     }
 
     #[test]
-    fn matching_an_option_bound_from_a_boxed_enum_field() {
+    fn matching_an_option_bound_from_a_recursive_enum_field() {
         check(
             indoc! {r#"
                 enum Chain {
@@ -3385,35 +3370,45 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
                 }
 
-                #[derive(Clone, Debug)]
-                pub enum Chain {
-                    Link { next: Box<Option<Chain>> },
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
+                }
+
+                #[derive(Clone, Copy, Debug)]
+                pub enum Chain<'a> {
+                    Link { next: &'a Option<Chain<'a>> },
                     End,
                 }
 
-                pub struct Test {
-                    pub c: Chain,
+                pub struct Test<'a> {
+                    pub c: Chain<'a>,
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { c: v_0 } = self;
-                        match &v_0 {
-                            Chain::Link { next: v_10 } => {
-                                match &**v_10 {
+                        match v_0 {
+                            Chain::Link { next: &v_10 } => {
+                                match v_10 {
                                     Some(_) => {
                                         output.push_str("more");
                                     }
@@ -3433,7 +3428,7 @@ mod tests {
     }
 
     #[test]
-    fn recursive_enum_literal_boxes_field_values() {
+    fn recursive_enum_literal_allocates_field_values() {
         check(
             indoc! {r#"
                 enum IntList {
@@ -3457,11 +3452,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -3476,29 +3481,29 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Debug)]
-                pub enum IntList {
-                    Cons { head: i32, tail: Box<IntList> },
+                #[derive(Clone, Copy, Debug)]
+                pub enum IntList<'a> {
+                    Cons { head: i32, tail: &'a IntList<'a> },
                     Nil,
                 }
 
                 pub struct Test {}
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let v_0: i32 = 1_i32;
-                        let v_1: IntList = IntList::Nil;
-                        let v_2: IntList = IntList::Cons { head: v_0, tail: Box::new(v_1.clone()) };
-                        match &v_2 {
+                        let v_1: IntList<'a> = IntList::Nil;
+                        let v_2: IntList<'a> = IntList::Cons { head: v_0, tail: arena.alloc(v_1) };
+                        match v_2 {
                             IntList::Cons { head: v_10, .. } => {
-                                let v_4: String = v_10.to_string();
-                                write_escaped_html(&v_4, output);
+                                let v_4: &'a str = arena.alloc_str(&v_10.to_string());
+                                write_escaped_html(v_4, output);
                             }
                             IntList::Nil => {
                                 output.push_str("done");
@@ -3511,7 +3516,7 @@ mod tests {
     }
 
     #[test]
-    fn mutually_recursive_records_boxes_in_both_directions() {
+    fn mutually_recursive_records_refer_in_both_directions() {
         check(
             indoc! {r#"
                 record A {
@@ -3535,42 +3540,179 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
                 }
 
-                #[derive(Clone, Debug)]
-                pub struct A {
-                    pub b: Box<B>,
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
-                #[derive(Clone, Debug)]
-                pub struct B {
-                    pub a: Box<Option<A>>,
+                #[derive(Clone, Copy, Debug)]
+                pub struct A<'a> {
+                    pub b: &'a B<'a>,
+                }
+
+                #[derive(Clone, Copy, Debug)]
+                pub struct B<'a> {
+                    pub a: &'a Option<A<'a>>,
                 }
 
                 pub struct Test {}
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
-                        let v_0: Option<A> = None::<A>;
-                        let v_1: B = B { a: Box::new(v_0.clone()) };
-                        let v_2: A = A { b: Box::new(v_1.clone()) };
-                        let v_3: Option<A> = Some(v_2.clone());
-                        let v_4: B = B { a: Box::new(v_3.clone()) };
-                        let v_5: &Option<A> = &*v_4.a;
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
+                        let v_0: Option<A<'a>> = None::<A<'a>>;
+                        let v_1: B<'a> = B { a: arena.alloc(v_0) };
+                        let v_2: A<'a> = A { b: arena.alloc(v_1) };
+                        let v_3: Option<A<'a>> = Some(v_2);
+                        let v_4: B<'a> = B { a: arena.alloc(v_3) };
+                        let v_5: Option<A<'a>> = *v_4.a;
                         match v_5 {
                             Some(_) => {
                                 output.push_str("done");
+                            }
+                            None => {
+                                output.push_str("none");
+                            }
+                        }
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn record_takes_a_lifetime_only_when_it_holds_a_reference() {
+        check(
+            indoc! {r#"
+                record Point {
+                  x: Int,
+                  y: Int,
+                }
+
+                record Name {
+                  value: String,
+                }
+
+                record Label {
+                  name: Name,
+                  at: Point,
+                }
+
+                page Test(labels: Array[Label]) {
+                  fn body() -> Html {
+                    let none: Array[Label] = [];
+                    <>
+                      {for pair in labels.enumerate() {
+                        match pair {
+                          (i, label) => <>{i.to_string()}{label.name.value}</>,
+                        }
+                      }}
+                      {match none.get(0) {
+                        Some(label) => <>{label.at.x.to_string()}</>,
+                        None => <>none</>,
+                      }}
+                    </>
+                  }
+                }
+            "#},
+            expect![[r#"
+                // Code generated by the hop compiler. DO NOT EDIT.
+                #![cfg_attr(rustfmt, rustfmt_skip)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
+
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
+                }
+
+                fn write_escaped_html(s: &str, output: &mut String) {
+                    for c in s.chars() {
+                        match c {
+                            '&' => output.push_str("&amp;"),
+                            '<' => output.push_str("&lt;"),
+                            '>' => output.push_str("&gt;"),
+                            '"' => output.push_str("&quot;"),
+                            _ => output.push(c),
+                        }
+                    }
+                }
+
+                #[derive(Clone, Copy, Debug)]
+                pub struct Label<'a> {
+                    pub name: Name<'a>,
+                    pub at: Point,
+                }
+
+                #[derive(Clone, Copy, Debug)]
+                pub struct Name<'a> {
+                    pub value: &'a str,
+                }
+
+                #[derive(Clone, Copy, Debug)]
+                pub struct Point {
+                    pub x: i32,
+                    pub y: i32,
+                }
+
+                pub struct Test<'a> {
+                    pub labels: &'a [Label<'a>],
+                }
+
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
+                        let mut output: String = String::new();
+                        self.write(arena, &mut output);
+                        output
+                    }
+
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
+                        let Test { labels: v_0 } = self;
+                        let v_1: &'a [Label<'a>] = &[];
+                        let v_2: &'a [(i32, Label<'a>)] = arena.alloc_iter(v_0.iter().copied().enumerate().map(|(index, element)| (index as i32, element)));
+                        let v_14: i32 = 0_i32;
+                        let v_15: Option<Label<'a>> = usize::try_from(v_14).ok().and_then(|index| v_1.get(index)).copied();
+                        for v_3 in v_2.iter().copied() {
+                            let v_26: i32 = v_3.0;
+                            let v_27: Label<'a> = v_3.1;
+                            let v_6: &'a str = arena.alloc_str(&v_26.to_string());
+                            let v_8: Name<'a> = v_27.name;
+                            let v_9: &'a str = v_8.value;
+                            write_escaped_html(v_6, output);
+                            write_escaped_html(v_9, output);
+                        }
+                        match v_15 {
+                            Some(v_28) => {
+                                let v_17: Point = v_28.at;
+                                let v_18: i32 = v_17.x;
+                                let v_19: &'a str = arena.alloc_str(&v_18.to_string());
+                                write_escaped_html(v_19, output);
                             }
                             None => {
                                 output.push_str("none");
@@ -3619,11 +3761,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -3638,7 +3790,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Debug)]
+                #[derive(Clone, Copy, Debug)]
                 pub enum TimeAgo {
                     JustNow,
                     MinutesAgo { count: i32 },
@@ -3649,37 +3801,32 @@ mod tests {
                     pub time: TimeAgo,
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { time: v_0 } = self;
-                        let v_25: String = match &v_0 {
+                        let v_25: &'a str = match v_0 {
                             TimeAgo::JustNow => {
-                                let v_1: &str = "just now";
-                                v_1.to_string()
+                                let v_1: &'a str = "just now";
+                                v_1
                             },
                             TimeAgo::MinutesAgo { count: v_21 } => {
                                 let v_3: i32 = 1_i32;
-                                let v_4: bool = *v_21 == v_3;
-                                let v_22: String = match v_4 {
+                                let v_4: bool = v_21 == v_3;
+                                let v_22: &'a str = match v_4 {
                                     true => {
-                                        let v_5: &str = "1 minute ago";
-                                        v_5.to_string()
+                                        let v_5: &'a str = "1 minute ago";
+                                        v_5
                                     },
                                     false => {
-                                        let v_6: String = v_21.to_string();
-                                        let v_7: &str = " minutes ago";
-                                        let v_8: String = {
-                                            let mut s: String = String::new();
-                                            s.push_str(&v_6);
-                                            s.push_str(v_7);
-                                            s
-                                        };
+                                        let v_6: &'a str = arena.alloc_str(&v_21.to_string());
+                                        let v_7: &'a str = " minutes ago";
+                                        let v_8: &'a str = arena.alloc_str(&[v_6, v_7].concat());
                                         v_8
                                     },
                                 };
@@ -3687,28 +3834,23 @@ mod tests {
                             },
                             TimeAgo::HoursAgo { count: v_23 } => {
                                 let v_11: i32 = 1_i32;
-                                let v_12: bool = *v_23 == v_11;
-                                let v_24: String = match v_12 {
+                                let v_12: bool = v_23 == v_11;
+                                let v_24: &'a str = match v_12 {
                                     true => {
-                                        let v_13: &str = "1 hour ago";
-                                        v_13.to_string()
+                                        let v_13: &'a str = "1 hour ago";
+                                        v_13
                                     },
                                     false => {
-                                        let v_14: String = v_23.to_string();
-                                        let v_15: &str = " hours ago";
-                                        let v_16: String = {
-                                            let mut s: String = String::new();
-                                            s.push_str(&v_14);
-                                            s.push_str(v_15);
-                                            s
-                                        };
+                                        let v_14: &'a str = arena.alloc_str(&v_23.to_string());
+                                        let v_15: &'a str = " hours ago";
+                                        let v_16: &'a str = arena.alloc_str(&[v_14, v_15].concat());
                                         v_16
                                     },
                                 };
                                 v_24
                             },
                         };
-                        write_escaped_html(&v_25, output);
+                        write_escaped_html(v_25, output);
                     }
                 }
             "#]],
@@ -3731,11 +3873,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -3752,33 +3904,28 @@ mod tests {
 
                 pub struct Test {}
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
-                        let v_0: &str = "world";
-                        let v_1: Option<String> = Some(v_0.to_string());
-                        let v_10: String = match &v_1 {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
+                        let v_0: &'a str = "world";
+                        let v_1: Option<&'a str> = Some(v_0);
+                        let v_10: &'a str = match v_1 {
                             Some(v_9) => {
-                                let v_3: &str = "hello ";
-                                let v_4: String = {
-                                    let mut s: String = String::new();
-                                    s.push_str(v_3);
-                                    s.push_str(v_9);
-                                    s
-                                };
+                                let v_3: &'a str = "hello ";
+                                let v_4: &'a str = arena.alloc_str(&[v_3, v_9].concat());
                                 v_4
                             },
                             None => {
-                                let v_5: &str = "nobody";
-                                v_5.to_string()
+                                let v_5: &'a str = "nobody";
+                                v_5
                             },
                         };
-                        write_escaped_html(&v_10, output);
+                        write_escaped_html(v_10, output);
                     }
                 }
             "#]],
@@ -3812,14 +3959,24 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
                 }
 
-                #[derive(Clone, Debug)]
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
+                }
+
+                #[derive(Clone, Copy, Debug)]
                 pub enum Color {
                     Red,
                     Green,
@@ -3828,7 +3985,7 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_badge_0(output: &mut String, v_2: &Color) {
+                fn render_badge_0<'a>(arena: &'a impl Arena, output: &mut String, v_2: Color) {
                     match v_2 {
                         Color::Red => {
                             output.push_str("red");
@@ -3842,16 +3999,16 @@ mod tests {
                     }
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let v_0: Color = Color::Green;
-                        render_badge_0(output, &v_0);
+                        render_badge_0(arena, output, v_0);
                     }
                 }
             "#]],
@@ -3859,7 +4016,7 @@ mod tests {
     }
 
     #[test]
-    fn borrowed_params_are_read_through_the_reference() {
+    fn record_and_array_params_are_passed_by_value() {
         check(
             indoc! {r#"
                 record Post {
@@ -3880,11 +4037,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -3899,38 +4066,38 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Debug)]
-                pub struct Post {
-                    pub title: String,
+                #[derive(Clone, Copy, Debug)]
+                pub struct Post<'a> {
+                    pub title: &'a str,
                     pub views: i32,
                 }
 
-                pub struct Test {
-                    pub post: Post,
-                    pub tags: Vec<String>,
+                pub struct Test<'a> {
+                    pub post: Post<'a>,
+                    pub tags: &'a [&'a str],
                 }
 
-                fn render_card_0(output: &mut String, v_3: &Post, v_4: &[String]) {
-                    let v_5: &str = &v_3.title;
+                fn render_card_0<'a>(arena: &'a impl Arena, output: &mut String, v_3: Post<'a>, v_4: &'a [&'a str]) {
+                    let v_5: &'a str = v_3.title;
                     let v_7: i32 = v_3.views;
-                    let v_8: String = v_7.to_string();
+                    let v_8: &'a str = arena.alloc_str(&v_7.to_string());
                     let v_10: i32 = v_4.len() as i32;
-                    let v_11: String = v_10.to_string();
+                    let v_11: &'a str = arena.alloc_str(&v_10.to_string());
                     write_escaped_html(v_5, output);
-                    write_escaped_html(&v_8, output);
-                    write_escaped_html(&v_11, output);
+                    write_escaped_html(v_8, output);
+                    write_escaped_html(v_11, output);
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { post: v_0, tags: v_1 } = self;
-                        render_card_0(output, &v_0, &v_1);
+                        render_card_0(arena, output, v_0, v_1);
                     }
                 }
             "#]],
@@ -3938,7 +4105,7 @@ mod tests {
     }
 
     #[test]
-    fn borrowed_binding_is_cloned_where_a_value_is_stored() {
+    fn param_is_stored_in_a_record_without_a_clone() {
         check(
             indoc! {r#"
                 record Tag {
@@ -3963,11 +4130,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -3982,37 +4159,37 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Debug)]
-                pub struct Tag {
-                    pub name: String,
+                #[derive(Clone, Copy, Debug)]
+                pub struct Tag<'a> {
+                    pub name: &'a str,
                 }
 
-                #[derive(Clone, Debug)]
-                pub struct Wrap {
-                    pub tag: Tag,
+                #[derive(Clone, Copy, Debug)]
+                pub struct Wrap<'a> {
+                    pub tag: Tag<'a>,
                 }
 
-                pub struct Test {
-                    pub tag: Tag,
+                pub struct Test<'a> {
+                    pub tag: Tag<'a>,
                 }
 
-                fn render_show_0(output: &mut String, v_2: &Tag) {
-                    let v_3: Wrap = Wrap { tag: v_2.clone() };
-                    let v_4: &Tag = &v_3.tag;
-                    let v_5: &str = &v_4.name;
+                fn render_show_0<'a>(arena: &'a impl Arena, output: &mut String, v_2: Tag<'a>) {
+                    let v_3: Wrap<'a> = Wrap { tag: v_2 };
+                    let v_4: Tag<'a> = v_3.tag;
+                    let v_5: &'a str = v_4.name;
                     write_escaped_html(v_5, output);
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { tag: v_0 } = self;
-                        render_show_0(output, &v_0);
+                        render_show_0(arena, output, v_0);
                     }
                 }
             "#]],
@@ -4020,7 +4197,7 @@ mod tests {
     }
 
     #[test]
-    fn let_binding_a_place_borrows_it() {
+    fn let_binding_a_field_copies_it() {
         check(
             indoc! {r#"
                 record Post {
@@ -4038,11 +4215,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -4057,26 +4244,26 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Debug)]
-                pub struct Post {
-                    pub title: String,
-                    pub body: String,
+                #[derive(Clone, Copy, Debug)]
+                pub struct Post<'a> {
+                    pub title: &'a str,
+                    pub body: &'a str,
                 }
 
-                pub struct Test {
-                    pub post: Post,
+                pub struct Test<'a> {
+                    pub post: Post<'a>,
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { post: v_0 } = self;
-                        let v_1: &str = &v_0.title;
+                        let v_1: &'a str = v_0.title;
                         write_escaped_html(v_1, output);
                     }
                 }
@@ -4085,7 +4272,7 @@ mod tests {
     }
 
     #[test]
-    fn string_equality_compares_references() {
+    fn string_equality_compares_str_slices() {
         check(
             indoc! {r#"
                 fn Role(role: String) -> Html {
@@ -4104,19 +4291,29 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
                 }
 
-                pub struct Test {
-                    pub role: String,
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
-                fn render_role_0(output: &mut String, v_2: &str) {
-                    let v_3: &str = "admin";
+                pub struct Test<'a> {
+                    pub role: &'a str,
+                }
+
+                fn render_role_0<'a>(arena: &'a impl Arena, output: &mut String, v_2: &'a str) {
+                    let v_3: &'a str = "admin";
                     let v_4: bool = v_2 == v_3;
                     if v_4 {
                         output.push_str("yes");
@@ -4125,16 +4322,16 @@ mod tests {
                     }
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { role: v_0 } = self;
-                        render_role_0(output, &v_0);
+                        render_role_0(arena, output, v_0);
                     }
                 }
             "#]],
@@ -4142,7 +4339,7 @@ mod tests {
     }
 
     #[test]
-    fn function_with_option_param_takes_a_reference() {
+    fn function_with_option_param_takes_it_by_value() {
         check(
             indoc! {r#"
                 fn Label(text: Option[String]) -> Html {
@@ -4161,11 +4358,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -4180,11 +4387,11 @@ mod tests {
                     }
                 }
 
-                pub struct Test {
-                    pub label: Option<String>,
+                pub struct Test<'a> {
+                    pub label: Option<&'a str>,
                 }
 
-                fn render_label_0(output: &mut String, v_2: &Option<String>) {
+                fn render_label_0<'a>(arena: &'a impl Arena, output: &mut String, v_2: Option<&'a str>) {
                     match v_2 {
                         Some(v_9) => {
                             write_escaped_html(v_9, output);
@@ -4195,16 +4402,16 @@ mod tests {
                     }
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { label: v_0 } = self;
-                        render_label_0(output, &v_0);
+                        render_label_0(arena, output, v_0);
                     }
                 }
             "#]],
@@ -4229,28 +4436,38 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 pub struct Test {}
 
-                fn render_frag_0(output: &mut String) {
+                fn render_frag_0<'a>(arena: &'a impl Arena, output: &mut String) {
                     output.push_str("<b>hi</b>");
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
-                        render_frag_0(output);
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
+                        render_frag_0(arena, output);
                     }
                 }
             "#]],
@@ -4274,11 +4491,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -4295,22 +4522,22 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_format_price_0(v_5: i32) -> i32 {
+                fn render_format_price_0<'a>(arena: &'a impl Arena, v_5: i32) -> i32 {
                     v_5
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let v_0: i32 = 5_i32;
-                        let v_1: i32 = render_format_price_0(v_0);
-                        let v_2: String = v_1.to_string();
-                        write_escaped_html(&v_2, output);
+                        let v_1: i32 = render_format_price_0(arena, v_0);
+                        let v_2: &'a str = arena.alloc_str(&v_1.to_string());
+                        write_escaped_html(v_2, output);
                     }
                 }
             "#]],
@@ -4339,11 +4566,21 @@ mod tests {
             expect![[r#"
                 // Code generated by the hop compiler. DO NOT EDIT.
                 #![cfg_attr(rustfmt, rustfmt_skip)]
-                #![allow(unused_parens, dead_code, clippy::all)]
+                #![allow(unused_parens, unused_variables, dead_code, clippy::all)]
 
-                pub trait View {
-                    fn render(self) -> String;
-                    fn write(self, output: &mut String);
+                pub trait Arena {
+                    fn alloc<T: Copy>(&self, value: T) -> &T;
+                    fn alloc_str(&self, value: &str) -> &str;
+                    fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T];
+                    fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+                    where
+                        I: IntoIterator<Item = T>,
+                        I::IntoIter: ExactSizeIterator;
+                }
+
+                pub trait View<'a> {
+                    fn render(self, arena: &'a impl Arena) -> String;
+                    fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
                 fn write_escaped_html(s: &str, output: &mut String) {
@@ -4360,34 +4597,34 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_foo_0(v_17: i32) -> i32 {
+                fn render_foo_0<'a>(arena: &'a impl Arena, v_17: i32) -> i32 {
                     let v_18: i32 = 10_i32;
                     let v_19: i32 = v_17.wrapping_add(v_18);
                     v_19
                 }
 
-                impl View for Test {
-                    fn render(self) -> String {
+                impl<'a> View<'a> for Test {
+                    fn render(self, arena: &'a impl Arena) -> String {
                         let mut output: String = String::new();
-                        self.write(&mut output);
+                        self.write(arena, &mut output);
                         output
                     }
 
-                    fn write(self, output: &mut String) {
+                    fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let v_0: i32 = 0_i32;
                         let v_1: i32 = -7_i32;
-                        let v_2: i32 = render_foo_0(v_1);
-                        let v_3: Vec<i32> = (v_0..=v_2).collect::<Vec<i32>>();
+                        let v_2: i32 = render_foo_0(arena, v_1);
+                        let v_3: &'a [i32] = arena.alloc_slice(&(v_0..=v_2).collect::<Vec<i32>>());
                         let v_10: i32 = 10_i32;
-                        let v_11: i32 = render_foo_0(v_10);
-                        let v_12: String = v_11.to_string();
+                        let v_11: i32 = render_foo_0(arena, v_10);
+                        let v_12: &'a str = arena.alloc_str(&v_11.to_string());
                         output.push_str("<div>");
-                        for v_4 in v_3.iter() {
-                            let v_5: String = v_4.to_string();
-                            write_escaped_html(&v_5, output);
+                        for v_4 in v_3.iter().copied() {
+                            let v_5: &'a str = arena.alloc_str(&v_4.to_string());
+                            write_escaped_html(v_5, output);
                             output.push_str(",");
                         }
-                        write_escaped_html(&v_12, output);
+                        write_escaped_html(v_12, output);
                         output.push_str("</div>");
                     }
                 }

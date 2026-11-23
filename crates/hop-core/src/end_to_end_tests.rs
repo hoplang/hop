@@ -84,9 +84,24 @@ fn execute_rust(code: &str) -> Result<String, String> {
 
     let main_code = formatdoc! {r#"
         {code}
-        
+
+        struct Leak;
+
+        impl Arena for Leak {{
+            fn alloc<T: Copy>(&self, value: T) -> &T {{ Box::leak(Box::new(value)) }}
+            fn alloc_str(&self, value: &str) -> &str {{ String::leak(value.to_string()) }}
+            fn alloc_slice<T: Copy>(&self, values: &[T]) -> &[T] {{ Vec::leak(values.to_vec()) }}
+            fn alloc_iter<T: Copy, I>(&self, values: I) -> &[T]
+            where
+                I: IntoIterator<Item = T>,
+                I::IntoIter: ExactSizeIterator,
+            {{
+                Vec::leak(values.into_iter().collect())
+            }}
+        }}
+
         fn main() {{
-            print!("{{}}", Test {{}}.render());
+            print!("{{}}", Test {{}}.render(&Leak));
         }}
     "#};
 

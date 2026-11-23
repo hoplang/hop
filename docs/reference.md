@@ -1843,11 +1843,11 @@ yield
 An `UppercaseIdentifier` that is one of these words is a compile error:
 
 ```
-Any       Arr       Async     Auto      Box       CSS       Class     Classes
-Client    Comp      Computed  Dyn       Dynamic   Enum      Err       Error
-Fn        Fragment  Func      Function  Future    HTML      IO        List
-Map       Never     Object    Ok        Promise   Rec       Record    Result
-Runtime   Safe      Scope     Scoped    Self      Set       Static    Struct
-Task      Trusted   Tuple     Type      Union     Unknown   Vec       View
-Void
+Any       Arena     Arr       Async     Auto      Box       CSS       Class
+Classes   Client    Comp      Computed  Dyn       Dynamic   Enum      Err
+Error     Fn        Fragment  Func      Function  Future    HTML      IO
+List      Map       Never     Object    Ok        Promise   Rec       Record
+Result    Runtime   Safe      Scope     Scoped    Self      Set       Static
+Struct    Task      Trusted   Tuple     Type      Union     Unknown   Vec
+View      Void
 ```
