@@ -389,7 +389,7 @@ mod tests {
         for asset_reference in asset_references {
             asset_reference_annotations.push(Diagnostic {
                 message: format!("asset: {}", asset_reference.path.as_str()),
-                range: asset_reference.range.clone(),
+                range: asset_reference.range,
                 severity: DiagnosticSeverity::Error,
             });
         }

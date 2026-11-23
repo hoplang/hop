@@ -198,12 +198,12 @@ pub fn parse_block(
                         errors.emit(ParseErrorKind::BlockMissingTailExpression {}, semicolon)
                     );
                 }
-                statements.push(ParsedStatement::Let(ParsedLetBinding {
+                statements.push(ParsedStatement::Let(Box::new(ParsedLetBinding {
                     range: let_range.to(semicolon),
                     pattern,
                     var_type,
                     value_expr,
-                }));
+                })));
             }
         },
     )?;

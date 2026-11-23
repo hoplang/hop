@@ -392,7 +392,7 @@ fn parse_page_declaration(
         if slot.is_some() {
             let _ = errors.emit(
                 ParseErrorKind::DuplicatePageMember { name: member_name },
-                member.name_range.clone(),
+                member.name_range,
             );
             continue;
         }

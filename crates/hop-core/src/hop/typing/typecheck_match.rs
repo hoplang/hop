@@ -135,7 +135,7 @@ pub fn typecheck_match(
 
         match &result_type {
             None => {
-                result_type = Some(body_type.clone());
+                result_type = Some(body_type);
             }
             Some(expected) => {
                 if body_type != *expected {

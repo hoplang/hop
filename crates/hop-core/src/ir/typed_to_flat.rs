@@ -913,7 +913,7 @@ impl<'a> Compiler<'a> {
                             let parameter_type = FlatType::function(
                                 IrModifier::Pure,
                                 [FlatType::Data(data.clone())],
-                                FlatType::Data(data.clone()),
+                                FlatType::Data(data),
                             );
                             let body = self.data_block(|cx| {
                                 cx.bind_html(

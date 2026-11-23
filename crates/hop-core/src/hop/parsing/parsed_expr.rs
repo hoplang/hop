@@ -233,7 +233,7 @@ pub struct ParsedBlock {
 
 #[derive(Debug, Clone)]
 pub enum ParsedStatement {
-    Let(ParsedLetBinding),
+    Let(Box<ParsedLetBinding>),
     Expr {
         expr: ParsedExpr,
         range: DocumentRange,
@@ -498,7 +498,7 @@ impl ParsedBlock {
         self.statements
             .iter()
             .filter_map(|statement| match statement {
-                ParsedStatement::Let(binding) => Some(binding),
+                ParsedStatement::Let(binding) => Some(&**binding),
                 ParsedStatement::Expr { .. } => None,
             })
     }
