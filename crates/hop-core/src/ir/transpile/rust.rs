@@ -44,8 +44,8 @@ pub struct RustTranspiler {
     /// Tracks whether escape_html function is used during transpilation
     needs_escape_html: bool,
     /// Field positions carrying `&'a` indirection.
-    /// We box in both directions for mutually recursive types.
-    boxed_edges: HashSet<(TypeName, TypeName)>,
+    /// Both directions carry it for mutually recursive types.
+    indirect_edges: HashSet<(TypeName, TypeName)>,
     /// The declared types that hold a reference, and so take `<'a>`.
     borrowing_types: HashSet<TypeName>,
     types: WriterTypeDeclarations,
@@ -58,7 +58,7 @@ impl RustTranspiler {
     pub fn new() -> Self {
         Self {
             needs_escape_html: false,
-            boxed_edges: HashSet::new(),
+            indirect_edges: HashSet::new(),
             borrowing_types: HashSet::new(),
             types: WriterTypeDeclarations::default(),
             names: HashMap::new(),
@@ -105,7 +105,7 @@ impl RustTranspiler {
 
     /// The field positions that need indirection for every declared type to be
     /// finitely sized, as `(declaring type, referenced type)` pairs.
-    fn compute_boxed_edges(types: &WriterTypeDeclarations) -> HashSet<(TypeName, TypeName)> {
+    fn compute_indirect_edges(types: &WriterTypeDeclarations) -> HashSet<(TypeName, TypeName)> {
         let mut graph = DependencyGraph::new();
         for WriterRecord { name, fields } in &types.records {
             let mut refs = BTreeSet::new();
@@ -138,19 +138,19 @@ impl RustTranspiler {
     }
 
     /// Whether a field of `owner` declaring type `t` carries indirection, which is
-    /// the case when the field stores an inline reference to a type `owner`
-    /// boxes. Mirrors `inline_refs`: descend `Option` and tuples, stop at
+    /// the case when the field names inline a type `owner` has an indirect
+    /// edge to. Mirrors `inline_refs`: descend `Option` and tuples, stop at
     /// `Array`.
-    fn field_type_is_boxed(&self, t: &WriterDataType, owner: &str) -> bool {
+    fn field_type_is_indirect(&self, t: &WriterDataType, owner: &str) -> bool {
         match t {
             WriterDataType::Record(name) | WriterDataType::Enum(name) => self
-                .boxed_edges
+                .indirect_edges
                 .iter()
                 .any(|(o, target)| o.as_str() == owner && target == name),
-            WriterDataType::Option(inner) => self.field_type_is_boxed(inner, owner),
+            WriterDataType::Option(inner) => self.field_type_is_indirect(inner, owner),
             WriterDataType::Tuple(elements) => elements
                 .iter()
-                .any(|element| self.field_type_is_boxed(element, owner)),
+                .any(|element| self.field_type_is_indirect(element, owner)),
             _ => false,
         }
     }
@@ -173,7 +173,7 @@ impl RustTranspiler {
             let before = borrowing.len();
             for name in &names {
                 if fields(name).iter().any(|t| {
-                    self.field_type_is_boxed(t, name.as_str())
+                    self.field_type_is_indirect(t, name.as_str())
                         || Self::holds_reference(&borrowing, t)
                 }) {
                     borrowing.insert(name.clone());
@@ -212,7 +212,7 @@ impl RustTranspiler {
         t: &'a WriterDataType,
         owner: &str,
     ) -> Doc<'a> {
-        if self.field_type_is_boxed(t, owner) {
+        if self.field_type_is_indirect(t, owner) {
             arena
                 .text("&'a ")
                 .append(self.transpile_data_type(arena, t))
@@ -231,7 +231,7 @@ impl RustTranspiler {
         value: ValueId,
     ) -> Doc<'a> {
         if let WriterType::Data(value_type) = self.name_type(value)
-            && self.field_type_is_boxed(value_type, owner)
+            && self.field_type_is_indirect(value_type, owner)
         {
             arena.text(format!("arena.alloc({})", name_ident(value)))
         } else {
@@ -240,7 +240,7 @@ impl RustTranspiler {
     }
 
     /// Whether reads of `field` off `record` go through a reference.
-    fn field_access_is_boxed(&self, record: ValueId, field: &FieldName) -> bool {
+    fn field_access_is_indirect(&self, record: ValueId, field: &FieldName) -> bool {
         let WriterType::Data(WriterDataType::Record(name)) = self.name_type(record) else {
             unreachable!("field access objects are records");
         };
@@ -253,7 +253,7 @@ impl RustTranspiler {
             .find(|f| f.name == *field)
             .map(|f| &f.typ)
             .expect("field access fields exist on the record");
-        self.field_type_is_boxed(field_type, name.as_str())
+        self.field_type_is_indirect(field_type, name.as_str())
     }
 
     /// The pattern of an enum arm, and the bindings it introduces recorded.
@@ -288,7 +288,7 @@ impl RustTranspiler {
             let bound: Vec<String> = bindings
                 .iter()
                 .map(|(field, binder)| {
-                    let deref = if self.field_type_is_boxed(&binder.typ, type_name.as_str()) {
+                    let deref = if self.field_type_is_indirect(&binder.typ, type_name.as_str()) {
                         "&"
                     } else {
                         ""
@@ -483,7 +483,7 @@ impl Transpiler for RustTranspiler {
 
     fn transpile_program(&mut self, program: &WriterProgram) -> String {
         self.needs_escape_html = false;
-        self.boxed_edges = Self::compute_boxed_edges(&program.types);
+        self.indirect_edges = Self::compute_indirect_edges(&program.types);
         self.types = program.types.clone();
         self.names.clear();
         self.borrowing_types = self.compute_borrowing_types();
@@ -1215,13 +1215,13 @@ impl Transpiler for RustTranspiler {
         record: ValueId,
         field: &'a FieldName,
     ) -> Doc<'a> {
-        let boxed = self.field_access_is_boxed(record, field);
+        let indirect = self.field_access_is_indirect(record, field);
         let access = arena
             .text(name_ident(record))
             .append(arena.text("."))
             .append(arena.text(Self::escape_ident(field.as_str())));
 
-        if boxed {
+        if indirect {
             arena.text("*").append(access)
         } else {
             access
