@@ -1055,6 +1055,9 @@ impl<'a> Compiler<'a> {
                         typ: lower_type(self.registry, typ),
                     })
                     .collect();
+                for parameter in &parameters {
+                    self.types.insert(parameter.var, parameter.typ.clone());
+                }
                 let body = if typ.renders_html() {
                     self.compile_html_block(body)
                 } else {
@@ -1062,9 +1065,6 @@ impl<'a> Compiler<'a> {
                 };
                 self.pop_scope();
                 self.context = outer;
-                for parameter in &parameters {
-                    self.types.insert(parameter.var, parameter.typ.clone());
-                }
                 self.close_lambda(
                     IrModifier::from(function.modifier),
                     parameters,
@@ -2141,6 +2141,53 @@ mod tests {
                   let v16: render (String) -> Html = l1[v5]
                   let v17: Html = f0(v0, v16)
                   v17
+                }
+                page Test: e0
+            "#]],
+        );
+    }
+
+    #[test]
+    fn should_compile_a_lambda_that_captures_a_parameter_of_the_lambda_around_it() {
+        check(
+            indoc! {r#"
+                page Test {
+                  fn body() -> Html {
+                    let add = fn(a: Int) {
+                      fn(b: Int) { a + b }
+                    };
+                    let add_one = add(1);
+                    <div>{add_one(2).to_string()}</div>
+                  }
+                }
+            "#},
+            expect![[r#"
+                lambda l0[
+                  v3: Int,
+                ](
+                  v1: Int,
+                ) -> Int {
+                  let v2: Int = int_add(v3, v1)
+                  v2
+                }
+                lambda l1[](
+                  v0: Int,
+                ) -> (Int) -> Int {
+                  let v4: (Int) -> Int = l0[v0]
+                  v4
+                }
+                entrypoint body@e0() -> Html {
+                  let v5: (Int) -> (Int) -> Int = l1[]
+                  let v6: Int = 1
+                  let v7: (Int) -> Int = v5(v6)
+                  let v8: Int = 2
+                  let v9: Int = v7(v8)
+                  let v10: String = int_to_string(v9)
+                  let v11: Html = escape(v10)
+                  let v12: Html = concat(v11)
+                  let v13: ElementId = mint()
+                  let v14: Html = element(v13, "div", {}, v12)
+                  v14
                 }
                 page Test: e0
             "#]],
