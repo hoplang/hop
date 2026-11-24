@@ -41,7 +41,7 @@ pub fn resolve_type(
                 errors.push(TypeError::new(error, parsed_type.range().clone()));
                 return None;
             }
-            return Some(Type::Function(function));
+            DataType::Function(function)
         }
         ParsedType::Option { element, .. } => {
             let elem_type = resolve_data_type(element, names, definition_links, errors)?;
@@ -104,10 +104,8 @@ pub fn resolve_type(
     Some(Type::Data(typ))
 }
 
-/// The error a function type breaks, if any: it mutates and its result is
-/// not data.
 pub fn check_function_type(function: &FunctionType) -> Option<TypeErrorKind> {
-    if function.result.as_data().is_none() {
+    if let Type::Html(_) | Type::Data(DataType::Function(_)) = &*function.result {
         let result = function.result.as_ref().clone();
         match function.modifier {
             Modifier::Mut => return Some(TypeErrorKind::MutFunctionReturnsNonData { result }),
@@ -125,9 +123,9 @@ pub fn resolve_data_type(
 ) -> Option<DataType> {
     match resolve_type(parsed_type, names, definition_links, errors)? {
         Type::Data(data) => Some(data),
-        typ @ (Type::Html(_) | Type::Function(_)) => {
+        Type::Html(_) => {
             errors.push(TypeError::new(
-                TypeErrorKind::NotData { typ },
+                TypeErrorKind::HtmlInsideType,
                 parsed_type.range().clone(),
             ));
             None

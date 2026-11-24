@@ -15,9 +15,7 @@ use crate::ir::writer_program::{
     WriterProgram, WriterStmt,
 };
 use crate::ir::writer_switch::{WriterEnumMatchArm, WriterEnumPattern, WriterSwitch};
-use crate::ir::writer_type::{
-    WriterDataType, WriterEnum, WriterRecord, WriterResult, WriterSignature, WriterType,
-};
+use crate::ir::writer_type::{WriterEnum, WriterRecord, WriterResult, WriterSignature, WriterType};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
@@ -257,8 +255,7 @@ impl TsTranspiler {
             .map(|arm| {
                 let WriterEnumPattern::Variant { variant_name, .. } = &arm.pattern;
                 for (_, binder) in &arm.bindings {
-                    self.name_types
-                        .insert(binder.var, WriterType::Data(binder.typ.clone()));
+                    self.name_types.insert(binder.var, binder.typ.clone());
                 }
                 let bindings_doc = if arm.bindings.is_empty() {
                     arena.nil()
@@ -317,7 +314,7 @@ impl TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         subject: ValueId,
-        some_arm_binding: Option<&'a IrBinder<WriterDataType>>,
+        some_arm_binding: Option<&'a IrBinder<WriterType>>,
         some_arm_body: &'a Body,
         none_arm_body: &'a Body,
         mut body: impl FnMut(&mut Self, &'a Body) -> Doc<'a>,
@@ -332,8 +329,7 @@ impl TsTranspiler {
         };
         let binding_doc = match some_arm_binding {
             Some(binder) => {
-                self.name_types
-                    .insert(binder.var, WriterType::Data(binder.typ.clone()));
+                self.name_types.insert(binder.var, binder.typ.clone());
                 arena
                     .text("const ")
                     .append(arena.text(name_ident(binder.var)))
@@ -453,7 +449,7 @@ impl Transpiler for TsTranspiler {
                                             .text(", readonly ")
                                             .append(arena.text(field.name.as_str()))
                                             .append(arena.text(": "))
-                                            .append(self.transpile_data_type(arena, &field.typ))
+                                            .append(self.transpile_type(arena, &field.typ))
                                     })
                                     .collect();
                                 base.append(arena.intersperse(field_docs, arena.nil()))
@@ -490,7 +486,7 @@ impl Transpiler for TsTranspiler {
                             arena
                                 .text(field.name.as_str())
                                 .append(arena.text(": "))
-                                .append(self.transpile_data_type(arena, &field.typ))
+                                .append(self.transpile_type(arena, &field.typ))
                         })
                         .collect();
                     let field_name_docs: Vec<_> = variant
@@ -550,7 +546,7 @@ impl Transpiler for TsTranspiler {
                             .text("public readonly ")
                             .append(arena.text(field.name.as_str()))
                             .append(arena.text(": "))
-                            .append(self.transpile_data_type(arena, &field.typ))
+                            .append(self.transpile_type(arena, &field.typ))
                             .append(arena.text(";"))
                     })
                     .collect();
@@ -560,7 +556,7 @@ impl Transpiler for TsTranspiler {
                         arena
                             .text(field.name.as_str())
                             .append(arena.text(": "))
-                            .append(self.transpile_data_type(arena, &field.typ))
+                            .append(self.transpile_type(arena, &field.typ))
                     })
                     .collect();
                 let assignment_docs: Vec<_> = fields
@@ -842,14 +838,13 @@ impl Transpiler for TsTranspiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrBinder<WriterDataType>>,
+        var: Option<&'a IrBinder<WriterType>>,
         array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a> {
         let var_name = match var {
             Some(binder) => {
-                self.name_types
-                    .insert(binder.var, WriterType::Data(binder.typ.clone()));
+                self.name_types.insert(binder.var, binder.typ.clone());
                 name_ident(binder.var)
             }
             None => "_".to_string(),
@@ -1012,7 +1007,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        _elem_type: &'a WriterDataType,
+        _elem_type: &'a WriterType,
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
             .iter()
@@ -1044,7 +1039,7 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        _element_types: &'a [WriterDataType],
+        _element_types: &'a [WriterType],
     ) -> Doc<'a> {
         let elem_docs: Vec<_> = elements
             .iter()
@@ -1307,19 +1302,19 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         value: Option<ValueId>,
-        inner_type: &'a WriterDataType,
+        inner_type: &'a WriterType,
     ) -> Doc<'a> {
         self.needs_option = true;
         match value {
             Some(inner) => arena
                 .text("Option.some<")
-                .append(self.transpile_data_type(arena, inner_type))
+                .append(self.transpile_type(arena, inner_type))
                 .append(arena.text(">("))
                 .append(arena.text(name_ident(inner)))
                 .append(arena.text(")")),
             None => arena
                 .text("Option.none<")
-                .append(self.transpile_data_type(arena, inner_type))
+                .append(self.transpile_type(arena, inner_type))
                 .append(arena.text(">()")),
         }
     }
@@ -1414,12 +1409,12 @@ impl Transpiler for TsTranspiler {
         arena: &'a Arena<'a>,
         array: ValueId,
         index: ValueId,
-        element_type: &'a WriterDataType,
+        element_type: &'a WriterType,
     ) -> Doc<'a> {
         self.needs_option = true;
         let array = name_ident(array);
         let index = name_ident(index);
-        let element_type = self.transpile_data_type(arena, element_type);
+        let element_type = self.transpile_type(arena, element_type);
         // The element is asserted present, since the bounds check guards it but
         // `noUncheckedIndexedAccess` would otherwise type it as possibly
         // undefined.
@@ -1437,12 +1432,12 @@ impl Transpiler for TsTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         array: ValueId,
-        element_type: &'a WriterDataType,
+        element_type: &'a WriterType,
     ) -> Doc<'a> {
         arena
             .text(name_ident(array))
             .append(arena.text(".map((element, index): [number, "))
-            .append(self.transpile_data_type(arena, element_type))
+            .append(self.transpile_type(arena, element_type))
             .append(arena.text("] => [index, element])"))
     }
 
@@ -1590,16 +1585,19 @@ impl Transpiler for TsTranspiler {
     fn transpile_array_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_type: &WriterDataType,
+        element_type: &WriterType,
     ) -> Doc<'a> {
-        self.transpile_data_type(arena, element_type)
-            .append(arena.text("[]"))
+        let element = self.transpile_type(arena, element_type);
+        match element_type {
+            WriterType::Function(_) => arena.text("(").append(element).append(arena.text(")[]")),
+            _ => element.append(arena.text("[]")),
+        }
     }
 
     fn transpile_tuple_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_types: &[WriterDataType],
+        element_types: &[WriterType],
     ) -> Doc<'a> {
         arena
             .text("[")
@@ -1607,7 +1605,7 @@ impl Transpiler for TsTranspiler {
                 arena.intersperse(
                     element_types
                         .iter()
-                        .map(|element| self.transpile_data_type(arena, element))
+                        .map(|element| self.transpile_type(arena, element))
                         .collect::<Vec<_>>(),
                     arena.text(", "),
                 ),
@@ -1618,12 +1616,12 @@ impl Transpiler for TsTranspiler {
     fn transpile_option_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        inner_type: &WriterDataType,
+        inner_type: &WriterType,
     ) -> Doc<'a> {
         self.needs_option = true;
         arena
             .text("Option.Option<")
-            .append(self.transpile_data_type(arena, inner_type))
+            .append(self.transpile_type(arena, inner_type))
             .append(arena.text(">"))
     }
 

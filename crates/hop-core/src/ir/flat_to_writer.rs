@@ -28,8 +28,8 @@ use crate::ir::writer_program::{
 };
 use crate::ir::writer_switch::{WriterEnumMatchArm, WriterEnumPattern, WriterSwitch};
 use crate::ir::writer_type::{
-    WriterDataType, WriterEnum, WriterField, WriterRecord, WriterResult, WriterSignature,
-    WriterType, WriterTypeDeclarations, WriterVariant,
+    WriterEnum, WriterField, WriterRecord, WriterResult, WriterSignature, WriterType,
+    WriterTypeDeclarations, WriterVariant,
 };
 use crate::symbols::type_name::TypeName;
 
@@ -189,7 +189,7 @@ fn parameter_type(typ: &FlatType) -> WriterType {
             parameters: Vec::new(),
             result: WriterResult::Writes,
         }),
-        FlatType::Data(_) | FlatType::Function(_) => value_type(typ),
+        FlatType::Data(data) => data_type(data),
         FlatType::Cell(_) | FlatType::ElementId => {
             unreachable!("the typechecker rejects a parameter of a cell or an identity")
         }
@@ -197,25 +197,19 @@ fn parameter_type(typ: &FlatType) -> WriterType {
 }
 
 fn writes_html(typ: &FlatType) -> bool {
-    matches!(typ, FlatType::Function(signature) if *signature.result == FlatType::HTML)
+    matches!(typ, FlatType::Data(FlatDataType::Function(signature))
+        if *signature.result == FlatType::HTML)
 }
 
 fn is_mut_closure(typ: &FlatType) -> bool {
-    matches!(typ, FlatType::Function(signature) if signature.modifier == IrModifier::Mut)
+    matches!(typ, FlatType::Data(FlatDataType::Function(signature))
+        if signature.modifier == IrModifier::Mut)
 }
 
-/// The Writer type of a value, where a closure that mutates is the unit
-/// tuple.
+/// The Writer type of a value.
 fn value_type(typ: &FlatType) -> WriterType {
     match typ {
-        FlatType::Data(data) => WriterType::Data(data_type(data)),
-        FlatType::Function(signature) if signature.modifier == IrModifier::Mut => {
-            WriterType::Data(WriterDataType::UNIT)
-        }
-        FlatType::Function(signature) => WriterType::Function(WriterSignature {
-            parameters: signature.parameters.iter().map(parameter_type).collect(),
-            result: result_type(&signature.result),
-        }),
+        FlatType::Data(data) => data_type(data),
         FlatType::Html | FlatType::Cell(_) | FlatType::ElementId => {
             unreachable!("{typ:?} is not the type of a value")
         }
@@ -227,28 +221,33 @@ fn value_type(typ: &FlatType) -> WriterType {
 fn result_type(typ: &FlatType) -> WriterResult {
     match typ {
         FlatType::Html => WriterResult::Writes,
-        FlatType::Data(_) | FlatType::Function(_) => {
-            WriterResult::Returns(Box::new(value_type(typ)))
-        }
+        FlatType::Data(data) => WriterResult::Returns(Box::new(data_type(data))),
         FlatType::Cell(_) | FlatType::ElementId => {
             unreachable!("a function returns Html, data or a closure, not {typ:?}")
         }
     }
 }
 
-fn data_type(typ: &FlatDataType) -> WriterDataType {
+fn data_type(typ: &FlatDataType) -> WriterType {
     match typ {
-        FlatDataType::String => WriterDataType::String,
-        FlatDataType::Bool => WriterDataType::Bool,
-        FlatDataType::Int => WriterDataType::Int,
-        FlatDataType::Float => WriterDataType::Float,
-        FlatDataType::Array(element) => WriterDataType::Array(Box::new(data_type(element))),
-        FlatDataType::Option(element) => WriterDataType::Option(Box::new(data_type(element))),
+        FlatDataType::String => WriterType::String,
+        FlatDataType::Bool => WriterType::Bool,
+        FlatDataType::Int => WriterType::Int,
+        FlatDataType::Float => WriterType::Float,
+        FlatDataType::Array(element) => WriterType::Array(Box::new(data_type(element))),
+        FlatDataType::Option(element) => WriterType::Option(Box::new(data_type(element))),
         FlatDataType::Tuple(elements) => {
-            WriterDataType::Tuple(elements.iter().map(data_type).collect())
+            WriterType::Tuple(elements.iter().map(data_type).collect())
         }
-        FlatDataType::Record(name) => WriterDataType::Record(name.clone()),
-        FlatDataType::Enum(name) => WriterDataType::Enum(name.clone()),
+        FlatDataType::Record(name) => WriterType::Record(name.clone()),
+        FlatDataType::Enum(name) => WriterType::Enum(name.clone()),
+        FlatDataType::Function(signature) if signature.modifier == IrModifier::Mut => {
+            WriterType::UNIT
+        }
+        FlatDataType::Function(signature) => WriterType::Function(WriterSignature {
+            parameters: signature.parameters.iter().map(parameter_type).collect(),
+            result: result_type(&signature.result),
+        }),
     }
 }
 
@@ -360,7 +359,6 @@ impl<'a> Lowerer<'a> {
             FlatType::Cell(_) | FlatType::ElementId => {
                 unreachable!("the typechecker rejects a parameter of a cell or an identity")
             }
-            FlatType::Function(_) => {}
         }
     }
 
@@ -586,7 +584,7 @@ impl<'a> Lowerer<'a> {
                     name: param.name.clone(),
                     binder: IrBinder {
                         var: param.binder.var,
-                        typ: WriterType::Data(data_type(&param.binder.typ)),
+                        typ: data_type(&param.binder.typ),
                     },
                 })
                 .collect(),
@@ -858,7 +856,7 @@ impl<'a> Lowerer<'a> {
                     lets.push(IrBinding {
                         binder: IrBinder {
                             var: name,
-                            typ: WriterType::Data(data_type(&field.var.typ)),
+                            typ: data_type(&field.var.typ),
                         },
                         op: WriterOp::Data(IrDataOp::FieldAccess(record, field.field_name.clone())),
                     });
@@ -899,7 +897,7 @@ impl<'a> Lowerer<'a> {
                     lets.push(IrBinding {
                         binder: IrBinder {
                             var: name,
-                            typ: WriterType::Data(data_type(&element.typ)),
+                            typ: data_type(&element.typ),
                         },
                         op: WriterOp::Data(IrDataOp::TupleIndex(tuple, index)),
                     });
@@ -1092,7 +1090,7 @@ impl<'a> Lowerer<'a> {
         typ: &FlatDataType,
         used: &HashSet<CaseVar>,
         parts: &mut HashMap<CaseVar, ValueId>,
-    ) -> Option<IrBinder<WriterDataType>> {
+    ) -> Option<IrBinder<WriterType>> {
         if !used.contains(&part) {
             return None;
         }
@@ -2494,7 +2492,7 @@ mod tests {
             }
         }
 
-        fn binder(&mut self, binder: &IrBinder<WriterDataType>) {
+        fn binder(&mut self, binder: &IrBinder<WriterType>) {
             self.bind(binder.var);
         }
 

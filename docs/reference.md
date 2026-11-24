@@ -122,17 +122,14 @@ fn adder(n: Int) -> fn(Int) -> Int {
 }
 ```
 
-The types other than `Html` and the function types are data types. Only a data type can be the
-element type of an array or an option, an element type of a tuple, or the type
+`Html` cannot be part of another type. It is a compile error as the element
+type of an array or an option, as an element type of a tuple, and as the type
 of a field of a [record](#record-declarations) or an
-[enum](#enum-declarations). `Html` or a function type in one of these
-places is a compile error, and so is an expression whose type would have one in
-one of them:
+[enum](#enum-declarations), and so is an expression of such a type:
 
 ```hop
-let badge = Some(<b>new</b>);         // error: Html is not allowed inside another type
-let rows: Array[Html] = [];           // error: Html is not allowed inside another type
-let doubles = [fn(n: Int) { n * 2 }]; // error: fn(Int) -> Int is not allowed inside another type
+let badge = Some(<b>new</b>); // error: Html is not allowed inside another type
+let rows: Array[Html] = [];   // error: Html is not allowed inside another type
 ```
 
 <a id="expressions"></a>
@@ -708,8 +705,7 @@ A let binding with any other [pattern](#match-expressions) takes the value of
 The pattern must match every value of its type, so it is made of
 [wildcard and variable](#wildcard-and-variable-patterns),
 [tuple](#tuple-patterns) and [record patterns](#record-patterns), and any other
-pattern in it is a compile error. So is a pattern that binds no variable, and a
-pattern other than a variable for a value that is not data.
+pattern in it is a compile error. So is a pattern that binds no variable.
 
 ```hop
 let (name, _) = ("Alice", 36);
@@ -1001,11 +997,8 @@ LambdaExpr  ::= "fn" "(" ( LambdaParam ( "," LambdaParam )* ","? )? ")" ( "->" T
 LambdaParam ::= LowercaseIdentifier ( ":" Type )?
 ```
 
-A parameter `x: T` has type `T`. A parameter `x` without a type takes it from
-the context, when the lambda is an argument for a parameter or a let binding
-with a type annotation, and that type is a function type with as many
-parameters as the lambda: `x` has the type at its position. A parameter without
-a type in any other context is a compile error. With `-> R` after the
+A parameter `x: T` has type `T`. A parameter without a type has its type
+inferred, and it is a compile error where it cannot be. With `-> R` after the
 parameters, a body that does not have type `R` is a compile error.
 
 ```hop
@@ -1678,8 +1671,8 @@ page Home {
 ```
 
 A page parameter of type `Html` is a compile error, for
-[XSS safety](#xss-safety), and so is a page parameter of a
-[function type](#types).
+[XSS safety](#xss-safety). So is a page parameter of a
+[function type](#types), or of a type that contains one.
 
 <a id="rendering"></a>
 

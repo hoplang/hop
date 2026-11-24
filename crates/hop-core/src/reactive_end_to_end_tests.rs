@@ -1769,3 +1769,185 @@ fn state_of_a_closure_applied_in_each_arm_starts_over_when_the_match_takes_anoth
         "#]],
     );
 }
+
+#[test]
+fn handlers_in_an_array_of_tuples_update_the_cell_they_capture() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (count, set_count) = state!(0);
+                let incr = mut fn() { set_count(fn(curr) { curr + 1 }) };
+                let decr = mut fn() { set_count(fn(curr) { curr - 2 }) };
+                let steps = [
+                  (incr, "+"),
+                  (decr, "-"),
+                ];
+                <>
+                  <b>{count.to_string()}</b>
+                  {for step in steps {
+                    let (run, label) = step;
+                    <button on:click={run}>{label}</button>
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(2), Event::Click(2), Event::Click(3)],
+        expect![[r#"
+            -- render --
+            <b@e1>0</b>
+            <button@e2>+</button>
+            <button@e3>-</button>
+            -- click button@e2 --
+            <b@e1>1</b>
+            <button@e2>+</button>
+            <button@e3>-</button>
+            -- click button@e2 --
+            <b@e1>2</b>
+            <button@e2>+</button>
+            <button@e3>-</button>
+            -- click button@e3 --
+            <b@e1>0</b>
+            <button@e2>+</button>
+            <button@e3>-</button>
+        "#]],
+    );
+}
+
+#[test]
+fn state_of_closures_in_the_fields_of_records_follows_the_key_of_the_loop_that_applies_them() {
+    check(
+        indoc! {r#"
+            record Counter {
+              label: String,
+              show: fn() -> Html,
+            }
+
+            fn counter(label: String) -> Counter {
+              Counter {
+                label: label,
+                show: fn() {
+                  let (count, set_count) = state!(0);
+                  let incr = mut fn() { set_count(fn(curr) { curr + 1 }) };
+                  <b on:click={incr}>{label}{count.to_string()}</b>
+                },
+              }
+            }
+
+            page Test {
+              fn body() -> Html {
+                let (flipped, set_flipped) = state!(false);
+                let flip = mut fn() { set_flipped(fn(curr) { !curr }) };
+                let counters = match flipped {
+                  true => [counter("b"), counter("a")],
+                  false => [counter("a"), counter("b")],
+                };
+                <>
+                  <button on:click={flip}>flip</button>
+                  {for each in counters key each.label {
+                    let show = each.show;
+                    show()
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(2),
+            Event::Click(3),
+            Event::Click(1),
+            Event::Click(2),
+        ],
+        expect![[r#"
+            -- render --
+            <button@e1>flip</button>
+            <b@e2>a0</b>
+            <b@e3>b0</b>
+            -- click b@e2 --
+            <button@e1>flip</button>
+            <b@e2>a1</b>
+            <b@e3>b0</b>
+            -- click b@e2 --
+            <button@e1>flip</button>
+            <b@e2>a2</b>
+            <b@e3>b0</b>
+            -- click b@e3 --
+            <button@e1>flip</button>
+            <b@e2>a2</b>
+            <b@e3>b1</b>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <b@e3>b1</b>
+            <b@e2>a2</b>
+            -- click b@e2 --
+            <button@e1>flip</button>
+            <b@e3>b1</b>
+            <b@e2>a3</b>
+        "#]],
+    );
+}
+
+#[test]
+fn state_of_a_closure_in_an_option_starts_over_when_the_option_holds_another_lambda() {
+    check(
+        indoc! {r#"
+            fn Counter(tag: String) -> Html {
+              let (count, set_count) = state!(0);
+              let incr = mut fn() { set_count(fn(curr) { curr + 1 }) };
+              <b on:click={incr}>{tag}{count.to_string()}</b>
+            }
+
+            page Test {
+              fn body() -> Html {
+                let (step, set_step) = state!(0);
+                let next = mut fn() { set_step(fn(curr) { curr + 1 }) };
+                let shown = match step == 0 {
+                  true => Some(fn() {
+                    <Counter tag="a"/>
+                  }),
+                  false => match step == 1 {
+                    true => Some(fn() {
+                      <Counter tag="b"/>
+                    }),
+                    false => None,
+                  },
+                };
+                <>
+                  <button on:click={next}>next</button>
+                  {match shown {
+                    Some(show) => show(),
+                    None => {
+                      <i>none</i>
+                    },
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(3),
+            Event::Click(1),
+        ],
+        expect![[r#"
+            -- render --
+            <button@e1>next</button>
+            <b@e2>a0</b>
+            -- click b@e2 --
+            <button@e1>next</button>
+            <b@e2>a1</b>
+            -- click button@e1 --
+            <button@e1>next</button>
+            <b@e3>b0</b>
+            -- click b@e3 --
+            <button@e1>next</button>
+            <b@e3>b1</b>
+            -- click button@e1 --
+            <button@e1>next</button>
+            <i@e4>none</i>
+        "#]],
+    );
+}

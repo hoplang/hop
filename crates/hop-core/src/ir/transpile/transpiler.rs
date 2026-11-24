@@ -10,7 +10,7 @@ use crate::ir::writer_program::{
     WriterPageDeclaration, WriterProgram, WriterStmt,
 };
 use crate::ir::writer_switch::WriterSwitch;
-use crate::ir::writer_type::{WriterDataType, WriterSignature, WriterType};
+use crate::ir::writer_type::{WriterSignature, WriterType};
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 use pretty::Arena;
@@ -57,7 +57,7 @@ pub trait Transpiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrBinder<WriterDataType>>,
+        var: Option<&'a IrBinder<WriterType>>,
         array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a>;
@@ -114,17 +114,17 @@ pub trait Transpiler {
     fn transpile_array_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_type: &WriterDataType,
+        element_type: &WriterType,
     ) -> Doc<'a>;
     fn transpile_option_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        inner_type: &WriterDataType,
+        inner_type: &WriterType,
     ) -> Doc<'a>;
     fn transpile_tuple_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_types: &[WriterDataType],
+        element_types: &[WriterType],
     ) -> Doc<'a>;
     fn transpile_record_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
     fn transpile_enum_type<'a>(&mut self, arena: &'a Arena<'a>, name: &str) -> Doc<'a>;
@@ -155,21 +155,16 @@ pub trait Transpiler {
     ) -> Doc<'a>;
     fn transpile_type<'a>(&mut self, arena: &'a Arena<'a>, t: &WriterType) -> Doc<'a> {
         match t {
-            WriterType::Data(data) => self.transpile_data_type(arena, data),
+            WriterType::Bool => self.transpile_bool_type(arena),
+            WriterType::String => self.transpile_string_type(arena),
+            WriterType::Float => self.transpile_float_type(arena),
+            WriterType::Int => self.transpile_int_type(arena),
+            WriterType::Array(elem) => self.transpile_array_type(arena, elem),
+            WriterType::Option(inner) => self.transpile_option_type(arena, inner),
+            WriterType::Tuple(elements) => self.transpile_tuple_type(arena, elements),
+            WriterType::Record(name) => self.transpile_record_type(arena, name.as_str()),
+            WriterType::Enum(name) => self.transpile_enum_type(arena, name.as_str()),
             WriterType::Function(signature) => self.transpile_closure_type(arena, signature),
-        }
-    }
-    fn transpile_data_type<'a>(&mut self, arena: &'a Arena<'a>, t: &WriterDataType) -> Doc<'a> {
-        match t {
-            WriterDataType::Bool => self.transpile_bool_type(arena),
-            WriterDataType::String => self.transpile_string_type(arena),
-            WriterDataType::Float => self.transpile_float_type(arena),
-            WriterDataType::Int => self.transpile_int_type(arena),
-            WriterDataType::Array(elem) => self.transpile_array_type(arena, elem),
-            WriterDataType::Option(inner) => self.transpile_option_type(arena, inner),
-            WriterDataType::Tuple(elements) => self.transpile_tuple_type(arena, elements),
-            WriterDataType::Record(name) => self.transpile_record_type(arena, name.as_str()),
-            WriterDataType::Enum(name) => self.transpile_enum_type(arena, name.as_str()),
         }
     }
 
@@ -188,7 +183,7 @@ pub trait Transpiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        elem_type: &'a WriterDataType,
+        elem_type: &'a WriterType,
     ) -> Doc<'a>;
     /// The array of the Ints from start to end inclusive.
     fn transpile_array_from_range<'a>(
@@ -201,7 +196,7 @@ pub trait Transpiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        element_types: &'a [WriterDataType],
+        element_types: &'a [WriterType],
     ) -> Doc<'a>;
     fn transpile_tuple_index<'a>(
         &mut self,
@@ -318,7 +313,7 @@ pub trait Transpiler {
         &mut self,
         arena: &'a Arena<'a>,
         value: Option<ValueId>,
-        inner_type: &'a WriterDataType,
+        inner_type: &'a WriterType,
     ) -> Doc<'a>;
     fn transpile_match_value<'a>(
         &mut self,
@@ -338,13 +333,13 @@ pub trait Transpiler {
         arena: &'a Arena<'a>,
         array: ValueId,
         index: ValueId,
-        element_type: &'a WriterDataType,
+        element_type: &'a WriterType,
     ) -> Doc<'a>;
     fn transpile_array_enumerate<'a>(
         &mut self,
         arena: &'a Arena<'a>,
         array: ValueId,
-        element_type: &'a WriterDataType,
+        element_type: &'a WriterType,
     ) -> Doc<'a>;
     fn transpile_string_is_empty<'a>(&mut self, arena: &'a Arena<'a>, string: ValueId) -> Doc<'a>;
     fn transpile_option_is_some<'a>(&mut self, arena: &'a Arena<'a>, option: ValueId) -> Doc<'a>;
@@ -379,37 +374,37 @@ pub trait Transpiler {
                 self.transpile_tuple_index(arena, *tuple, *index)
             }
             WriterOp::Data(IrDataOp::Array(elements)) => match typ {
-                WriterType::Data(WriterDataType::Array(elem_type)) => {
+                WriterType::Array(elem_type) => {
                     self.transpile_array_literal(arena, elements, elem_type)
                 }
                 _ => unreachable!("Array value must have Array type"),
             },
             WriterOp::Data(IrDataOp::Tuple(elements)) => match typ {
-                WriterType::Data(WriterDataType::Tuple(element_types)) => {
+                WriterType::Tuple(element_types) => {
                     self.transpile_tuple_literal(arena, elements, element_types)
                 }
                 _ => unreachable!("Tuple value must have Tuple type"),
             },
             WriterOp::Data(IrDataOp::Record(fields)) => match typ {
-                WriterType::Data(WriterDataType::Record(name)) => {
+                WriterType::Record(name) => {
                     self.transpile_record_literal(arena, name.as_str(), fields)
                 }
                 _ => unreachable!("Record value must have a Record type"),
             },
             WriterOp::Data(IrDataOp::Enum(variant_name, fields)) => match typ {
-                WriterType::Data(WriterDataType::Enum(name)) => {
+                WriterType::Enum(name) => {
                     self.transpile_enum_literal(arena, name.as_str(), variant_name.as_str(), fields)
                 }
                 _ => unreachable!("Enum value must have an Enum type"),
             },
             WriterOp::Data(IrDataOp::OptionSome(value)) => match typ {
-                WriterType::Data(WriterDataType::Option(inner_type)) => {
+                WriterType::Option(inner_type) => {
                     self.transpile_option_literal(arena, Some(*value), inner_type)
                 }
                 _ => unreachable!("Option value must have Option type"),
             },
             WriterOp::Data(IrDataOp::OptionNone) => match typ {
-                WriterType::Data(WriterDataType::Option(inner_type)) => {
+                WriterType::Option(inner_type) => {
                     self.transpile_option_literal(arena, None, inner_type)
                 }
                 _ => unreachable!("Option value must have Option type"),
@@ -460,14 +455,14 @@ pub trait Transpiler {
                 self.transpile_array_is_empty(arena, *operand)
             }
             WriterOp::Data(IrDataOp::ArrayGet(array, index)) => match typ {
-                WriterType::Data(WriterDataType::Option(element_type)) => {
+                WriterType::Option(element_type) => {
                     self.transpile_array_get(arena, *array, *index, element_type)
                 }
                 _ => unreachable!("ArrayGet must produce an Option"),
             },
             WriterOp::Data(IrDataOp::ArrayEnumerate(array)) => match typ {
-                WriterType::Data(WriterDataType::Array(pair)) => match pair.as_ref() {
-                    WriterDataType::Tuple(types) if types.len() == 2 => {
+                WriterType::Array(pair) => match pair.as_ref() {
+                    WriterType::Tuple(types) if types.len() == 2 => {
                         self.transpile_array_enumerate(arena, *array, &types[1])
                     }
                     _ => unreachable!("ArrayEnumerate must produce an Array of pairs"),

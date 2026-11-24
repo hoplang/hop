@@ -1,4 +1,4 @@
-use super::r#type::{FunctionType, Modifier};
+use super::r#type::{DataType, FunctionType, Modifier};
 use super::{Type, TypedExpr};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
@@ -28,11 +28,11 @@ fn typecheck_on_click(
     definition_links: &mut Vec<DefinitionLink>,
     asset_references: &mut Vec<AssetReference>,
 ) -> Option<TypedExpr> {
-    let handler_type = Type::Function(FunctionType {
+    let handler_type = Type::Data(DataType::Function(FunctionType {
         modifier: Modifier::Mut,
         parameters: Vec::new(),
         result: Box::new(Type::UNIT),
-    });
+    }));
     let value = match attribute {
         ParsedAttribute::Expression { value, .. } => value,
         ParsedAttribute::String { quoted_range, .. } => {

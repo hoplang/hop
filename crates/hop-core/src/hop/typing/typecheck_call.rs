@@ -9,7 +9,7 @@ use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
 use crate::hop::parsing::ParsedExpr;
 use crate::hop::typing::type_error::{Target, TypeError, TypeErrorKind, TypeMismatchContext};
-use crate::hop::typing::{Modifier, Type, TypedAttribute, TypedAttrs};
+use crate::hop::typing::{DataType, Modifier, Type, TypedAttribute, TypedAttrs};
 use crate::hop::uncooked_string::UncookedString;
 use crate::hover_annotation::HoverAnnotation;
 use crate::html::HtmlElementKind;
@@ -133,7 +133,7 @@ pub fn typecheck_call(
                         typ: typ.clone(),
                         var_name: var_name.clone(),
                     });
-                    let Type::Function(function) = typ else {
+                    let Type::Data(DataType::Function(function)) = typ else {
                         errors.push(TypeError::new(
                             TypeErrorKind::NotAFunction {
                                 name: FunctionName::clone(name),

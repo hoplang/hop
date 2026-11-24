@@ -563,9 +563,9 @@ pub fn typecheck_expr(
                 }
                 let elem_type = match first_type? {
                     Type::Data(elem_type) => elem_type,
-                    typ @ (Type::Html(_) | Type::Function(_)) => {
+                    Type::Html(_) => {
                         errors.push(TypeError::new(
-                            TypeErrorKind::NotData { typ },
+                            TypeErrorKind::HtmlInsideType,
                             elements[0].range().clone(),
                         ));
                         return None;
@@ -611,8 +611,8 @@ pub fn typecheck_expr(
             for (typed_element, element) in typed_elements.iter().zip(elements) {
                 match typed_element.typ() {
                     Type::Data(element_type) => element_types.push(element_type),
-                    typ @ (Type::Html(_) | Type::Function(_)) => errors.push(TypeError::new(
-                        TypeErrorKind::NotData { typ },
+                    Type::Html(_) => errors.push(TypeError::new(
+                        TypeErrorKind::HtmlInsideType,
                         element.range().clone(),
                     )),
                 }
@@ -1005,9 +1005,9 @@ pub fn typecheck_expr(
                 )?;
                 let inner_type = match typed_inner.typ() {
                     Type::Data(inner_type) => inner_type,
-                    typ @ (Type::Html(_) | Type::Function(_)) => {
+                    Type::Html(_) => {
                         errors.push(TypeError::new(
-                            TypeErrorKind::NotData { typ },
+                            TypeErrorKind::HtmlInsideType,
                             inner_expr.range().clone(),
                         ));
                         return None;
@@ -1683,7 +1683,7 @@ pub fn typecheck_block(
                 break;
             };
             let typ = typed_initial.typ();
-            if typ.as_data().is_none() {
+            if !matches!(&typ, Type::Data(data) if registry.is_data(data)) {
                 errors.push(TypeError::new(
                     TypeErrorKind::StateMacroNotData { typ },
                     initial.range().clone(),
@@ -1692,15 +1692,15 @@ pub fn typecheck_block(
                 break;
             }
             let getter_type = typ.clone();
-            let setter_type = Type::Function(FunctionType {
+            let setter_type = Type::Data(DataType::Function(FunctionType {
                 modifier: Modifier::Mut,
-                parameters: vec![Type::Function(FunctionType {
+                parameters: vec![Type::Data(DataType::Function(FunctionType {
                     modifier: Modifier::Pure,
                     parameters: vec![typ.clone()],
                     result: Box::new(typ),
-                })],
+                }))],
                 result: Box::new(Type::UNIT),
-            });
+            }));
             let mut pushed = Vec::new();
             for (pattern, typ) in [(getter, getter_type), (setter, setter_type)] {
                 let ParsedPattern::Binding { name, range } = pattern else {

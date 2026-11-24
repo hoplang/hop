@@ -45,6 +45,48 @@ impl FlatTypeDeclarations {
     }
 }
 
+impl FlatTypeDeclarations {
+    pub fn holds_closure(&self, typ: &FlatDataType) -> bool {
+        fn holds<'a>(
+            declarations: &'a FlatTypeDeclarations,
+            typ: &'a FlatDataType,
+            visiting: &mut Vec<&'a TypeName>,
+        ) -> bool {
+            match typ {
+                FlatDataType::String
+                | FlatDataType::Bool
+                | FlatDataType::Int
+                | FlatDataType::Float => false,
+                FlatDataType::Array(element) | FlatDataType::Option(element) => {
+                    holds(declarations, element, visiting)
+                }
+                FlatDataType::Tuple(elements) => {
+                    (elements.iter()).any(|element| holds(declarations, element, visiting))
+                }
+                FlatDataType::Record(name) | FlatDataType::Enum(name) => {
+                    if visiting.contains(&name) {
+                        return false;
+                    }
+                    visiting.push(name);
+                    let record = declarations.record(name).into_iter();
+                    let enumeration = declarations.enumeration(name).into_iter();
+                    let held = (record.flat_map(|record| &record.fields))
+                        .chain(
+                            enumeration
+                                .flat_map(|enumeration| &enumeration.variants)
+                                .flat_map(|variant| &variant.fields),
+                        )
+                        .any(|field| holds(declarations, &field.typ, visiting));
+                    visiting.pop();
+                    held
+                }
+                FlatDataType::Function(_) => true,
+            }
+        }
+        holds(self, typ, &mut Vec::new())
+    }
+}
+
 fn field_shapes(fields: &[FlatField]) -> Vec<(&FieldName, &FlatDataType)> {
     fields
         .iter()
@@ -81,7 +123,8 @@ impl MatchTypes for FlatTypeDeclarations {
             FlatDataType::String
             | FlatDataType::Int
             | FlatDataType::Float
-            | FlatDataType::Array(_) => TypeShape::Unmatchable,
+            | FlatDataType::Array(_)
+            | FlatDataType::Function(_) => TypeShape::Unmatchable,
         }
     }
 }

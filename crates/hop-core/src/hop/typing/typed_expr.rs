@@ -13,7 +13,7 @@ use crate::symbols::type_name::TypeName;
 use crate::symbols::var_name::VarName;
 use indexmap::IndexMap;
 
-use super::r#type::{ComparableType, EquatableType, NumericType, Type};
+use super::r#type::{ComparableType, DataType, EquatableType, NumericType, Type};
 
 #[derive(Debug, Clone)]
 pub enum TypedExpr {
@@ -594,7 +594,7 @@ impl Display for TypedExpr {
             }
             TypedExpr::Asset { path } => write!(f, "asset!(\"/{}\")", path.as_str()),
             TypedExpr::Lambda { params, body, typ } => {
-                if let Type::Function(function) = typ {
+                if let Type::Data(DataType::Function(function)) = typ {
                     f.write_str(function.modifier.prefix(&function.result))?;
                 }
                 f.write_str("fn(")?;
@@ -604,7 +604,7 @@ impl Display for TypedExpr {
                     write!(f, "{sep}{name}: {typ}")?;
                 }
                 f.write_str(")")?;
-                if let Type::Function(function) = typ {
+                if let Type::Data(DataType::Function(function)) = typ {
                     write!(f, " -> {}", function.result)?;
                 }
                 f.write_str(" {")?;

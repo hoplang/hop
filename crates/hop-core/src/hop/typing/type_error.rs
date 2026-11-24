@@ -124,8 +124,8 @@ pub enum TypeErrorKind {
     #[error("{typ} is not allowed in page parameters")]
     NotAllowedInPageParameter { typ: Type },
 
-    #[error("{typ} is not allowed inside another type")]
-    NotData { typ: Type },
+    #[error("Html is not allowed inside another type")]
+    HtmlInsideType,
 
     // Named types print without their module, so two different types can
     // print the same.

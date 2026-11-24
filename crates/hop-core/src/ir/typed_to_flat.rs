@@ -14,7 +14,7 @@ use crate::ir::flat_program::{
     FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatLambda, FlatMatch,
     FlatMatchArm, FlatOp, FlatPattern, FlatProgram,
 };
-use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
+use crate::ir::flat_type::{FlatDataType, FlatSignature, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{
     FlatEnum, FlatField, FlatRecord, FlatTypeDeclarations, FlatVariant,
 };
@@ -257,7 +257,7 @@ impl<'a> Compiler<'a> {
         let outer = std::mem::replace(&mut self.context, modifier);
         let body = match &decl.return_type {
             Type::Html(_) => self.compile_html_block(&decl.body),
-            Type::Data(_) | Type::Function(_) => self.compile_value_block(&decl.body),
+            Type::Data(_) => self.compile_value_block(&decl.body),
         };
         self.context = outer;
         let return_type = lower_type(self.registry, &decl.return_type);
@@ -362,7 +362,7 @@ impl<'a> Compiler<'a> {
     fn push(&mut self, typ: Type, op: FlatOp) -> ValueId {
         let typ = lower_type(self.registry, &typ);
         assert!(
-            matches!(typ, FlatType::Data(_) | FlatType::Function(_)),
+            matches!(typ, FlatType::Data(_)),
             "an op of a value produces a value"
         );
         let name = self.value_id_counter.next();
@@ -1048,7 +1048,7 @@ impl<'a> Compiler<'a> {
                 }));
             }
             TypedExpr::Lambda { params, body, .. } => {
-                let Type::Function(function) = &typ else {
+                let Type::Data(DataType::Function(function)) = &typ else {
                     unreachable!("a lambda has a function type");
                 };
                 let outer =
@@ -1200,11 +1200,6 @@ fn lower_type(registry: &TypeRegistry, typ: &Type) -> FlatType {
     match typ {
         Type::Data(data) => FlatType::Data(lower_data_type(registry, data)),
         Type::Html(_) => FlatType::Html,
-        Type::Function(function) => FlatType::function(
-            IrModifier::from(function.modifier),
-            (function.parameters.iter()).map(|parameter| lower_type(registry, parameter)),
-            lower_type(registry, &function.result),
-        ),
     }
 }
 
@@ -1231,6 +1226,13 @@ fn lower_data_type(registry: &TypeRegistry, typ: &DataType) -> FlatDataType {
             Some(ResolvedType::Enum { .. }) => FlatDataType::Enum(name.clone()),
             _ => panic!("type `{name}` must be declared"),
         },
+        DataType::Function(function) => FlatDataType::Function(FlatSignature {
+            modifier: IrModifier::from(function.modifier),
+            parameters: (function.parameters.iter())
+                .map(|parameter| lower_type(registry, parameter))
+                .collect(),
+            result: Box::new(lower_type(registry, &function.result)),
+        }),
     }
 }
 

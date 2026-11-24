@@ -36,6 +36,7 @@ pub enum ResolvedType<'a> {
     Int,
     Float,
     Array,
+    Function,
     Option(&'a DataType),
     Tuple(&'a [DataType]),
     Record {
@@ -113,7 +114,45 @@ impl TypeRegistry {
                 TypeDef::Record { fields } => Some(ResolvedType::Record { name, fields }),
                 TypeDef::Enum { variants } => Some(ResolvedType::Enum { name, variants }),
             },
+            DataType::Function(_) => Some(ResolvedType::Function),
         }
+    }
+
+    pub fn is_data(&self, typ: &DataType) -> bool {
+        fn is_data<'a>(
+            registry: &'a TypeRegistry,
+            typ: &'a DataType,
+            visiting: &mut Vec<(&'a RootContainedFilePath, &'a TypeName)>,
+        ) -> bool {
+            match typ {
+                DataType::String | DataType::Bool | DataType::Int | DataType::Float => true,
+                DataType::Array(element) | DataType::Option(element) => {
+                    is_data(registry, element, visiting)
+                }
+                DataType::Tuple(elements) => {
+                    (elements.iter()).all(|element| is_data(registry, element, visiting))
+                }
+                DataType::Named { module, name } => {
+                    if visiting.contains(&(module, name)) {
+                        return true;
+                    }
+                    visiting.push((module, name));
+                    let data = match registry.defs.get(module).and_then(|defs| defs.get(name)) {
+                        Some(TypeDef::Record { fields }) => {
+                            (fields.iter()).all(|field| is_data(registry, &field.typ, visiting))
+                        }
+                        Some(TypeDef::Enum { variants }) => (variants.iter())
+                            .flat_map(|variant| &variant.fields)
+                            .all(|field| is_data(registry, &field.typ, visiting)),
+                        None => true,
+                    };
+                    visiting.pop();
+                    data
+                }
+                DataType::Function(_) => false,
+            }
+        }
+        is_data(self, typ, &mut Vec::new())
     }
 }
 
@@ -150,7 +189,8 @@ impl MatchTypes for TypeRegistry {
             ResolvedType::String
             | ResolvedType::Int
             | ResolvedType::Float
-            | ResolvedType::Array => TypeShape::Unmatchable,
+            | ResolvedType::Array
+            | ResolvedType::Function => TypeShape::Unmatchable,
         }
     }
 }

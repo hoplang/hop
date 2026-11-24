@@ -1,5 +1,5 @@
 use crate::hop::typing::Ty;
-use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
+use crate::ir::flat_type::{FlatDataType, FlatSignature, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{
     FlatEnum, FlatField, FlatRecord, FlatTypeDeclarations, FlatVariant,
 };
@@ -138,17 +138,6 @@ fn flat_type(ty: Ty, records: &[String], enums: &[String]) -> FlatType {
     match ty {
         Ty::Html => FlatType::Html,
         Ty::Cell(payload) => FlatType::Cell(data_type(*payload, records, enums)),
-        Ty::Function {
-            modifier,
-            parameters,
-            result,
-        } => {
-            let parameters = parameters
-                .into_iter()
-                .map(|parameter| flat_type(parameter, records, enums));
-            let result = flat_type(*result, records, enums);
-            FlatType::function(IrModifier::from(modifier), parameters, result)
-        }
         ty => FlatType::Data(data_type(ty, records, enums)),
     }
 }
@@ -162,7 +151,17 @@ fn data_type(ty: Ty, records: &[String], enums: &[String]) -> FlatDataType {
         Ty::Float => FlatDataType::Float,
         Ty::Html => panic!("Html is not a data type"),
         Ty::Cell(_) => panic!("a cell is not a data type"),
-        Ty::Function { .. } => panic!("a function type is not a data type"),
+        Ty::Function {
+            modifier,
+            parameters,
+            result,
+        } => FlatDataType::Function(FlatSignature {
+            modifier: IrModifier::from(modifier),
+            parameters: (parameters.into_iter())
+                .map(|parameter| flat_type(parameter, records, enums))
+                .collect(),
+            result: Box::new(flat_type(*result, records, enums)),
+        }),
         Ty::Array(ty) => FlatDataType::Array(element(ty)),
         Ty::Option(ty) => FlatDataType::Option(element(ty)),
         Ty::Tuple(elements) => FlatDataType::Tuple(

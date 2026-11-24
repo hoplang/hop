@@ -1,6 +1,6 @@
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::value_id::ValueId;
-use crate::ir::writer_type::WriterDataType;
+use crate::ir::writer_type::WriterType;
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
 
@@ -15,7 +15,7 @@ pub enum WriterEnumPattern {
 #[derive(Debug)]
 pub struct WriterEnumMatchArm<Body> {
     pub pattern: WriterEnumPattern,
-    pub bindings: Vec<(FieldName, IrBinder<WriterDataType>)>,
+    pub bindings: Vec<(FieldName, IrBinder<WriterType>)>,
     pub body: Body,
 }
 
@@ -32,7 +32,7 @@ pub enum WriterSwitch<Body> {
     },
     Option {
         subject: ValueId,
-        some_arm_binding: Option<IrBinder<WriterDataType>>,
+        some_arm_binding: Option<IrBinder<WriterType>>,
         some_arm_body: Body,
         none_arm_body: Body,
     },

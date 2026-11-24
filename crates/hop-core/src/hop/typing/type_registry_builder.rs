@@ -90,22 +90,6 @@ impl From<Ty> for Type {
         match ty {
             Ty::Html => Type::HTML,
             Ty::Cell(_) => panic!("the surface language has no cell type"),
-            Ty::Function {
-                modifier,
-                parameters,
-                result,
-            } => {
-                let result: Type = (*result).into();
-                let function = FunctionType {
-                    modifier,
-                    parameters: parameters.into_iter().map(Type::from).collect(),
-                    result: Box::new(result),
-                };
-                if let Some(error) = check_function_type(&function) {
-                    panic!("invalid function type: {error:?}");
-                }
-                Type::Function(function)
-            }
             data => Type::Data(data.into()),
         }
     }
@@ -120,7 +104,22 @@ impl From<Ty> for DataType {
             Ty::Float => DataType::Float,
             Ty::Html => panic!("Html is not a data type"),
             Ty::Cell(_) => panic!("a cell is not a data type"),
-            Ty::Function { .. } => panic!("a function type is not a data type"),
+            Ty::Function {
+                modifier,
+                parameters,
+                result,
+            } => {
+                let result: Type = (*result).into();
+                let function = FunctionType {
+                    modifier,
+                    parameters: parameters.into_iter().map(Type::from).collect(),
+                    result: Box::new(result),
+                };
+                if let Some(error) = check_function_type(&function) {
+                    panic!("invalid function type: {error:?}");
+                }
+                DataType::Function(function)
+            }
             Ty::Named(name) => DataType::Named {
                 module: test_module(),
                 name: type_name(&name),
@@ -287,6 +286,13 @@ fn assert_declared(registry: &TypeRegistry, typ: &DataType) {
         DataType::Named { name, .. } => {
             if registry.resolve(typ).is_none() {
                 panic!("type `{}` is not declared", name.as_str());
+            }
+        }
+        DataType::Function(function) => {
+            for typ in function.parameters.iter().chain([&*function.result]) {
+                if let Type::Data(data) = typ {
+                    assert_declared(registry, data);
+                }
             }
         }
     }

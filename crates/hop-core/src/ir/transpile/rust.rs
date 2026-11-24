@@ -16,8 +16,8 @@ use crate::ir::writer_program::{
 };
 use crate::ir::writer_switch::{WriterEnumMatchArm, WriterEnumPattern, WriterSwitch};
 use crate::ir::writer_type::{
-    WriterDataType, WriterEnum, WriterRecord, WriterResult, WriterSignature, WriterType,
-    WriterTypeDeclarations, WriterVariant,
+    WriterEnum, WriterRecord, WriterResult, WriterSignature, WriterType, WriterTypeDeclarations,
+    WriterVariant,
 };
 use crate::symbols::field_name::FieldName;
 use crate::symbols::type_name::TypeName;
@@ -87,13 +87,13 @@ impl RustTranspiler {
             .replace('\t', "\\t")
     }
 
-    fn inline_refs(t: &WriterDataType, out: &mut BTreeSet<TypeName>) {
+    fn inline_refs(t: &WriterType, out: &mut BTreeSet<TypeName>) {
         match t {
-            WriterDataType::Record(name) | WriterDataType::Enum(name) => {
+            WriterType::Record(name) | WriterType::Enum(name) => {
                 out.insert(name.clone());
             }
-            WriterDataType::Option(inner) => Self::inline_refs(inner, out),
-            WriterDataType::Tuple(elements) => {
+            WriterType::Option(inner) => Self::inline_refs(inner, out),
+            WriterType::Tuple(elements) => {
                 for element in elements {
                     Self::inline_refs(element, out);
                 }
@@ -134,14 +134,14 @@ impl RustTranspiler {
         edges
     }
 
-    fn field_type_is_indirect(&self, t: &WriterDataType, owner: &str) -> bool {
+    fn field_type_is_indirect(&self, t: &WriterType, owner: &str) -> bool {
         match t {
-            WriterDataType::Record(name) | WriterDataType::Enum(name) => self
+            WriterType::Record(name) | WriterType::Enum(name) => self
                 .indirect_edges
                 .iter()
                 .any(|(o, target)| o.as_str() == owner && target == name),
-            WriterDataType::Option(inner) => self.field_type_is_indirect(inner, owner),
-            WriterDataType::Tuple(elements) => elements
+            WriterType::Option(inner) => self.field_type_is_indirect(inner, owner),
+            WriterType::Tuple(elements) => elements
                 .iter()
                 .any(|element| self.field_type_is_indirect(element, owner)),
             _ => false,
@@ -149,7 +149,7 @@ impl RustTranspiler {
     }
 
     fn compute_borrowing_types(&self) -> HashSet<TypeName> {
-        let fields = |name: &TypeName| -> Vec<WriterDataType> {
+        let fields = |name: &TypeName| -> Vec<WriterType> {
             match self.types.record(name) {
                 Some(record) => record.fields.iter().map(|f| f.typ.clone()).collect(),
                 None => (self.types.enumeration(name).into_iter())
@@ -178,15 +178,15 @@ impl RustTranspiler {
         }
     }
 
-    fn holds_reference(borrowing: &HashSet<TypeName>, t: &WriterDataType) -> bool {
+    fn holds_reference(borrowing: &HashSet<TypeName>, t: &WriterType) -> bool {
         match t {
-            WriterDataType::Bool | WriterDataType::Int | WriterDataType::Float => false,
-            WriterDataType::String | WriterDataType::Array(_) => true,
-            WriterDataType::Option(inner) => Self::holds_reference(borrowing, inner),
-            WriterDataType::Tuple(elements) => {
+            WriterType::Bool | WriterType::Int | WriterType::Float => false,
+            WriterType::String | WriterType::Array(_) | WriterType::Function(_) => true,
+            WriterType::Option(inner) => Self::holds_reference(borrowing, inner),
+            WriterType::Tuple(elements) => {
                 (elements.iter()).any(|element| Self::holds_reference(borrowing, element))
             }
-            WriterDataType::Record(name) | WriterDataType::Enum(name) => borrowing.contains(name),
+            WriterType::Record(name) | WriterType::Enum(name) => borrowing.contains(name),
         }
     }
 
@@ -201,15 +201,13 @@ impl RustTranspiler {
     fn transpile_field_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        t: &'a WriterDataType,
+        t: &'a WriterType,
         owner: &str,
     ) -> Doc<'a> {
         if self.field_type_is_indirect(t, owner) {
-            arena
-                .text("&'a ")
-                .append(self.transpile_data_type(arena, t))
+            arena.text("&'a ").append(self.transpile_type(arena, t))
         } else {
-            self.transpile_data_type(arena, t)
+            self.transpile_type(arena, t)
         }
     }
 
@@ -219,9 +217,7 @@ impl RustTranspiler {
         owner: &str,
         value: ValueId,
     ) -> Doc<'a> {
-        if let WriterType::Data(value_type) = self.name_type(value)
-            && self.field_type_is_indirect(value_type, owner)
-        {
+        if self.field_type_is_indirect(self.name_type(value), owner) {
             arena.text(format!("arena.alloc({})", name_ident(value)))
         } else {
             arena.text(name_ident(value))
@@ -229,7 +225,7 @@ impl RustTranspiler {
     }
 
     fn field_access_is_indirect(&self, record: ValueId, field: &FieldName) -> bool {
-        let WriterType::Data(WriterDataType::Record(name)) = self.name_type(record) else {
+        let WriterType::Record(name) = self.name_type(record) else {
             unreachable!("field access objects are records");
         };
         let field_type = self
@@ -248,15 +244,14 @@ impl RustTranspiler {
         &mut self,
         variants: &[WriterVariant],
         arm_pattern: &WriterEnumPattern,
-        bindings: &[(FieldName, IrBinder<WriterDataType>)],
+        bindings: &[(FieldName, IrBinder<WriterType>)],
     ) -> String {
         let WriterEnumPattern::Variant {
             type_name,
             variant_name,
         } = arm_pattern;
         for (_, binder) in bindings {
-            self.names
-                .insert(binder.var, WriterType::Data(binder.typ.clone()));
+            self.names.insert(binder.var, binder.typ.clone());
         }
         if bindings.is_empty() {
             let has_fields = variants
@@ -307,7 +302,7 @@ impl RustTranspiler {
     }
 
     fn subject_variants(&self, subject: ValueId) -> Vec<WriterVariant> {
-        let WriterType::Data(WriterDataType::Enum(name)) = self.name_type(subject) else {
+        let WriterType::Enum(name) = self.name_type(subject) else {
             unreachable!("Enum match subject must have an Enum type")
         };
         self.types
@@ -399,10 +394,8 @@ impl RustTranspiler {
     }
 
     fn page_type<'a>(&self, arena: &'a Arena<'a>, page: &WriterPageDeclaration) -> Doc<'a> {
-        let borrows = page.parameters.iter().any(|param| match &param.binder.typ {
-            WriterType::Data(t) => Self::holds_reference(&self.borrowing_types, t),
-            WriterType::Function(_) => unreachable!("a page parameter is data"),
-        });
+        let borrows = (page.parameters.iter())
+            .any(|param| Self::holds_reference(&self.borrowing_types, &param.binder.typ));
         if borrows {
             arena.text(format!("{}<'a>", page.name.as_str()))
         } else {
@@ -479,7 +472,7 @@ impl Transpiler for RustTranspiler {
         } in &program.types.enums
         {
             result = result
-                .append(arena.text("#[derive(Clone, Copy, Debug)]"))
+                .append(arena.text("#[derive(Clone, Copy)]"))
                 .append(arena.line())
                 .append(arena.text("pub enum "))
                 .append(self.named_type(arena, enum_name.as_str()))
@@ -529,7 +522,7 @@ impl Transpiler for RustTranspiler {
         } in &program.types.records
         {
             result = result
-                .append(arena.text("#[derive(Clone, Copy, Debug)]"))
+                .append(arena.text("#[derive(Clone, Copy)]"))
                 .append(arena.line())
                 .append(arena.text("pub struct "))
                 .append(self.named_type(arena, record_name.as_str()))
@@ -830,7 +823,7 @@ impl Transpiler for RustTranspiler {
     fn transpile_for_statement<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        var: Option<&'a IrBinder<WriterDataType>>,
+        var: Option<&'a IrBinder<WriterType>>,
         array: ValueId,
         body: &'a [WriterStmt],
     ) -> Doc<'a> {
@@ -847,8 +840,7 @@ impl Transpiler for RustTranspiler {
             .append(arena.text(".iter().copied() {"));
 
         if let Some(binder) = var {
-            self.names
-                .insert(binder.var, WriterType::Data(binder.typ.clone()));
+            self.names.insert(binder.var, binder.typ.clone());
         }
         doc.append(
             arena
@@ -911,8 +903,7 @@ impl Transpiler for RustTranspiler {
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
-                    self.names
-                        .insert(binder.var, WriterType::Data(binder.typ.clone()));
+                    self.names.insert(binder.var, binder.typ.clone());
                 }
 
                 let some_arm = arena
@@ -1033,18 +1024,18 @@ impl Transpiler for RustTranspiler {
     fn transpile_array_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_type: &WriterDataType,
+        element_type: &WriterType,
     ) -> Doc<'a> {
         arena
             .text("&'a [")
-            .append(self.transpile_data_type(arena, element_type))
+            .append(self.transpile_type(arena, element_type))
             .append(arena.text("]"))
     }
 
     fn transpile_tuple_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        element_types: &[WriterDataType],
+        element_types: &[WriterType],
     ) -> Doc<'a> {
         arena
             .text("(")
@@ -1052,7 +1043,7 @@ impl Transpiler for RustTranspiler {
                 arena.intersperse(
                     element_types
                         .iter()
-                        .map(|element| self.transpile_data_type(arena, element))
+                        .map(|element| self.transpile_type(arena, element))
                         .collect::<Vec<_>>(),
                     arena.text(", "),
                 ),
@@ -1068,11 +1059,11 @@ impl Transpiler for RustTranspiler {
     fn transpile_option_type<'a>(
         &mut self,
         arena: &'a Arena<'a>,
-        inner_type: &WriterDataType,
+        inner_type: &WriterType,
     ) -> Doc<'a> {
         arena
             .text("Option<")
-            .append(self.transpile_data_type(arena, inner_type))
+            .append(self.transpile_type(arena, inner_type))
             .append(arena.text(">"))
     }
 
@@ -1241,7 +1232,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        _elem_type: &'a WriterDataType,
+        _elem_type: &'a WriterType,
     ) -> Doc<'a> {
         if elements.is_empty() {
             arena.text("&[]")
@@ -1275,7 +1266,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         elements: &'a [ValueId],
-        _element_types: &'a [WriterDataType],
+        _element_types: &'a [WriterType],
     ) -> Doc<'a> {
         let items: Vec<Doc<'a>> = elements
             .iter()
@@ -1568,7 +1559,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         value: Option<ValueId>,
-        inner_type: &'a WriterDataType,
+        inner_type: &'a WriterType,
     ) -> Doc<'a> {
         match value {
             Some(inner) => arena
@@ -1577,7 +1568,7 @@ impl Transpiler for RustTranspiler {
                 .append(arena.text(")")),
             None => arena
                 .text("None::<")
-                .append(self.transpile_data_type(arena, inner_type))
+                .append(self.transpile_type(arena, inner_type))
                 .append(arena.text(">")),
         }
     }
@@ -1628,8 +1619,7 @@ impl Transpiler for RustTranspiler {
                     None => "Some(_)".to_string(),
                 };
                 if let Some(binder) = some_arm_binding {
-                    self.names
-                        .insert(binder.var, WriterType::Data(binder.typ.clone()));
+                    self.names.insert(binder.var, binder.typ.clone());
                 }
                 let subject_doc = arena.text(name_ident(*subject));
                 let some_arm = arena
@@ -1704,7 +1694,7 @@ impl Transpiler for RustTranspiler {
         arena: &'a Arena<'a>,
         array: ValueId,
         index: ValueId,
-        _element_type: &'a WriterDataType,
+        _element_type: &'a WriterType,
     ) -> Doc<'a> {
         arena
             .text("usize::try_from(")
@@ -1718,7 +1708,7 @@ impl Transpiler for RustTranspiler {
         &mut self,
         arena: &'a Arena<'a>,
         array: ValueId,
-        _element_type: &'a WriterDataType,
+        _element_type: &'a WriterType,
     ) -> Doc<'a> {
         arena
             .text("arena.alloc_iter(")
@@ -2550,7 +2540,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Holder {
                     pub nothing: (),
                 }
@@ -2996,7 +2986,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Node<'a> {
                     pub value: i32,
                     pub next: &'a Option<Node<'a>>,
@@ -3058,7 +3048,7 @@ mod tests {
                     fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub enum IntList<'a> {
                     Cons { head: i32, tail: &'a IntList<'a> },
                     Nil,
@@ -3125,7 +3115,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Node<'a> {
                     pub value: i32,
                     pub next: &'a Option<Node<'a>>,
@@ -3211,7 +3201,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub enum Expr<'a> {
                     Literal { value: &'a str },
                     Neg { inner: &'a Expr<'a> },
@@ -3297,7 +3287,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Node<'a> {
                     pub value: &'a str,
                     pub next: &'a Option<Node<'a>>,
@@ -3373,7 +3363,7 @@ mod tests {
                     fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub enum Chain<'a> {
                     Link { next: &'a Option<Chain<'a>> },
                     End,
@@ -3463,7 +3453,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub enum IntList<'a> {
                     Cons { head: i32, tail: &'a IntList<'a> },
                     Nil,
@@ -3535,12 +3525,12 @@ mod tests {
                     fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct A<'a> {
                     pub b: &'a B<'a>,
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct B<'a> {
                     pub a: &'a Option<A<'a>>,
                 }
@@ -3638,18 +3628,18 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Label<'a> {
                     pub name: Name<'a>,
                     pub at: Point,
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Name<'a> {
                     pub value: &'a str,
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Point {
                     pub x: i32,
                     pub y: i32,
@@ -3760,7 +3750,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub enum TimeAgo {
                     JustNow,
                     MinutesAgo { count: i32 },
@@ -3938,7 +3928,7 @@ mod tests {
                     fn write(self, arena: &'a impl Arena, output: &mut String);
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub enum Color {
                     Red,
                     Green,
@@ -4024,7 +4014,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Post<'a> {
                     pub title: &'a str,
                     pub views: i32,
@@ -4113,12 +4103,12 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Tag<'a> {
                     pub name: &'a str,
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Wrap<'a> {
                     pub tag: Tag<'a>,
                 }
@@ -4194,7 +4184,7 @@ mod tests {
                     }
                 }
 
-                #[derive(Clone, Copy, Debug)]
+                #[derive(Clone, Copy)]
                 pub struct Post<'a> {
                     pub title: &'a str,
                     pub body: &'a str,

@@ -942,7 +942,7 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn apply(&self, closure: ValueId, args: impl IntoIterator<Item = ValueId>) -> ValueId {
         let args = args.into_iter().collect();
-        let FlatType::Function(signature) = self.typ(closure) else {
+        let FlatType::Data(FlatDataType::Function(signature)) = self.typ(closure) else {
             panic!("{closure} is not a closure");
         };
         self.push(*signature.result, FlatOp::Apply(closure, args))

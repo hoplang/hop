@@ -247,6 +247,9 @@ enum NamedTypes {
     Any,
     /// Only names whose declarations are already complete.
     Complete,
+    /// Only names whose types hold no closure, at a position of a type that
+    /// holds none either.
+    Plain,
 }
 
 /// The pattern of an arm and the names it binds.
@@ -283,6 +286,8 @@ struct FlatGenerator<'a, 'b> {
     record_names: Vec<String>,
     enum_names: Vec<String>,
     records: Vec<FlatDataType>,
+    /// The declared names whose types hold no closure.
+    plain_names: Vec<String>,
     types: FlatTypeDeclarations,
 }
 
@@ -305,6 +310,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
         record_names: Vec::new(),
         enum_names: Vec::new(),
         records: Vec::new(),
+        plain_names: Vec::new(),
         types: FlatTypeDeclarations::default(),
     };
 
@@ -367,6 +373,10 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
         .iter()
         .map(|name| g.data_type(Ty::named(name)))
         .collect();
+    g.plain_names = (g.declared_names.iter())
+        .filter(|name| !g.types.holds_closure(&g.data_type(Ty::named(name))))
+        .cloned()
+        .collect();
     let mut builder = FlatProgramBuilder::with_types(g.types.clone());
 
     // Declare every function before defining any, so that a body can call a
@@ -421,7 +431,7 @@ fn random_program_inner(u: &mut Unstructured<'_>, single_test_entrypoint: bool) 
                     .map(|i| {
                         (
                             format!("p{i}"),
-                            g.random_type_where(2, NamedTypes::Any, false),
+                            g.random_type_where(2, NamedTypes::Plain, false),
                         )
                     })
                     .collect();
@@ -559,7 +569,7 @@ impl FlatGenerator<'_, '_> {
 
     fn closure_parameters(typ: &FlatType) -> Vec<FlatType> {
         match typ {
-            FlatType::Function(signature) => signature.parameters.clone(),
+            FlatType::Data(FlatDataType::Function(signature)) => signature.parameters.clone(),
             _ => unreachable!("{typ} is not a closure type"),
         }
     }
@@ -628,11 +638,11 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn random_closure_type(&mut self, html: bool, render: bool, depth: usize) -> FlatType {
-        if html && self.coin() {
-            FlatType::Function(self.random_html_signature(depth))
+        FlatType::Data(FlatDataType::Function(if html && self.coin() {
+            self.random_html_signature(depth)
         } else {
-            FlatType::Function(self.random_value_signature(render, depth, None))
-        }
+            self.random_value_signature(render, depth, None)
+        }))
     }
 
     fn random_value_signature(
@@ -715,7 +725,14 @@ impl FlatGenerator<'_, '_> {
             Array,
             Option,
             Tuple,
+            Function,
         }
+        // What an array or an option holds can be of a type whose
+        // declaration is not complete, as an empty array and None end it.
+        let held = match named {
+            NamedTypes::Any | NamedTypes::Complete => NamedTypes::Any,
+            NamedTypes::Plain => NamedTypes::Plain,
+        };
         let mut kinds = vec![P::Scalar];
         let named_count = self.named_type_count(named);
         if html {
@@ -727,6 +744,9 @@ impl FlatGenerator<'_, '_> {
         if depth > 0 {
             kinds.extend([P::Array, P::Option, P::Tuple]);
         }
+        if depth > 0 && !matches!(named, NamedTypes::Plain) {
+            kinds.push(P::Function);
+        }
         match self.u.choose(&kinds).unwrap() {
             P::Scalar => SCALARS[self.index(SCALARS.len())].clone(),
             P::Html => Ty::Html,
@@ -734,11 +754,29 @@ impl FlatGenerator<'_, '_> {
                 let i = self.index(named_count);
                 self.named_type(named, i)
             }
-            P::Array => Ty::array(self.random_type_where(depth - 1, NamedTypes::Any, false)),
-            P::Option => Ty::option(self.random_type_where(depth - 1, NamedTypes::Any, false)),
+            P::Array => Ty::array(self.random_type_where(depth - 1, held, false)),
+            P::Option => Ty::option(self.random_type_where(depth - 1, held, false)),
             P::Tuple => {
                 let arity = self.count(0..=3);
                 Ty::tuple((0..arity).map(|_| self.random_type_where(depth - 1, named, false)))
+            }
+            P::Function => {
+                let parameters: Vec<Ty> = (0..self.count(0..=2))
+                    .map(|_| self.random_type_where(depth - 1, NamedTypes::Any, true))
+                    .collect();
+                match self.index(4) {
+                    0 => Ty::mut_function([], Ty::tuple([])),
+                    1 if self.index(4) == 0 => Ty::function(parameters, Ty::Html),
+                    1 => Ty::render_function(parameters, Ty::Html),
+                    _ => {
+                        let result = self.random_type_where(depth - 1, named, false);
+                        match self.index(4) {
+                            0 => Ty::render_function(parameters, result),
+                            1 => Ty::mut_function(parameters, result),
+                            _ => Ty::function(parameters, result),
+                        }
+                    }
+                }
             }
         }
     }
@@ -747,6 +785,7 @@ impl FlatGenerator<'_, '_> {
         match named {
             NamedTypes::Any => self.declared_names.len(),
             NamedTypes::Complete => self.record_names.len() + self.enum_names.len(),
+            NamedTypes::Plain => self.plain_names.len(),
         }
     }
 
@@ -755,6 +794,7 @@ impl FlatGenerator<'_, '_> {
             NamedTypes::Any => Ty::named(&self.declared_names[i]),
             NamedTypes::Complete if i < self.record_names.len() => Ty::named(&self.record_names[i]),
             NamedTypes::Complete => Ty::named(&self.enum_names[i - self.record_names.len()]),
+            NamedTypes::Plain => Ty::named(&self.plain_names[i]),
         }
     }
 
@@ -876,7 +916,6 @@ impl FlatGenerator<'_, '_> {
             FlatType::Html => self.html_block(b, scope, depth),
             FlatType::Cell(_) => unreachable!("a block produces no cell"),
             FlatType::ElementId => unreachable!("a block produces no identity"),
-            FlatType::Function(_) => self.closure_op(b, scope, typ, depth, MAX_EXPRESSION_DEPTH),
         }
     }
 
@@ -895,7 +934,6 @@ impl FlatGenerator<'_, '_> {
             FlatType::ElementId => {
                 unreachable!("an identity is minted for an element, not asked for")
             }
-            FlatType::Function(_) => self.closure_op(b, scope, typ, depth, nesting),
         }
     }
 
@@ -920,7 +958,7 @@ impl FlatGenerator<'_, '_> {
         if nesting > 0 && self.chance(PRODUCED_CLOSURE_ODDS) {
             let types = b.value_types();
             let producers: Vec<ValueId> = (scope.names_where(&types, |candidate| {
-                matches!(candidate, FlatType::Function(signature)
+                matches!(candidate, FlatType::Data(FlatDataType::Function(signature))
                     if *signature.result == *typ && scope.modifier.allows(signature.modifier))
             }))
             .collect();
@@ -940,7 +978,7 @@ impl FlatGenerator<'_, '_> {
             }
         }
         let parameters = Self::closure_parameters(typ);
-        let FlatType::Function(signature) = typ else {
+        let FlatType::Data(FlatDataType::Function(signature)) = typ else {
             unreachable!("{typ} is not a closure type");
         };
         let render = signature.modifier == IrModifier::Render;
@@ -953,17 +991,11 @@ impl FlatGenerator<'_, '_> {
                 inner.push(*param);
             }
             match &*signature.result {
-                FlatType::Data(result) if mutates => {
-                    self.writes(b, &mut inner, 1..=3, depth, nesting);
+                FlatType::Data(result) => {
+                    if mutates {
+                        self.writes(b, &mut inner, 1..=3, depth, nesting);
+                    }
                     self.data_op(b, &mut inner, result, depth, nesting)
-                }
-                FlatType::Data(result) => self.data_op(b, &mut inner, result, depth, nesting),
-                FlatType::Function(_) if mutates => {
-                    self.writes(b, &mut inner, 1..=3, depth, nesting);
-                    self.closure_op(b, &mut inner, &signature.result, depth, nesting)
-                }
-                FlatType::Function(_) => {
-                    self.closure_op(b, &mut inner, &signature.result, depth, nesting)
                 }
                 _ => self.html_op(b, &mut inner, depth, nesting),
             }
@@ -987,7 +1019,7 @@ impl FlatGenerator<'_, '_> {
         nesting: usize,
     ) -> ValueId {
         let fits = |typ: &FlatType| match typ {
-            FlatType::Function(signature) => {
+            FlatType::Data(FlatDataType::Function(signature)) => {
                 scope.modifier.allows(signature.modifier) && *signature.result == *result
             }
             _ => false,
@@ -998,25 +1030,26 @@ impl FlatGenerator<'_, '_> {
         let closure = if !fitting.is_empty() && self.coin() {
             fitting[self.index(fitting.len())]
         } else {
-            let typ = match result {
-                FlatType::Data(result) => {
+            let signature = match result {
+                FlatType::Data(FlatDataType::Function(_)) => self.random_value_signature(
+                    scope.modifier.allows(IrModifier::Render),
+                    0,
+                    Some(result.clone()),
+                ),
+                FlatType::Data(_) => {
                     let mut signature = self.random_value_signature(
                         scope.modifier.allows(IrModifier::Render),
                         1,
-                        Some(FlatType::Data(result.clone())),
+                        Some(result.clone()),
                     );
                     if scope.modifier.allows(IrModifier::Mut) && self.chance(MUT_ODDS) {
                         signature.modifier = IrModifier::Mut;
                     }
-                    FlatType::Function(signature)
+                    signature
                 }
-                FlatType::Function(_) => FlatType::Function(self.random_value_signature(
-                    scope.modifier.allows(IrModifier::Render),
-                    0,
-                    Some(result.clone()),
-                )),
-                _ => FlatType::Function(self.random_html_signature(1)),
+                _ => self.random_html_signature(1),
             };
+            let typ = FlatType::Data(FlatDataType::Function(signature));
             self.closure_op(b, scope, &typ, depth, nesting - 1)
         };
         let parameters = Self::closure_parameters(&b.value_types()[closure.index()]);
@@ -1184,6 +1217,25 @@ impl FlatGenerator<'_, '_> {
                     .collect();
                 b.tuple(values)
             }
+            FlatDataType::Function(signature) => {
+                let mut inner = scope.inner(&b.value_types(), signature.modifier);
+                let depth = depth.saturating_sub(1);
+                let body = |b: &FlatBlockBuilder<'_>, params: &[ValueId]| {
+                    for param in params {
+                        inner.push(*param);
+                    }
+                    match &*signature.result {
+                        FlatType::Data(result) => self.data_leaf(b, &mut inner, result, depth),
+                        _ => self.html_leaf(b, &mut inner, depth),
+                    }
+                };
+                let parameters = signature.parameters.clone();
+                match signature.modifier {
+                    IrModifier::Mut => b.mut_lambda(parameters, body),
+                    IrModifier::Render => b.render_lambda(parameters, body),
+                    IrModifier::Pure => b.lambda(parameters, body),
+                }
+            }
         };
         self.bind(b, scope, literal)
     }
@@ -1260,7 +1312,8 @@ impl FlatGenerator<'_, '_> {
             FlatDataType::String
             | FlatDataType::Int
             | FlatDataType::Float
-            | FlatDataType::Array(_) => false,
+            | FlatDataType::Array(_)
+            | FlatDataType::Function(_) => false,
         }
     }
 
@@ -1338,17 +1391,24 @@ impl FlatGenerator<'_, '_> {
         (Pat::bind(&name), vec![name])
     }
 
-    fn branching_type(&mut self, types: &FlatTypeDeclarations) -> FlatDataType {
-        let named: Vec<FlatDataType> = self
-            .declared_names
+    /// A type a match can branch on, made of the named types given.
+    fn branching_type(&mut self, types: &FlatTypeDeclarations, named: NamedTypes) -> FlatDataType {
+        let names = match named {
+            NamedTypes::Any | NamedTypes::Complete => &self.declared_names,
+            NamedTypes::Plain => &self.plain_names,
+        };
+        let branching: Vec<FlatDataType> = names
             .iter()
             .map(|name| self.data_type(Ty::named(name)))
             .filter(|typ| Self::can_branch(types, typ, MAX_PATTERN_DEPTH))
             .collect();
-        let base = match self.index(2 + named.len()) {
+        let base = match self.index(2 + branching.len()) {
             0 => FlatDataType::Bool,
-            1 => FlatDataType::Option(Box::new(self.random_data_type(1))),
-            i => return named[i - 2].clone(),
+            1 => {
+                let ty = self.random_type_where(1, named, false);
+                FlatDataType::Option(Box::new(self.data_type(ty)))
+            }
+            i => return branching[i - 2].clone(),
         };
         if self.coin() {
             return base;
@@ -1361,7 +1421,8 @@ impl FlatGenerator<'_, '_> {
                 if i == index {
                     base.clone()
                 } else {
-                    self.random_data_type(1)
+                    let ty = self.random_type_where(1, named, false);
+                    self.data_type(ty)
                 }
             })
             .collect();
@@ -1491,7 +1552,7 @@ impl FlatGenerator<'_, '_> {
     // instead, or the handler only in scope and not around the match, makes
     // far fewer clicks switch an arm.
     fn toggle(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
-        let subject_ty = self.branching_type(b.types());
+        let subject_ty = self.branching_type(b.types(), NamedTypes::Plain);
         let mut initial = scope.inner(&b.value_types(), IrModifier::Pure);
         let cell =
             scope.push(b.cell(|b| self.literal(b, &mut initial, &subject_ty, MAX_LITERAL_DEPTH)));
@@ -1529,6 +1590,9 @@ impl FlatGenerator<'_, '_> {
         depth: usize,
         nesting: usize,
     ) -> ValueId {
+        if matches!(target, FlatDataType::Function(_)) && self.index(4) != 0 {
+            return self.closure_op(b, scope, &FlatType::Data(target.clone()), depth, nesting);
+        }
         if nesting == 0 || self.index(4) == 0 {
             return self.data_leaf(b, scope, target, MAX_LITERAL_DEPTH);
         }
@@ -1839,6 +1903,13 @@ impl FlatGenerator<'_, '_> {
         if !scope.modifier.allows(IrModifier::Render) || !self.chance(CELL_ODDS) {
             return value;
         }
+        let holds_closure = match &b.value_types()[value.index()] {
+            FlatType::Data(typ) => b.types().holds_closure(typ),
+            _ => false,
+        };
+        if holds_closure {
+            return value;
+        }
         let cell = scope.push(b.cell(|_| value));
         scope.push(b.cell_read(cell))
     }
@@ -1876,7 +1947,7 @@ impl FlatGenerator<'_, '_> {
         let (subject, subject_ty) = match var {
             Some(pair) => pair,
             None => {
-                let subject_ty = self.branching_type(types);
+                let subject_ty = self.branching_type(types, NamedTypes::Any);
                 (
                     self.data_op(b, scope, &subject_ty, depth, nesting - 1),
                     subject_ty,
@@ -1920,6 +1991,7 @@ impl FlatGenerator<'_, '_> {
 mod tests {
     use super::*;
     use crate::ir::flat_program::{FlatBinding, FlatBlock, FlatOp};
+    use crate::ir::ir_data_op::IrDataOp;
     use expect_test::{Expect, expect};
     use rand::RngExt;
     use std::collections::{BTreeMap, HashSet};
@@ -1948,7 +2020,7 @@ mod tests {
         let typ = &binding.binder.typ;
         match &binding.op {
             FlatOp::Lambda(..)
-                if matches!(typ, FlatType::Function(signature)
+                if matches!(typ, FlatType::Data(FlatDataType::Function(signature))
                     if signature.modifier == IrModifier::Mut) =>
             {
                 format!("Mut{kind}")
@@ -1956,7 +2028,9 @@ mod tests {
             FlatOp::Call(..) | FlatOp::Match(_) => kind.to_string(),
             _ if match typ {
                 FlatType::Html => true,
-                FlatType::Function(signature) => *signature.result == FlatType::Html,
+                FlatType::Data(FlatDataType::Function(signature)) => {
+                    *signature.result == FlatType::Html
+                }
                 _ => false,
             } =>
             {
@@ -2062,7 +2136,9 @@ mod tests {
                 }
                 _ if match &binding.binder.typ {
                     FlatType::Html => true,
-                    FlatType::Function(signature) => *signature.result == FlatType::Html,
+                    FlatType::Data(FlatDataType::Function(signature)) => {
+                        *signature.result == FlatType::Html
+                    }
                     _ => false,
                 } =>
                 {
@@ -2085,6 +2161,12 @@ mod tests {
         arm_counts: Vec<usize>,
         binding_arms: usize,
         closure_matches: usize,
+        /// Records, enums, tuples, arrays and options constructed of a
+        /// type that holds a closure.
+        closure_holders: usize,
+        /// Closures that a field access, a tuple index, a pattern or a
+        /// loop takes out of a value that holds them.
+        closures_taken_out: usize,
         loops: usize,
         keyed_loops: usize,
         elements: usize,
@@ -2116,15 +2198,36 @@ mod tests {
             self.parameters.clear();
         }
 
-        fn count_block(&mut self, block: &FlatBlock) {
+        fn count_block(&mut self, block: &FlatBlock, types: &FlatTypeDeclarations) {
             let here: HashSet<ValueId> = (block.bindings.iter())
                 .map(|binding| binding.binder.var)
                 .collect();
             for binding in &block.bindings {
                 match &binding.op {
+                    FlatOp::Data(
+                        IrDataOp::Record(_)
+                        | IrDataOp::Enum(..)
+                        | IrDataOp::Tuple(_)
+                        | IrDataOp::Array(_)
+                        | IrDataOp::OptionSome(_),
+                    ) => {
+                        self.closure_holders +=
+                            usize::from(matches!(&binding.binder.typ, FlatType::Data(typ)
+                                if types.holds_closure(typ)));
+                    }
+                    FlatOp::Data(IrDataOp::FieldAccess(..) | IrDataOp::TupleIndex(..)) => {
+                        self.closures_taken_out += usize::from(matches!(
+                            binding.binder.typ,
+                            FlatType::Data(FlatDataType::Function(_))
+                        ));
+                    }
                     FlatOp::For(for_) => {
                         self.loops += 1;
                         self.keyed_loops += usize::from(for_.key.is_some());
+                        self.closures_taken_out += usize::from(matches!(
+                            &for_.var,
+                            Some(var) if matches!(var.typ, FlatDataType::Function(_))
+                        ));
                     }
                     FlatOp::Element(element) => {
                         self.elements += 1;
@@ -2140,18 +2243,24 @@ mod tests {
                     FlatOp::Match(match_) => {
                         assert!(match_.arms.len() > 1, "generated matches branch");
                         self.arm_counts.push(match_.arms.len());
-                        self.closure_matches +=
-                            usize::from(matches!(binding.binder.typ, FlatType::Function(_)));
+                        self.closure_matches += usize::from(matches!(
+                            binding.binder.typ,
+                            FlatType::Data(FlatDataType::Function(_))
+                        ));
                         for arm in &match_.arms {
                             let mut binds = false;
-                            arm.pattern.for_each_binding(&mut |_| binds = true);
+                            arm.pattern.for_each_binding(&mut |binder| {
+                                binds = true;
+                                self.closures_taken_out +=
+                                    usize::from(matches!(binder.typ, FlatDataType::Function(_)));
+                            });
                             self.binding_arms += binds as usize;
                         }
                     }
                     _ => {}
                 }
                 for (_, body) in nested(binding) {
-                    self.count_block(body);
+                    self.count_block(body, types);
                 }
             }
         }
@@ -2213,7 +2322,7 @@ mod tests {
                 dynamic.extend(captures.iter().chain(parameters).copied());
                 mark_dynamic(body, &mut dynamic);
                 shape_stats.parameters.extend(parameters.iter().copied());
-                shape_stats.count_block(body);
+                shape_stats.count_block(body, &program.types);
             }
             shape_stats.finish_program();
             let mut program_counts = BTreeMap::new();
@@ -2248,6 +2357,8 @@ mod tests {
             arm_counts,
             binding_arms,
             closure_matches,
+            closure_holders,
+            closures_taken_out,
             loops,
             keyed_loops,
             elements,
@@ -2292,6 +2403,8 @@ mod tests {
              {:.1} arms per match on average, at least {fewest_arms} and at most {most_arms}\n\
              {binding_arms} of {arms} match arms bind names\n\
              {closure_matches} of {} matches produce a closure\n\
+             {closure_holders} values are constructed of a type that holds a closure\n\
+             {closures_taken_out} closures are taken out of a value that holds them\n\
              {cells} cells\n\
              {keyed_loops} of {loops} loops have a key\n\
              {clicks} of {elements} elements have a click\n\
@@ -2320,79 +2433,82 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            18711 of 65536 input bytes consumed per program on average, at most 65536
+            24105 of 65536 input bytes consumed per program on average, at most 65536
             3 of 32 programs exhaust the input
 
             -- sizes --
-            under 256     3  ############
-            under 1K      2  ########
-            under 4K      4  ################
-            under 16K    10  ########################################
-            under 64K    10  ########################################
-            at 64K        3  ############
+            under 256     1  ##
+            under 1K      0
+            under 4K      2  #####
+            under 16K    15  ########################################
+            under 64K    11  #############################
+            at 64K        3  ########
 
             -- programs --
-            438 of 27351 Html bindings have more than one reference
-            6 of 4380 mints have more than one reference
-            2.5 arms per match on average, at least 2 and at most 18
-            7633 of 19176 match arms bind names
-            1110 of 7544 matches produce a closure
-            16369 cells
-            340 of 561 loops have a key
-            3302 of 4100 elements have a click
-            595 handlers have more than one click
-            912 clicks apply a handler bound outside their block, 0 of them a parameter
+            285 of 28458 Html bindings have more than one reference
+            6 of 3743 mints have more than one reference
+            2.4 arms per match on average, at least 2 and at most 27
+            7405 of 23783 match arms bind names
+            2159 of 9792 matches produce a closure
+            10548 values are constructed of a type that holds a closure
+            1351 closures are taken out of a value that holds them
+            16541 cells
+            274 of 470 loops have a key
+            2862 of 3543 elements have a click
+            540 handlers have more than one click
+            817 clicks apply a handler bound outside their block, 5 of them a parameter
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      168.8    90.6    95.3    80.2
-            Array                      227.9    93.8    93.5    36.2
-            ArrayEnumerate               2.2    53.1    97.1    72.9
-            ArrayFromRange              16.9    93.8    94.3     0.0
-            ArrayGet                    37.2    90.6    92.3    65.0
-            ArrayIsEmpty                 5.1    71.9    96.3    74.4
-            ArrayLength                141.7    90.6    94.1    75.9
-            BoolLiteral                 60.6    90.6    93.8     0.0
-            BoolNegation                 5.2    71.9    95.2    69.0
-            Call                        52.1    56.2    97.4    88.1
-            Cell                       511.5    90.6    91.8    59.2
-            CellRead                   511.5    90.6    91.8    59.2
-            CellUpdate                  59.7    84.4   100.0   100.0
-            Enum                       126.5    78.1    93.1    39.7
-            Equals                       5.3    68.8    95.3    82.5
-            FieldAccess                 22.7    53.1    94.4    65.7
-            FloatLiteral               112.3    93.8    94.2     0.0
-            FloatToInt                 139.4    93.8    93.5    61.0
-            HtmlApply                    8.5    78.1    95.2    82.1
-            HtmlConcat                 301.2    93.8    95.7    42.5
-            HtmlElement                128.1    90.6    97.3    68.3
-            HtmlEscape                 178.9    93.8    94.6    64.0
-            HtmlFor                     17.5    87.5    94.7    73.8
-            HtmlLambda                  53.2    87.5    95.9    45.8
-            HtmlText                    81.7    93.8    96.3     0.0
-            IntLiteral                 141.7    93.8    94.6     0.0
-            IntToFloat                 140.1    90.6    92.9    69.4
-            IntToString                180.4    93.8    94.7    71.6
-            Lambda                     266.3    90.6    96.1    62.2
-            LessThan                     5.0    75.0    93.8    76.9
-            LessThanOrEqual              5.2    81.2    96.4    78.8
-            Match                      235.8    93.8    95.1    90.0
-            Mint                       136.9    96.9    90.9     0.0
-            MutLambda                   55.2    93.8    95.5    55.6
-            NumericAdd                 285.2    93.8    93.3    79.1
-            NumericMultiply            282.8    90.6    93.7    79.7
-            NumericNegation            286.9    93.8    93.6    68.3
-            NumericSubtract            282.2    93.8    93.4    79.7
-            OptionIsNone                 5.0    71.9    93.7    77.4
-            OptionIsSome                 4.9    75.0    95.5    75.0
-            OptionNone                  77.9    90.6    94.4     0.0
-            OptionSome                  69.4    90.6    94.9    45.6
-            Record                      90.6    71.9    93.3    49.9
-            StringConcat               178.6    90.6    94.1    57.0
-            StringIsEmpty                4.8    81.2    96.8    64.5
-            StringLiteral               65.9    93.8    94.7     0.0
-            Tuple                      217.5    93.8    95.8    38.0
-            TupleIndex                  99.3    84.4    94.7    89.9
+            Apply                      223.2    96.9    94.7    78.5
+            Array                      265.1    96.9    95.1    33.0
+            ArrayEnumerate               2.2    65.6    95.8    68.1
+            ArrayFromRange              16.0    96.9    94.3     0.0
+            ArrayGet                    55.7    96.9    91.6    63.9
+            ArrayIsEmpty                 5.4    93.8    98.3    74.6
+            ArrayLength                210.2    96.9    94.8    69.4
+            BoolLiteral                 71.2    96.9    95.6     0.0
+            BoolNegation                 5.8    87.5    96.2    63.6
+            Call                        48.8    71.9    95.5    92.1
+            Cell                       516.9   100.0    94.5    57.0
+            CellRead                   516.9   100.0    94.4    57.0
+            CellUpdate                 111.9    96.9   100.0   100.0
+            Enum                       156.2    84.4    95.4    36.8
+            Equals                       6.2    87.5    97.5    79.7
+            FieldAccess                 20.1    43.8    96.4    93.0
+            FloatLiteral               158.3    96.9    95.7     0.0
+            FloatToInt                 207.9    96.9    95.2    57.5
+            HtmlApply                   12.0    93.8    93.2    76.8
+            HtmlConcat                 317.4   100.0    94.3    41.6
+            HtmlElement                110.7   100.0    97.7    69.5
+            HtmlEscape                 201.5    96.9    93.6    55.4
+            HtmlFor                     14.7    96.9    94.5    72.3
+            HtmlLambda                  83.5    96.9    93.9    38.5
+            HtmlText                    76.8    96.9    95.7     0.0
+            HtmlTupleIndex               0.1     3.1    66.7    33.3
+            IntLiteral                 208.3   100.0    95.2     0.0
+            IntToFloat                 189.2    96.9    95.0    66.6
+            IntToString                230.8    96.9    95.4    64.4
+            Lambda                     426.8    96.9    95.3    57.5
+            LessThan                     6.3    81.2    97.0    79.8
+            LessThanOrEqual              7.1    87.5    94.3    78.9
+            Match                      306.0    96.9    94.9    90.1
+            Mint                       117.0   100.0    92.2     0.0
+            MutLambda                  127.3   100.0    95.6    35.8
+            NumericAdd                 399.0    96.9    95.2    75.6
+            NumericMultiply            392.6    96.9    94.9    75.8
+            NumericNegation            400.2    96.9    94.8    64.6
+            NumericSubtract            401.0    96.9    95.0    75.7
+            OptionIsNone                 6.3    90.6    95.5    74.3
+            OptionIsSome                 6.7    96.9    96.3    67.8
+            OptionNone                  78.2    96.9    96.2     0.0
+            OptionSome                  60.1    96.9    95.4    43.3
+            Record                     130.0    71.9    94.5    35.8
+            StringConcat               233.1    96.9    95.5    53.4
+            StringIsEmpty                6.4    93.8    95.6    62.7
+            StringLiteral               94.4    96.9    96.2     0.0
+            Tuple                      303.0   100.0    96.6    30.6
+            TupleIndex                  71.8    96.9    93.6    85.9
         "#]]
         .assert_eq(&report);
     }
@@ -2425,82 +2541,102 @@ mod tests {
             128,
             expect![[r#"
                 record R0 {
-                  f0: Bool,
-                  f1: Array[Tuple[]],
-                  f2: Tuple[Float, Int, R1],
+                  f0: R1,
+                  f1: mut () -> Tuple[],
+                  f2: Array[Array[E1]],
                 }
 
                 record R1 {
-                  f0: Tuple[Tuple[], Option[R1]],
-                  f1: Tuple[Option[E1], Float],
+                  f0: Option[Tuple[Bool, R1, E0]],
+                  f1: Array[Option[R0]],
                 }
 
                 enum E0 {
                   W0,
-                  W1 {f0: Tuple[Array[String], Float, Option[E1]]},
+                  W1,
+                  W2 {f0: Tuple[Option[Bool], (R1, Html) -> R0]},
                 }
 
                 enum E1 {
                   W0,
-                  W1 {f0: Tuple[]},
+                  W1 {f0: Int},
                 }
 
                 render fn C0@f0(
-                  p0@v0: Tuple[Tuple[Bool, E1]],
-                  p1@v1: (() -> R1) -> Tuple[E0],
-                  p2@v2: Int,
-                  p3@v3: Html,
+                  p0@v0: String,
+                  p1@v1: Option[Float],
+                  p2@v2: mut () -> Tuple[],
+                  p3@v3: render () -> Html,
                 ) -> Html {
-                  let v8: ElementId = mint()
+                  let v7: ElementId = mint()
+                  let v8: Int = -2147483648
                   let v9: Cell[Int] = cell {
-                    v2
+                    v8
                   }
                   let v10: Int = cell_read(v9)
-                  v3
+                  let v11: Html = concat()
+                  v11
                 }
                 render fn C1@f1(
-                  p0@v4: () -> E1,
-                  p1@v5: Tuple[],
-                  p2@v6: E0,
-                  p3@v7: Option[Option[E1]],
+                  p0@v4: Html,
+                  p1@v5: E1,
+                  p2@v6: mut () -> Tuple[],
                 ) -> Html {
-                  let v11: ElementId = mint()
-                  let v12: Int = -2147483648
-                  let v13: Cell[Int] = cell {
-                    v12
+                  let v12: ElementId = mint()
+                  let v13: Int = -2147483648
+                  let v14: Cell[Int] = cell {
+                    v13
                   }
-                  let v14: Int = cell_read(v13)
-                  let v15: Html = concat()
-                  v15
+                  let v15: Int = cell_read(v14)
+                  v4
                 }
                 entrypoint V0@e0(
-                  p0@v16: String,
+                  p0@v16: E1,
+                  p1@v17: E1,
                 ) -> Html {
-                  let v17: ElementId = mint()
-                  let v18: Int = -2147483648
-                  let v19: Cell[Int] = cell {
-                    v18
+                  let v18: ElementId = mint()
+                  let v19: Int = -2147483648
+                  let v20: Cell[Int] = cell {
+                    v19
                   }
-                  let v20: Int = cell_read(v19)
-                  let v21: Html = concat()
-                  v21
+                  let v21: Int = cell_read(v20)
+                  let v22: Html = concat()
+                  v22
                 }
                 entrypoint V1@e1(
-                  p0@v22: Tuple[Tuple[E1, R1, E0], Tuple[Int], Int],
-                  p1@v23: Int,
-                  p2@v24: Int,
-                  p3@v25: Int,
-                  p4@v26: Int,
-                  p5@v27: Int,
-                  p6@v28: Int,
+                  p0@v23: Array[Option[Int]],
+                  p1@v24: Tuple[],
+                  p2@v25: Array[Option[Float]],
+                  p3@v26: E1,
+                  p4@v27: Option[Array[E1]],
+                  p5@v28: Tuple[Array[Bool], Option[E1]],
+                  p6@v29: E1,
+                  p7@v30: Tuple[],
                 ) -> Html {
-                  let v29: ElementId = mint()
-                  let v30: Cell[Int] = cell {
-                    v23
+                  let v31: ElementId = mint()
+                  let v32: Int = -2147483648
+                  let v33: Cell[Int] = cell {
+                    v32
                   }
-                  let v31: Int = cell_read(v30)
-                  let v32: Html = concat()
-                  v32
+                  let v34: Int = cell_read(v33)
+                  let v35: Html = concat()
+                  v35
+                }
+                entrypoint V2@e2(
+                  p0@v36: Bool,
+                  p1@v37: Tuple[Tuple[E1, E1, E1], Tuple[Float, E1, Int], Int],
+                  p2@v38: Int,
+                  p3@v39: Int,
+                  p4@v40: Int,
+                  p5@v41: Int,
+                ) -> Html {
+                  let v42: ElementId = mint()
+                  let v43: Cell[Int] = cell {
+                    v38
+                  }
+                  let v44: Int = cell_read(v43)
+                  let v45: Html = concat()
+                  v45
                 }
             "#]],
         );
@@ -2513,35 +2649,133 @@ mod tests {
             128,
             expect![[r#"
                 enum E0 {
-                  W0 {f0: Float},
-                  W1 {f0: Bool},
+                  W0 {f0: Array[Bool]},
                 }
 
                 enum E1 {
-                  W0 {f0: Option[Option[Float]], f1: Int},
-                  W1,
+                  W0 {f0: render (E1, Option[String]) -> Html, f1: Float},
+                  W1 {f0: Bool},
                 }
 
-                entrypoint V0@e0(
-                  p0@v0: Option[Int],
-                  p1@v1: Option[Array[Int]],
-                ) -> Html {
-                  let v2: Int = -1
-                  let v3: Int = 2
-                  let v4: Array[Int] = array_from_range(v2, v3)
-                  let v8: Html = for v5: Int in v4 key {
-                    v5
-                  } {
-                    let v6: String = "`${x}`"
-                    let v7: Html = escape(v6)
-                    v7
+                lambda l0[
+                  v16: E1,
+                ]() -> E1 {
+                  v16
+                }
+                lambda l1[]() -> Array[Option[E0]] {
+                  let v0: Bool = false
+                  let v1: Bool = false
+                  let v2: E1 = W1 {f0: v0}
+                  let v3: Tuple[Bool, Bool, E1] = (v0, v1, v2)
+                  let v30: E1 = match v3 {
+                    (true, true, E1::W1 {f0@v4: Bool}) => {
+                      let v5: E1 = tuple_index(v3, 2)
+                      v5
+                    }
+                    (true, true, E1::W0 {f0@v6: render (E1, Option[String]) -> Html, f1: _}) => {
+                      let v7: E1 = tuple_index(v3, 2)
+                      v7
+                    }
+                    (true, false, E1::W1 {f0@v8: Bool}) => {
+                      v2
+                    }
+                    (true, false, E1::W0 {f0@v9: render (E1, Option[String]) -> Html, f1: _}) => {
+                      v2
+                    }
+                    (v10: Bool, true, E1::W1 {f0@v11: Bool}) => {
+                      let v12: E1 = tuple_index(v3, 2)
+                      v12
+                    }
+                    (v13: Bool, true, E1::W0 {f0@v14: render (E1, Option[String]) -> Html, f1: _}) => {
+                      let v15: Bool = tuple_index(v3, 1)
+                      let v23: E1 = match v15 {
+                        false => {
+                          v2
+                        }
+                        true => {
+                          let v22: E1 = match v15 {
+                            false => {
+                              let v20: E1 = match v0 {
+                                true => {
+                                  let v17: () -> E1 = l0[v2]
+                                  let v18: E1 = v17()
+                                  v18
+                                }
+                                v19: Bool => {
+                                  v2
+                                }
+                              }
+                              v20
+                            }
+                            true => {
+                              let v21: Int = -2147483648
+                              v2
+                            }
+                          }
+                          v22
+                        }
+                      }
+                      v23
+                    }
+                    (v24: Bool, false, E1::W1 {f0@v25: Bool}) => {
+                      let v26: Int = -2147483648
+                      v2
+                    }
+                    (v27: Bool, false, E1::W0 {f0@v28: render (E1, Option[String]) -> Html, f1: _}) => {
+                      let v29: Int = -2147483648
+                      v2
+                    }
                   }
-                  v8
+                  let v38: Array[Option[E0]] = match v30 {
+                    E1::W0 {f0@v31: render (E1, Option[String]) -> Html, f1@v32: Float} => {
+                      let v33: Int = -2147483648
+                      let v34: Array[Option[E0]] = []
+                      v34
+                    }
+                    v35: E1 => {
+                      let v36: Int = -2147483648
+                      let v37: Array[Option[E0]] = []
+                      v37
+                    }
+                  }
+                  v38
+                }
+                entrypoint V0@e0() -> Html {
+                  let v39: () -> Array[Option[E0]] = l1[]
+                  let v40: Array[Option[E0]] = v39()
+                  let v41: Cell[Array[Option[E0]]] = cell {
+                    v40
+                  }
+                  let v42: Array[Option[E0]] = cell_read(v41)
+                  let v43: Array[Tuple[Int, Option[E0]]] = array_enumerate(v42)
+                  let v44: Cell[Array[Tuple[Int, Option[E0]]]] = cell {
+                    v43
+                  }
+                  let v45: Array[Tuple[Int, Option[E0]]] = cell_read(v44)
+                  let v53: Html = for v46: Tuple[Int, Option[E0]] in v45 key {
+                    let v47: String = ""
+                    v47
+                  } {
+                    let v48: ElementId = mint()
+                    let v49: Int = -2147483648
+                    let v50: Cell[Int] = cell {
+                      v49
+                    }
+                    let v51: Int = cell_read(v50)
+                    let v52: Html = concat()
+                    v52
+                  }
+                  v53
                 }
                 entrypoint V1@e1() -> Html {
-                  let v9: String = "&amp;"
-                  let v10: Html = escape(v9)
-                  v10
+                  let v54: ElementId = mint()
+                  let v55: Int = -2147483648
+                  let v56: Cell[Int] = cell {
+                    v55
+                  }
+                  let v57: Int = cell_read(v56)
+                  let v58: Html = concat()
+                  v58
                 }
             "#]],
         );

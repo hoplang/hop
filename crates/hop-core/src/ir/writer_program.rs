@@ -7,7 +7,7 @@ use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
 use crate::ir::value_id::ValueId;
 use crate::ir::writer_switch::WriterSwitch;
-use crate::ir::writer_type::{WriterDataType, WriterResult, WriterType, WriterTypeDeclarations};
+use crate::ir::writer_type::{WriterResult, WriterType, WriterTypeDeclarations};
 use crate::symbols::type_name::TypeName;
 
 /// A Writer program.
@@ -62,7 +62,7 @@ pub enum WriterStmt {
 
 #[derive(Debug)]
 pub struct WriterFor {
-    pub var: Option<IrBinder<WriterDataType>>,
+    pub var: Option<IrBinder<WriterType>>,
     pub array: ValueId,
     pub body: Vec<WriterStmt>,
 }

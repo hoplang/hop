@@ -47,6 +47,7 @@ fn can_construct(
                 .iter()
                 .all(|field| can_construct(&field.typ, types, visiting))
         }),
+        FlatDataType::Function(_) => false,
     };
     if named(ty).is_some() {
         visiting.pop();
@@ -194,6 +195,7 @@ fn generate(
                 .collect();
             Value::Enum(variant.name.clone(), fields)
         }
+        FlatDataType::Function(_) => panic!("cannot generate a closure"),
     }
 }
 

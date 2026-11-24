@@ -5,7 +5,7 @@ use crate::ir::flat_html_element::FlatAttribute;
 use crate::ir::flat_program::{
     FlatBinding, FlatBlock, FlatFunction, FlatLambda, FlatMatch, FlatOp, FlatPattern, FlatProgram,
 };
-use crate::ir::flat_type::{FlatDataType, FlatSignature, FlatType, IrModifier};
+use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
 use crate::ir::function_id::FunctionId;
 use crate::ir::ir_data_op::IrDataOp;
@@ -33,7 +33,7 @@ pub enum FlatTypeError {
     /// A binding binds a closure of a lambda that the program does not
     /// declare.
     UndeclaredLambda,
-    /// A match has a subject that is not data.
+    /// A match has a subject that is not data, or is a closure.
     MatchSubjectNotData,
     /// A match has a value of its subject's type that no arm matches.
     NoArmMatches,
@@ -69,6 +69,10 @@ pub enum FlatTypeError {
     EffectNotAllowed,
     /// A function returns a cell or an identity.
     ReturnsUnreturnable,
+    /// A cell holds a closure, or a value that holds one.
+    CellHoldsClosure,
+    /// An entrypoint takes a closure, or a value that holds one.
+    EntrypointTakesClosure,
 }
 
 pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
@@ -109,7 +113,7 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
                 match typ {
                     BoundType::Html => return Err(FlatTypeError::HtmlReadMoreThanOnce),
                     BoundType::ElementId => return Err(FlatTypeError::IdTakenMoreThanOnce),
-                    BoundType::Data(_) | BoundType::Cell(_) | BoundType::Function(_) => {}
+                    BoundType::Data(_) | BoundType::Cell(_) => {}
                 }
                 checker.bind(capture.var, typ)?;
             }
@@ -127,6 +131,9 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
         checker.live.clear();
         checker.scoped(|checker| {
             for param in &entrypoint.parameters {
+                if program.types.holds_closure(&param.binder.typ) {
+                    return Err(FlatTypeError::EntrypointTakesClosure);
+                }
                 checker.bind(param.binder.var, BoundType::Data(&param.binder.typ))?;
             }
             checker.block(&entrypoint.body, BoundType::Html, IrModifier::Render)
@@ -170,7 +177,6 @@ struct Name<'a> {
 enum BoundType<'a> {
     Data(&'a FlatDataType),
     Cell(&'a FlatDataType),
-    Function(&'a FlatSignature),
     Html,
     ElementId,
 }
@@ -180,7 +186,6 @@ impl<'a> BoundType<'a> {
         match typ {
             FlatType::Data(data) => BoundType::Data(data),
             FlatType::Html => BoundType::Html,
-            FlatType::Function(signature) => BoundType::Function(signature),
             FlatType::Cell(data) => BoundType::Cell(data),
             FlatType::ElementId => BoundType::ElementId,
         }
@@ -191,28 +196,42 @@ impl<'a> BoundType<'a> {
     }
 }
 
-fn is_well_formed(signature: &FlatSignature) -> bool {
-    let parameters = signature
-        .parameters
-        .iter()
-        .all(|parameter| match parameter {
-            FlatType::Function(signature) => is_well_formed(signature),
-            _ => true,
-        });
-    let result = match &*signature.result {
-        FlatType::Html | FlatType::Data(_) => true,
-        FlatType::Function(signature) => is_well_formed(signature),
-        FlatType::Cell(_) | FlatType::ElementId => false,
-    };
-    parameters && result
+/// Whether no closure the type holds gives a cell or an identity.
+fn is_well_formed(typ: &FlatDataType) -> bool {
+    match typ {
+        FlatDataType::String
+        | FlatDataType::Bool
+        | FlatDataType::Int
+        | FlatDataType::Float
+        | FlatDataType::Record(_)
+        | FlatDataType::Enum(_) => true,
+        FlatDataType::Array(element) | FlatDataType::Option(element) => is_well_formed(element),
+        FlatDataType::Tuple(elements) => elements.iter().all(is_well_formed),
+        FlatDataType::Function(signature) => {
+            let parameters = (signature.parameters.iter()).all(|parameter| match parameter {
+                FlatType::Data(data) => is_well_formed(data),
+                _ => true,
+            });
+            let result = match &*signature.result {
+                FlatType::Html => true,
+                FlatType::Data(data) => is_well_formed(data),
+                FlatType::Cell(_) | FlatType::ElementId => false,
+            };
+            parameters && result
+        }
+    }
 }
 
 impl<'a> Checker<'a> {
     fn bind(&mut self, name: ValueId, typ: BoundType<'a>) -> Result<(), FlatTypeError> {
-        if let BoundType::Function(signature) = typ
-            && !is_well_formed(signature)
-        {
-            return Err(FlatTypeError::IllTypedBinding);
+        match typ {
+            BoundType::Data(data) if !is_well_formed(data) => {
+                return Err(FlatTypeError::IllTypedBinding);
+            }
+            BoundType::Cell(data) if self.declarations.holds_closure(data) => {
+                return Err(FlatTypeError::CellHoldsClosure);
+            }
+            _ => {}
         }
         let bound = Name {
             typ,
@@ -263,10 +282,7 @@ impl<'a> Checker<'a> {
     fn data(&mut self, name: ValueId) -> Result<Option<&'a FlatDataType>, FlatTypeError> {
         Ok(match self.read(name)? {
             BoundType::Data(data) => Some(data),
-            BoundType::Cell(_)
-            | BoundType::Function(_)
-            | BoundType::Html
-            | BoundType::ElementId => None,
+            BoundType::Cell(_) | BoundType::Html | BoundType::ElementId => None,
         })
     }
 
@@ -321,9 +337,12 @@ impl<'a> Checker<'a> {
                 if matches!(declared, BoundType::Cell(_) | BoundType::ElementId) {
                     return Err(FlatTypeError::IllTypedBinding);
                 }
-                let subject = self
-                    .data(match_.subject)?
-                    .ok_or(FlatTypeError::MatchSubjectNotData)?;
+                let subject = match self.data(match_.subject)? {
+                    Some(FlatDataType::Function(_)) | None => {
+                        return Err(FlatTypeError::MatchSubjectNotData);
+                    }
+                    Some(subject) => subject,
+                };
                 // Html and identities stay live after the match only if no
                 // arm reads them.
                 let before = self.live.clone();
@@ -351,7 +370,7 @@ impl<'a> Checker<'a> {
             },
             FlatOp::Mint => declared == BoundType::ElementId,
             FlatOp::CellUpdate(cell, update) => match (self.read(*cell)?, self.read(*update)?) {
-                (BoundType::Cell(data), BoundType::Function(signature)) => {
+                (BoundType::Cell(data), BoundType::Data(FlatDataType::Function(signature))) => {
                     let data = FlatType::Data(data.clone());
                     declared == BoundType::Data(&FlatDataType::UNIT)
                         && signature.modifier == IrModifier::Pure
@@ -381,7 +400,8 @@ impl<'a> Checker<'a> {
                     })
                 })?;
                 if let Some(handler) = element.on_click {
-                    let BoundType::Function(signature) = self.read(handler)? else {
+                    let BoundType::Data(FlatDataType::Function(signature)) = self.read(handler)?
+                    else {
                         return Err(FlatTypeError::ClickNotHandler);
                     };
                     if signature.modifier != IrModifier::Mut
@@ -431,7 +451,7 @@ impl<'a> Checker<'a> {
                 html
             }
             FlatOp::Lambda(id, captures) => {
-                let BoundType::Function(signature) = declared else {
+                let BoundType::Data(FlatDataType::Function(signature)) = declared else {
                     return Err(FlatTypeError::IllTypedBinding);
                 };
                 let lambdas = self.lambdas;
@@ -452,7 +472,8 @@ impl<'a> Checker<'a> {
                     )?
             }
             FlatOp::Apply(closure, args) => {
-                let BoundType::Function(signature) = self.read(*closure)? else {
+                let BoundType::Data(FlatDataType::Function(signature)) = self.read(*closure)?
+                else {
                     return Err(FlatTypeError::IllTypedBinding);
                 };
                 if !modifier.allows(signature.modifier) {
@@ -992,6 +1013,99 @@ mod tests {
             .build()
             .unwrap_err();
         assert_eq!(error, FlatTypeError::MatchSubjectNotData);
+    }
+
+    #[test]
+    fn should_reject_a_match_on_a_closure() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let closure = t.lambda([], |t, _| t.int(0));
+                t.match_(closure, |m| {
+                    m.arm(Pat::Wildcard, |t, _| t.text("any"));
+                })
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::MatchSubjectNotData);
+    }
+
+    #[test]
+    fn should_accept_a_match_that_binds_a_closure_a_tuple_holds() {
+        FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                let closure = t.lambda([], |t, _| t.text("x"));
+                let pair = t.tuple([closure, t.some(closure)]);
+                t.match_(pair, |m| {
+                    m.arm(
+                        Pat::Tuple(vec![Pat::bind("first"), Pat::some(Pat::bind("second"))]),
+                        |t, bindings| {
+                            let first = t.apply(bindings.binding("first"), []);
+                            let second = t.apply(bindings.binding("second"), []);
+                            t.html_concat([first, second])
+                        },
+                    );
+                    m.arm(Pat::Wildcard, |t, _| t.text("none"));
+                })
+            })
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    fn should_reject_a_cell_of_a_tuple_that_holds_a_closure() {
+        let error = FlatProgramBuilder::new()
+            .entrypoint("Test", [], |t| {
+                t.cell(|t| {
+                    let closure = t.lambda([], |t, _| t.int(0));
+                    t.tuple([closure])
+                });
+                t.text("x")
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::CellHoldsClosure);
+    }
+
+    #[test]
+    fn should_reject_a_cell_of_a_recursive_enum_that_holds_a_closure() {
+        let types = FlatTypeDeclarationsBuilder::new()
+            .enum_(
+                "Tree",
+                [
+                    ("Leaf", vec![]),
+                    (
+                        "Node",
+                        vec![
+                            ("children", Ty::array(Ty::named("Tree"))),
+                            ("show", Ty::function([], Ty::Html)),
+                        ],
+                    ),
+                ],
+            )
+            .build();
+        let tree = types.ty(Ty::named("Tree"));
+        let error = FlatProgramBuilder::with_types(types)
+            .entrypoint("Test", [], |t| {
+                t.cell(|t| t.enum_variant_with_fields(tree, "Leaf", []));
+                t.text("x")
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::CellHoldsClosure);
+    }
+
+    #[test]
+    fn should_reject_an_entrypoint_that_takes_a_record_that_holds_a_closure() {
+        let types = FlatTypeDeclarationsBuilder::new()
+            .record("Column", [("cell", Ty::function([Ty::Int], Ty::Html))])
+            .build();
+        let error = FlatProgramBuilder::with_types(types)
+            .entrypoint("Test", [("columns", Ty::array(Ty::named("Column")))], |t| {
+                t.text("x")
+            })
+            .build()
+            .unwrap_err();
+        assert_eq!(error, FlatTypeError::EntrypointTakesClosure);
     }
 
     #[test]

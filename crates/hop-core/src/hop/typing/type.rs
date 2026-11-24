@@ -9,7 +9,6 @@ use crate::symbols::type_name::TypeName;
 pub enum Type {
     Data(DataType),
     Html(HtmlType),
-    Function(FunctionType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +61,7 @@ pub enum DataType {
         module: RootContainedFilePath,
         name: TypeName,
     },
+    Function(FunctionType),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,15 +103,15 @@ impl Type {
     pub fn as_data(&self) -> Option<&DataType> {
         match self {
             Type::Data(data) => Some(data),
-            Type::Html(_) | Type::Function(_) => None,
+            Type::Html(_) => None,
         }
     }
 
     pub fn renders_html(&self) -> bool {
         match self {
+            Type::Data(DataType::Function(function)) => function.result.renders_html(),
             Type::Data(_) => false,
             Type::Html(_) => true,
-            Type::Function(function) => function.result.renders_html(),
         }
     }
 
@@ -132,9 +132,14 @@ impl Type {
             Type::Data(
                 DataType::Bool | DataType::Option(_) | DataType::Tuple(_) | DataType::Named { .. },
             ) => true,
-            Type::Data(DataType::String | DataType::Int | DataType::Float | DataType::Array(_))
-            | Type::Html(_)
-            | Type::Function(_) => false,
+            Type::Data(
+                DataType::String
+                | DataType::Int
+                | DataType::Float
+                | DataType::Array(_)
+                | DataType::Function(_),
+            )
+            | Type::Html(_) => false,
         }
     }
 }
@@ -149,7 +154,8 @@ impl DataType {
             DataType::Option(_)
             | DataType::Array(_)
             | DataType::Tuple(_)
-            | DataType::Named { .. } => None,
+            | DataType::Named { .. }
+            | DataType::Function(_) => None,
         }
     }
 
@@ -162,7 +168,8 @@ impl DataType {
             | DataType::Array(_)
             | DataType::Option(_)
             | DataType::Tuple(_)
-            | DataType::Named { .. } => None,
+            | DataType::Named { .. }
+            | DataType::Function(_) => None,
         }
     }
 
@@ -175,7 +182,8 @@ impl DataType {
             | DataType::Array(_)
             | DataType::Option(_)
             | DataType::Tuple(_)
-            | DataType::Named { .. } => None,
+            | DataType::Named { .. }
+            | DataType::Function(_) => None,
         }
     }
 }
@@ -185,13 +193,6 @@ impl fmt::Display for Type {
         match self {
             Type::Data(data) => write!(f, "{data}"),
             Type::Html(html) => write!(f, "{html}"),
-            Type::Function(function) => write!(
-                f,
-                "{}fn({}) -> {}",
-                function.modifier.prefix(&function.result),
-                join(&function.parameters, ", "),
-                function.result
-            ),
         }
     }
 }
@@ -213,6 +214,13 @@ impl fmt::Display for DataType {
             DataType::Option(element) => write!(f, "Option[{element}]"),
             DataType::Tuple(elements) => write!(f, "Tuple[{}]", join(elements, ", ")),
             DataType::Named { name, .. } => f.write_str(name.as_str()),
+            DataType::Function(function) => write!(
+                f,
+                "{}fn({}) -> {}",
+                function.modifier.prefix(&function.result),
+                join(&function.parameters, ", "),
+                function.result
+            ),
         }
     }
 }

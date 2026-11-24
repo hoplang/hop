@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use super::resolve_type::{check_function_type, resolve_type};
-use super::r#type::{FunctionType, Modifier, Type};
+use super::resolve_type::resolve_type;
+use super::r#type::{DataType, FunctionType, Modifier, Type};
 use super::type_env::TypeEnv;
 use super::type_registry::TypeRegistry;
 use super::typecheck_call::CallArguments;
@@ -39,13 +39,13 @@ pub fn typecheck_lambda(
 ) -> Option<TypedExpr> {
     // A parameter without a type has no position to take it from when the
     // expected function type has another number of parameters.
-    if let Some(Type::Function(function)) = expected
+    if let Some(Type::Data(DataType::Function(function))) = expected
         && function.parameters.len() != params.len()
         && params.iter().any(|param| param.var_type.is_none())
     {
         errors.push(TypeError::new(
             TypeErrorKind::LambdaParameterCountMismatch {
-                expected: Type::Function(function.clone()),
+                expected: Type::Data(DataType::Function(function.clone())),
                 found: params.len(),
             },
             range.clone(),
@@ -53,7 +53,7 @@ pub fn typecheck_lambda(
         return None;
     }
     let (expected_params, expected_result) = match expected {
-        Some(Type::Function(function)) => (
+        Some(Type::Data(DataType::Function(function))) => (
             Some(function.parameters.as_slice()),
             Some(function.result.as_ref()),
         ),
@@ -191,8 +191,15 @@ pub fn typecheck_lambda(
         parameters: typed_params.iter().map(|(_, typ)| typ.clone()).collect(),
         result: Box::new(body_type),
     };
-    if let Some(error) = check_function_type(&function) {
-        errors.push(TypeError::new(error, body.tail.range().clone()));
+    if function.modifier == Modifier::Mut
+        && !matches!(&*function.result, Type::Data(result) if registry.is_data(result))
+    {
+        errors.push(TypeError::new(
+            TypeErrorKind::MutFunctionReturnsNonData {
+                result: *function.result,
+            },
+            body.tail.range().clone(),
+        ));
         return None;
     }
     Some(TypedExpr::Lambda {
@@ -201,7 +208,7 @@ pub fn typecheck_lambda(
             .map(|(param, typ)| (param.var_name.clone(), typ))
             .collect(),
         body: Box::new(typed_body),
-        typ: Type::Function(function),
+        typ: Type::Data(DataType::Function(function)),
     })
 }
 

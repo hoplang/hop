@@ -5,7 +5,6 @@ use crate::symbols::type_name::TypeName;
 pub enum FlatType {
     Data(FlatDataType),
     Html,
-    Function(FlatSignature),
     Cell(FlatDataType),
     ElementId,
 }
@@ -21,6 +20,7 @@ pub enum FlatDataType {
     Tuple(Vec<FlatDataType>),
     Record(TypeName),
     Enum(TypeName),
+    Function(FlatSignature),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,19 +65,17 @@ impl FlatType {
         parameters: impl IntoIterator<Item = FlatType>,
         result: FlatType,
     ) -> FlatType {
-        FlatType::Function(FlatSignature {
+        FlatType::Data(FlatDataType::Function(FlatSignature {
             modifier,
             parameters: parameters.into_iter().collect(),
             result: Box::new(result),
-        })
+        }))
     }
 
     pub fn as_data(&self) -> Option<&FlatDataType> {
         match self {
             FlatType::Data(data) => Some(data),
-            FlatType::Html | FlatType::Function(_) | FlatType::Cell(_) | FlatType::ElementId => {
-                None
-            }
+            FlatType::Html | FlatType::Cell(_) | FlatType::ElementId => None,
         }
     }
 }
@@ -112,7 +110,6 @@ mod test_support {
             match self {
                 FlatType::Data(data) => data.fmt(f),
                 FlatType::Html => f.write_str("Html"),
-                FlatType::Function(signature) => signature.fmt(f),
                 FlatType::Cell(data) => write!(f, "Cell[{data}]"),
                 FlatType::ElementId => f.write_str("ElementId"),
             }
@@ -153,6 +150,7 @@ mod test_support {
                 FlatDataType::Option(element) => write!(f, "Option[{element}]"),
                 FlatDataType::Tuple(elements) => write!(f, "Tuple[{}]", join(elements, ", ")),
                 FlatDataType::Record(name) | FlatDataType::Enum(name) => f.write_str(name.as_str()),
+                FlatDataType::Function(signature) => signature.fmt(f),
             }
         }
     }

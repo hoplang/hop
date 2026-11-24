@@ -607,7 +607,7 @@ fn typecheck_page_declaration(
             continue;
         };
 
-        if let Type::Html(_) | Type::Function(_) = param_type {
+        if !matches!(&param_type, Type::Data(data) if registry.is_data(data)) {
             errors.push(TypeError::new(
                 TypeErrorKind::NotAllowedInPageParameter {
                     typ: param_type.clone(),
@@ -762,17 +762,16 @@ fn create_function_signature<'a>(
 
     let return_type = resolve_type(&function.return_type, names, definition_links, errors)?;
     let modifier = Modifier::of(function.modifier.as_ref().map(|(m, _)| *m), &return_type);
-    if return_type.as_data().is_none() {
-        let error = match modifier {
-            Modifier::Mut => Some(TypeErrorKind::MutFunctionReturnsNonData {
-                result: return_type.clone(),
-            }),
-            Modifier::Pure | Modifier::Render => None,
-        };
-        if let Some(error) = error {
-            errors.push(TypeError::new(error, function.return_type.range().clone()));
-            return None;
-        }
+    if modifier == Modifier::Mut
+        && !matches!(&return_type, Type::Data(result) if registry.is_data(result))
+    {
+        errors.push(TypeError::new(
+            TypeErrorKind::MutFunctionReturnsNonData {
+                result: return_type,
+            },
+            function.return_type.range().clone(),
+        ));
+        return None;
     }
 
     Some(PendingFunction {
@@ -14657,36 +14656,319 @@ mod tests {
     }
 
     #[test]
-    fn rejects_function_types_inside_other_types() {
-        reject(
+    fn accepts_function_types_inside_other_types() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 record Row {
                   redraw: fn() -> Html,
                 }
-                fn Main(rows: Array[fn(Int) -> Int]) -> Html {
-                  let row = Some(fn(n: Int) { n });
+                enum Step {
+                  Apply { run: fn(Int) -> Int },
+                  Skip,
+                }
+                fn Main(rows: Array[fn(Int) -> Int], step: Step) -> Html {
+                  let row = Row { redraw: fn() { <b></b> } };
+                  let pair = (fn(n: Int) { n }, Some(fn(n: Int) { n + 1 }));
+                  let redraw = row.redraw;
+                  let (first, second) = pair;
+                  let n = match second {
+                    Some(f) => f(first(1)),
+                    None => 0,
+                  };
+                  let m = match step {
+                    Step::Apply { run } => run(n),
+                    Step::Skip => n,
+                  };
+                  <>
+                    {redraw()}
+                    {for each in rows { <i>{each(m).to_string()}</i> }}
+                  </>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(rows: Array[fn(Int) -> Int], step: Step) -> Html {
+                  let row = Row {redraw: fn() -> Html {
+                    element(
+                      tag: "b",
+                      attrs: [],
+                      children: concat(),
+                    )
+                  }} in let pair = (fn(n: Int) -> Int {
+                    n
+                  }, Some(fn(n: Int) -> Int {
+                    add(n, 1)
+                  })) in let redraw = row.redraw in let (first, second) = pair in let n = match second {
+                    Some(f) => f(first(1)),
+                    None => 0,
+                  } in let m = match step {
+                    Step::Apply {run: run} => run(n),
+                    Step::Skip => n,
+                  } in concat(
+                    redraw(),
+                    for each in rows {
+                      element(
+                        tag: "i",
+                        attrs: [],
+                        children: concat(
+                          escape(each(m).to_string()),
+                        ),
+                      )
+                    },
+                  )
+                }
+
+                -- type registry --
+                record Row {
+                  redraw: fn() -> Html,
+                }
+
+                enum Step {
+                  Apply {run: fn(Int) -> Int},
+                  Skip,
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn infers_the_parameters_of_a_lambda_inside_another_type() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                record Column {
+                  title: String,
+                  cell: fn(Int) -> Html,
+                }
+                enum Step {
+                  Apply { run: fn(Int) -> Int },
+                }
+                fn Main() -> Html {
+                  let columns = [Column { title: "n", cell: fn(n) { <b>{n.to_string()}</b> } }];
+                  let steps: Array[fn(Int) -> Int] = [fn(n) { n + 1 }];
+                  let pair: Tuple[fn(Int) -> Int, Option[fn(String) -> String]] =
+                    (fn(n) { n }, Some(fn(s) { s }));
+                  let step = Step::Apply { run: fn(n) { n * 2 } };
+                  let (first, second) = pair;
+                  let run = match step {
+                    Step::Apply { run } => run,
+                  };
+                  <>
+                    {for column in columns {
+                      let cell = column.cell;
+                      <>{column.title}{cell(run(first(1)))}</>
+                    }}
+                    {for each in steps { <i>{each(1).to_string()}</i> }}
+                    {match second {
+                      Some(f) => f("x"),
+                      None => "",
+                    }}
+                  </>
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let columns = [Column {title: "n", cell: fn(n: Int) -> Html {
+                    element(
+                      tag: "b",
+                      attrs: [],
+                      children: concat(
+                        escape(n.to_string()),
+                      ),
+                    )
+                  }}] in let steps = [fn(n: Int) -> Int {
+                    add(n, 1)
+                  }] in let pair = (fn(n: Int) -> Int {
+                    n
+                  }, Some(fn(s: String) -> String {
+                    s
+                  })) in let step = Step::Apply {run: fn(n: Int) -> Int {
+                    mul(n, 2)
+                  }} in let (first, second) = pair in let run = match step {
+                    Step::Apply {run: run} => run,
+                  } in concat(
+                    for column in columns {
+                      let cell = column.cell in concat(
+                        escape(column.title),
+                        cell(run(first(1))),
+                      )
+                    },
+                    for each in steps {
+                      element(
+                        tag: "i",
+                        attrs: [],
+                        children: concat(
+                          escape(each(1).to_string()),
+                        ),
+                      )
+                    },
+                    escape(match second {
+                      Some(f) => f("x"),
+                      None => "",
+                    }),
+                  )
+                }
+
+                -- type registry --
+                record Column {
+                  title: String,
+                  cell: fn(Int) -> Html,
+                }
+
+                enum Step {
+                  Apply {run: fn(Int) -> Int},
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_state_of_a_type_that_holds_a_function() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record Column {
+                  cell: fn(Int) -> Html,
+                }
+                enum Tree {
+                  Leaf,
+                  Node { children: Array[Tree], draw: fn() -> Html },
+                }
+                fn A() -> Html {
+                  let (a, set_a) = state!((1, fn(n: Int) { n }));
+                  <></>
+                }
+                fn B() -> Html {
+                  let (b, set_b) = state!([Column { cell: fn(n) { <b></b> } }]);
+                  <></>
+                }
+                fn C() -> Html {
+                  let (c, set_c) = state!(Tree::Leaf);
                   <></>
                 }
             "#},
             expect![[r#"
-                error: fn() -> Html is not allowed inside another type
-                  --> main.hop (line 2, col 11)
-                1 | record Row {
-                2 |   redraw: fn() -> Html,
-                  |           ^^^^^^^^^^^^
+                error: state! cannot hold Tuple[Int, fn(Int) -> Int]
+                  --> main.hop (line 9, col 27)
+                 8 | fn A() -> Html {
+                 9 |   let (a, set_a) = state!((1, fn(n: Int) { n }));
+                   |                           ^^^^^^^^^^^^^^^^^^^^^
 
-                error: fn(Int) -> Int is not allowed inside another type
-                  --> main.hop (line 4, col 21)
+                error: state! cannot hold Array[Column]
+                  --> main.hop (line 13, col 27)
+                12 | fn B() -> Html {
+                13 |   let (b, set_b) = state!([Column { cell: fn(n) { <b></b> } }]);
+                   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                warning: Unused variable n
+                  --> main.hop (line 13, col 46)
+                12 | fn B() -> Html {
+                13 |   let (b, set_b) = state!([Column { cell: fn(n) { <b></b> } }]);
+                   |                                              ^
+
+                error: state! cannot hold Tree
+                  --> main.hop (line 17, col 27)
+                16 | fn C() -> Html {
+                17 |   let (c, set_c) = state!(Tree::Leaf);
+                   |                           ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_page_parameter_of_a_type_that_holds_a_function() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record Column {
+                  cell: fn(Int) -> Html,
+                }
+                page Main(columns: Array[Column], pair: Tuple[Int, Option[fn() -> Int]]) {
+                  fn body() -> Html {
+                    <></>
+                  }
+                }
+            "#},
+            expect![[r#"
+                warning: Unused variable columns
+                  --> main.hop (line 4, col 11)
                 3 | }
-                4 | fn Main(rows: Array[fn(Int) -> Int]) -> Html {
-                  |                     ^^^^^^^^^^^^^^
+                4 | page Main(columns: Array[Column], pair: Tuple[Int, Option[fn() -> Int]]) {
+                  |           ^^^^^^^
 
-                error: fn(Int) -> Int is not allowed inside another type
-                  --> main.hop (line 5, col 18)
-                4 | fn Main(rows: Array[fn(Int) -> Int]) -> Html {
-                5 |   let row = Some(fn(n: Int) { n });
-                  |                  ^^^^^^^^^^^^^^^^
+                error: Array[Column] is not allowed in page parameters
+                  --> main.hop (line 4, col 20)
+                3 | }
+                4 | page Main(columns: Array[Column], pair: Tuple[Int, Option[fn() -> Int]]) {
+                  |                    ^^^^^^^^^^^^^
+
+                warning: Unused variable pair
+                  --> main.hop (line 4, col 35)
+                3 | }
+                4 | page Main(columns: Array[Column], pair: Tuple[Int, Option[fn() -> Int]]) {
+                  |                                   ^^^^
+
+                error: Tuple[Int, Option[fn() -> Int]] is not allowed in page parameters
+                  --> main.hop (line 4, col 41)
+                3 | }
+                4 | page Main(columns: Array[Column], pair: Tuple[Int, Option[fn() -> Int]]) {
+                  |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_mut_fn_that_returns_a_type_that_holds_a_function() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                record Column {
+                  cell: fn(Int) -> Html,
+                }
+                mut fn columns() -> Array[Column] {
+                  []
+                }
+                fn Main() -> Html {
+                  let pair = mut fn() { (1, fn(n: Int) { n }) };
+                  <></>
+                }
+            "#},
+            expect![[r#"
+                error: A mut fn can not return Array[Column]
+                  --> main.hop (line 4, col 21)
+                 3 | }
+                 4 | mut fn columns() -> Array[Column] {
+                   |                     ^^^^^^^^^^^^^
+
+                error: A mut fn can not return Tuple[Int, fn(Int) -> Int]
+                  --> main.hop (line 8, col 25)
+                 7 | fn Main() -> Html {
+                 8 |   let pair = mut fn() { (1, fn(n: Int) { n }) };
+                   |                         ^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_match_on_a_function_inside_another_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(pair: Tuple[fn() -> Int, Int]) -> Int {
+                  match pair {
+                    (true, n) => n,
+                    (_, n) => n,
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Pattern does not match type fn() -> Int
+                  --> main.hop (line 3, col 6)
+                2 |   match pair {
+                3 |     (true, n) => n,
+                  |      ^^^^
             "#]],
         );
     }
@@ -15534,28 +15816,44 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_mut_fn_inside_another_type() {
-        reject(
+    fn accepts_a_mut_fn_inside_another_type() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn Listed() -> Html {
                   let (count, set_count) = state!(0);
                   let writes = [mut fn() { set_count(fn(_) { 1 }) }];
-                  <b>{count.to_string()}</b>
+                  <>
+                    {for write in writes { <button on:click={write}></button> }}
+                    <b>{count.to_string()}</b>
+                  </>
                 }
             "#},
             expect![[r#"
-                warning: Unused variable count
-                  --> main.hop (line 2, col 8)
-                1 | fn Listed() -> Html {
-                2 |   let (count, set_count) = state!(0);
-                  |        ^^^^^
-
-                error: mut fn() -> Tuple[] is not allowed inside another type
-                  --> main.hop (line 3, col 17)
-                2 |   let (count, set_count) = state!(0);
-                3 |   let writes = [mut fn() { set_count(fn(_) { 1 }) }];
-                  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                -- main.hop --
+                fn Listed() -> Html {
+                  let (count, set_count) = state!(0) in let writes = [mut fn() -> Tuple[] {
+                    set_count(fn(_: Int) -> Int {
+                      1
+                    })
+                  }] in concat(
+                    for write in writes {
+                      element(
+                        tag: "button",
+                        attrs: [],
+                        children: concat(),
+                        on_click: write,
+                      )
+                    },
+                    element(
+                      tag: "b",
+                      attrs: [],
+                      children: concat(
+                        escape(count.to_string()),
+                      ),
+                    ),
+                  )
+                }
             "#]],
         );
     }

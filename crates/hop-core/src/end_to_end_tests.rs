@@ -7539,3 +7539,347 @@ fn closure_that_renders_html_that_a_match_produces() {
         "<b>x</b><i>x</i>",
     );
 }
+
+#[test]
+#[ignore]
+fn closures_in_the_fields_of_records_in_an_array() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            record Item {
+              label: String,
+              count: Int,
+            }
+
+            record Column {
+              title: String,
+              cell: fn(Item) -> Html,
+            }
+
+            fn Table(columns: Array[Column], items: Array[Item]) -> Html {
+              <table>
+                <tr>
+                  {for column in columns {
+                    <th>{column.title}</th>
+                  }}
+                </tr>
+                {for item in items {
+                  <tr>
+                    {for column in columns {
+                      let cell = column.cell;
+                      <td>{cell(item)}</td>
+                    }}
+                  </tr>
+                }}
+              </table>
+            }
+
+            page Test() {
+              fn body() -> Html {
+                let suffix = "!";
+                let columns = [
+                  Column {
+                    title: "X",
+                    cell: fn(item) {
+                      <b>{item.label}{suffix}</b>
+                    },
+                  },
+                  Column {
+                    title: "Y",
+                    cell: fn(item) {
+                      <>{item.count.to_string()}</>
+                    },
+                  },
+                ];
+                let items = [
+                  Item { label: "A", count: 1 },
+                  Item { label: "B", count: 2 },
+                ];
+                <Table columns={columns} items={items}/>
+              }
+            }
+        "#},
+        "<table><tr><th>X</th><th>Y</th></tr>\
+         <tr><td><b>A!</b></td><td>1</td></tr>\
+         <tr><td><b>B!</b></td><td>2</td></tr></table>",
+    );
+}
+
+#[test]
+#[ignore]
+fn closures_in_the_fields_of_enum_variants_that_a_match_takes_out() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            enum Action {
+              Link { href: String, label: fn() -> Html },
+              Compute { run: fn(Int) -> Int },
+              Nothing,
+            }
+
+            fn Show(action: Action, n: Int) -> Html {
+              match action {
+                Action::Link { href, label } => {
+                  <a href={href}>{label()}</a>
+                },
+                Action::Compute { run } => {
+                  <b>{run(n).to_string()}</b>
+                },
+                Action::Nothing => {
+                  <i></i>
+                },
+              }
+            }
+
+            fn make(kind: Int, k: Int) -> Action {
+              match kind == 0 {
+                true => Action::Link {
+                  href: "/x",
+                  label: fn() {
+                    <em>{k.to_string()}</em>
+                  },
+                },
+                false => match kind == 1 {
+                  true => Action::Compute {
+                    run: fn(n) { n * k },
+                  },
+                  false => Action::Nothing,
+                },
+              }
+            }
+
+            page Test() {
+              fn body() -> Html {
+                <>
+                  {for kind in 0..=2 {
+                    <Show action={make(kind, 3)} n={5}/>
+                  }}
+                </>
+              }
+            }
+        "#},
+        "<a href=\"/x\"><em>3</em></a><b>15</b><i></i>",
+    );
+}
+
+#[test]
+#[ignore]
+fn closures_in_a_tuple_and_an_option_that_a_match_produces() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            fn pick(flag: Bool, k: Int) -> Tuple[fn(Int) -> Int, Option[fn(Int) -> Int]] {
+              match flag {
+                true => (
+                  fn(n) { n + k },
+                  Some(fn(n) { n * k }),
+                ),
+                false => (
+                  fn(n) { n - k },
+                  None,
+                ),
+              }
+            }
+
+            fn apply(flag: Bool, k: Int) -> Int {
+              let (first, second) = pick(flag, k);
+              match second {
+                Some(then) => then(first(k)),
+                None => first(1),
+              }
+            }
+
+            page Test() {
+              fn body() -> Html {
+                <>
+                  {for flag in [true, false] {
+                    <b>{apply(flag, 3).to_string()}</b>
+                  }}
+                </>
+              }
+            }
+        "#},
+        "<b>18</b><b>-2</b>",
+    );
+}
+
+#[test]
+#[ignore]
+fn closures_in_an_array_that_a_loop_and_a_get_take_out() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            fn steps(k: Int) -> Array[fn(Int) -> Int] {
+              [
+                fn(n) { n + k },
+                fn(n) { n * k },
+                fn(n) { n - k },
+              ]
+            }
+
+            fn Nth(index: Int) -> Html {
+              match steps(2).get(index) {
+                Some(step) => {
+                  <i>{step(10).to_string()}</i>
+                },
+                None => {
+                  <i>none</i>
+                },
+              }
+            }
+
+            page Test() {
+              fn body() -> Html {
+                <>
+                  {for step in steps(3) {
+                    <b>{step(10).to_string()}</b>
+                  }}
+                  {for pair in steps(3).enumerate() {
+                    let (index, step) = pair;
+                    <u>{step(index).to_string()}</u>
+                  }}
+                  {for index in 1..=3 {
+                    <Nth index={index}/>
+                  }}
+                </>
+              }
+            }
+        "#},
+        "<b>13</b><b>30</b><b>7</b>\
+         <u>3</u><u>3</u><u>-1</u>\
+         <i>20</i><i>8</i><i>none</i>",
+    );
+}
+
+#[test]
+#[ignore]
+fn closure_that_takes_and_returns_records_of_closures() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            record Theme {
+              heading: fn(String) -> Html,
+              emphasis: fn(Html) -> Html,
+            }
+
+            fn pick(loud: Bool) -> Theme {
+              match loud {
+                true => Theme {
+                  heading: fn(text) {
+                    <h1>{text}!</h1>
+                  },
+                  emphasis: fn(content) {
+                    <strong>{content}</strong>
+                  },
+                },
+                false => Theme {
+                  heading: fn(text) {
+                    <h2>{text}</h2>
+                  },
+                  emphasis: fn(content) {
+                    <em>{content}</em>
+                  },
+                },
+              }
+            }
+
+            fn Article(theme: Theme, title: String) -> Html {
+              let Theme { heading, emphasis } = theme;
+              <article>
+                {heading(title)}
+                {emphasis(<span>{title}</span>)}
+              </article>
+            }
+
+            page Test() {
+              fn body() -> Html {
+                let swap = fn(theme: Theme) {
+                  let heading = theme.heading;
+                  Theme {
+                    ...theme,
+                    emphasis: fn(content) {
+                      <del>{content}</del>
+                    },
+                    heading: heading,
+                  }
+                };
+                <>
+                  {for loud in [true, false] {
+                    <>
+                      <Article theme={pick(loud)} title="a"/>
+                      <Article theme={swap(pick(loud))} title="b"/>
+                    </>
+                  }}
+                </>
+              }
+            }
+        "#},
+        "<article><h1>a!</h1><strong><span>a</span></strong></article>\
+         <article><h1>b!</h1><del><span>b</span></del></article>\
+         <article><h2>a</h2><em><span>a</span></em></article>\
+         <article><h2>b</h2><del><span>b</span></del></article>",
+    );
+}
+
+#[test]
+#[ignore]
+fn closure_in_a_field_of_a_recursive_enum() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            enum Tree {
+              Leaf { label: fn() -> Html },
+              Node { label: fn() -> Html, children: Array[Tree] },
+            }
+
+            fn Show(tree: Tree) -> Html {
+              match tree {
+                Tree::Leaf { label } => {
+                  <li>{label()}</li>
+                },
+                Tree::Node { label, children } => {
+                  <li>
+                    {label()}
+                    <ul>
+                      {for child in children {
+                        <Show tree={child}/>
+                      }}
+                    </ul>
+                  </li>
+                },
+              }
+            }
+
+            fn leaf(text: String) -> Tree {
+              Tree::Leaf {
+                label: fn() {
+                  <i>{text}</i>
+                },
+              }
+            }
+
+            page Test() {
+              fn body() -> Html {
+                let tree = Tree::Node {
+                  label: fn() {
+                    <b>root</b>
+                  },
+                  children: [
+                    leaf("a"),
+                    Tree::Node {
+                      label: fn() {
+                        <b>b</b>
+                      },
+                      children: [leaf("c")],
+                    },
+                  ],
+                };
+                <ul>
+                  <Show tree={tree}/>
+                </ul>
+              }
+            }
+        "#},
+        "<ul><li><b>root</b><ul><li><i>a</i></li><li><b>b</b><ul><li><i>c</i></li></ul></li></ul></li></ul>",
+    );
+}
