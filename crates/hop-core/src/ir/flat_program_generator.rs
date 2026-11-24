@@ -53,6 +53,10 @@ const CLOSURE_RESULT_ODDS: u8 = 48;
 /// than by a lambda.
 const PRODUCED_CLOSURE_ODDS: u8 = 128;
 
+/// How often a closure is produced by a match, each arm producing one,
+/// rather than by a call, an application or a lambda.
+const MATCHED_CLOSURE_ODDS: u8 = 32;
+
 /// How often a loop that binds its variable has a key.
 const KEY_ODDS: u8 = 204;
 
@@ -908,6 +912,10 @@ impl FlatGenerator<'_, '_> {
     ) -> ValueId {
         if let Some(name) = self.name_in_scope(b, scope, typ) {
             return name;
+        }
+        if depth > 0 && nesting > 0 && self.chance(MATCHED_CLOSURE_ODDS) {
+            let value = self.match_(b, scope, typ, depth, nesting);
+            return scope.push(value);
         }
         if nesting > 0 && self.chance(PRODUCED_CLOSURE_ODDS) {
             let types = b.value_types();
@@ -1928,7 +1936,7 @@ mod tests {
             FlatOp::Match(_) => "Match".to_string(),
             FlatOp::Cell(_) => "Cell".to_string(),
             FlatOp::For(_) => "For".to_string(),
-            FlatOp::Lambda(_) => "Lambda".to_string(),
+            FlatOp::Lambda(..) => "Lambda".to_string(),
             op => format!("{op:?}"),
         };
         let kind = debug
@@ -1939,7 +1947,7 @@ mod tests {
             .trim_end_matches(')');
         let typ = &binding.binder.typ;
         match &binding.op {
-            FlatOp::Lambda(_)
+            FlatOp::Lambda(..)
                 if matches!(typ, FlatType::Function(signature)
                     if signature.modifier == IrModifier::Mut) =>
             {
@@ -1979,10 +1987,6 @@ mod tests {
                 nested.push((var, &for_.body));
                 nested
             }
-            FlatOp::Lambda(lambda) => {
-                let params = lambda.parameters.iter().map(|param| param.var).collect();
-                vec![(params, &lambda.body)]
-            }
             FlatOp::Cell(initial) => vec![(Vec::new(), initial)],
             _ => Vec::new(),
         }
@@ -1996,13 +2000,8 @@ mod tests {
             } else if !live.contains(&binding.binder.var) {
                 continue;
             }
-            let mutates = matches!(
-                (&binding.op, &binding.binder.typ),
-                (FlatOp::Lambda(_), FlatType::Function(signature))
-                    if signature.modifier == IrModifier::Mut
-            );
             for (_, body) in nested(binding) {
-                mark_live(body, live, keep || mutates);
+                mark_live(body, live, keep);
             }
             binding.op.for_each_operand(&mut |operand| {
                 live.insert(operand);
@@ -2016,10 +2015,8 @@ mod tests {
             binding.op.for_each_operand(&mut |operand| {
                 depends |= dynamic.contains(&operand);
             });
-            // The parameters of a lambda take what each application passes.
-            let operands = depends || matches!(binding.op, FlatOp::Lambda(_));
             for (bound, body) in nested(binding) {
-                if operands {
+                if depends {
                     dynamic.extend(bound);
                 }
                 depends |= mark_dynamic(body, dynamic);
@@ -2087,6 +2084,7 @@ mod tests {
     struct ShapeStats {
         arm_counts: Vec<usize>,
         binding_arms: usize,
+        closure_matches: usize,
         loops: usize,
         keyed_loops: usize,
         elements: usize,
@@ -2138,13 +2136,12 @@ mod tests {
                                 usize::from(self.parameters.contains(&handler));
                         }
                     }
-                    FlatOp::Lambda(lambda) => {
-                        (self.parameters).extend(lambda.parameters.iter().map(|param| param.var));
-                    }
                     FlatOp::Cell(_) => self.cells += 1,
                     FlatOp::Match(match_) => {
                         assert!(match_.arms.len() > 1, "generated matches branch");
                         self.arm_counts.push(match_.arms.len());
+                        self.closure_matches +=
+                            usize::from(matches!(binding.binder.typ, FlatType::Function(_)));
                         for arm in &match_.arms {
                             let mut binds = false;
                             arm.pattern.for_each_binding(&mut |_| binds = true);
@@ -2188,31 +2185,34 @@ mod tests {
             sizes[bucket.unwrap_or(SIZE_EDGES.len())] += 1;
             let mut live = HashSet::new();
             let mut dynamic = HashSet::new();
-            let bodies: Vec<&FlatBlock> = (program.functions.iter())
-                .map(|function| &function.body)
-                .chain(
-                    program
-                        .entrypoints
-                        .iter()
-                        .map(|entrypoint| &entrypoint.body),
-                )
-                .collect();
-            let parameters = program
-                .functions
-                .iter()
-                .map(|function| function.parameters.clone())
-                .chain(program.entrypoints.iter().map(|entrypoint| {
-                    entrypoint
-                        .parameters
-                        .iter()
-                        .map(|param| param.widen())
-                        .collect()
-                }));
-            for (parameters, &body) in parameters.zip(&bodies) {
-                mark_live(body, &mut live, false);
-                dynamic.extend(parameters.iter().map(|param| param.binder.var));
+            let functions = program.functions.iter().map(|function| {
+                let parameters = (function.parameters.iter())
+                    .map(|param| param.binder.var)
+                    .collect();
+                (Vec::new(), parameters, &function.body, false)
+            });
+            let lambdas = program.lambdas.iter().map(|lambda| {
+                let captures = lambda.captures.iter().map(|binder| binder.var).collect();
+                let parameters = (lambda.parameters.iter())
+                    .map(|binder| binder.var)
+                    .collect();
+                let keep = lambda.modifier == IrModifier::Mut;
+                (captures, parameters, &lambda.body, keep)
+            });
+            let entrypoints = program.entrypoints.iter().map(|entrypoint| {
+                let parameters = (entrypoint.parameters.iter())
+                    .map(|param| param.binder.var)
+                    .collect();
+                (Vec::new(), parameters, &entrypoint.body, false)
+            });
+            let declared: Vec<(Vec<ValueId>, Vec<ValueId>, &FlatBlock, bool)> =
+                functions.chain(lambdas).chain(entrypoints).collect();
+            let bodies: Vec<&FlatBlock> = declared.iter().map(|(_, _, body, _)| *body).collect();
+            for (captures, parameters, body, keep) in &declared {
+                mark_live(body, &mut live, *keep);
+                dynamic.extend(captures.iter().chain(parameters).copied());
                 mark_dynamic(body, &mut dynamic);
-                (shape_stats.parameters).extend(parameters.iter().map(|param| param.binder.var));
+                shape_stats.parameters.extend(parameters.iter().copied());
                 shape_stats.count_block(body);
             }
             shape_stats.finish_program();
@@ -2247,6 +2247,7 @@ mod tests {
         let ShapeStats {
             arm_counts,
             binding_arms,
+            closure_matches,
             loops,
             keyed_loops,
             elements,
@@ -2290,6 +2291,7 @@ mod tests {
              {shared_ids} of {id_bindings} mints have more than one reference\n\
              {:.1} arms per match on average, at least {fewest_arms} and at most {most_arms}\n\
              {binding_arms} of {arms} match arms bind names\n\
+             {closure_matches} of {} matches produce a closure\n\
              {cells} cells\n\
              {keyed_loops} of {loops} loops have a key\n\
              {clicks} of {elements} elements have a click\n\
@@ -2300,6 +2302,7 @@ mod tests {
              {:<20}{:>12}{:>8}{:>8}{:>8}\n",
             consumed / SAMPLES,
             arms as f64 / arm_counts.len() as f64,
+            arm_counts.len(),
             "op",
             "ops/program",
             "% progs",
@@ -2317,78 +2320,79 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            16422 of 65536 input bytes consumed per program on average, at most 65536
-            2 of 32 programs exhaust the input
+            18711 of 65536 input bytes consumed per program on average, at most 65536
+            3 of 32 programs exhaust the input
 
             -- sizes --
-            under 256     4  ##############
-            under 1K      0
-            under 4K      5  ##################
-            under 16K    11  ########################################
-            under 64K    10  ####################################
-            at 64K        2  #######
+            under 256     3  ############
+            under 1K      2  ########
+            under 4K      4  ################
+            under 16K    10  ########################################
+            under 64K    10  ########################################
+            at 64K        3  ############
 
             -- programs --
-            416 of 26799 Html bindings have more than one reference
-            7 of 3901 mints have more than one reference
-            2.5 arms per match on average, at least 2 and at most 12
-            6539 of 15168 match arms bind names
-            14144 cells
-            256 of 445 loops have a key
-            2929 of 3699 elements have a click
-            493 handlers have more than one click
-            1096 clicks apply a handler bound outside their block, 45 of them a parameter
+            438 of 27351 Html bindings have more than one reference
+            6 of 4380 mints have more than one reference
+            2.5 arms per match on average, at least 2 and at most 18
+            7633 of 19176 match arms bind names
+            1110 of 7544 matches produce a closure
+            16369 cells
+            340 of 561 loops have a key
+            3302 of 4100 elements have a click
+            595 handlers have more than one click
+            912 clicks apply a handler bound outside their block, 0 of them a parameter
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      160.5    90.6    90.4    69.2
-            Array                      183.7    93.8    87.7    26.8
-            ArrayEnumerate               2.3    59.4    94.5    75.3
-            ArrayFromRange              13.2    87.5    90.1     0.0
-            ArrayGet                    54.3    87.5    89.1    56.1
-            ArrayIsEmpty                 4.4    71.9    85.8    53.2
-            ArrayLength                120.1    87.5    84.4    53.7
-            BoolLiteral                 58.7    90.6    91.1     0.0
-            BoolNegation                 4.4    78.1    85.1    47.5
-            Call                        65.2    56.2    92.6    86.9
-            Cell                       442.0    90.6    86.0    48.0
-            CellRead                   442.0    90.6    86.0    48.0
-            CellUpdate                  84.6    84.4    93.4    72.0
-            Enum                       101.2    75.0    88.9    27.7
-            Equals                       3.9    68.8    84.1    56.3
-            FieldAccess                 18.5    56.2    91.0    82.9
-            FloatLiteral                89.8    93.8    88.0     0.0
-            FloatToInt                 120.1    90.6    85.0    44.8
-            HtmlApply                    7.9    87.5    91.7    66.7
-            HtmlConcat                 308.2    96.9    83.4    33.2
-            HtmlElement                115.6    93.8    89.5    60.4
-            HtmlEscape                 183.7    90.6    82.0    43.8
-            HtmlFor                     13.9    87.5    92.6    71.2
-            HtmlLambda                  60.3    87.5    92.1    47.9
-            HtmlText                    84.0    93.8    86.2     0.0
-            IntLiteral                 143.7    90.6    89.6     0.0
-            IntToFloat                 110.8    87.5    83.9    49.1
-            IntToString                172.7    90.6    84.1    49.6
-            Lambda                     220.7    90.6    91.2    54.1
-            LessThan                     4.2    81.2    85.1    64.2
-            LessThanOrEqual              4.4    71.9    86.6    73.2
-            Match                      192.0    90.6    88.2    80.3
-            Mint                       121.9    96.9    84.9     0.0
-            MutLambda                   62.8    90.6    90.3    41.6
-            NumericAdd                 229.6    90.6    83.4    59.9
-            NumericMultiply            220.4    87.5    83.0    60.8
-            NumericNegation            229.3    90.6    83.2    48.6
-            NumericSubtract            229.7    90.6    83.8    60.7
-            OptionIsNone                 3.9    81.2    87.2    49.6
-            OptionIsSome                 4.4    71.9    86.4    57.9
-            OptionNone                  60.8    87.5    87.8     0.0
-            OptionSome                  56.4    87.5    88.0    35.7
-            Record                      65.7    71.9    90.5    37.6
-            StringConcat               177.9    87.5    84.1    41.7
-            StringIsEmpty                3.9    78.1    88.7    46.8
-            StringLiteral               71.9    90.6    90.2     0.0
-            Tuple                      202.5    93.8    90.0    25.9
-            TupleIndex                  83.4    90.6    78.6    63.8
+            Apply                      168.8    90.6    95.3    80.2
+            Array                      227.9    93.8    93.5    36.2
+            ArrayEnumerate               2.2    53.1    97.1    72.9
+            ArrayFromRange              16.9    93.8    94.3     0.0
+            ArrayGet                    37.2    90.6    92.3    65.0
+            ArrayIsEmpty                 5.1    71.9    96.3    74.4
+            ArrayLength                141.7    90.6    94.1    75.9
+            BoolLiteral                 60.6    90.6    93.8     0.0
+            BoolNegation                 5.2    71.9    95.2    69.0
+            Call                        52.1    56.2    97.4    88.1
+            Cell                       511.5    90.6    91.8    59.2
+            CellRead                   511.5    90.6    91.8    59.2
+            CellUpdate                  59.7    84.4   100.0   100.0
+            Enum                       126.5    78.1    93.1    39.7
+            Equals                       5.3    68.8    95.3    82.5
+            FieldAccess                 22.7    53.1    94.4    65.7
+            FloatLiteral               112.3    93.8    94.2     0.0
+            FloatToInt                 139.4    93.8    93.5    61.0
+            HtmlApply                    8.5    78.1    95.2    82.1
+            HtmlConcat                 301.2    93.8    95.7    42.5
+            HtmlElement                128.1    90.6    97.3    68.3
+            HtmlEscape                 178.9    93.8    94.6    64.0
+            HtmlFor                     17.5    87.5    94.7    73.8
+            HtmlLambda                  53.2    87.5    95.9    45.8
+            HtmlText                    81.7    93.8    96.3     0.0
+            IntLiteral                 141.7    93.8    94.6     0.0
+            IntToFloat                 140.1    90.6    92.9    69.4
+            IntToString                180.4    93.8    94.7    71.6
+            Lambda                     266.3    90.6    96.1    62.2
+            LessThan                     5.0    75.0    93.8    76.9
+            LessThanOrEqual              5.2    81.2    96.4    78.8
+            Match                      235.8    93.8    95.1    90.0
+            Mint                       136.9    96.9    90.9     0.0
+            MutLambda                   55.2    93.8    95.5    55.6
+            NumericAdd                 285.2    93.8    93.3    79.1
+            NumericMultiply            282.8    90.6    93.7    79.7
+            NumericNegation            286.9    93.8    93.6    68.3
+            NumericSubtract            282.2    93.8    93.4    79.7
+            OptionIsNone                 5.0    71.9    93.7    77.4
+            OptionIsSome                 4.9    75.0    95.5    75.0
+            OptionNone                  77.9    90.6    94.4     0.0
+            OptionSome                  69.4    90.6    94.9    45.6
+            Record                      90.6    71.9    93.3    49.9
+            StringConcat               178.6    90.6    94.1    57.0
+            StringIsEmpty                4.8    81.2    96.8    64.5
+            StringLiteral               65.9    93.8    94.7     0.0
+            Tuple                      217.5    93.8    95.8    38.0
+            TupleIndex                  99.3    84.4    94.7    89.9
         "#]]
         .assert_eq(&report);
     }

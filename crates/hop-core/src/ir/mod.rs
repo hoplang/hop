@@ -16,6 +16,7 @@ mod ir_function;
 mod ir_lambda;
 pub mod ir_page;
 pub mod ir_parameter;
+mod lambda_id;
 mod typed_to_flat;
 mod value_id;
 pub mod writer_program;

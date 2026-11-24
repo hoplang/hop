@@ -179,13 +179,6 @@ pub fn typecheck_match(
         return None;
     }
     let typ = result_type?;
-    if let Type::Function(_) = typ {
-        errors.push(TypeError::new(
-            TypeErrorKind::MatchProducesFunction { typ },
-            arms[0].body.range().clone(),
-        ));
-        return None;
-    }
 
     Some(TypedExpr::Match {
         subject: Box::new(typed_subject),

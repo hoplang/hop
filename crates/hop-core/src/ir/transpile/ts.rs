@@ -1806,7 +1806,7 @@ mod tests {
 
                 export function Test({prefix: v_11}: {prefix: string}): string {
                     let output: string = "";
-                    const v_18: (a0: number) => string = (v_12: number): string => {
+                    const v_19: (a0: number) => string = (v_12: number): string => {
                         let output: string = "";
                         const v_13: string = v_12.toString();
                         output += "<li>";
@@ -1815,9 +1815,9 @@ mod tests {
                         output += "</li>";
                         return output;
                     };
-                    const v_20: number = 3;
+                    const v_21: number = 3;
                     output += "<ul>";
-                    output += renderCountdown_0(v_20, v_18);
+                    output += renderCountdown_0(v_21, v_19);
                     output += "</ul>";
                     return output;
                 }
@@ -1873,7 +1873,7 @@ mod tests {
                 function renderSum_0(v_0: number, v_1: (a0: number) => number): number {
                     const v_2: number = 0;
                     const v_3: boolean = v_0 <= v_2;
-                    const v_22: number = (() => {
+                    const v_23: number = (() => {
                         if (v_3) {
                             const v_4: number = 0;
                             return v_4;
@@ -1886,13 +1886,13 @@ mod tests {
                             return v_9;
                         }
                     })();
-                    return v_22;
+                    return v_23;
                 }
 
                 export function Test({double: v_11}: {double: boolean}): string {
                     let output: string = "";
-                    const v_16: (a0: number) => number = (v_12: number): number => {
-                        const v_21: number = (() => {
+                    const v_17: (a0: number) => number = (v_12: number): number => {
+                        const v_22: number = (() => {
                             if (v_11) {
                                 const v_13: number = 2;
                                 const v_14: number = globalThis.Math.imul(v_12, v_13);
@@ -1901,12 +1901,12 @@ mod tests {
                                 return v_12;
                             }
                         })();
-                        return v_21;
+                        return v_22;
                     };
-                    const v_17: number = 3;
-                    const v_18: number = renderSum_0(v_17, v_16);
-                    const v_19: string = v_18.toString();
-                    output += escapeHtml(v_19);
+                    const v_18: number = 3;
+                    const v_19: number = renderSum_0(v_18, v_17);
+                    const v_20: string = v_19.toString();
+                    output += escapeHtml(v_20);
                     return output;
                 }
             "#]],

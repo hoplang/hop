@@ -1875,16 +1875,16 @@ mod tests {
 
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { prefix: v_11 } = self;
-                        let v_18: &'a (dyn Fn(&mut String, i32) + 'a) = arena.alloc(move |output: &mut String, v_12: i32| {
+                        let v_19: &'a (dyn Fn(&mut String, i32) + 'a) = arena.alloc(move |output: &mut String, v_12: i32| {
                             let v_13: &'a str = arena.alloc_str(&v_12.to_string());
                             output.push_str("<li>");
                             write_escaped_html(v_11, output);
                             write_escaped_html(v_13, output);
                             output.push_str("</li>");
                         });
-                        let v_20: i32 = 3_i32;
+                        let v_21: i32 = 3_i32;
                         output.push_str("<ul>");
-                        render_countdown_0(arena, output, v_20, v_18);
+                        render_countdown_0(arena, output, v_21, v_19);
                         output.push_str("</ul>");
                     }
                 }
@@ -1961,7 +1961,7 @@ mod tests {
                 fn render_sum_0<'a>(arena: &'a impl Arena, v_0: i32, v_1: &'a (dyn Fn(i32) -> i32 + 'a)) -> i32 {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_0 <= v_2;
-                    let v_22: i32 = match v_3 {
+                    let v_23: i32 = match v_3 {
                         true => {
                             let v_4: i32 = 0_i32;
                             v_4
@@ -1975,7 +1975,7 @@ mod tests {
                             v_9
                         },
                     };
-                    v_22
+                    v_23
                 }
 
                 impl<'a> View<'a> for Test {
@@ -1987,8 +1987,8 @@ mod tests {
 
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { double: v_11 } = self;
-                        let v_16: &'a (dyn Fn(i32) -> i32 + 'a) = arena.alloc(move |v_12: i32| -> i32 {
-                            let v_21: i32 = match v_11 {
+                        let v_17: &'a (dyn Fn(i32) -> i32 + 'a) = arena.alloc(move |v_12: i32| -> i32 {
+                            let v_22: i32 = match v_11 {
                                 true => {
                                     let v_13: i32 = 2_i32;
                                     let v_14: i32 = v_12.wrapping_mul(v_13);
@@ -1996,12 +1996,12 @@ mod tests {
                                 },
                                 false => v_12,
                             };
-                            v_21
+                            v_22
                         });
-                        let v_17: i32 = 3_i32;
-                        let v_18: i32 = render_sum_0(arena, v_17, v_16);
-                        let v_19: &'a str = arena.alloc_str(&v_18.to_string());
-                        write_escaped_html(v_19, output);
+                        let v_18: i32 = 3_i32;
+                        let v_19: i32 = render_sum_0(arena, v_18, v_17);
+                        let v_20: &'a str = arena.alloc_str(&v_19.to_string());
+                        write_escaped_html(v_20, output);
                     }
                 }
             "#]],
@@ -2381,21 +2381,21 @@ mod tests {
                 pub struct Test {}
 
                 fn render_decorate_0<'a>(arena: &'a impl Arena, v_9: &'a str) -> &'a (dyn Fn(&mut String, &'a str) + 'a) {
-                    let v_16: &'a (dyn Fn(&mut String, &'a str) + 'a) = arena.alloc(move |output: &mut String, v_10: &'a str| {
+                    let v_17: &'a (dyn Fn(&mut String, &'a str) + 'a) = arena.alloc(move |output: &mut String, v_10: &'a str| {
                         output.push_str("<b>");
                         write_escaped_html(v_10, output);
                         write_escaped_html(v_9, output);
                         output.push_str("</b>");
                     });
-                    v_16
+                    v_17
                 }
 
-                fn render_adder_1<'a>(arena: &'a impl Arena, v_17: i32) -> &'a (dyn Fn(i32) -> i32 + 'a) {
-                    let v_20: &'a (dyn Fn(i32) -> i32 + 'a) = arena.alloc(move |v_18: i32| -> i32 {
-                        let v_19: i32 = v_17.wrapping_add(v_18);
-                        v_19
+                fn render_adder_1<'a>(arena: &'a impl Arena, v_18: i32) -> &'a (dyn Fn(i32) -> i32 + 'a) {
+                    let v_22: &'a (dyn Fn(i32) -> i32 + 'a) = arena.alloc(move |v_19: i32| -> i32 {
+                        let v_20: i32 = v_18.wrapping_add(v_19);
+                        v_20
                     });
-                    v_20
+                    v_22
                 }
 
                 impl<'a> View<'a> for Test {

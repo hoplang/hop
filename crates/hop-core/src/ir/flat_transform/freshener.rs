@@ -6,7 +6,6 @@ use crate::ir::flat_type::FlatType;
 use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
-use crate::ir::ir_lambda::IrLambda;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 
 /// Copies a block with fresh names, so the copy shares none of the names
@@ -100,12 +99,6 @@ impl<'a> Freshener<'a> {
                     body: self.freshen_block(body),
                 })
             }
-            FlatOp::Lambda(lambda) => FlatOp::Lambda(IrLambda {
-                parameters: (lambda.parameters.iter())
-                    .map(|binder| self.fresh_binder(binder))
-                    .collect(),
-                body: self.freshen_block(&lambda.body),
-            }),
             op => {
                 let mut op = op.clone();
                 op.for_each_operand_mut(&mut |operand| *operand = self.name(*operand));

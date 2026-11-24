@@ -1,9 +1,15 @@
 use std::collections::BTreeSet;
 
-use crate::ir::flat_program::{FlatBlock, FlatFor, FlatOp};
+use crate::ir::flat_program::{FlatBlock, FlatFor, FlatLambda, FlatOp};
 use crate::ir::function_id::FunctionId;
+use crate::ir::lambda_id::LambdaId;
 
-pub fn collect_callees(block: &FlatBlock, out: &mut BTreeSet<FunctionId>) {
+pub fn collect_callees(
+    block: &FlatBlock,
+    lambdas: &[FlatLambda],
+    created: &mut BTreeSet<LambdaId>,
+    out: &mut BTreeSet<FunctionId>,
+) {
     for binding in &block.bindings {
         match &binding.op {
             FlatOp::Call(function, ..) => {
@@ -11,19 +17,22 @@ pub fn collect_callees(block: &FlatBlock, out: &mut BTreeSet<FunctionId>) {
             }
             FlatOp::Match(match_) => {
                 for arm in &match_.arms {
-                    collect_callees(&arm.body, out);
+                    collect_callees(&arm.body, lambdas, created, out);
                 }
             }
             FlatOp::For(FlatFor { key, body, .. }) => {
                 if let Some(key) = key {
-                    collect_callees(key, out);
+                    collect_callees(key, lambdas, created, out);
                 }
-                collect_callees(body, out);
+                collect_callees(body, lambdas, created, out);
             }
-            FlatOp::Lambda(lambda) => {
-                collect_callees(&lambda.body, out);
+            FlatOp::Lambda(id, _) => {
+                if created.insert(*id) {
+                    let lambda = lambdas.iter().find(|lambda| lambda.id == *id).unwrap();
+                    collect_callees(&lambda.body, lambdas, created, out);
+                }
             }
-            FlatOp::Cell(initial) => collect_callees(initial, out),
+            FlatOp::Cell(initial) => collect_callees(initial, lambdas, created, out),
             FlatOp::Data(_)
             | FlatOp::Mint
             | FlatOp::CellUpdate(..)

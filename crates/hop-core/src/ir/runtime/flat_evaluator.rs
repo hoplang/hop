@@ -8,7 +8,7 @@ use crate::ir::flat_html_element::{FlatAttribute, FlatHtmlElement};
 use crate::ir::flat_program::{
     FlatBinding, FlatBlock, FlatFor, FlatFunction, FlatMatch, FlatOp, FlatProgram,
 };
-use crate::ir::flat_type::{FlatType, IrModifier};
+use crate::ir::flat_type::IrModifier;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::bounded_vec::BoundedVec;
@@ -108,7 +108,7 @@ pub(super) fn invoke_entrypoint<'a>(
     let value = evaluate_block(
         &entrypoint.body,
         env,
-        &program.functions,
+        program,
         Context::Render(&mut render),
         1,
         &mut 0,
@@ -117,7 +117,7 @@ pub(super) fn invoke_entrypoint<'a>(
 }
 
 fn evaluate_function<'a>(
-    functions: &'a [FlatFunction],
+    program: &'a FlatProgram,
     decl: &'a FlatFunction,
     args: Vec<Value<'a>>,
     context: Context<'_, 'a>,
@@ -139,7 +139,7 @@ fn evaluate_function<'a>(
             parent: None,
             bindings,
         },
-        functions,
+        program,
         context,
         depth + 1,
         op_count,
@@ -149,7 +149,7 @@ fn evaluate_function<'a>(
 fn evaluate_block<'a>(
     block: &'a FlatBlock,
     mut env: Env<'a>,
-    functions: &'a [FlatFunction],
+    program: &'a FlatProgram,
     mut context: Context<'_, 'a>,
     depth: usize,
     op_count: &mut usize,
@@ -164,7 +164,7 @@ fn evaluate_block<'a>(
         let value = evaluate_op(
             binding,
             &mut env,
-            functions,
+            program,
             context.reborrow(),
             depth,
             op_count,
@@ -177,7 +177,7 @@ fn evaluate_block<'a>(
 fn evaluate_apply<'a>(
     closure: &Closure<'a>,
     args: Vec<Value<'a>>,
-    functions: &'a [FlatFunction],
+    program: &'a FlatProgram,
     context: Context<'_, 'a>,
     depth: usize,
     op_count: &mut usize,
@@ -189,18 +189,17 @@ fn evaluate_apply<'a>(
     }
     let lambda = closure.lambda;
     let body_env = Env {
-        parent: closure.env.clone(),
-        bindings: lambda
-            .parameters
-            .iter()
-            .map(|param| param.var)
-            .zip(args)
+        parent: None,
+        bindings: (lambda.captures.iter())
+            .chain(&lambda.parameters)
+            .map(|binder| binder.var)
+            .zip(closure.captures.iter().cloned().chain(args))
             .collect(),
     };
     evaluate_block(
         &lambda.body,
         body_env,
-        functions,
+        program,
         context,
         depth + 1,
         op_count,
@@ -211,14 +210,14 @@ fn evaluate_apply<'a>(
 pub(super) fn run_handlers<'a>(
     handlers: &[Rc<Closure<'a>>],
     mutations: &mut MutationTransaction<'a>,
-    functions: &'a [FlatFunction],
+    program: &'a FlatProgram,
 ) -> Result<(), EvalError> {
     let mut op_count = 0;
     for handler in handlers {
         evaluate_apply(
             handler,
             Vec::new(),
-            functions,
+            program,
             Context::Mut(mutations),
             0,
             &mut op_count,
@@ -252,7 +251,7 @@ fn enter_arm<'a>(match_: &'a FlatMatch, env: &mut Env<'a>) -> (usize, &'a FlatBl
 fn evaluate_op<'a>(
     binding: &'a FlatBinding,
     env: &mut Env<'a>,
-    functions: &'a [FlatFunction],
+    program: &'a FlatProgram,
     context: Context<'_, 'a>,
     depth: usize,
     op_count: &mut usize,
@@ -268,7 +267,7 @@ fn evaluate_op<'a>(
                     parent: env.freeze(),
                     bindings: Vec::new(),
                 };
-                evaluate_block(initial, env, functions, Context::Pure, depth, op_count)
+                evaluate_block(initial, env, program, Context::Pure, depth, op_count)
             })?)
         }
 
@@ -284,7 +283,7 @@ fn evaluate_op<'a>(
             let value = evaluate_apply(
                 env[update].as_closure(),
                 vec![current],
-                functions,
+                program,
                 Context::Pure,
                 depth,
                 op_count,
@@ -355,7 +354,8 @@ fn evaluate_op<'a>(
 
         FlatOp::Call(function, args) => {
             let values = args.iter().map(|arg| env[arg].clone()).collect();
-            let callee = functions
+            let callee = program
+                .functions
                 .iter()
                 .find(|decl| decl.function.id == *function)
                 .unwrap();
@@ -364,7 +364,7 @@ fn evaluate_op<'a>(
                     let render = context.render("calls a function that renders");
                     render.enter(Step::Call(var));
                     let value = evaluate_function(
-                        functions,
+                        program,
                         callee,
                         values,
                         Context::Render(&mut *render),
@@ -375,10 +375,10 @@ fn evaluate_op<'a>(
                     value
                 }
                 IrModifier::Mut => {
-                    evaluate_function(functions, callee, values, context, depth, op_count)?
+                    evaluate_function(program, callee, values, context, depth, op_count)?
                 }
                 IrModifier::Pure => {
-                    evaluate_function(functions, callee, values, Context::Pure, depth, op_count)?
+                    evaluate_function(program, callee, values, Context::Pure, depth, op_count)?
                 }
             }
         }
@@ -391,7 +391,7 @@ fn evaluate_op<'a>(
                     let value = evaluate_block(
                         body,
                         env,
-                        functions,
+                        program,
                         Context::Render(&mut *render),
                         depth,
                         op_count,
@@ -399,7 +399,7 @@ fn evaluate_op<'a>(
                     render.exit();
                     value
                 }
-                context => evaluate_block(body, env, functions, context, depth, op_count)?,
+                context => evaluate_block(body, env, program, context, depth, op_count)?,
             }
         }
 
@@ -431,7 +431,7 @@ fn evaluate_op<'a>(
                         IterationKey::from_value(evaluate_block(
                             key,
                             env,
-                            functions,
+                            program,
                             Context::Pure,
                             depth,
                             op_count,
@@ -445,7 +445,7 @@ fn evaluate_op<'a>(
                 let part = evaluate_block(
                     body,
                     env,
-                    functions,
+                    program,
                     Context::Render(&mut *render),
                     depth,
                     op_count,
@@ -456,26 +456,24 @@ fn evaluate_op<'a>(
             Value::Html(Html::new(HtmlNode::Concat(parts))?)
         }
 
-        FlatOp::Lambda(lambda) => Value::Closure(Rc::new(Closure {
-            lambda,
-            modifier: match &binding.binder.typ {
-                FlatType::Function(signature) => signature.modifier,
-                typ => unreachable!("a lambda binds a closure, not {typ:?}"),
-            },
-            env: env.freeze(),
+        FlatOp::Lambda(id, captures) => Value::Closure(Rc::new(Closure {
+            lambda: (program.lambdas.iter())
+                .find(|lambda| lambda.id == *id)
+                .unwrap(),
+            captures: captures.iter().map(|name| env[name].clone()).collect(),
         })),
 
         FlatOp::Apply(closure, args) => {
             let args = args.iter().map(|arg| env[arg].clone()).collect();
             let closure = env[closure].as_closure();
-            match closure.modifier {
+            match closure.lambda.modifier {
                 IrModifier::Render => {
                     let render = context.render("applies a closure that renders");
-                    render.enter(Step::Apply(var));
+                    render.enter(Step::Apply(var, closure.lambda.id));
                     let value = evaluate_apply(
                         closure,
                         args,
-                        functions,
+                        program,
                         Context::Render(&mut *render),
                         depth,
                         op_count,
@@ -484,10 +482,10 @@ fn evaluate_op<'a>(
                     value
                 }
                 IrModifier::Mut => {
-                    evaluate_apply(closure, args, functions, context, depth, op_count)?
+                    evaluate_apply(closure, args, program, context, depth, op_count)?
                 }
                 IrModifier::Pure => {
-                    evaluate_apply(closure, args, functions, Context::Pure, depth, op_count)?
+                    evaluate_apply(closure, args, program, Context::Pure, depth, op_count)?
                 }
             }
         }
@@ -662,6 +660,7 @@ mod tests {
     use crate::ir::flat_program::FlatProgram;
     use crate::ir::flat_program_builder::{FlatProgramBuilder, Pat};
     use crate::ir::flat_program_generator::{random_entrypoint_args, random_program};
+    use crate::ir::flat_type::FlatType;
     use crate::ir::flat_type_declarations_builder::FlatTypeDeclarationsBuilder;
     use crate::ir::runtime::clicks::clicks;
     use crate::ir::runtime::value_builder::ValueBuilder;
@@ -711,8 +710,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 1181439 allocations
-            program evaluation: 24428 allocations
+            program generation: 1498337 allocations
+            program evaluation: 14405 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -1381,16 +1380,17 @@ mod tests {
             |_| vec![],
             expect![[r#"
                 -- before --
-                entrypoint Test@e0() -> Html {
-                  let v3: render (Int) -> Int = fn(
-                    v0: Int,
-                  ) {
-                    let v1: Cell[Int] = cell {
-                      v0
-                    }
-                    let v2: Int = cell_read(v1)
-                    v2
+                render lambda l0[](
+                  v0: Int,
+                ) -> Int {
+                  let v1: Cell[Int] = cell {
+                    v0
                   }
+                  let v2: Int = cell_read(v1)
+                  v2
+                }
+                entrypoint Test@e0() -> Html {
+                  let v3: render (Int) -> Int = l0[]
                   let v4: Int = 1
                   let v5: Int = v3(v4)
                   let v6: Int = 2
@@ -1430,25 +1430,28 @@ mod tests {
             |v| vec![("base", v.int(10))],
             expect![[r#"
                 -- before --
+                lambda l0[
+                  v3: Int,
+                ](
+                  v1: Int,
+                ) -> Int {
+                  let v2: Int = int_add(v1, v3)
+                  v2
+                }
                 entrypoint Test@e0(
                   base@v0: Int,
                 ) -> Html {
-                  let v3: (Int) -> Int = fn(
-                    v1: Int,
-                  ) {
-                    let v2: Int = int_add(v1, v0)
-                    v2
-                  }
-                  let v4: Int = 1
-                  let v5: Int = v3(v4)
-                  let v6: Int = 2
-                  let v7: Int = v3(v6)
-                  let v8: String = int_to_string(v5)
-                  let v9: Html = escape(v8)
-                  let v10: String = int_to_string(v7)
-                  let v11: Html = escape(v10)
-                  let v12: Html = concat(v9, v11)
-                  v12
+                  let v4: (Int) -> Int = l0[v0]
+                  let v5: Int = 1
+                  let v6: Int = v4(v5)
+                  let v7: Int = 2
+                  let v8: Int = v4(v7)
+                  let v9: String = int_to_string(v6)
+                  let v10: Html = escape(v9)
+                  let v11: String = int_to_string(v8)
+                  let v12: Html = escape(v11)
+                  let v13: Html = concat(v10, v12)
+                  v13
                 }
 
                 -- after --
@@ -1499,22 +1502,25 @@ mod tests {
                   let v6: Html = element(v5, "ul", {}, v4)
                   v6
                 }
+                render lambda l0[
+                  v15: String,
+                ](
+                  v9: String,
+                ) -> Html {
+                  let v10: Html = escape(v15)
+                  let v11: Html = escape(v9)
+                  let v12: Html = concat(v10, v11)
+                  let v13: ElementId = mint()
+                  let v14: Html = element(v13, "li", {}, v12)
+                  v14
+                }
                 entrypoint Test@e0(
                   items@v7: Array[String],
                 ) -> Html {
                   let v8: String = "- "
-                  let v15: render (String) -> Html = fn(
-                    v9: String,
-                  ) {
-                    let v10: Html = escape(v8)
-                    let v11: Html = escape(v9)
-                    let v12: Html = concat(v10, v11)
-                    let v13: ElementId = mint()
-                    let v14: Html = element(v13, "li", {}, v12)
-                    v14
-                  }
-                  let v16: Html = f0(v7, v15)
-                  v16
+                  let v16: render (String) -> Html = l0[v8]
+                  let v17: Html = f0(v7, v16)
+                  v17
                 }
 
                 -- after --
@@ -1704,15 +1710,15 @@ mod tests {
     }
 
     fn clicks_are_equal<'a>(
-        functions: &'a [FlatFunction],
+        program: &'a FlatProgram,
         state: &State<'a>,
         a: &[Rc<Closure<'a>>],
         b: &[Rc<Closure<'a>>],
     ) -> bool {
         let (mut a_mutations, mut b_mutations) = (state.begin_mutations(), state.begin_mutations());
         match (
-            run_handlers(a, &mut a_mutations, functions),
-            run_handlers(b, &mut b_mutations, functions),
+            run_handlers(a, &mut a_mutations, program),
+            run_handlers(b, &mut b_mutations, program),
         ) {
             (Ok(_), Ok(_)) => a_mutations.commit() == b_mutations.commit(),
             (Err(a), Err(b)) => a == b,
@@ -1721,7 +1727,7 @@ mod tests {
     }
 
     fn observations_are_equal<'a>(
-        functions: &'a [FlatFunction],
+        program: &'a FlatProgram,
         state: &State<'a>,
         a: &Html<'a>,
         b: &Html<'a>,
@@ -1733,7 +1739,7 @@ mod tests {
         a_markup == b_markup
             && a_clicks.len() == b_clicks.len()
             && (a_clicks.iter().zip(&b_clicks)).all(|((a_node, a), (b_node, b))| {
-                a_node == b_node && clicks_are_equal(functions, state, a, b)
+                a_node == b_node && clicks_are_equal(program, state, a, b)
             })
     }
 
@@ -1808,7 +1814,7 @@ mod tests {
                     )
                     .unwrap();
                     assert!(observations_are_equal(
-                        &program.functions,
+                        program,
                         &new_state,
                         &again.unwrap_html(),
                         &html
@@ -1822,7 +1828,7 @@ mod tests {
                     // performs nothing to compare.
                     let handlers = &u.choose(&targets)?.1;
                     let mut mutations = state.begin_mutations();
-                    let ran = run_handlers(handlers, &mut mutations, &program.functions)
+                    let ran = run_handlers(handlers, &mut mutations, program)
                         .map(|()| mutations.commit());
                     match ran {
                         Ok(clicked) => *state = clicked,

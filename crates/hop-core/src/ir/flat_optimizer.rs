@@ -165,17 +165,18 @@ mod tests {
                   let v6: Html = element(v5, "ul", {}, v4)
                   v6
                 }
+                render lambda l0[](
+                  v8: String,
+                ) -> Html {
+                  let v9: ElementId = mint()
+                  let v10: Html = escape(v8)
+                  let v11: Html = element(v9, "li", {}, v10)
+                  v11
+                }
                 entrypoint Test@e0(
                   items@v7: Array[String],
                 ) -> Html {
-                  let v12: render (String) -> Html = fn(
-                    v8: String,
-                  ) {
-                    let v9: ElementId = mint()
-                    let v10: Html = escape(v8)
-                    let v11: Html = element(v9, "li", {}, v10)
-                    v11
-                  }
+                  let v12: render (String) -> Html = l0[]
                   let v13: Html = f0(v7, v12)
                   v13
                 }

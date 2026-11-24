@@ -4,7 +4,6 @@ use std::rc::Rc;
 use crate::hop::typing::{Constructor, Pattern};
 use crate::html::{HtmlElementKind, write_escaped_html};
 use crate::ir::flat_program::{FlatLambda, FlatPattern};
-use crate::ir::flat_type::IrModifier;
 use crate::ir::runtime::bounded_vec::BoundedVec;
 use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::state::{CellId, ElementId};
@@ -47,8 +46,7 @@ pub enum Value<'a> {
 #[derive(Debug)]
 pub struct Closure<'a> {
     pub lambda: &'a FlatLambda,
-    pub modifier: IrModifier,
-    pub env: Option<Rc<Env<'a>>>,
+    pub captures: Vec<Value<'a>>,
 }
 
 #[derive(Debug, Clone)]

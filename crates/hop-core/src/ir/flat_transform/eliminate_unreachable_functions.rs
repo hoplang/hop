@@ -7,8 +7,14 @@ use super::callees::collect_callees;
 
 pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
     let mut reached = BTreeSet::new();
+    let mut created = BTreeSet::new();
     for entrypoint in &program.entrypoints {
-        collect_callees(&entrypoint.body, &mut reached);
+        collect_callees(
+            &entrypoint.body,
+            &program.lambdas,
+            &mut created,
+            &mut reached,
+        );
     }
     let mut pending: Vec<FunctionId> = reached.iter().copied().collect();
     while let Some(id) = pending.pop() {
@@ -16,7 +22,7 @@ pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
         let function = (program.functions.iter())
             .find(|function| function.function.id == id)
             .unwrap();
-        collect_callees(&function.body, &mut callees);
+        collect_callees(&function.body, &program.lambdas, &mut created, &mut callees);
         for callee in callees {
             if reached.insert(callee) {
                 pending.push(callee);
@@ -26,6 +32,9 @@ pub fn eliminate_unreachable_functions(program: FlatProgram) -> FlatProgram {
     FlatProgram {
         functions: (program.functions.into_iter())
             .filter(|function| reached.contains(&function.function.id))
+            .collect(),
+        lambdas: (program.lambdas.into_iter())
+            .filter(|lambda| created.contains(&lambda.id))
             .collect(),
         ..program
     }
@@ -162,13 +171,14 @@ mod tests {
                   let v4: Html = text("unused")
                   v4
                 }
+                render lambda l0[]() -> Html {
+                  let v6: Html = f1()
+                  v6
+                }
                 entrypoint Test@e0(
                   items@v5: Array[Int],
                 ) -> Html {
-                  let v7: render () -> Html = fn() {
-                    let v6: Html = f1()
-                    v6
-                  }
+                  let v7: render () -> Html = l0[]
                   let v10: Html = for v8: Int in v5 {
                     let v9: Html = f0(v8)
                     v9
@@ -188,13 +198,14 @@ mod tests {
                   let v3: Html = text("label")
                   v3
                 }
+                render lambda l0[]() -> Html {
+                  let v6: Html = f1()
+                  v6
+                }
                 entrypoint Test@e0(
                   items@v5: Array[Int],
                 ) -> Html {
-                  let v7: render () -> Html = fn() {
-                    let v6: Html = f1()
-                    v6
-                  }
+                  let v7: render () -> Html = l0[]
                   let v10: Html = for v8: Int in v5 {
                     let v9: Html = f0(v8)
                     v9

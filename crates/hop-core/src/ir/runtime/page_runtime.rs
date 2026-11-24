@@ -93,7 +93,7 @@ impl<'a> PageRuntime<'a> {
             return Ok(());
         };
         let mut mutations = self.state.begin_mutations();
-        run_handlers(target, &mut mutations, &self.program.functions)?;
+        run_handlers(target, &mut mutations, self.program)?;
         let render = mutations.commit().begin_render();
         let (value, state) =
             invoke_entrypoint(self.program, self.entrypoint, self.args.clone(), render)?;

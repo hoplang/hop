@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use crate::ir::lambda_id::LambdaId;
 use crate::ir::runtime::value::Value;
 use crate::ir::value_id::ValueId;
 
@@ -32,7 +33,7 @@ pub enum Step {
     Call(ValueId),
     Arm(ValueId, usize),
     Iteration(ValueId, IterationKey, usize),
-    Apply(ValueId),
+    Apply(ValueId, LambdaId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -228,6 +229,7 @@ mod tests {
     use arbitrary::Unstructured;
 
     use super::*;
+    use crate::ir::lambda_id::LambdaIdCounter;
     use crate::ir::value_id::ValueIdCounter;
 
     struct Block {
@@ -272,7 +274,7 @@ mod tests {
             (block.held).push((step, random_block(u, names, depth - 1)?));
         }
         if u.arbitrary()? {
-            let step = Step::Apply(names.next());
+            let step = Step::Apply(names.next(), LambdaIdCounter::new().next());
             (block.held).push((step, random_block(u, names, depth - 1)?));
         }
         if u.arbitrary()? {

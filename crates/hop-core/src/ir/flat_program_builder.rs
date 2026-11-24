@@ -5,8 +5,8 @@ use crate::hop::typing::{
 use crate::html::HtmlElementKind;
 use crate::ir::flat_html_element::{FlatAttribute, FlatHtmlElement};
 use crate::ir::flat_program::{
-    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatMatch, FlatMatchArm, FlatOp,
-    FlatPattern, FlatProgram,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatLambda, FlatMatch,
+    FlatMatchArm, FlatOp, FlatPattern, FlatProgram,
 };
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
@@ -17,8 +17,8 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
+use crate::ir::lambda_id::LambdaIdCounter;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::attribute_name::AttributeName;
 use crate::symbols::field_name::FieldName;
@@ -32,6 +32,8 @@ pub struct FlatProgramBuilder {
     value_ids: RefCell<ValueIdCounter>,
     value_types: RefCell<Vec<FlatType>>,
     functions: Vec<DeclaredFunction>,
+    lambda_ids: RefCell<LambdaIdCounter>,
+    lambdas: RefCell<Vec<FlatLambda>>,
     entrypoints: Vec<FlatEntrypoint>,
 }
 
@@ -53,6 +55,8 @@ impl FlatProgramBuilder {
             value_ids: RefCell::new(ValueIdCounter::new()),
             value_types: RefCell::new(Vec::new()),
             functions: Vec::new(),
+            lambda_ids: RefCell::new(LambdaIdCounter::new()),
+            lambdas: RefCell::new(Vec::new()),
             entrypoints: Vec::new(),
         }
     }
@@ -206,6 +210,7 @@ impl FlatProgramBuilder {
             types: self.types,
             entrypoints: self.entrypoints,
             functions,
+            lambdas: self.lambdas.into_inner(),
             value_ids: self.value_ids.into_inner(),
         };
         flat_typecheck::typecheck(&program)?;
@@ -899,12 +904,25 @@ impl<'a> FlatBlockBuilder<'a> {
         let names: Vec<ValueId> = parameters.iter().map(|param| param.var).collect();
         let body = self.block(|t| body_fn(t, &names));
         let types = parameters.iter().map(|param| param.typ.clone());
-        let typ = FlatType::function(modifier, types, body.typ.clone());
-        let lambda = IrLambda {
+        let return_type = body.typ.clone();
+        let typ = FlatType::function(modifier, types, return_type.clone());
+        let id = self.program.lambda_ids.borrow_mut().next();
+        let (lambda, captured) = FlatLambda::closing(
+            id,
+            modifier,
             parameters,
-            body: body.into_block(),
-        };
-        self.push(typ, FlatOp::Lambda(lambda))
+            return_type,
+            body.into_block(),
+            |name| {
+                let typ = self.typ(name);
+                IrBinder {
+                    var: self.program.binder(typ.clone()),
+                    typ,
+                }
+            },
+        );
+        self.program.lambdas.borrow_mut().push(lambda);
+        self.push(typ, FlatOp::Lambda(id, captured))
     }
 
     pub fn mut_lambda<F>(

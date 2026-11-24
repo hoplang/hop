@@ -340,9 +340,6 @@ pub enum TypeErrorKind {
     #[error("A lambda with {found} parameter(s) cannot have type {expected}")]
     LambdaParameterCountMismatch { expected: Type, found: usize },
 
-    #[error("A match cannot produce {typ}")]
-    MatchProducesFunction { typ: Type },
-
     #[error("Function {name} cannot be used as a value")]
     FunctionUsedAsValue { name: VarName },
 

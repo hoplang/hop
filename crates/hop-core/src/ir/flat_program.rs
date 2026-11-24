@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::document::CheapString;
 use crate::hop::typing::Pattern;
 use crate::ir::flat_html_element::FlatHtmlElement;
@@ -9,8 +11,8 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_lambda::IrLambda;
 use crate::ir::ir_parameter::IrParameter;
+use crate::ir::lambda_id::LambdaId;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::function_name::FunctionName;
 
@@ -18,6 +20,7 @@ use crate::symbols::function_name::FunctionName;
 pub struct FlatProgram {
     pub types: FlatTypeDeclarations,
     pub functions: Vec<FlatFunction>,
+    pub lambdas: Vec<FlatLambda>,
     pub entrypoints: Vec<FlatEntrypoint>,
     pub value_ids: ValueIdCounter,
 }
@@ -40,7 +43,90 @@ pub struct FlatFunction {
 
 pub type FlatBlock = IrBlock<FlatBinding>;
 pub type FlatBinding = IrBinding<FlatType, FlatOp>;
-pub type FlatLambda = IrLambda<FlatType, FlatBlock>;
+
+#[derive(Debug, Clone)]
+pub struct FlatLambda {
+    pub id: LambdaId,
+    pub modifier: IrModifier,
+    pub captures: Vec<IrBinder<FlatType>>,
+    pub parameters: Vec<IrBinder<FlatType>>,
+    pub return_type: FlatType,
+    pub body: FlatBlock,
+}
+
+impl FlatLambda {
+    pub fn closing(
+        id: LambdaId,
+        modifier: IrModifier,
+        parameters: Vec<IrBinder<FlatType>>,
+        return_type: FlatType,
+        mut body: FlatBlock,
+        mut capture: impl FnMut(ValueId) -> IrBinder<FlatType>,
+    ) -> (FlatLambda, Vec<ValueId>) {
+        let mut bound: HashSet<ValueId> = parameters.iter().map(|param| param.var).collect();
+        let mut captured = Vec::new();
+        let mut captures: Vec<IrBinder<FlatType>> = Vec::new();
+        close_block(&mut body, &mut bound, &mut |name| {
+            let index = match captured.iter().position(|outer| *outer == name) {
+                Some(index) => index,
+                None => {
+                    captured.push(name);
+                    captures.push(capture(name));
+                    captures.len() - 1
+                }
+            };
+            captures[index].var
+        });
+        let lambda = FlatLambda {
+            id,
+            modifier,
+            captures,
+            parameters,
+            return_type,
+            body,
+        };
+        (lambda, captured)
+    }
+}
+
+fn close_block(
+    block: &mut FlatBlock,
+    bound: &mut HashSet<ValueId>,
+    capture: &mut dyn FnMut(ValueId) -> ValueId,
+) {
+    for binding in &mut block.bindings {
+        binding.op.for_each_operand_mut(&mut |name| {
+            if !bound.contains(name) {
+                *name = capture(*name);
+            }
+        });
+        match &mut binding.op {
+            FlatOp::Match(match_) => {
+                for arm in &mut match_.arms {
+                    arm.pattern.for_each_binding(&mut |binder| {
+                        bound.insert(binder.var);
+                    });
+                    close_block(&mut arm.body, bound, capture);
+                }
+            }
+            FlatOp::For(for_) => {
+                if let Some(binder) = &for_.var {
+                    bound.insert(binder.var);
+                }
+                if let Some(key) = &mut for_.key {
+                    close_block(key, bound, capture);
+                }
+                close_block(&mut for_.body, bound, capture);
+            }
+            FlatOp::Cell(initial) => close_block(initial, bound, capture),
+            _ => {}
+        }
+        bound.insert(binding.binder.var);
+    }
+    if !bound.contains(&block.result) {
+        block.result = capture(block.result);
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum FlatOp {
@@ -75,8 +161,7 @@ pub enum FlatOp {
     /// The key, when there is one, gives each element the identity its
     /// cells and elements keep across renders. `Array[T] -> Html`.
     For(FlatFor),
-    /// Bind a closure.
-    Lambda(FlatLambda),
+    Lambda(LambdaId, Vec<ValueId>),
     /// Invoke a closure.
     Apply(ValueId, Vec<ValueId>),
 }
@@ -139,13 +224,13 @@ impl FlatOp {
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
             FlatOp::Data(op) => op.for_each_operand(f),
-            FlatOp::Text(_) | FlatOp::Lambda(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
+            FlatOp::Text(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
             FlatOp::CellRead(name) | FlatOp::Escape(name) => f(*name),
             FlatOp::CellUpdate(cell, update) => {
                 f(*cell);
                 f(*update);
             }
-            FlatOp::Call(_, names) | FlatOp::Concat(names) => {
+            FlatOp::Call(_, names) | FlatOp::Lambda(_, names) | FlatOp::Concat(names) => {
                 for name in names {
                     f(*name);
                 }
@@ -174,13 +259,13 @@ impl FlatOp {
     pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         match self {
             FlatOp::Data(op) => op.for_each_operand_mut(f),
-            FlatOp::Text(_) | FlatOp::Lambda(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
+            FlatOp::Text(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
             FlatOp::CellRead(name) | FlatOp::Escape(name) => f(name),
             FlatOp::CellUpdate(cell, update) => {
                 f(cell);
                 f(update);
             }
-            FlatOp::Call(_, names) | FlatOp::Concat(names) => {
+            FlatOp::Call(_, names) | FlatOp::Lambda(_, names) | FlatOp::Concat(names) => {
                 for name in names {
                     f(name);
                 }
@@ -211,6 +296,7 @@ impl FlatOp {
 mod test_support {
     use super::FlatFor;
     use super::FlatFunction;
+    use super::FlatLambda;
     use super::FlatOp;
     use super::FlatPattern;
     use super::FlatProgram;
@@ -330,7 +416,9 @@ mod test_support {
                     write!(Indent::new(f), "\n{body}")?;
                     f.write_str("\n}")
                 }
-                FlatOp::Lambda(lambda) => lambda.write(f, |block, w| write!(w, "\n{block}")),
+                FlatOp::Lambda(lambda, captures) => {
+                    write!(f, "{lambda}[{}]", join(captures, ", "))
+                }
                 FlatOp::Apply(closure, args) => write!(f, "{closure}({})", join(args, ", ")),
             }
         }
@@ -351,10 +439,35 @@ mod test_support {
         }
     }
 
+    impl fmt::Display for FlatLambda {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}lambda {}[", self.modifier, self.id)?;
+            for capture in &self.captures {
+                write!(Indent::new(f), "\n{capture},")?;
+            }
+            if !self.captures.is_empty() {
+                f.write_str("\n")?;
+            }
+            f.write_str("](")?;
+            for parameter in &self.parameters {
+                write!(Indent::new(f), "\n{parameter},")?;
+            }
+            if !self.parameters.is_empty() {
+                f.write_str("\n")?;
+            }
+            write!(f, ") -> {} {{", self.return_type)?;
+            write!(Indent::new(f), "\n{}", self.body)?;
+            writeln!(f, "\n}}")
+        }
+    }
+
     impl fmt::Display for FlatProgram {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             for function in &self.functions {
                 write!(f, "{function}")?;
+            }
+            for lambda in &self.lambdas {
+                write!(f, "{lambda}")?;
             }
             for (index, entrypoint) in self.entrypoints.iter().enumerate() {
                 write!(f, "entrypoint {}@e{}(", entrypoint.name, index)?;

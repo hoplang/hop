@@ -1490,3 +1490,282 @@ fn a_handler_a_render_fn_returns_writes_the_state_of_its_own_call() {
         "#]],
     );
 }
+
+#[test]
+fn a_handler_that_a_match_produces_runs_the_arm_of_the_latest_render() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (count, set_count) = state!(0);
+                let step = match count < 2 {
+                  true => mut fn() { set_count(fn(curr) { curr + 1 }) },
+                  false => mut fn() { set_count(fn(curr) { curr + 10 }) },
+                };
+                <button on:click={step}>{count.to_string()}</button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            -- click button@e1 --
+            <button@e1>1</button>
+            -- click button@e1 --
+            <button@e1>2</button>
+            -- click button@e1 --
+            <button@e1>12</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_handler_that_a_render_fn_returns_from_a_match_runs_the_arm_of_the_latest_render() {
+    check(
+        indoc! {r#"
+            render fn stepper(count: Int, set_count: mut fn(fn(Int) -> Int) -> Tuple[]) -> mut fn() -> Tuple[] {
+              match count < 2 {
+                true => mut fn() { set_count(fn(curr) { curr + 1 }) },
+                false => mut fn() { set_count(fn(curr) { curr + 10 }) },
+              }
+            }
+
+            page Test {
+              fn body() -> Html {
+                let (count, set_count) = state!(0);
+                let step = stepper(count, set_count);
+                <button on:click={step}>{count.to_string()}</button>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            -- click button@e1 --
+            <button@e1>1</button>
+            -- click button@e1 --
+            <button@e1>2</button>
+            -- click button@e1 --
+            <button@e1>12</button>
+        "#]],
+    );
+}
+
+#[test]
+fn state_of_a_closure_starts_over_when_a_match_produces_another_lambda() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (bold, set_bold) = state!(false);
+                let flip = mut fn() { set_bold(fn(curr) { !curr }) };
+                let counter = match bold {
+                  true => fn() {
+                    let (count, set_count) = state!(0);
+                    let incr = mut fn() { set_count(fn(curr) { curr + 1 }) };
+                    <b on:click={incr}>{count.to_string()}</b>
+                  },
+                  false => fn() {
+                    let (count, set_count) = state!(0);
+                    let incr = mut fn() { set_count(fn(curr) { curr + 1 }) };
+                    <i on:click={incr}>{count.to_string()}</i>
+                  },
+                };
+                <>
+                  <button on:click={flip}>flip</button>
+                  {counter()}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(3),
+            Event::Click(1),
+        ],
+        expect![[r#"
+            -- render --
+            <button@e1>flip</button>
+            <i@e2>0</i>
+            -- click i@e2 --
+            <button@e1>flip</button>
+            <i@e2>1</i>
+            -- click i@e2 --
+            <button@e1>flip</button>
+            <i@e2>2</i>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <b@e3>0</b>
+            -- click b@e3 --
+            <button@e1>flip</button>
+            <b@e3>1</b>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <i@e4>0</i>
+        "#]],
+    );
+}
+
+#[test]
+fn state_of_a_closure_stays_when_every_arm_of_a_match_produces_the_same_closure() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (flag, set_flag) = state!(false);
+                let flip = mut fn() { set_flag(fn(curr) { !curr }) };
+                let counter = fn() {
+                  let (count, set_count) = state!(0);
+                  let incr = mut fn() { set_count(fn(curr) { curr + 1 }) };
+                  <i on:click={incr}>{count.to_string()}</i>
+                };
+                let chosen = match flag {
+                  true => counter,
+                  false => counter,
+                };
+                <>
+                  <button on:click={flip}>flip</button>
+                  {chosen()}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(2),
+        ],
+        expect![[r#"
+            -- render --
+            <button@e1>flip</button>
+            <i@e2>0</i>
+            -- click i@e2 --
+            <button@e1>flip</button>
+            <i@e2>1</i>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <i@e2>1</i>
+            -- click i@e2 --
+            <button@e1>flip</button>
+            <i@e2>2</i>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <i@e2>2</i>
+            -- click i@e2 --
+            <button@e1>flip</button>
+            <i@e2>3</i>
+        "#]],
+    );
+}
+
+#[test]
+fn state_of_a_closure_stays_when_a_match_produces_the_same_lambda_with_other_captures() {
+    check(
+        indoc! {r#"
+            fn counter(step: Int) -> fn() -> Html {
+              fn() {
+                let (count, set_count) = state!(0);
+                let incr = mut fn() { set_count(fn(curr) { curr + step }) };
+                <i on:click={incr}>{count.to_string()}</i>
+              }
+            }
+
+            page Test {
+              fn body() -> Html {
+                let (big, set_big) = state!(false);
+                let flip = mut fn() { set_big(fn(curr) { !curr }) };
+                let chosen = match big {
+                  true => counter(10),
+                  false => counter(1),
+                };
+                <>
+                  <button on:click={flip}>flip</button>
+                  {chosen()}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(2),
+        ],
+        expect![[r#"
+            -- render --
+            <button@e1>flip</button>
+            <i@e2>0</i>
+            -- click i@e2 --
+            <button@e1>flip</button>
+            <i@e2>1</i>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <i@e2>1</i>
+            -- click i@e2 --
+            <button@e1>flip</button>
+            <i@e2>11</i>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <i@e2>11</i>
+            -- click i@e2 --
+            <button@e1>flip</button>
+            <i@e2>12</i>
+        "#]],
+    );
+}
+
+#[test]
+fn state_of_a_closure_applied_in_each_arm_starts_over_when_the_match_takes_another_arm() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (flag, set_flag) = state!(false);
+                let flip = mut fn() { set_flag(fn(curr) { !curr }) };
+                let counter = fn() {
+                  let (count, set_count) = state!(0);
+                  let incr = mut fn() { set_count(fn(curr) { curr + 1 }) };
+                  <i on:click={incr}>{count.to_string()}</i>
+                };
+                <>
+                  <button on:click={flip}>flip</button>
+                  {match flag {
+                    true => counter(),
+                    false => counter(),
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(3),
+            Event::Click(1),
+        ],
+        expect![[r#"
+            -- render --
+            <button@e1>flip</button>
+            <i@e2>0</i>
+            -- click i@e2 --
+            <button@e1>flip</button>
+            <i@e2>1</i>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <i@e3>0</i>
+            -- click i@e3 --
+            <button@e1>flip</button>
+            <i@e3>1</i>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <i@e4>0</i>
+        "#]],
+    );
+}

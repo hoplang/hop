@@ -745,7 +745,7 @@ The subject has type `Bool`, `Option[T]`, a tuple type, or a record or enum
 type, and a subject of any other type is a compile error. So is a pattern that
 does not have the type of the subject. The expressions of all arms have the
 same type, which is the type of the `match` expression, and arms of different
-types are a compile error. So are arms of a function type.
+types are a compile error.
 
 A subject that is a [record](#record-expressions) or
 [enum expression](#enum-expressions) with fields is a compile error unless it is

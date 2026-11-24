@@ -14,7 +14,6 @@ use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
-use crate::ir::ir_lambda::IrLambda;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::symbols::field_name::FieldName;
 
@@ -39,10 +38,11 @@ use crate::symbols::field_name::FieldName;
 ///   attribute whose value is a constant String or whose presence is a
 ///   constant true is a constant attribute, and one whose presence is a
 ///   constant false goes.
-/// - An application of a lambda bound earlier in the body runs a copy of
-///   the lambda's body in place of the application, with fresh names, and
-///   what reads a parameter reads the argument. Only a lambda whose
-///   evaluated body fits `APPLY_BUDGET` is copied, and only while the body
+/// - An application of a closure bound earlier in the body runs a copy of
+///   its lambda's body in place of the application, with fresh names, and
+///   what reads a parameter reads the argument and what reads a capture
+///   reads the name the closure captures. Only a lambda whose
+///   body fits `APPLY_BUDGET` is copied, and only while the body
 ///   being evaluated has `APPLY_FUEL` left, which bounds how much copying
 ///   can grow a body.
 ///
@@ -62,23 +62,35 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
     let FlatProgram {
         types,
         functions,
+        lambdas,
         entrypoints,
         mut value_ids,
     } = program;
+    let declared = lambdas.clone();
     let functions = functions
         .into_iter()
         .map(|function| {
-            let mut evaluator = Evaluator::new(&mut value_ids);
+            let mut evaluator = Evaluator::new(&mut value_ids, &declared);
             FlatFunction {
                 body: evaluator.block(function.body),
                 ..function
             }
         })
         .collect();
+    let lambdas = lambdas
+        .into_iter()
+        .map(|lambda| {
+            let mut evaluator = Evaluator::new(&mut value_ids, &declared);
+            FlatLambda {
+                body: evaluator.block(lambda.body),
+                ..lambda
+            }
+        })
+        .collect();
     let entrypoints = entrypoints
         .into_iter()
         .map(|entrypoint| {
-            let mut evaluator = Evaluator::new(&mut value_ids);
+            let mut evaluator = Evaluator::new(&mut value_ids, &declared);
             FlatEntrypoint {
                 body: evaluator.block(entrypoint.body),
                 ..entrypoint
@@ -88,6 +100,7 @@ pub fn perform_partial_evaluation(program: FlatProgram) -> FlatProgram {
     FlatProgram {
         types,
         functions,
+        lambdas,
         entrypoints,
         value_ids,
     }
@@ -112,18 +125,10 @@ fn fits(block: &FlatBlock, budget: &mut usize) -> bool {
             FlatOp::For(for_) => {
                 (for_.key.iter()).all(|key| fits(key, budget)) && fits(&for_.body, budget)
             }
-            FlatOp::Lambda(lambda) => fits(&lambda.body, budget),
             FlatOp::Cell(initial) => fits(initial, budget),
             _ => true,
         }
     })
-}
-
-fn arguments<P, B>(lambda: &IrLambda<P, B>, args: &[ValueId]) -> HashMap<ValueId, ValueId> {
-    (lambda.parameters.iter())
-        .map(|param| param.var)
-        .zip(args.iter().copied())
-        .collect()
 }
 
 /// What a binding of a value folded to.
@@ -146,10 +151,11 @@ struct Evaluator<'a> {
     /// folded to one, and the names the patterns of selected arms bind, each
     /// with the constructor operand it stands for.
     renames: HashMap<ValueId, ValueId>,
-    /// The lambdas kept so far, evaluated, whose body fits `APPLY_BUDGET`,
-    /// with the bindings the body has, for the applications that read them
-    /// to copy.
-    lambdas: HashMap<ValueId, (usize, FlatLambda)>,
+    lambdas: &'a [FlatLambda],
+    /// The closures bound so far whose lambda has a body that fits
+    /// `APPLY_BUDGET`, each with the bindings the body has, its lambda and
+    /// the names it captures, for the applications that read them to copy.
+    closures: HashMap<ValueId, (usize, &'a FlatLambda, Vec<ValueId>)>,
     /// The bindings the copies of lambda bodies may still add to the body
     /// being evaluated. Once it runs out, applications are kept.
     fuel: usize,
@@ -161,13 +167,14 @@ struct HtmlConcat {
 }
 
 impl<'a> Evaluator<'a> {
-    fn new(value_ids: &'a mut ValueIdCounter) -> Self {
+    fn new(value_ids: &'a mut ValueIdCounter, lambdas: &'a [FlatLambda]) -> Self {
         Evaluator {
             value_ids,
+            lambdas,
             values: HashMap::new(),
             html_concats: HashMap::new(),
             renames: HashMap::new(),
-            lambdas: HashMap::new(),
+            closures: HashMap::new(),
             fuel: APPLY_FUEL,
         }
     }
@@ -363,25 +370,27 @@ impl<'a> Evaluator<'a> {
                 key: key.map(|key| self.block(key)),
                 body: self.block(body),
             }),
-            FlatOp::Lambda(IrLambda { parameters, body }) => {
-                let lambda = IrLambda {
-                    parameters,
-                    body: self.block(body),
-                };
+            FlatOp::Lambda(id, captures) => {
+                let lambdas = self.lambdas;
+                let lambda = lambdas.iter().find(|lambda| lambda.id == id).unwrap();
                 let mut budget = APPLY_BUDGET;
                 if fits(&lambda.body, &mut budget) {
-                    self.lambdas
-                        .insert(name, (APPLY_BUDGET - budget, lambda.clone()));
+                    self.closures
+                        .insert(name, (APPLY_BUDGET - budget, lambda, captures.clone()));
                 }
-                FlatOp::Lambda(lambda)
+                FlatOp::Lambda(id, captures)
             }
             FlatOp::Apply(closure, args) => {
-                if let Some((size, lambda)) = self.lambdas.get(&closure)
+                if let Some((size, lambda, captures)) = self.closures.get(&closure)
                     && let Some(fuel) = self.fuel.checked_sub(*size)
                 {
                     self.fuel = fuel;
-                    let body = Freshener::new(&mut *self.value_ids, arguments(lambda, &args))
-                        .freshen_block(&lambda.body);
+                    let arguments = (lambda.captures.iter().zip(captures))
+                        .chain(lambda.parameters.iter().zip(&args))
+                        .map(|(binder, name)| (binder.var, *name))
+                        .collect();
+                    let body =
+                        Freshener::new(&mut *self.value_ids, arguments).freshen_block(&lambda.body);
                     self.bindings(body.bindings, out);
                     let result = self.resolve(body.result);
                     self.renames.insert(name, result);
@@ -796,47 +805,53 @@ mod tests {
                 .unwrap(),
             expect![[r#"
                 -- before --
+                lambda l0[
+                  v4: Int,
+                ](
+                  v2: Int,
+                ) -> Int {
+                  let v3: Int = int_add(v2, v4)
+                  v3
+                }
                 entrypoint Test@e0(
                   n@v0: Int,
                 ) -> Html {
                   let v1: Int = 10
-                  let v4: (Int) -> Int = fn(
-                    v2: Int,
-                  ) {
-                    let v3: Int = int_add(v2, v1)
-                    v3
-                  }
-                  let v5: Int = 1
-                  let v6: Int = v4(v5)
-                  let v7: Int = v4(v0)
-                  let v8: String = int_to_string(v6)
-                  let v9: Html = escape(v8)
-                  let v10: String = int_to_string(v7)
-                  let v11: Html = escape(v10)
-                  let v12: Html = concat(v9, v11)
-                  v12
+                  let v5: (Int) -> Int = l0[v1]
+                  let v6: Int = 1
+                  let v7: Int = v5(v6)
+                  let v8: Int = v5(v0)
+                  let v9: String = int_to_string(v7)
+                  let v10: Html = escape(v9)
+                  let v11: String = int_to_string(v8)
+                  let v12: Html = escape(v11)
+                  let v13: Html = concat(v10, v12)
+                  v13
                 }
 
                 -- after --
+                lambda l0[
+                  v4: Int,
+                ](
+                  v2: Int,
+                ) -> Int {
+                  let v3: Int = int_add(v2, v4)
+                  v3
+                }
                 entrypoint Test@e0(
                   n@v0: Int,
                 ) -> Html {
                   let v1: Int = 10
-                  let v4: (Int) -> Int = fn(
-                    v2: Int,
-                  ) {
-                    let v3: Int = int_add(v2, v1)
-                    v3
-                  }
-                  let v5: Int = 1
-                  let v13: Int = 11
-                  let v14: Int = int_add(v0, v1)
-                  let v8: String = "11"
-                  let v9: Html = text("11")
-                  let v10: String = int_to_string(v14)
-                  let v11: Html = escape(v10)
-                  let v12: Html = concat(v9, v11)
-                  v12
+                  let v5: (Int) -> Int = l0[v1]
+                  let v6: Int = 1
+                  let v14: Int = 11
+                  let v15: Int = int_add(v0, v1)
+                  let v9: String = "11"
+                  let v10: Html = text("11")
+                  let v11: String = int_to_string(v15)
+                  let v12: Html = escape(v11)
+                  let v13: Html = concat(v10, v12)
+                  v13
                 }
             "#]],
         );

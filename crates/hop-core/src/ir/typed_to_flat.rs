@@ -11,8 +11,8 @@ use crate::hop::typing::{
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_html_element::{FlatAttribute, FlatHtmlElement};
 use crate::ir::flat_program::{
-    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatMatch, FlatMatchArm, FlatOp,
-    FlatPattern, FlatProgram,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatLambda, FlatMatch,
+    FlatMatchArm, FlatOp, FlatPattern, FlatProgram,
 };
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{
@@ -25,7 +25,7 @@ use crate::ir::ir_binding::IrBinding;
 use crate::ir::ir_block::IrBlock;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_function::IrFunction;
-use crate::ir::ir_lambda::IrLambda;
+use crate::ir::lambda_id::LambdaIdCounter;
 use crate::ir::value_id::{ValueId, ValueIdCounter};
 use crate::root_contained_file_path::RootContainedFilePath;
 use crate::symbols::attribute_name::AttributeName;
@@ -56,8 +56,10 @@ use super::ir_parameter::IrParameter;
 /// per such list, a function without one at most once, and a function no
 /// page reaches not at all.
 ///
-/// A lambda compiles to a Lambda whose parameters are bound to fresh names,
-/// and an application of a variable to an Apply of its name.
+/// A lambda compiles to a declaration of its own, which reads each name
+/// bound outside its body through a capture, and to a Lambda that binds a
+/// closure of it over those names. An application of a variable compiles to
+/// an Apply of its name.
 ///
 /// Html is never part of another type, so no value depends on Html. It is
 /// compiled all the same wherever it is written, and what computes a value
@@ -115,6 +117,7 @@ pub fn typed_to_flat(
     let program = FlatProgram {
         types: lower_type_declarations(registry),
         functions,
+        lambdas: compiler.lambdas,
         entrypoints,
         value_ids,
     };
@@ -187,6 +190,9 @@ struct Compiler<'a> {
     /// The bindings of the block being compiled, in evaluation order.
     bindings: Vec<FlatBinding>,
     context: IrModifier,
+    lambda_id_counter: LambdaIdCounter,
+    lambdas: Vec<FlatLambda>,
+    types: HashMap<ValueId, FlatType>,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
@@ -207,6 +213,9 @@ impl<'a> Compiler<'a> {
             rest: Vec::new(),
             bindings: Vec::new(),
             context: IrModifier::Pure,
+            lambda_id_counter: LambdaIdCounter::new(),
+            lambdas: Vec::new(),
+            types: HashMap::new(),
             asset_path_rewriter,
         }
     }
@@ -223,12 +232,11 @@ impl<'a> Compiler<'a> {
         for param in &decl.params {
             let var = self.bind(&param.var_name);
             self.params.insert(param.var_name.clone(), var);
+            let typ = lower_type(self.registry, &param.var_type);
+            self.types.insert(var, typ.clone());
             parameters.push(IrParameter {
                 name: param.var_name.clone().into(),
-                binder: IrBinder {
-                    var,
-                    typ: lower_type(self.registry, &param.var_type),
-                },
+                binder: IrBinder { var, typ },
             });
         }
         // Each attribute the specialization receives through its rest is a
@@ -240,6 +248,7 @@ impl<'a> Compiler<'a> {
                 var,
                 typ: lower_type(self.registry, &typ),
             };
+            self.types.insert(var, binder.typ.clone());
             self.rest.push((name.clone(), typ, var));
             parameters.push(IrParameter { name, binder });
         }
@@ -286,15 +295,17 @@ impl<'a> Compiler<'a> {
         self.push_scope();
         let parameters = params
             .iter()
-            .map(|param| IrParameter {
-                name: param.var_name.clone().into(),
-                binder: IrBinder {
-                    var: self.bind(&param.var_name),
-                    typ: match &param.var_type {
-                        Type::Data(typ) => lower_data_type(self.registry, typ),
-                        _ => panic!("a page parameter must have a data type"),
-                    },
-                },
+            .map(|param| {
+                let var = self.bind(&param.var_name);
+                let typ = match &param.var_type {
+                    Type::Data(typ) => lower_data_type(self.registry, typ),
+                    _ => panic!("a page parameter must have a data type"),
+                };
+                self.types.insert(var, FlatType::Data(typ.clone()));
+                IrParameter {
+                    name: param.var_name.clone().into(),
+                    binder: IrBinder { var, typ },
+                }
             })
             .collect();
         let outer = std::mem::replace(&mut self.context, IrModifier::Render);
@@ -355,6 +366,7 @@ impl<'a> Compiler<'a> {
             "an op of a value produces a value"
         );
         let name = self.value_id_counter.next();
+        self.types.insert(name, typ.clone());
         self.bindings.push(IrBinding {
             binder: IrBinder { var: name, typ },
             op,
@@ -372,6 +384,7 @@ impl<'a> Compiler<'a> {
     /// and return the name.
     fn bind_html(&mut self, typ: FlatType, op: FlatOp) -> ValueId {
         let name = self.value_id_counter.next();
+        self.types.insert(name, typ.clone());
         self.bindings.push(IrBinding {
             binder: IrBinder { var: name, typ },
             op,
@@ -395,6 +408,25 @@ impl<'a> Compiler<'a> {
                 FlatMatchArm { pattern, body }
             })
             .collect()
+    }
+
+    fn close_lambda(
+        &mut self,
+        modifier: IrModifier,
+        parameters: Vec<IrBinder<FlatType>>,
+        return_type: FlatType,
+        body: FlatBlock,
+    ) -> FlatOp {
+        let id = self.lambda_id_counter.next();
+        let (lambda, captured) =
+            FlatLambda::closing(id, modifier, parameters, return_type, body, |name| {
+                let var = self.value_id_counter.next();
+                let typ = self.types[&name].clone();
+                self.types.insert(var, typ.clone());
+                IrBinder { var, typ }
+            });
+        self.lambdas.push(lambda);
+        FlatOp::Lambda(id, captured)
     }
 
     fn push_scope(&mut self) {
@@ -485,10 +517,10 @@ impl<'a> Compiler<'a> {
                 let Type::Data(typ) = binder.typ.clone() else {
                     unreachable!("a pattern binds data");
                 };
-                Pattern::Binding(IrBinder {
-                    var: self.bind(&binder.var),
-                    typ: lower_data_type(self.registry, &typ),
-                })
+                let var = self.bind(&binder.var);
+                let typ = lower_data_type(self.registry, &typ);
+                self.types.insert(var, FlatType::Data(typ.clone()));
+                Pattern::Binding(IrBinder { var, typ })
             }
             Pattern::Constructor {
                 constructor,
@@ -804,6 +836,7 @@ impl<'a> Compiler<'a> {
                     Some(self.compile_expr(children))
                 };
                 let identity = self.value_id_counter.next();
+                self.types.insert(identity, FlatType::ElementId);
                 self.bindings.push(IrBinding {
                     binder: IrBinder {
                         var: identity,
@@ -921,20 +954,21 @@ impl<'a> Compiler<'a> {
                                     FlatOp::CellUpdate(cell, parameter),
                                 )
                             });
-                            let setter = self.bind_html(
-                                FlatType::function(
-                                    IrModifier::Mut,
-                                    [parameter_type.clone()],
-                                    FlatType::Data(FlatDataType::UNIT),
-                                ),
-                                FlatOp::Lambda(IrLambda {
-                                    parameters: vec![IrBinder {
-                                        var: parameter,
-                                        typ: parameter_type,
-                                    }],
-                                    body,
-                                }),
+                            let setter_type = FlatType::function(
+                                IrModifier::Mut,
+                                [parameter_type.clone()],
+                                FlatType::Data(FlatDataType::UNIT),
                             );
+                            let lambda = self.close_lambda(
+                                IrModifier::Mut,
+                                vec![IrBinder {
+                                    var: parameter,
+                                    typ: parameter_type,
+                                }],
+                                FlatType::Data(FlatDataType::UNIT),
+                                body,
+                            );
+                            let setter = self.bind_html(setter_type, lambda);
                             if let Some(name) = &state.getter {
                                 self.name(name, getter);
                             }
@@ -999,6 +1033,10 @@ impl<'a> Compiler<'a> {
                     var: self.bind(name),
                     typ: element_type,
                 });
+                if let Some(binder) = &var {
+                    self.types
+                        .insert(binder.var, FlatType::Data(binder.typ.clone()));
+                }
                 let key = key.as_ref().map(|key| self.compile_value_block(key));
                 let body = self.compile_html_block(body);
                 self.pop_scope();
@@ -1033,7 +1071,15 @@ impl<'a> Compiler<'a> {
                 };
                 self.pop_scope();
                 self.context = outer;
-                FlatOp::Lambda(IrLambda { parameters, body })
+                for parameter in &parameters {
+                    self.types.insert(parameter.var, parameter.typ.clone());
+                }
+                self.close_lambda(
+                    IrModifier::from(function.modifier),
+                    parameters,
+                    lower_type(self.registry, &function.result),
+                    body,
+                )
             }
             TypedExpr::Apply { callee, args, .. } => {
                 let closure = self.resolve(callee);
@@ -1073,6 +1119,10 @@ impl<'a> Compiler<'a> {
                 };
                 let subject = self.compile_expr(option);
                 let binding = self.value_id_counter.next();
+                self.types.insert(
+                    binding,
+                    FlatType::Data(lower_data_type(self.registry, &element_type)),
+                );
                 FlatOp::Match(FlatMatch {
                     subject,
                     arms: vec![
@@ -2055,43 +2105,49 @@ mod tests {
             "#},
             expect![[r#"
                 render fn Rows@f0(
-                  labels@v16: Array[String],
-                  row@v17: render (String) -> Html,
+                  labels@v18: Array[String],
+                  row@v19: render (String) -> Html,
                 ) -> Html {
-                  let v20: Html = for v18: String in v16 {
-                    let v19: Html = v17(v18)
-                    v19
+                  let v22: Html = for v20: String in v18 {
+                    let v21: Html = v19(v20)
+                    v21
                   }
-                  let v21: Html = concat(v20)
-                  let v22: ElementId = mint()
-                  let v23: Html = element(v22, "ul", {}, v21)
-                  v23
+                  let v23: Html = concat(v22)
+                  let v24: ElementId = mint()
+                  let v25: Html = element(v24, "ul", {}, v23)
+                  v25
+                }
+                lambda l0[
+                  v4: Int,
+                ](
+                  v2: Int,
+                ) -> Int {
+                  let v3: Int = int_mul(v2, v4)
+                  v3
+                }
+                render lambda l1[
+                  v15: (Int) -> Int,
+                ](
+                  v6: String,
+                ) -> Html {
+                  let v7: Html = escape(v6)
+                  let v8: Int = 2
+                  let v9: Int = v15(v8)
+                  let v10: String = int_to_string(v9)
+                  let v11: Html = escape(v10)
+                  let v12: Html = concat(v7, v11)
+                  let v13: ElementId = mint()
+                  let v14: Html = element(v13, "li", {}, v12)
+                  v14
                 }
                 entrypoint body@e0(
                   labels@v0: Array[String],
                   scale@v1: Int,
                 ) -> Html {
-                  let v4: (Int) -> Int = fn(
-                    v2: Int,
-                  ) {
-                    let v3: Int = int_mul(v2, v1)
-                    v3
-                  }
-                  let v14: render (String) -> Html = fn(
-                    v5: String,
-                  ) {
-                    let v6: Html = escape(v5)
-                    let v7: Int = 2
-                    let v8: Int = v4(v7)
-                    let v9: String = int_to_string(v8)
-                    let v10: Html = escape(v9)
-                    let v11: Html = concat(v6, v10)
-                    let v12: ElementId = mint()
-                    let v13: Html = element(v12, "li", {}, v11)
-                    v13
-                  }
-                  let v15: Html = f0(v0, v14)
-                  v15
+                  let v5: (Int) -> Int = l0[v1]
+                  let v16: render (String) -> Html = l1[v5]
+                  let v17: Html = f0(v0, v16)
+                  v17
                 }
                 page Test: e0
             "#]],
@@ -2118,68 +2174,78 @@ mod tests {
             "#},
             expect![[r#"
                 fn width@f0(
-                  icon@v16: render () -> Html,
-                  scale@v17: (Int) -> Int,
-                  n@v18: Int,
+                  icon@v17: render () -> Html,
+                  scale@v18: (Int) -> Int,
+                  n@v19: Int,
                 ) -> Int {
-                  let v24: render (Html) -> Html = fn(
-                    v19: Html,
-                  ) {
-                    let v20: Html = v16()
-                    let v21: Html = concat(v19, v20)
-                    let v22: ElementId = mint()
-                    let v23: Html = element(v22, "b", {}, v21)
-                    v23
-                  }
-                  let v25: Int = 0
-                  let v26: Bool = int_lt_eq(v18, v25)
-                  let v38: Int = match v26 {
+                  let v26: render (Html) -> Html = l2[v17]
+                  let v27: Int = 0
+                  let v28: Bool = int_lt_eq(v19, v27)
+                  let v41: Int = match v28 {
                     true => {
-                      let v27: Int = 2
-                      let v28: Int = v17(v27)
-                      v28
+                      let v29: Int = 2
+                      let v30: Int = v18(v29)
+                      v30
                     }
                     false => {
-                      let v34: render () -> Html = fn() {
-                        let v29: Html = text("*")
-                        let v30: Html = concat(v29)
-                        let v31: ElementId = mint()
-                        let v32: Html = element(v31, "i", {}, v30)
-                        let v33: Html = v24(v32)
-                        v33
-                      }
-                      let v35: Int = 1
-                      let v36: Int = int_sub(v18, v35)
-                      let v37: Int = f0(v34, v17, v36)
-                      v37
+                      let v37: render () -> Html = l3[v26]
+                      let v38: Int = 1
+                      let v39: Int = int_sub(v19, v38)
+                      let v40: Int = f0(v37, v18, v39)
+                      v40
                     }
                   }
-                  v38
+                  v41
+                }
+                render lambda l0[]() -> Html {
+                  let v1: Html = text("*")
+                  let v2: Html = concat(v1)
+                  let v3: ElementId = mint()
+                  let v4: Html = element(v3, "i", {}, v2)
+                  v4
+                }
+                lambda l1[
+                  v8: Int,
+                ](
+                  v6: Int,
+                ) -> Int {
+                  let v7: Int = int_add(v6, v8)
+                  v7
+                }
+                render lambda l2[
+                  v25: render () -> Html,
+                ](
+                  v20: Html,
+                ) -> Html {
+                  let v21: Html = v25()
+                  let v22: Html = concat(v20, v21)
+                  let v23: ElementId = mint()
+                  let v24: Html = element(v23, "b", {}, v22)
+                  v24
+                }
+                render lambda l3[
+                  v36: render (Html) -> Html,
+                ]() -> Html {
+                  let v31: Html = text("*")
+                  let v32: Html = concat(v31)
+                  let v33: ElementId = mint()
+                  let v34: Html = element(v33, "i", {}, v32)
+                  let v35: Html = v36(v34)
+                  v35
                 }
                 entrypoint body@e0(
                   n@v0: Int,
                 ) -> Html {
-                  let v5: render () -> Html = fn() {
-                    let v1: Html = text("*")
-                    let v2: Html = concat(v1)
-                    let v3: ElementId = mint()
-                    let v4: Html = element(v3, "i", {}, v2)
-                    v4
-                  }
-                  let v8: (Int) -> Int = fn(
-                    v6: Int,
-                  ) {
-                    let v7: Int = int_add(v6, v0)
-                    v7
-                  }
-                  let v9: Int = 3
-                  let v10: Int = f0(v5, v8, v9)
-                  let v11: String = int_to_string(v10)
-                  let v12: Html = escape(v11)
-                  let v13: Html = concat(v12)
-                  let v14: ElementId = mint()
-                  let v15: Html = element(v14, "p", {}, v13)
-                  v15
+                  let v5: render () -> Html = l0[]
+                  let v9: (Int) -> Int = l1[v0]
+                  let v10: Int = 3
+                  let v11: Int = f0(v5, v9, v10)
+                  let v12: String = int_to_string(v11)
+                  let v13: Html = escape(v12)
+                  let v14: Html = concat(v13)
+                  let v15: ElementId = mint()
+                  let v16: Html = element(v15, "p", {}, v14)
+                  v16
                 }
                 page Test: e0
             "#]],
@@ -2221,26 +2287,26 @@ mod tests {
             "#},
             expect![[r#"
                 fn count@f2(
-                  mark@v39: render () -> Html,
-                  n@v40: Int,
+                  mark@v40: render () -> Html,
+                  n@v41: Int,
                 ) -> Int {
-                  let v41: Int = 0
-                  let v42: Bool = int_lt_eq(v40, v41)
-                  let v49: Int = match v42 {
+                  let v42: Int = 0
+                  let v43: Bool = int_lt_eq(v41, v42)
+                  let v50: Int = match v43 {
                     true => {
-                      let v43: Int = 0
-                      v43
+                      let v44: Int = 0
+                      v44
                     }
                     false => {
-                      let v44: Int = 1
-                      let v45: Int = int_sub(v40, v44)
-                      let v46: Int = f2(v39, v45)
-                      let v47: Int = 1
-                      let v48: Int = int_add(v46, v47)
-                      v48
+                      let v45: Int = 1
+                      let v46: Int = int_sub(v41, v45)
+                      let v47: Int = f2(v40, v46)
+                      let v48: Int = 1
+                      let v49: Int = int_add(v47, v48)
+                      v49
                     }
                   }
-                  v49
+                  v50
                 }
                 render fn label@f0(
                   star@v10: Html,
@@ -2251,42 +2317,45 @@ mod tests {
                   let v14: Html = element(v13, "b", {}, v12)
                   let v15: Int = 1
                   let v16: Int = f1(v14, v15)
-                  let v22: render () -> Html = fn() {
-                    let v17: String = int_to_string(v16)
-                    let v18: Html = escape(v17)
-                    let v19: Html = concat(v18)
-                    let v20: ElementId = mint()
-                    let v21: Html = element(v20, "i", {}, v19)
-                    v21
-                  }
-                  let v23: String = " "
-                  let v24: Int = 3
-                  let v25: Int = f2(v22, v24)
-                  let v26: String = int_to_string(v25)
-                  let v27: String = string_concat(v11, v23, v26)
-                  v27
+                  let v23: render () -> Html = l0[v16]
+                  let v24: String = " "
+                  let v25: Int = 3
+                  let v26: Int = f2(v23, v25)
+                  let v27: String = int_to_string(v26)
+                  let v28: String = string_concat(v11, v24, v27)
+                  v28
                 }
                 fn weigh@f1(
-                  icon@v28: Html,
-                  n@v29: Int,
+                  icon@v29: Html,
+                  n@v30: Int,
                 ) -> Int {
-                  let v30: Int = 0
-                  let v31: Bool = int_lt_eq(v29, v30)
-                  let v38: Int = match v31 {
+                  let v31: Int = 0
+                  let v32: Bool = int_lt_eq(v30, v31)
+                  let v39: Int = match v32 {
                     true => {
-                      let v32: Int = 0
-                      v32
+                      let v33: Int = 0
+                      v33
                     }
                     false => {
-                      let v33: Int = 1
-                      let v34: Int = int_sub(v29, v33)
-                      let v35: Int = f1(v28, v34)
-                      let v36: Int = 2
-                      let v37: Int = int_add(v35, v36)
-                      v37
+                      let v34: Int = 1
+                      let v35: Int = int_sub(v30, v34)
+                      let v36: Int = f1(v29, v35)
+                      let v37: Int = 2
+                      let v38: Int = int_add(v36, v37)
+                      v38
                     }
                   }
-                  v38
+                  v39
+                }
+                render lambda l0[
+                  v22: Int,
+                ]() -> Html {
+                  let v17: String = int_to_string(v22)
+                  let v18: Html = escape(v17)
+                  let v19: Html = concat(v18)
+                  let v20: ElementId = mint()
+                  let v21: Html = element(v20, "i", {}, v19)
+                  v21
                 }
                 entrypoint body@e0(
                   name@v0: String,
@@ -2486,31 +2555,38 @@ mod tests {
                     v19
                   }
                   let v21: Int = cell_read(v20)
-                  let v24: mut ((Int) -> Int) -> Tuple[] = fn(
-                    v22: (Int) -> Int,
-                  ) {
-                    let v23: Tuple[] = cell_update(v20, v22)
-                    v23
-                  }
-                  let v30: mut () -> Tuple[] = fn() {
-                    let v28: (Int) -> Int = fn(
-                      v25: Int,
-                    ) {
-                      let v26: Int = 1
-                      let v27: Int = int_add(v25, v26)
-                      v27
-                    }
-                    let v29: Tuple[] = v24(v28)
-                    v29
-                  }
-                  let v31: Html = escape(v18)
-                  let v32: Html = text(" ")
-                  let v33: String = int_to_string(v21)
-                  let v34: Html = escape(v33)
-                  let v35: Html = concat(v31, v32, v34)
-                  let v36: ElementId = mint()
-                  let v37: Html = element(v36, "button", {}, v35) on_click v30
-                  v37
+                  let v25: mut ((Int) -> Int) -> Tuple[] = l0[v20]
+                  let v32: mut () -> Tuple[] = l2[v25]
+                  let v33: Html = escape(v18)
+                  let v34: Html = text(" ")
+                  let v35: String = int_to_string(v21)
+                  let v36: Html = escape(v35)
+                  let v37: Html = concat(v33, v34, v36)
+                  let v38: ElementId = mint()
+                  let v39: Html = element(v38, "button", {}, v37) on_click v32
+                  v39
+                }
+                mut lambda l0[
+                  v24: Cell[Int],
+                ](
+                  v22: (Int) -> Int,
+                ) -> Tuple[] {
+                  let v23: Tuple[] = cell_update(v24, v22)
+                  v23
+                }
+                lambda l1[](
+                  v26: Int,
+                ) -> Int {
+                  let v27: Int = 1
+                  let v28: Int = int_add(v26, v27)
+                  v28
+                }
+                mut lambda l2[
+                  v31: mut ((Int) -> Int) -> Tuple[],
+                ]() -> Tuple[] {
+                  let v29: (Int) -> Int = l1[]
+                  let v30: Tuple[] = v31(v29)
+                  v30
                 }
                 entrypoint body@e0() -> Html {
                   let v0: Int = 1
@@ -2559,13 +2635,34 @@ mod tests {
             "#},
             expect![[r#"
                 render fn Button@f0(
-                  on_press@v17: mut () -> Tuple[],
-                  children@v18: Html,
+                  on_press@v19: mut () -> Tuple[],
+                  children@v20: Html,
                 ) -> Html {
-                  let v19: Html = concat(v18)
-                  let v20: ElementId = mint()
-                  let v21: Html = element(v20, "button", {}, v19) on_click v17
-                  v21
+                  let v21: Html = concat(v20)
+                  let v22: ElementId = mint()
+                  let v23: Html = element(v22, "button", {}, v21) on_click v19
+                  v23
+                }
+                mut lambda l0[
+                  v5: Cell[Bool],
+                ](
+                  v3: (Bool) -> Bool,
+                ) -> Tuple[] {
+                  let v4: Tuple[] = cell_update(v5, v3)
+                  v4
+                }
+                lambda l1[](
+                  v7: Bool,
+                ) -> Bool {
+                  let v8: Bool = bool_not(v7)
+                  v8
+                }
+                mut lambda l2[
+                  v11: mut ((Bool) -> Bool) -> Tuple[],
+                ]() -> Tuple[] {
+                  let v9: (Bool) -> Bool = l1[]
+                  let v10: Tuple[] = v11(v9)
+                  v10
                 }
                 entrypoint body@e0() -> Html {
                   let v1: Cell[Bool] = cell {
@@ -2573,36 +2670,22 @@ mod tests {
                     v0
                   }
                   let v2: Bool = cell_read(v1)
-                  let v5: mut ((Bool) -> Bool) -> Tuple[] = fn(
-                    v3: (Bool) -> Bool,
-                  ) {
-                    let v4: Tuple[] = cell_update(v1, v3)
-                    v4
-                  }
-                  let v10: mut () -> Tuple[] = fn() {
-                    let v8: (Bool) -> Bool = fn(
-                      v6: Bool,
-                    ) {
-                      let v7: Bool = bool_not(v6)
-                      v7
-                    }
-                    let v9: Tuple[] = v5(v8)
-                    v9
-                  }
-                  let v13: String = match v2 {
+                  let v6: mut ((Bool) -> Bool) -> Tuple[] = l0[v1]
+                  let v12: mut () -> Tuple[] = l2[v6]
+                  let v15: String = match v2 {
                     true => {
-                      let v11: String = "on"
-                      v11
+                      let v13: String = "on"
+                      v13
                     }
                     false => {
-                      let v12: String = "off"
-                      v12
+                      let v14: String = "off"
+                      v14
                     }
                   }
-                  let v14: Html = escape(v13)
-                  let v15: Html = concat(v14)
-                  let v16: Html = f0(v10, v15)
-                  v16
+                  let v16: Html = escape(v15)
+                  let v17: Html = concat(v16)
+                  let v18: Html = f0(v12, v17)
+                  v18
                 }
                 page Test: e0
             "#]],
@@ -2623,6 +2706,14 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                mut lambda l0[
+                  v6: Cell[Int],
+                ](
+                  v4: (Int) -> Int,
+                ) -> Tuple[] {
+                  let v5: Tuple[] = cell_update(v6, v4)
+                  v5
+                }
                 entrypoint body@e0(
                   user@v0: User,
                 ) -> Html {
@@ -2631,27 +2722,22 @@ mod tests {
                     v1
                   }
                   let v3: Int = cell_read(v2)
-                  let v6: mut ((Int) -> Int) -> Tuple[] = fn(
-                    v4: (Int) -> Int,
-                  ) {
-                    let v5: Tuple[] = cell_update(v2, v4)
-                    v5
-                  }
-                  let v7: Bool = true
-                  let v8: Tuple[Int, Bool] = (v3, v7)
-                  let v9: Tuple[Tuple[Int, Bool], User] = (v8, v0)
-                  let v10: Tuple[Int, Bool] = tuple_index(v9, 0)
-                  let v11: Int = tuple_index(v10, 0)
-                  let v12: User = tuple_index(v9, 1)
-                  let v13: Int = v12.age
-                  let v14: String = int_to_string(v11)
-                  let v15: Html = escape(v14)
-                  let v16: String = int_to_string(v13)
-                  let v17: Html = escape(v16)
-                  let v18: Html = concat(v15, v17)
-                  let v19: ElementId = mint()
-                  let v20: Html = element(v19, "p", {}, v18)
-                  v20
+                  let v7: mut ((Int) -> Int) -> Tuple[] = l0[v2]
+                  let v8: Bool = true
+                  let v9: Tuple[Int, Bool] = (v3, v8)
+                  let v10: Tuple[Tuple[Int, Bool], User] = (v9, v0)
+                  let v11: Tuple[Int, Bool] = tuple_index(v10, 0)
+                  let v12: Int = tuple_index(v11, 0)
+                  let v13: User = tuple_index(v10, 1)
+                  let v14: Int = v13.age
+                  let v15: String = int_to_string(v12)
+                  let v16: Html = escape(v15)
+                  let v17: String = int_to_string(v14)
+                  let v18: Html = escape(v17)
+                  let v19: Html = concat(v16, v18)
+                  let v20: ElementId = mint()
+                  let v21: Html = element(v20, "p", {}, v19)
+                  v21
                 }
                 page Test: e0
             "#]],
@@ -2675,45 +2761,59 @@ mod tests {
                 }
             "#},
             expect![[r#"
+                mut lambda l0[
+                  v5: Cell[Bool],
+                ](
+                  v3: (Bool) -> Bool,
+                ) -> Tuple[] {
+                  let v4: Tuple[] = cell_update(v5, v3)
+                  v4
+                }
+                lambda l1[
+                  v10: Bool,
+                ](
+                  v8: Bool,
+                ) -> Bool {
+                  let v9: Bool = bool_not(v10)
+                  v9
+                }
+                mut lambda l2[
+                  v13: Bool,
+                  v14: mut ((Bool) -> Bool) -> Tuple[],
+                ]() -> Tuple[] {
+                  let v11: (Bool) -> Bool = l1[v13]
+                  let v12: Tuple[] = v14(v11)
+                  v12
+                }
+                render lambda l3[
+                  v20: Bool,
+                  v21: mut ((Bool) -> Bool) -> Tuple[],
+                ](
+                  v7: String,
+                ) -> Html {
+                  let v15: mut () -> Tuple[] = l2[v20, v21]
+                  let v16: Html = escape(v7)
+                  let v17: Html = concat(v16)
+                  let v18: ElementId = mint()
+                  let v19: Html = element(v18, "li", {}, v17) on_click v15
+                  v19
+                }
                 entrypoint body@e0() -> Html {
                   let v1: Cell[Bool] = cell {
                     let v0: Bool = false
                     v0
                   }
                   let v2: Bool = cell_read(v1)
-                  let v5: mut ((Bool) -> Bool) -> Tuple[] = fn(
-                    v3: (Bool) -> Bool,
-                  ) {
-                    let v4: Tuple[] = cell_update(v1, v3)
-                    v4
-                  }
-                  let v16: render (String) -> Html = fn(
-                    v6: String,
-                  ) {
-                    let v11: mut () -> Tuple[] = fn() {
-                      let v9: (Bool) -> Bool = fn(
-                        v7: Bool,
-                      ) {
-                        let v8: Bool = bool_not(v2)
-                        v8
-                      }
-                      let v10: Tuple[] = v5(v9)
-                      v10
-                    }
-                    let v12: Html = escape(v6)
-                    let v13: Html = concat(v12)
-                    let v14: ElementId = mint()
-                    let v15: Html = element(v14, "li", {}, v13) on_click v11
-                    v15
-                  }
-                  let v17: String = "a"
-                  let v18: Html = v16(v17)
-                  let v19: String = "b"
-                  let v20: Html = v16(v19)
-                  let v21: Html = concat(v18, v20)
-                  let v22: ElementId = mint()
-                  let v23: Html = element(v22, "ul", {}, v21)
-                  v23
+                  let v6: mut ((Bool) -> Bool) -> Tuple[] = l0[v1]
+                  let v22: render (String) -> Html = l3[v2, v6]
+                  let v23: String = "a"
+                  let v24: Html = v22(v23)
+                  let v25: String = "b"
+                  let v26: Html = v22(v25)
+                  let v27: Html = concat(v24, v26)
+                  let v28: ElementId = mint()
+                  let v29: Html = element(v28, "ul", {}, v27)
+                  v29
                 }
                 page Test: e0
             "#]],
@@ -2741,11 +2841,62 @@ mod tests {
             "#},
             expect![[r#"
                 mut fn twice@f0(
-                  press@v26: mut () -> Tuple[],
+                  press@v32: mut () -> Tuple[],
                 ) -> Tuple[] {
-                  let v27: Tuple[] = v26()
-                  let v28: Tuple[] = v26()
-                  v28
+                  let v33: Tuple[] = v32()
+                  let v34: Tuple[] = v32()
+                  v34
+                }
+                mut lambda l0[
+                  v5: Cell[Int],
+                ](
+                  v3: (Int) -> Int,
+                ) -> Tuple[] {
+                  let v4: Tuple[] = cell_update(v5, v3)
+                  v4
+                }
+                lambda l1[
+                  v9: Int,
+                ](
+                  v7: Int,
+                ) -> Int {
+                  let v8: Int = int_add(v7, v9)
+                  v8
+                }
+                mut lambda l2[
+                  v12: Int,
+                  v13: mut ((Int) -> Int) -> Tuple[],
+                ]() -> Tuple[] {
+                  let v10: (Int) -> Int = l1[v12]
+                  let v11: Tuple[] = v13(v10)
+                  v11
+                }
+                lambda l3[](
+                  v18: Int,
+                ) -> Int {
+                  let v19: Int = 0
+                  v19
+                }
+                mut lambda l4[
+                  v24: Int,
+                  v25: mut ((Int) -> Int) -> Tuple[],
+                ]() -> Tuple[] {
+                  let v14: mut () -> Tuple[] = l2[v24, v25]
+                  let v15: Tuple[] = f0(v14)
+                  let v16: Int = 9
+                  let v17: Bool = int_lt(v16, v24)
+                  let v23: Tuple[] = match v17 {
+                    true => {
+                      let v20: (Int) -> Int = l3[]
+                      let v21: Tuple[] = v25(v20)
+                      v21
+                    }
+                    false => {
+                      let v22: Tuple[] = ()
+                      v22
+                    }
+                  }
+                  v23
                 }
                 entrypoint body@e0() -> Html {
                   let v1: Cell[Int] = cell {
@@ -2753,50 +2904,14 @@ mod tests {
                     v0
                   }
                   let v2: Int = cell_read(v1)
-                  let v5: mut ((Int) -> Int) -> Tuple[] = fn(
-                    v3: (Int) -> Int,
-                  ) {
-                    let v4: Tuple[] = cell_update(v1, v3)
-                    v4
-                  }
-                  let v20: mut () -> Tuple[] = fn() {
-                    let v10: mut () -> Tuple[] = fn() {
-                      let v8: (Int) -> Int = fn(
-                        v6: Int,
-                      ) {
-                        let v7: Int = int_add(v6, v2)
-                        v7
-                      }
-                      let v9: Tuple[] = v5(v8)
-                      v9
-                    }
-                    let v11: Tuple[] = f0(v10)
-                    let v12: Int = 9
-                    let v13: Bool = int_lt(v12, v2)
-                    let v19: Tuple[] = match v13 {
-                      true => {
-                        let v16: (Int) -> Int = fn(
-                          v14: Int,
-                        ) {
-                          let v15: Int = 0
-                          v15
-                        }
-                        let v17: Tuple[] = v5(v16)
-                        v17
-                      }
-                      false => {
-                        let v18: Tuple[] = ()
-                        v18
-                      }
-                    }
-                    v19
-                  }
-                  let v21: String = int_to_string(v2)
-                  let v22: Html = escape(v21)
-                  let v23: Html = concat(v22)
-                  let v24: ElementId = mint()
-                  let v25: Html = element(v24, "button", {}, v23) on_click v20
-                  v25
+                  let v6: mut ((Int) -> Int) -> Tuple[] = l0[v1]
+                  let v26: mut () -> Tuple[] = l4[v2, v6]
+                  let v27: String = int_to_string(v2)
+                  let v28: Html = escape(v27)
+                  let v29: Html = concat(v28)
+                  let v30: ElementId = mint()
+                  let v31: Html = element(v30, "button", {}, v29) on_click v26
+                  v31
                 }
                 page Test: e0
             "#]],

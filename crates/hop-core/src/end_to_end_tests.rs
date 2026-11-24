@@ -7455,3 +7455,87 @@ fn closure_built_from_closures_a_function_takes() {
         "40",
     );
 }
+
+#[test]
+#[ignore]
+fn closure_that_a_match_produces() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            fn scaled(factor: Option[Int], n: Int) -> Int {
+              let scale = match factor {
+                Some(k) => fn(m: Int) { m * k },
+                None => fn(m: Int) { m },
+              };
+              scale(n)
+            }
+
+            page Test() {
+              fn body() -> Html {
+                <>
+                  {for factor in [Some(3), None] {
+                    <i>{scaled(factor, 5).to_string()}</i>
+                  }}
+                </>
+              }
+            }
+        "#},
+        "<i>15</i><i>5</i>",
+    );
+}
+
+#[test]
+#[ignore]
+fn closure_that_a_function_returns_from_a_match() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            fn scale_by(factor: Option[Int]) -> fn(Int) -> Int {
+              match factor {
+                Some(k) => fn(m) { m * k },
+                None => fn(m) { m },
+              }
+            }
+
+            page Test() {
+              fn body() -> Html {
+                <>
+                  {for factor in [Some(3), None] {
+                    let scale = scale_by(factor);
+                    <i>{scale(5).to_string()}</i>
+                  }}
+                </>
+              }
+            }
+        "#},
+        "<i>15</i><i>5</i>",
+    );
+}
+
+#[test]
+#[ignore]
+fn closure_that_renders_html_that_a_match_produces() {
+    check(
+        indoc! {r#"
+            -- main.hop --
+            fn Wrapped(bold: Bool, text: String) -> Html {
+              let wrap = match bold {
+                true => fn(s: String) { <b>{s}</b> },
+                false => fn(s: String) { <i>{s}</i> },
+              };
+              wrap(text)
+            }
+
+            page Test() {
+              fn body() -> Html {
+                <>
+                  {for bold in [true, false] {
+                    <Wrapped bold={bold} text="x"/>
+                  }}
+                </>
+              }
+            }
+        "#},
+        "<b>x</b><i>x</i>",
+    );
+}

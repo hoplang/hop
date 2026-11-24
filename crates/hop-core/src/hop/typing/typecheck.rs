@@ -14819,24 +14819,169 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_match_that_produces_a_function() {
+    fn accepts_a_match_that_produces_a_render_fn() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(bold: Bool) -> Html {
+                  let wrap = match bold {
+                    true => fn(s: String) { <b>{s}</b> },
+                    false => fn(s: String) { <i>{s}</i> },
+                  };
+                  wrap("x")
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(bold: Bool) -> Html {
+                  let wrap = match bold {
+                    true => fn(s: String) -> Html {
+                      element(
+                        tag: "b",
+                        attrs: [],
+                        children: concat(
+                          escape(s),
+                        ),
+                      )
+                    },
+                    false => fn(s: String) -> Html {
+                      element(
+                        tag: "i",
+                        attrs: [],
+                        children: concat(
+                          escape(s),
+                        ),
+                      )
+                    },
+                  } in wrap("x")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_match_that_produces_a_function_that_returns_a_render_fn() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(bold: Bool) -> Html {
+                  let pick = match bold {
+                    true => fn() { fn(s: String) { <b>{s}</b> } },
+                    false => fn() { fn(s: String) { <i>{s}</i> } },
+                  };
+                  let wrap = pick();
+                  wrap("x")
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn Main(bold: Bool) -> Html {
+                  let pick = match bold {
+                    true => fn() -> fn(String) -> Html {
+                      fn(s: String) -> Html {
+                        element(
+                          tag: "b",
+                          attrs: [],
+                          children: concat(
+                            escape(s),
+                          ),
+                        )
+                      }
+                    },
+                    false => fn() -> fn(String) -> Html {
+                      fn(s: String) -> Html {
+                        element(
+                          tag: "i",
+                          attrs: [],
+                          children: concat(
+                            escape(s),
+                          ),
+                        )
+                      }
+                    },
+                  } in let wrap = pick() in wrap("x")
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_match_whose_lambdas_take_different_numbers_of_parameters() {
         reject(
             indoc! {r#"
                 -- main.hop --
                 fn Main(double: Bool) -> Int {
                   let scale = match double {
                     true => fn(n: Int) { n * 2 },
-                    false => fn(n: Int) { n },
+                    false => fn(n: Int, m: Int) { n * m },
                   };
                   scale(1)
                 }
             "#},
             expect![[r#"
-                error: A match cannot produce fn(Int) -> Int
-                  --> main.hop (line 3, col 13)
-                2 |   let scale = match double {
+                error: Expected fn(Int) -> Int got fn(Int, Int) -> Int
+                  --> main.hop (line 4, col 14)
                 3 |     true => fn(n: Int) { n * 2 },
-                  |             ^^^^^^^^^^^^^^^^^^^^
+                4 |     false => fn(n: Int, m: Int) { n * m },
+                  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_match_whose_lambdas_have_different_modifiers() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                render fn Main(flag: Bool) -> Html {
+                  let (count, set_count) = state!(0);
+                  let step = match flag {
+                    true => mut fn() { set_count(fn(curr) { curr + 1 }) },
+                    false => fn() { () },
+                  };
+                  <button on:click={step}>{count.to_string()}</button>
+                }
+            "#},
+            expect![[r#"
+                warning: Unused variable count
+                  --> main.hop (line 2, col 8)
+                1 | render fn Main(flag: Bool) -> Html {
+                2 |   let (count, set_count) = state!(0);
+                  |        ^^^^^
+
+                error: Expected mut fn() -> Tuple[] got fn() -> Tuple[]
+                  --> main.hop (line 5, col 14)
+                4 |     true => mut fn() { set_count(fn(curr) { curr + 1 }) },
+                5 |     false => fn() { () },
+                  |              ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_a_match_whose_lambdas_take_their_parameter_types_from_the_return_type() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn scale_by(double: Bool) -> fn(Int) -> Int {
+                  match double {
+                    true => fn(n) { n * 2 },
+                    false => fn(n) { n },
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn scale_by(double: Bool) -> fn(Int) -> Int {
+                  match double {
+                    true => fn(n: Int) -> Int {
+                      mul(n, 2)
+                    },
+                    false => fn(n: Int) -> Int {
+                      n
+                    },
+                  }
+                }
             "#]],
         );
     }

@@ -8,8 +8,8 @@ use crate::ir::document_shell::DocumentShell;
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_html_element::{FlatAttribute, FlatHtmlElement};
 use crate::ir::flat_program::{
-    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatMatch, FlatMatchArm, FlatOp,
-    FlatPattern, FlatProgram,
+    FlatBinding, FlatBlock, FlatEntrypoint, FlatFor, FlatFunction, FlatLambda, FlatMatch,
+    FlatMatchArm, FlatOp, FlatPattern, FlatProgram,
 };
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
@@ -56,8 +56,8 @@ use crate::symbols::type_name::TypeName;
 /// A click never happens on a page rendered to a string, so the clicks are
 /// left out.
 ///
-/// A closure is a lambda, a parameter, or the result of a call or an
-/// application, never of a match. It may outlive the function or closure
+/// A closure is a lambda, a parameter, or the result of a call, an
+/// application or a match. It may outlive the function or closure
 /// that made it, so a backend keeps what a closure captures alive as long
 /// as the closure. A lambda becomes a let at the start of its block, with
 /// the body a function that writes or returns would have. Its Html
@@ -88,6 +88,7 @@ pub fn flat_to_writer(
     let FlatProgram {
         types,
         functions,
+        lambdas,
         entrypoints,
         value_ids,
     } = program;
@@ -96,6 +97,7 @@ pub fn flat_to_writer(
         .collect();
     let mut lowerer = Lowerer {
         types: &types,
+        lambdas: &lambdas,
         callees,
         value_ids,
         bindings: HashMap::new(),
@@ -114,6 +116,20 @@ pub fn flat_to_writer(
             lowerer.analyze_parameter(&param.binder);
         }
         lowerer.analyze_block(&function.body);
+    }
+    for lambda in &lambdas {
+        if lambda.modifier == IrModifier::Mut {
+            continue;
+        }
+        for capture in &lambda.captures {
+            if let FlatType::Data(typ) = &capture.typ {
+                lowerer.binder_types.insert(capture.var, typ.clone());
+            }
+        }
+        for param in &lambda.parameters {
+            lowerer.analyze_parameter(param);
+        }
+        lowerer.analyze_block(&lambda.body);
     }
     for entrypoint in &entrypoints {
         for param in &entrypoint.parameters {
@@ -291,6 +307,7 @@ fn value_bindings(block: &FlatBlock) -> impl Iterator<Item = &FlatBinding> {
 
 struct Lowerer<'a> {
     types: &'a FlatTypeDeclarations,
+    lambdas: &'a [FlatLambda],
     /// Every function of the program, by id, to name it where it is called.
     callees: HashMap<FunctionId, IrFunction>,
     value_ids: ValueIdCounter,
@@ -391,13 +408,12 @@ impl<'a> Lowerer<'a> {
             }
             // Rendered on the empty state, a click never runs what mutates,
             // so it reads nothing.
-            FlatOp::Lambda(_) if is_mut_closure(&binding.binder.typ) => {}
+            FlatOp::Lambda(..) if is_mut_closure(&binding.binder.typ) => {}
             FlatOp::CellUpdate(..) => unreachable!("only what mutates updates a cell"),
-            FlatOp::Lambda(lambda) => {
-                for param in &lambda.parameters {
-                    self.analyze_parameter(param);
+            FlatOp::Lambda(_, captures) => {
+                for capture in captures {
+                    self.read(*capture, Reader::Value);
                 }
-                self.analyze_block(&lambda.body);
             }
             FlatOp::Apply(closure, args) => {
                 self.read(*closure, Reader::Value);
@@ -463,7 +479,7 @@ impl<'a> Lowerer<'a> {
                     self.read(*closure, Reader::Value);
                     self.read_args(args);
                 }
-                FlatOp::Lambda(_) => unreachable!("a closure is bound, not written"),
+                FlatOp::Lambda(..) => unreachable!("a closure is bound, not written"),
                 FlatOp::Data(_)
                 | FlatOp::Cell(_)
                 | FlatOp::Mint
@@ -664,7 +680,7 @@ impl<'a> Lowerer<'a> {
                 self.aliases.insert(binding.binder.var, alias);
                 return;
             }
-            FlatOp::Lambda(_) if is_mut_closure(binder_type) => {
+            FlatOp::Lambda(..) if is_mut_closure(binder_type) => {
                 WriterOp::Data(IrDataOp::Tuple(Vec::new()))
             }
             FlatOp::CellUpdate(..) => unreachable!("only what mutates updates a cell"),
@@ -677,7 +693,13 @@ impl<'a> Lowerer<'a> {
                 op.for_each_operand_mut(&mut |name| *name = self.name(*name));
                 WriterOp::Data(op)
             }
-            FlatOp::Lambda(lambda) => {
+            FlatOp::Lambda(id, captures) => {
+                let lambdas = self.lambdas;
+                let lambda = lambdas.iter().find(|lambda| lambda.id == *id).unwrap();
+                for (binder, capture) in lambda.captures.iter().zip(captures) {
+                    let name = self.name(*capture);
+                    self.aliases.insert(binder.var, name);
+                }
                 let parameters = self.bind_parameters(&lambda.parameters);
                 let body = if writes_html(binder_type) {
                     let mut statements = Vec::new();
@@ -1179,7 +1201,7 @@ impl<'a> Lowerer<'a> {
                 out.push(WriterStmt::WriteApply(self.name(*closure), args));
             }
 
-            FlatOp::Lambda(_) => unreachable!("a closure is bound, not written"),
+            FlatOp::Lambda(..) => unreachable!("a closure is bound, not written"),
             FlatOp::Data(_)
             | FlatOp::Cell(_)
             | FlatOp::Mint
@@ -1457,29 +1479,33 @@ mod tests {
                   }
                   v13
                 }
+                lambda l0[](
+                  v17: Int,
+                ) -> Int {
+                  let v18: Int = 1
+                  let v19: Int = int_add(v17, v18)
+                  v19
+                }
+                mut lambda l1[
+                  v22: Cell[Int],
+                ]() -> Tuple[] {
+                  let v20: (Int) -> Int = l0[]
+                  let v21: Tuple[] = cell_update(v22, v20)
+                  v21
+                }
                 entrypoint Test@e0() -> Html {
                   let v15: Cell[Int] = cell {
                     let v14: Int = 0
                     v14
                   }
                   let v16: Int = cell_read(v15)
-                  let v22: mut () -> Tuple[] = fn() {
-                    let v20: (Int) -> Int = fn(
-                      v17: Int,
-                    ) {
-                      let v18: Int = 1
-                      let v19: Int = int_add(v17, v18)
-                      v19
-                    }
-                    let v21: Tuple[] = cell_update(v15, v20)
-                    v21
-                  }
-                  let v23: Int = 2
-                  let v24: Html = f0(v23, v22)
-                  let v25: String = int_to_string(v16)
-                  let v26: Html = escape(v25)
-                  let v27: Html = concat(v26, v24)
-                  v27
+                  let v23: mut () -> Tuple[] = l1[v15]
+                  let v24: Int = 2
+                  let v25: Html = f0(v24, v23)
+                  let v26: String = int_to_string(v16)
+                  let v27: Html = escape(v26)
+                  let v28: Html = concat(v27, v25)
+                  v28
                 }
 
                 -- writer --
@@ -1505,11 +1531,11 @@ mod tests {
                 }
                 page Test() {
                   let v14: Int = 0
-                  let v22: Tuple[] = ()
-                  let v23: Int = 2
-                  let v25: String = int_to_string(v14)
-                  write_string(v25)
-                  write_function f0(v23, v22)
+                  let v23: Tuple[] = ()
+                  let v24: Int = 2
+                  let v26: String = int_to_string(v14)
+                  write_string(v26)
+                  write_function f0(v24, v23)
                 }
             "#]],
         );
@@ -1577,24 +1603,27 @@ mod tests {
                   }
                   v10
                 }
+                render lambda l0[
+                  v18: String,
+                ](
+                  v12: Int,
+                ) -> Html {
+                  let v13: String = int_to_string(v12)
+                  let v14: String = string_concat(v18, v13)
+                  let v15: ElementId = mint()
+                  let v16: Html = escape(v14)
+                  let v17: Html = element(v15, "li", {}, v16)
+                  v17
+                }
                 entrypoint Test@e0(
                   prefix@v11: String,
                 ) -> Html {
-                  let v18: render (Int) -> Html = fn(
-                    v12: Int,
-                  ) {
-                    let v13: String = int_to_string(v12)
-                    let v14: String = string_concat(v11, v13)
-                    let v15: ElementId = mint()
-                    let v16: Html = escape(v14)
-                    let v17: Html = element(v15, "li", {}, v16)
-                    v17
-                  }
-                  let v19: ElementId = mint()
-                  let v20: Int = 3
-                  let v21: Html = f0(v20, v18)
-                  let v22: Html = element(v19, "ul", {}, v21)
-                  v22
+                  let v19: render (Int) -> Html = l0[v11]
+                  let v20: ElementId = mint()
+                  let v21: Int = 3
+                  let v22: Html = f0(v21, v19)
+                  let v23: Html = element(v20, "ul", {}, v22)
+                  v23
                 }
 
                 -- writer --
@@ -1616,7 +1645,7 @@ mod tests {
                   }
                 }
                 page Test(prefix@v11: String) {
-                  let v18: (Int) -> Html = fn(
+                  let v19: (Int) -> Html = fn(
                     v12: Int,
                   ) {
                     let v13: String = int_to_string(v12)
@@ -1625,9 +1654,9 @@ mod tests {
                     write_string(v13)
                     write("</li>")
                   }
-                  let v20: Int = 3
+                  let v21: Int = 3
                   write("<ul>")
-                  write_function f0(v20, v18)
+                  write_function f0(v21, v19)
                   write("</ul>")
                 }
             "#]],
@@ -1692,29 +1721,32 @@ mod tests {
                   }
                   v10
                 }
+                lambda l0[
+                  v16: Bool,
+                ](
+                  v12: Int,
+                ) -> Int {
+                  let v15: Int = match v16 {
+                    true => {
+                      let v13: Int = 2
+                      let v14: Int = int_mul(v12, v13)
+                      v14
+                    }
+                    false => {
+                      v12
+                    }
+                  }
+                  v15
+                }
                 entrypoint Test@e0(
                   double@v11: Bool,
                 ) -> Html {
-                  let v16: (Int) -> Int = fn(
-                    v12: Int,
-                  ) {
-                    let v15: Int = match v11 {
-                      true => {
-                        let v13: Int = 2
-                        let v14: Int = int_mul(v12, v13)
-                        v14
-                      }
-                      false => {
-                        v12
-                      }
-                    }
-                    v15
-                  }
-                  let v17: Int = 3
-                  let v18: Int = f0(v17, v16)
-                  let v19: String = int_to_string(v18)
-                  let v20: Html = escape(v19)
-                  v20
+                  let v17: (Int) -> Int = l0[v11]
+                  let v18: Int = 3
+                  let v19: Int = f0(v18, v17)
+                  let v20: String = int_to_string(v19)
+                  let v21: Html = escape(v20)
+                  v21
                 }
 
                 -- writer --
@@ -1724,7 +1756,7 @@ mod tests {
                 ) -> Int {
                   let v2: Int = 0
                   let v3: Bool = int_lt_eq(v0, v2)
-                  let v22: Int = match v3 {
+                  let v23: Int = match v3 {
                     true => {
                       let v4: Int = 0
                       v4
@@ -1738,13 +1770,13 @@ mod tests {
                       v9
                     }
                   }
-                  v22
+                  v23
                 }
                 page Test(double@v11: Bool) {
-                  let v16: (Int) -> Int = fn(
+                  let v17: (Int) -> Int = fn(
                     v12: Int,
                   ) {
-                    let v21: Int = match v11 {
+                    let v22: Int = match v11 {
                       true => {
                         let v13: Int = 2
                         let v14: Int = int_mul(v12, v13)
@@ -1754,12 +1786,12 @@ mod tests {
                         v12
                       }
                     }
-                    v21
+                    v22
                   }
-                  let v17: Int = 3
-                  let v18: Int = f0(v17, v16)
-                  let v19: String = int_to_string(v18)
-                  write_string(v19)
+                  let v18: Int = 3
+                  let v19: Int = f0(v18, v17)
+                  let v20: String = int_to_string(v19)
+                  write_string(v20)
                 }
             "#]],
         );
@@ -1818,14 +1850,15 @@ mod tests {
                   }
                   v9
                 }
+                render lambda l0[](
+                  v10: Html,
+                ) -> Html {
+                  let v11: ElementId = mint()
+                  let v12: Html = element(v11, "b", {}, v10)
+                  v12
+                }
                 entrypoint Test@e0() -> Html {
-                  let v13: render (Html) -> Html = fn(
-                    v10: Html,
-                  ) {
-                    let v11: ElementId = mint()
-                    let v12: Html = element(v11, "b", {}, v10)
-                    v12
-                  }
+                  let v13: render (Html) -> Html = l0[]
                   let v14: Int = 2
                   let v15: Html = f0(v14, v13)
                   v15
@@ -2029,18 +2062,19 @@ mod tests {
                   }
                   v10
                 }
+                render lambda l0[](
+                  v12: Int,
+                ) -> Html {
+                  let v13: String = int_to_string(v12)
+                  let v14: Html = escape(v13)
+                  v14
+                }
                 entrypoint Test@e0(
                   show@v11: Bool,
                 ) -> Html {
                   let v19: Int = match v11 {
                     true => {
-                      let v15: render (Int) -> Html = fn(
-                        v12: Int,
-                      ) {
-                        let v13: String = int_to_string(v12)
-                        let v14: Html = escape(v13)
-                        v14
-                      }
+                      let v15: render (Int) -> Html = l0[]
                       let v16: Int = 3
                       let v17: Int = f0(v16, v15)
                       v17

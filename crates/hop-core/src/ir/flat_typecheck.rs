@@ -3,12 +3,11 @@ use crate::hop::typing::{
 };
 use crate::ir::flat_html_element::FlatAttribute;
 use crate::ir::flat_program::{
-    FlatBinding, FlatBlock, FlatFunction, FlatMatch, FlatOp, FlatPattern, FlatProgram,
+    FlatBinding, FlatBlock, FlatFunction, FlatLambda, FlatMatch, FlatOp, FlatPattern, FlatProgram,
 };
 use crate::ir::flat_type::{FlatDataType, FlatSignature, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::{FlatField, FlatTypeDeclarations};
 use crate::ir::function_id::FunctionId;
-use crate::ir::ir_binder::IrBinder;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::value_id::ValueId;
 use crate::symbols::field_name::FieldName;
@@ -31,6 +30,9 @@ pub enum FlatTypeError {
     BlockOfWrongType,
     /// A call calls a function that the program does not declare.
     UndeclaredCallee,
+    /// A binding binds a closure of a lambda that the program does not
+    /// declare.
+    UndeclaredLambda,
     /// A match has a subject that is not data.
     MatchSubjectNotData,
     /// A match has a value of its subject's type that no arm matches.
@@ -73,6 +75,7 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
     let mut checker = Checker {
         declarations: &program.types,
         functions: &program.functions,
+        lambdas: &program.lambdas,
         names: vec![None; program.value_ids.count()],
         scope: Vec::new(),
         live: Vec::new(),
@@ -92,6 +95,32 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
                 checker.bind(param.binder.var, typ)?;
             }
             checker.block(&function.body, expected, function.modifier)
+        })?;
+    }
+    for lambda in &program.lambdas {
+        checker.live.clear();
+        checker.scoped(|checker| {
+            let expected = BoundType::of(&lambda.return_type);
+            if matches!(expected, BoundType::Cell(_) | BoundType::ElementId) {
+                return Err(FlatTypeError::ReturnsUnreturnable);
+            }
+            for capture in &lambda.captures {
+                let typ = BoundType::of(&capture.typ);
+                match typ {
+                    BoundType::Html => return Err(FlatTypeError::HtmlReadMoreThanOnce),
+                    BoundType::ElementId => return Err(FlatTypeError::IdTakenMoreThanOnce),
+                    BoundType::Data(_) | BoundType::Cell(_) | BoundType::Function(_) => {}
+                }
+                checker.bind(capture.var, typ)?;
+            }
+            for param in &lambda.parameters {
+                let typ = BoundType::of(&param.typ);
+                if matches!(typ, BoundType::Cell(_) | BoundType::ElementId) {
+                    return Err(FlatTypeError::CellOrIdParameter);
+                }
+                checker.bind(param.var, typ)?;
+            }
+            checker.block(&lambda.body, expected, lambda.modifier)
         })?;
     }
     for entrypoint in &program.entrypoints {
@@ -121,6 +150,7 @@ fn try_all<T>(
 struct Checker<'a> {
     declarations: &'a FlatTypeDeclarations,
     functions: &'a [FlatFunction],
+    lambdas: &'a [FlatLambda],
     names: Vec<Option<Name<'a>>>,
     // The names bound in the blocks being checked, innermost last.
     scope: Vec<ValueId>,
@@ -288,7 +318,7 @@ impl<'a> Checker<'a> {
                     )?
             }
             FlatOp::Match(match_) => {
-                if !html && !matches!(declared, BoundType::Data(_)) {
+                if matches!(declared, BoundType::Cell(_) | BoundType::ElementId) {
                     return Err(FlatTypeError::IllTypedBinding);
                 }
                 let subject = self
@@ -400,23 +430,26 @@ impl<'a> Checker<'a> {
                 self.live = outer;
                 html
             }
-            FlatOp::Lambda(lambda) => {
+            FlatOp::Lambda(id, captures) => {
                 let BoundType::Function(signature) = declared else {
                     return Err(FlatTypeError::IllTypedBinding);
                 };
-                let result = BoundType::of(&signature.result);
-                // The body runs once per application, so it reads no Html
-                // bound outside of it.
-                let outer = std::mem::take(&mut self.live);
-                self.scoped(|checker| {
-                    checker.lambda_parameters(
-                        &lambda.parameters,
-                        signature.parameters.iter().map(BoundType::of),
-                    )?;
-                    checker.block(&lambda.body, result, signature.modifier)
-                })?;
-                self.live = outer;
-                true
+                let lambdas = self.lambdas;
+                let lambda = (lambdas.iter())
+                    .find(|lambda| lambda.id == *id)
+                    .ok_or(FlatTypeError::UndeclaredLambda)?;
+                signature.modifier == lambda.modifier
+                    && *signature.result == lambda.return_type
+                    && signature.parameters.len() == lambda.parameters.len()
+                    && (signature.parameters.iter().zip(&lambda.parameters))
+                        .all(|(typ, param)| *typ == param.typ)
+                    && self.args(
+                        captures,
+                        lambda
+                            .captures
+                            .iter()
+                            .map(|capture| BoundType::of(&capture.typ)),
+                    )?
             }
             FlatOp::Apply(closure, args) => {
                 let BoundType::Function(signature) = self.read(*closure)? else {
@@ -451,28 +484,6 @@ impl<'a> Checker<'a> {
             && try_all(args.iter().zip(params), |(arg, param)| {
                 Ok(self.read(*arg)? == param)
             })?)
-    }
-
-    fn lambda_parameters(
-        &mut self,
-        parameters: &'a [IrBinder<FlatType>],
-        signature: impl ExactSizeIterator<Item = BoundType<'a>>,
-    ) -> Result<(), FlatTypeError> {
-        let follows = parameters.len() == signature.len()
-            && (parameters.iter())
-                .zip(signature)
-                .all(|(param, typ)| BoundType::of(&param.typ) == typ);
-        if !follows {
-            return Err(FlatTypeError::IllTypedBinding);
-        }
-        for param in parameters {
-            let typ = BoundType::of(&param.typ);
-            if matches!(typ, BoundType::Cell(_) | BoundType::ElementId) {
-                return Err(FlatTypeError::CellOrIdParameter);
-            }
-            self.bind(param.var, typ)?;
-        }
-        Ok(())
     }
 
     fn data_op(&mut self, op: &IrDataOp, declared: &FlatDataType) -> Result<bool, FlatTypeError> {
@@ -806,8 +817,8 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_match_that_produces_a_closure() {
-        let error = FlatProgramBuilder::new()
+    fn should_accept_a_match_that_produces_a_closure() {
+        FlatProgramBuilder::new()
             .entrypoint("Test", [("double", Ty::Bool)], |t| {
                 let scale = t.match_(t.param("double"), |m| {
                     m.arm(Pat::True, |t, _| {
@@ -823,8 +834,21 @@ mod tests {
                 t.escape(t.int_to_string(scaled))
             })
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::IllTypedBinding);
+            .unwrap();
+    }
+
+    #[test]
+    fn should_accept_a_match_that_produces_a_closure_that_renders() {
+        FlatProgramBuilder::new()
+            .entrypoint("Test", [("bold", Ty::Bool)], |t| {
+                let wrap = t.match_(t.param("bold"), |m| {
+                    m.arm(Pat::True, |t, _| t.render_lambda([], |t, _| t.text("b")));
+                    m.arm(Pat::False, |t, _| t.render_lambda([], |t, _| t.text("i")));
+                });
+                t.apply(wrap, [])
+            })
+            .build()
+            .unwrap();
     }
 
     #[test]
