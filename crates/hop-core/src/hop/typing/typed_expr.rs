@@ -255,6 +255,11 @@ pub enum TypedExpr {
     /// relative to the project root.
     Asset { path: RootRelativeFilePath },
 
+    /// A state, e.g. state!(0): a cell that holds the value of `initial`
+    /// until it is updated. Its value is a tuple of the value the cell
+    /// holds and a mut fn that updates the cell with the function it takes.
+    State { initial: Box<Self>, typ: Type },
+
     /// A lambda, e.g. fn(x: Int) { x * 2 }. Its type is a function.
     Lambda {
         params: Vec<(Option<VarName>, Type)>,
@@ -317,19 +322,9 @@ pub struct TypedLetBinding {
     pub value: TypedExpr,
 }
 
-/// A `let` of a state, whose getter and setter are bound unless written
-/// as `_`.
-#[derive(Debug, Clone)]
-pub struct TypedState {
-    pub getter: Option<VarName>,
-    pub setter: Option<VarName>,
-    pub initial: TypedExpr,
-}
-
 #[derive(Debug, Clone)]
 pub enum TypedStatement {
     Let(TypedLetBinding),
-    State(TypedState),
     Expr(TypedExpr),
 }
 
@@ -356,6 +351,7 @@ impl TypedExpr {
             | TypedExpr::OptionUnwrapOr { typ, .. }
             | TypedExpr::ArrayGet { typ, .. }
             | TypedExpr::ArrayEnumerate { typ, .. }
+            | TypedExpr::State { typ, .. }
             | TypedExpr::Lambda { typ, .. }
             | TypedExpr::Apply { typ, .. }
             | TypedExpr::Call { typ, .. } => typ.clone(),
@@ -523,13 +519,6 @@ impl Display for TypedExpr {
                         TypedStatement::Let(binding) => {
                             write!(f, "let {} = {} in ", binding.pattern, binding.value)?;
                         }
-                        TypedStatement::State(state) => write!(
-                            f,
-                            "let ({}, {}) = state!({}) in ",
-                            state.getter.as_ref().map_or("_", VarName::as_str),
-                            state.setter.as_ref().map_or("_", VarName::as_str),
-                            state.initial
-                        )?,
                         TypedStatement::Expr(expr) => write!(f, "{expr}; ")?,
                     }
                 }
@@ -593,6 +582,7 @@ impl Display for TypedExpr {
                 f.write_str("\n)")
             }
             TypedExpr::Asset { path } => write!(f, "asset!(\"/{}\")", path.as_str()),
+            TypedExpr::State { initial, .. } => write!(f, "state!({initial})"),
             TypedExpr::Lambda { params, body, typ } => {
                 if let Type::Data(DataType::Function(function)) = typ {
                     f.write_str(function.modifier.prefix(&function.result))?;

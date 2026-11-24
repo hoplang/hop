@@ -16447,21 +16447,58 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_state_used_as_an_expression() {
-        reject(
+    fn accepts_a_state_that_is_not_taken_apart_where_it_is_written() {
+        accept(
             indoc! {r#"
                 -- main.hop --
                 fn Counter() -> Html {
-                  let count = state!(0);
-                  <p>{count.to_string()}</p>
+                  let pair = state!(0);
+                  let (count, set_count) = pair;
+                  <button on:click={mut fn() { set_count(fn(n) { n + 1 }) }}>{count.to_string()}</button>
+                }
+                render fn counter(start: Int) -> Tuple[Int, mut fn(fn(Int) -> Int) -> Tuple[]] {
+                  state!(start)
                 }
             "#},
             expect![[r#"
-                error: state! needs let (a, b) = state!(...)
-                  --> main.hop (line 2, col 15)
-                1 | fn Counter() -> Html {
-                2 |   let count = state!(0);
-                  |               ^^^^^^
+                -- main.hop --
+                fn Counter() -> Html {
+                  let pair = state!(0) in let (count, set_count) = pair in element(
+                    tag: "button",
+                    attrs: [],
+                    children: concat(
+                      escape(count.to_string()),
+                    ),
+                    on_click: mut fn() -> Tuple[] {
+                      set_count(fn(n: Int) -> Int {
+                        add(n, 1)
+                      })
+                    },
+                  )
+                }
+
+                render fn counter(start: Int) -> Tuple[Int, mut fn(fn(Int) -> Int) -> Tuple[]] {
+                  state!(start)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_state_that_is_not_taken_apart_outside_what_renders() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn counter() -> Tuple[Int, mut fn(fn(Int) -> Int) -> Tuple[]] {
+                  state!(0)
+                }
+            "#},
+            expect![[r#"
+                error: state! needs a render fn
+                  --> main.hop (line 2, col 3)
+                1 | fn counter() -> Tuple[Int, mut fn(fn(Int) -> Int) -> Tuple[]] {
+                2 |   state!(0)
+                  |   ^^^^^^
             "#]],
         );
     }
@@ -16747,7 +16784,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: Variable count is already defined
+                error: Variable count is bound more than once in the pattern
                   --> main.hop (line 2, col 15)
                 1 | fn Counter() -> Html {
                 2 |   let (count, count) = state!(0);

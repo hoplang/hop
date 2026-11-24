@@ -400,9 +400,6 @@ pub enum TypeErrorKind {
     #[error("state! takes exactly one argument, got {actual}")]
     StateMacroArity { actual: usize },
 
-    #[error("state! needs let (a, b) = state!(...)")]
-    StateMacroOutsideLetPair,
-
     #[error("A let pattern must match every value")]
     LetPatternRefutable,
 

@@ -1951,3 +1951,40 @@ fn state_of_a_closure_in_an_option_starts_over_when_the_option_holds_another_lam
         "#]],
     );
 }
+
+#[test]
+fn each_call_of_a_render_fn_that_returns_a_state_has_a_state_of_its_own() {
+    check(
+        indoc! {r#"
+            render fn counter(start: Int) -> Tuple[Int, mut fn(fn(Int) -> Int) -> Tuple[]] {
+              state!(start)
+            }
+
+            page Test {
+              fn body() -> Html {
+                let (a, set_a) = counter(0);
+                let (b, set_b) = counter(10);
+                <>
+                  <button on:click={mut fn() { set_a(fn(curr) { curr + 1 }) }}>{a.to_string()}</button>
+                  <button on:click={mut fn() { set_b(fn(curr) { curr + 1 }) }}>{b.to_string()}</button>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(2), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <button@e1>0</button>
+            <button@e2>10</button>
+            -- click button@e1 --
+            <button@e1>1</button>
+            <button@e2>10</button>
+            -- click button@e2 --
+            <button@e1>1</button>
+            <button@e2>11</button>
+            -- click button@e2 --
+            <button@e1>1</button>
+            <button@e2>12</button>
+        "#]],
+    );
+}

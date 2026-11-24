@@ -1,7 +1,7 @@
-use super::r#type::Type;
+use super::r#type::{DataType, FunctionType, Modifier, Type};
 use super::type_registry::TypeRegistry;
 use super::typecheck_expr::typecheck_expr;
-use super::variable_scope::VariableScope;
+use super::variable_scope::{Context, Position, VariableScope};
 use crate::asset_reference::AssetReference;
 use crate::definition_link::DefinitionLink;
 use crate::document::{CheapString, DocumentRange};
@@ -238,4 +238,73 @@ pub fn typecheck_asset(
     });
 
     Some(TypedExpr::Asset { path: asset_path })
+}
+
+/// Typecheck `state!(initial)`, which holds data and is allowed only in
+/// what renders. Its type is a tuple of the type of the initial value `T`
+/// and the type of the setter, `mut fn(fn(T) -> T) -> Tuple[]`.
+pub fn typecheck_state(
+    args: &[ParsedExpr],
+    subject_range: &DocumentRange,
+    range: &DocumentRange,
+    forwarded_params: &[VarName],
+    var_env: &mut VariableScope,
+    type_env: &TypeEnv,
+    registry: &TypeRegistry,
+    annotations: &mut Vec<HoverAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+    errors: &mut Vec<TypeError>,
+) -> Option<TypedExpr> {
+    let [initial] = args else {
+        errors.push(TypeError::new(
+            TypeErrorKind::StateMacroArity { actual: args.len() },
+            range.clone(),
+        ));
+        return None;
+    };
+    var_env.require(
+        |_| false,
+        |position| TypeErrorKind::StateMacroNotAllowed { position },
+        subject_range,
+        errors,
+    );
+    let outer = var_env.set_context(Context::Outside(Position::InitialValue));
+    let typed_initial = typecheck_expr(
+        initial,
+        None,
+        forwarded_params,
+        var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    );
+    var_env.set_context(outer);
+    let typed_initial = typed_initial?;
+    let data = match typed_initial.typ() {
+        Type::Data(data) if registry.is_data(&data) => data,
+        typ => {
+            errors.push(TypeError::new(
+                TypeErrorKind::StateMacroNotData { typ },
+                initial.range().clone(),
+            ));
+            return None;
+        }
+    };
+    let setter = DataType::Function(FunctionType {
+        modifier: Modifier::Mut,
+        parameters: vec![Type::Data(DataType::Function(FunctionType {
+            modifier: Modifier::Pure,
+            parameters: vec![Type::Data(data.clone())],
+            result: Box::new(Type::Data(data.clone())),
+        }))],
+        result: Box::new(Type::UNIT),
+    });
+    Some(TypedExpr::State {
+        initial: Box::new(typed_initial),
+        typ: Type::Data(DataType::Tuple(vec![data, setter])),
+    })
 }
