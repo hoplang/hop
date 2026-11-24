@@ -14,6 +14,7 @@ use crate::ir::value_id::ValueId;
 use crate::symbols::attribute_name::AttributeName;
 use arbitrary::Unstructured;
 use rand::{SeedableRng, rngs::SmallRng};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
@@ -248,17 +249,17 @@ enum NamedTypes {
 type Arm = (Pat, Vec<String>);
 
 /// A constructor of a pattern, which takes the patterns of its fields.
-enum Ctor {
+enum Ctor<'a> {
     True,
     False,
     None,
     Some,
     Tuple,
     Record,
-    Variant(String),
+    Variant(&'a str),
 }
 
-impl Ctor {
+impl Ctor<'_> {
     fn apply(&self, fields: Vec<(String, Pat)>) -> Pat {
         match self {
             Ctor::True => Pat::True,
@@ -267,7 +268,7 @@ impl Ctor {
             Ctor::Some => Pat::some(fields.into_iter().next().unwrap().1),
             Ctor::Tuple => Pat::Tuple(fields.into_iter().map(|(_, pat)| pat).collect()),
             Ctor::Record => Pat::Record(fields),
-            Ctor::Variant(name) => Pat::Variant(name.clone(), fields),
+            Ctor::Variant(name) => Pat::Variant(name.to_string(), fields),
         }
     }
 }
@@ -1179,28 +1180,28 @@ impl FlatGenerator<'_, '_> {
         self.bind(b, scope, literal)
     }
 
-    fn constructors(
-        types: &FlatTypeDeclarations,
-        typ: &FlatDataType,
-    ) -> Vec<(Ctor, Vec<(String, FlatDataType)>)> {
-        let fields = |fields: &[FlatField]| {
+    fn constructors<'t>(
+        types: &'t FlatTypeDeclarations,
+        typ: &'t FlatDataType,
+    ) -> Vec<(Ctor<'t>, Vec<(Cow<'t, str>, &'t FlatDataType)>)> {
+        let fields = |fields: &'t [FlatField]| {
             fields
                 .iter()
-                .map(|field| (field.name.as_str().to_string(), field.typ.clone()))
+                .map(|field| (Cow::Borrowed(field.name.as_str()), &field.typ))
                 .collect()
         };
         match typ {
             FlatDataType::Bool => vec![(Ctor::True, Vec::new()), (Ctor::False, Vec::new())],
             FlatDataType::Option(inner) => vec![
                 (Ctor::None, Vec::new()),
-                (Ctor::Some, vec![("0".to_string(), (**inner).clone())]),
+                (Ctor::Some, vec![(Cow::Borrowed("0"), &**inner)]),
             ],
             FlatDataType::Tuple(elements) => vec![(
                 Ctor::Tuple,
                 elements
                     .iter()
                     .enumerate()
-                    .map(|(i, element)| (i.to_string(), element.clone()))
+                    .map(|(i, element)| (Cow::Owned(i.to_string()), element))
                     .collect(),
             )],
             FlatDataType::Record(name) => {
@@ -1213,8 +1214,10 @@ impl FlatGenerator<'_, '_> {
                 .variants
                 .iter()
                 .map(|variant| {
-                    let name = variant.name.as_str().to_string();
-                    (Ctor::Variant(name), fields(&variant.fields))
+                    (
+                        Ctor::Variant(variant.name.as_str()),
+                        fields(&variant.fields),
+                    )
                 })
                 .collect(),
             _ => Vec::new(),
@@ -1225,12 +1228,32 @@ impl FlatGenerator<'_, '_> {
         if depth == 0 {
             return false;
         }
-        let ctors = Self::constructors(types, typ);
-        ctors.len() > 1
-            || ctors
+        let can_branch = |field: &FlatDataType| Self::can_branch(types, field, depth - 1);
+        match typ {
+            FlatDataType::Bool | FlatDataType::Option(_) => true,
+            FlatDataType::Tuple(elements) => elements.iter().any(can_branch),
+            FlatDataType::Record(name) => types
+                .record(name)
+                .expect("a record is declared")
+                .fields
                 .iter()
-                .flat_map(|(_, fields)| fields)
-                .any(|(_, field)| Self::can_branch(types, field, depth - 1))
+                .any(|field| can_branch(&field.typ)),
+            FlatDataType::Enum(name) => {
+                let variants = &types
+                    .enumeration(name)
+                    .expect("an enum is declared")
+                    .variants;
+                variants.len() > 1
+                    || variants
+                        .iter()
+                        .flat_map(|variant| &variant.fields)
+                        .any(|field| can_branch(&field.typ))
+            }
+            FlatDataType::String
+            | FlatDataType::Int
+            | FlatDataType::Float
+            | FlatDataType::Array(_) => false,
+        }
     }
 
     fn partition(
@@ -1262,7 +1285,7 @@ impl FlatGenerator<'_, '_> {
             // A type with one constructor branches in one of its fields.
             let forced_field = if forced && single {
                 let branching: Vec<usize> = (0..fields.len())
-                    .filter(|&i| Self::can_branch(b.types(), &fields[i].1, depth - 1))
+                    .filter(|&i| Self::can_branch(b.types(), fields[i].1, depth - 1))
                     .collect();
                 Some(*self.u.choose(&branching).unwrap())
             } else {
@@ -1279,7 +1302,7 @@ impl FlatGenerator<'_, '_> {
                     .flat_map(|(pats, binds)| {
                         field_arms.iter().map(move |(pat, field_binds)| {
                             let mut pats = pats.clone();
-                            pats.push((name.clone(), pat.clone()));
+                            pats.push((name.to_string(), pat.clone()));
                             let binds = binds.iter().chain(field_binds).cloned().collect();
                             (pats, binds)
                         })
