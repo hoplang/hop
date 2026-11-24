@@ -1988,3 +1988,218 @@ fn each_call_of_a_render_fn_that_returns_a_state_has_a_state_of_its_own() {
         "#]],
     );
 }
+
+#[test]
+fn handlers_in_a_record_a_render_fn_returns_write_the_state_of_its_call() {
+    check(
+        indoc! {r#"
+            record CounterModel {
+              count: Int,
+              incr: mut fn() -> Tuple[],
+              decr: mut fn() -> Tuple[],
+            }
+
+            render fn use_counter() -> CounterModel {
+              let (count, update_count) = state!(0);
+              CounterModel {
+                count: count,
+                incr: mut fn() {
+                  update_count(fn(curr) {
+                    curr + 1
+                  })
+                },
+                decr: mut fn() {
+                  update_count(fn(curr) {
+                    curr - 1
+                  })
+                },
+              }
+            }
+
+            fn Counter() -> Html {
+              let CounterModel {count, incr, decr} = use_counter();
+              <div>
+                {count.to_string()}
+                <button on:click={incr}>
+                  incr
+                </button>
+                <button on:click={decr}>
+                  decr
+                </button>
+              </div>
+            }
+
+            page Test {
+              fn body() -> Html {
+                <Counter/>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(2),
+            Event::Click(3),
+            Event::Click(3),
+            Event::Click(3),
+        ],
+        expect![[r#"
+            -- render --
+            <div@e1>
+              0
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+            -- click button@e2 --
+            <div@e1>
+              1
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+            -- click button@e2 --
+            <div@e1>
+              2
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+            -- click button@e3 --
+            <div@e1>
+              1
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+            -- click button@e3 --
+            <div@e1>
+              0
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+            -- click button@e3 --
+            <div@e1>
+              -1
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+        "#]],
+    );
+}
+
+#[test]
+fn an_updater_chooses_the_next_record_state_from_the_current_one() {
+    check(
+        indoc! {r#"
+            enum CounterErr {
+              CantIncrease,
+              CantDecrease,
+            }
+
+            record CounterState {
+              count: Int,
+              err: Option[CounterErr],
+            }
+
+            record CounterModel {
+              count: Int,
+              err: Option[CounterErr],
+              incr: mut fn() -> Tuple[],
+              decr: mut fn() -> Tuple[],
+            }
+
+            render fn use_counter() -> CounterModel {
+              let (state, update) = state!(CounterState {count: 0, err: None});
+              let max_count = 2;
+              let min_count = 0;
+              CounterModel {
+                count: state.count,
+                err: state.err,
+                incr: mut fn() {
+                  update(fn(s) {
+                    match s.count >= max_count {
+                      true => CounterState {...s, err: Some(CounterErr::CantIncrease)},
+                      false => CounterState {count: s.count + 1, err: None},
+                    }
+                  })
+                },
+                decr: mut fn() {
+                  update(fn(s) {
+                    match s.count <= min_count {
+                      true => CounterState {...s, err: Some(CounterErr::CantDecrease)},
+                      false => CounterState {count: s.count - 1, err: None},
+                    }
+                  })
+                },
+              }
+            }
+
+            fn Counter() -> Html {
+              let CounterModel {count, err, incr, decr} = use_counter();
+              <div>
+                {count.to_string()}
+                {match err {
+                  None => <></>,
+                  Some(CounterErr::CantIncrease) => <div>Can't increase counter</div>,
+                  Some(CounterErr::CantDecrease) => <div>Can't decrease counter</div>,
+                }}
+                <button on:click={incr}>
+                  incr
+                </button>
+                <button on:click={decr}>
+                  decr
+                </button>
+              </div>
+            }
+
+            page Test {
+              fn body() -> Html {
+                <Counter/>
+              }
+            }
+        "#},
+        &[
+            Event::Click(3),
+            Event::Click(2),
+            Event::Click(2),
+            Event::Click(2),
+            Event::Click(3),
+        ],
+        expect![[r#"
+            -- render --
+            <div@e1>
+              0
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+            -- click button@e3 --
+            <div@e1>
+              0
+              <div@e4>Can't decrease counter</div>
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+            -- click button@e2 --
+            <div@e1>
+              1
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+            -- click button@e2 --
+            <div@e1>
+              2
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+            -- click button@e2 --
+            <div@e1>
+              2
+              <div@e5>Can't increase counter</div>
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+            -- click button@e3 --
+            <div@e1>
+              1
+              <button@e2>incr</button>
+              <button@e3>decr</button>
+            </div>
+        "#]],
+    );
+}
