@@ -713,7 +713,7 @@ impl<'a> FlatBlockBuilder<'a> {
 
     pub fn text(&self, content: &str) -> ValueId {
         assert!(!content.contains(['<', '{', '}']));
-        self.push_html(FlatOp::Text(CheapString::new(content.to_string())))
+        self.push_html(FlatOp::HtmlText(CheapString::new(content.to_string())))
     }
 
     pub fn element(
@@ -742,7 +742,7 @@ impl<'a> FlatBlockBuilder<'a> {
         children: Option<ValueId>,
         on_click: Option<ValueId>,
     ) -> ValueId {
-        self.push_html(FlatOp::Element(FlatHtmlElement {
+        self.push_html(FlatOp::HtmlElement(FlatHtmlElement {
             element: HtmlElementKind::parse(tag).unwrap(),
             attributes: attributes.into_iter().collect(),
             children,
@@ -774,11 +774,11 @@ impl<'a> FlatBlockBuilder<'a> {
     }
 
     pub fn escape(&self, expr: ValueId) -> ValueId {
-        self.push_html(FlatOp::Escape(expr))
+        self.push_html(FlatOp::HtmlEscape(expr))
     }
 
     pub fn html_concat(&self, parts: impl IntoIterator<Item = ValueId>) -> ValueId {
-        self.push_html(FlatOp::Concat(parts.into_iter().collect()))
+        self.push_html(FlatOp::HtmlConcat(parts.into_iter().collect()))
     }
 
     pub fn html_for<F>(&self, array: ValueId, body_fn: F) -> ValueId
@@ -791,7 +791,7 @@ impl<'a> FlatBlockBuilder<'a> {
         let typ = *element_type;
         let var = self.program.binder(FlatType::Data(typ.clone()));
         let body = self.block(|t| body_fn(t, var)).into_block();
-        self.push_html(FlatOp::For(FlatFor {
+        self.push_html(FlatOp::HtmlFor(FlatFor {
             var: Some(IrBinder { var, typ }),
             array,
             key: None,
@@ -823,7 +823,7 @@ impl<'a> FlatBlockBuilder<'a> {
         F: FnOnce(&FlatBlockBuilder<'_>) -> ValueId,
     {
         let body = self.block(body_fn).into_block();
-        self.push_html(FlatOp::For(FlatFor {
+        self.push_html(FlatOp::HtmlFor(FlatFor {
             var: None,
             array,
             key: None,
@@ -941,7 +941,7 @@ impl KeyedFor<'_, '_> {
             .builder
             .block(|t| body_fn(t, self.var.var))
             .into_block();
-        self.builder.push_html(FlatOp::For(FlatFor {
+        self.builder.push_html(FlatOp::HtmlFor(FlatFor {
             var: Some(self.var),
             array: self.array,
             key: Some(self.key),

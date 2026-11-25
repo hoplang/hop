@@ -84,7 +84,7 @@ fn eliminate_binding(
     let IrBinding { binder, op } = binding;
     let op = match op {
         FlatOp::Match(match_) => FlatOp::Match(eliminate_match(match_, live, keep)),
-        FlatOp::For(FlatFor {
+        FlatOp::HtmlFor(FlatFor {
             var,
             array,
             key,
@@ -93,7 +93,7 @@ fn eliminate_binding(
             let body = eliminate_block(body, live, keep);
             let key = key.map(|key| eliminate_block(key, live, keep));
             let var = var.filter(|binder| live.contains(&binder.var));
-            FlatOp::For(FlatFor {
+            FlatOp::HtmlFor(FlatFor {
                 var,
                 array,
                 key,

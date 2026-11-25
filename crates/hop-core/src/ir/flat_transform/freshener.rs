@@ -84,7 +84,7 @@ impl<'a> Freshener<'a> {
         let op = match &binding.op {
             FlatOp::Match(match_) => FlatOp::Match(self.freshen_match(match_)),
             FlatOp::Cell(initial) => FlatOp::Cell(self.freshen_block(initial)),
-            FlatOp::For(FlatFor {
+            FlatOp::HtmlFor(FlatFor {
                 var,
                 array,
                 key,
@@ -92,7 +92,7 @@ impl<'a> Freshener<'a> {
             }) => {
                 let array = self.name(*array);
                 let var = var.as_ref().map(|binder| self.fresh_binder(binder));
-                FlatOp::For(FlatFor {
+                FlatOp::HtmlFor(FlatFor {
                     var,
                     array,
                     key: key.as_ref().map(|key| self.freshen_block(key)),

@@ -122,7 +122,7 @@ fn fits(block: &FlatBlock, budget: &mut usize) -> bool {
         *budget = rest;
         match &binding.op {
             FlatOp::Match(match_) => (match_.arms.iter()).all(|arm| fits(&arm.body, budget)),
-            FlatOp::For(for_) => {
+            FlatOp::HtmlFor(for_) => {
                 (for_.key.iter()).all(|key| fits(key, budget)) && fits(&for_.body, budget)
             }
             FlatOp::Cell(initial) => fits(initial, budget),
@@ -200,7 +200,7 @@ impl<'a> Evaluator<'a> {
                 var,
                 typ: FlatType::HTML,
             },
-            op: FlatOp::Concat(concat.parts.clone()),
+            op: FlatOp::HtmlConcat(concat.parts.clone()),
         });
         var
     }
@@ -359,12 +359,12 @@ impl<'a> Evaluator<'a> {
                     FlatOp::Data(op)
                 }
             },
-            FlatOp::For(FlatFor {
+            FlatOp::HtmlFor(FlatFor {
                 var,
                 array,
                 key,
                 body,
-            }) => FlatOp::For(FlatFor {
+            }) => FlatOp::HtmlFor(FlatFor {
                 var,
                 array,
                 key: key.map(|key| self.block(key)),
@@ -398,7 +398,7 @@ impl<'a> Evaluator<'a> {
                 }
                 FlatOp::Apply(closure, args)
             }
-            FlatOp::Concat(parts) => {
+            FlatOp::HtmlConcat(parts) => {
                 let mut flattened = Vec::with_capacity(parts.len());
                 for part in parts {
                     match self.html_concats.get(&part) {
@@ -417,18 +417,18 @@ impl<'a> Evaluator<'a> {
                 }
                 return;
             }
-            FlatOp::Escape(string) => match self.values.get(&string) {
+            FlatOp::HtmlEscape(string) => match self.values.get(&string) {
                 // TODO: Fold a literal with a carriage return too, once the
                 // escapes of the evaluator and of the TypeScript and Rust
                 // backends write it as &#13;.
                 Some(IrDataOp::StringLiteral(value)) if !value.as_str().contains('\r') => {
                     let mut markup = String::new();
                     write_escaped_html(value.as_str(), &mut markup);
-                    FlatOp::Text(CheapString::new(markup))
+                    FlatOp::HtmlText(CheapString::new(markup))
                 }
-                _ => FlatOp::Escape(string),
+                _ => FlatOp::HtmlEscape(string),
             },
-            FlatOp::Element(mut element) => {
+            FlatOp::HtmlElement(mut element) => {
                 let values = &self.values;
                 element.attributes.retain(|_, attribute| {
                     !matches!(attribute, FlatAttribute::Presence(present)
@@ -450,11 +450,11 @@ impl<'a> Evaluator<'a> {
                         *attribute = FlatAttribute::Constant(constant);
                     }
                 }
-                FlatOp::Element(element)
+                FlatOp::HtmlElement(element)
             }
             // A cell is never constant, as a click may have set it.
             FlatOp::Cell(initial) => FlatOp::Cell(self.block(initial)),
-            op @ (FlatOp::Call(..) | FlatOp::AssertEq(..) | FlatOp::Text(_)) => op,
+            op @ (FlatOp::Call(..) | FlatOp::AssertEq(..) | FlatOp::HtmlText(_)) => op,
         };
         // Only Html reads a concat, so this binds none for a value.
         op.for_each_operand_mut(&mut |operand| *operand = self.bind_concat(*operand, out));

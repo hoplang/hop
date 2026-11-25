@@ -72,19 +72,19 @@ pub enum FlatOp {
     /// `(T, T) -> Tuple[]`.
     AssertEq(AssertionId, ValueId, ValueId),
     /// Render text as written. `Html`.
-    Text(CheapString),
+    HtmlText(CheapString),
     /// Html-escape a string. `String -> Html`.
-    Escape(ValueId),
+    HtmlEscape(ValueId),
     /// Concatenate Html. `(Html, ..., Html) -> Html`.
-    Concat(Vec<ValueId>),
+    HtmlConcat(Vec<ValueId>),
     /// Bind a Html element, whose node its binding keeps across renders. A
     /// void element has no children, and every other element has them.
     /// `Html -> Html`, or `Html` for a void element.
-    Element(FlatHtmlElement),
+    HtmlElement(FlatHtmlElement),
     /// Run a fold-map over an array, where each iteration produces a Html value.
     /// The key, when there is one, gives each element the identity its
     /// cells and elements keep across renders. `Array[T] -> Html`.
-    For(FlatFor),
+    HtmlFor(FlatFor),
     Lambda(LambdaId, Vec<ValueId>),
     /// Invoke a closure.
     Apply(ValueId, Vec<ValueId>),
@@ -141,7 +141,7 @@ impl FlatLambda {
                             close_block(&mut arm.body, bound, capture);
                         }
                     }
-                    FlatOp::For(for_) => {
+                    FlatOp::HtmlFor(for_) => {
                         if let Some(binder) = &for_.var {
                             bound.insert(binder.var);
                         }
@@ -222,18 +222,18 @@ impl FlatOp {
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
             FlatOp::Data(op) => op.for_each_operand(f),
-            FlatOp::Text(_) | FlatOp::Cell(_) => {}
-            FlatOp::Escape(name) => f(*name),
+            FlatOp::HtmlText(_) | FlatOp::Cell(_) => {}
+            FlatOp::HtmlEscape(name) => f(*name),
             FlatOp::AssertEq(_, left, right) => {
                 f(*left);
                 f(*right);
             }
-            FlatOp::Call(_, names) | FlatOp::Lambda(_, names) | FlatOp::Concat(names) => {
+            FlatOp::Call(_, names) | FlatOp::Lambda(_, names) | FlatOp::HtmlConcat(names) => {
                 for name in names {
                     f(*name);
                 }
             }
-            FlatOp::Element(element) => {
+            FlatOp::HtmlElement(element) => {
                 element.for_each_attribute_operand(f);
                 if let Some(children) = element.children {
                     f(children);
@@ -243,7 +243,7 @@ impl FlatOp {
                 }
             }
             FlatOp::Match(match_) => f(match_.subject),
-            FlatOp::For(for_) => f(for_.array),
+            FlatOp::HtmlFor(for_) => f(for_.array),
             FlatOp::Apply(closure, args) => {
                 f(*closure);
                 for arg in args {
@@ -256,18 +256,18 @@ impl FlatOp {
     pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         match self {
             FlatOp::Data(op) => op.for_each_operand_mut(f),
-            FlatOp::Text(_) | FlatOp::Cell(_) => {}
-            FlatOp::Escape(name) => f(name),
+            FlatOp::HtmlText(_) | FlatOp::Cell(_) => {}
+            FlatOp::HtmlEscape(name) => f(name),
             FlatOp::AssertEq(_, left, right) => {
                 f(left);
                 f(right);
             }
-            FlatOp::Call(_, names) | FlatOp::Lambda(_, names) | FlatOp::Concat(names) => {
+            FlatOp::Call(_, names) | FlatOp::Lambda(_, names) | FlatOp::HtmlConcat(names) => {
                 for name in names {
                     f(name);
                 }
             }
-            FlatOp::Element(element) => {
+            FlatOp::HtmlElement(element) => {
                 element.for_each_attribute_operand_mut(f);
                 if let Some(children) = &mut element.children {
                     f(children);
@@ -277,7 +277,7 @@ impl FlatOp {
                 }
             }
             FlatOp::Match(match_) => f(&mut match_.subject),
-            FlatOp::For(for_) => f(&mut for_.array),
+            FlatOp::HtmlFor(for_) => f(&mut for_.array),
             FlatOp::Apply(closure, args) => {
                 f(closure);
                 for arg in args {
@@ -361,10 +361,10 @@ mod test_support {
                 FlatOp::AssertEq(assertion, left, right) => {
                     write!(f, "assert_eq#{assertion}({left}, {right})")
                 }
-                FlatOp::Text(content) => write!(f, "text({:?})", content.as_str()),
-                FlatOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),
-                FlatOp::Escape(string) => write!(f, "escape({string})"),
-                FlatOp::Element(element) => {
+                FlatOp::HtmlText(content) => write!(f, "text({:?})", content.as_str()),
+                FlatOp::HtmlConcat(parts) => write!(f, "concat({})", join(parts, ", ")),
+                FlatOp::HtmlEscape(string) => write!(f, "escape({string})"),
+                FlatOp::HtmlElement(element) => {
                     write!(f, "element({:?}, {{", element.element.as_str())?;
                     for (i, (name, attribute)) in element.attributes.iter().enumerate() {
                         let sep = if i > 0 { ", " } else { "" };
@@ -388,7 +388,7 @@ mod test_support {
                     }
                     Ok(())
                 }
-                FlatOp::For(FlatFor {
+                FlatOp::HtmlFor(FlatFor {
                     var,
                     array,
                     key,

@@ -407,11 +407,11 @@ impl<'a> Lowerer<'a> {
                 self.read_args(args);
             }
             FlatOp::Cell(initial) => self.analyze_block(initial),
-            FlatOp::Text(_)
-            | FlatOp::Escape(_)
-            | FlatOp::Concat(_)
-            | FlatOp::Element(_)
-            | FlatOp::For(_) => unreachable!("an op of a value renders no Html"),
+            FlatOp::HtmlText(_)
+            | FlatOp::HtmlEscape(_)
+            | FlatOp::HtmlConcat(_)
+            | FlatOp::HtmlElement(_)
+            | FlatOp::HtmlFor(_) => unreachable!("an op of a value renders no Html"),
         }
     }
 
@@ -426,9 +426,9 @@ impl<'a> Lowerer<'a> {
         }
         for binding in html_bindings(block) {
             match &binding.op {
-                FlatOp::Text(_) | FlatOp::Concat(_) => {}
-                FlatOp::Escape(string) => self.read(*string, Reader::Escaped),
-                FlatOp::Element(FlatHtmlElement { attributes, .. }) => {
+                FlatOp::HtmlText(_) | FlatOp::HtmlConcat(_) => {}
+                FlatOp::HtmlEscape(string) => self.read(*string, Reader::Escaped),
+                FlatOp::HtmlElement(FlatHtmlElement { attributes, .. }) => {
                     for attribute in attributes.values() {
                         match attribute {
                             FlatAttribute::Value(value) => {
@@ -448,7 +448,7 @@ impl<'a> Lowerer<'a> {
                         self.analyze_block(&arm.body);
                     }
                 }
-                FlatOp::For(FlatFor {
+                FlatOp::HtmlFor(FlatFor {
                     var, array, body, ..
                 }) => {
                     if let Some(binder) = var {
@@ -708,11 +708,11 @@ impl<'a> Lowerer<'a> {
                 let args = self.lower_args(args, out);
                 WriterOp::Apply(self.name(*closure), args)
             }
-            FlatOp::Text(_)
-            | FlatOp::Escape(_)
-            | FlatOp::Concat(_)
-            | FlatOp::Element(_)
-            | FlatOp::For(_) => unreachable!("an op of a value renders no Html"),
+            FlatOp::HtmlText(_)
+            | FlatOp::HtmlEscape(_)
+            | FlatOp::HtmlConcat(_)
+            | FlatOp::HtmlElement(_)
+            | FlatOp::HtmlFor(_) => unreachable!("an op of a value renders no Html"),
         };
         out.push(IrBinding {
             binder: IrBinder {
@@ -1128,24 +1128,24 @@ impl<'a> Lowerer<'a> {
             .get(&html)
             .unwrap_or_else(|| panic!("{html:?} is read as Html but is not Html"));
         match &binding.op {
-            FlatOp::Text(text) => write(out, text.as_str()),
+            FlatOp::HtmlText(text) => write(out, text.as_str()),
 
-            FlatOp::Escape(string) => self.write_escaped(*string, out),
+            FlatOp::HtmlEscape(string) => self.write_escaped(*string, out),
 
-            FlatOp::Concat(parts) => {
+            FlatOp::HtmlConcat(parts) => {
                 for part in parts {
                     self.write_html(*part, out);
                 }
             }
 
-            FlatOp::Element(element) => self.write_element(element, out),
+            FlatOp::HtmlElement(element) => self.write_element(element, out),
 
             FlatOp::Match(match_) => {
                 let (decision, used, mut parts) = self.compile_match(match_);
                 self.write_decision(&decision, &match_.arms, &used, &mut parts, out);
             }
 
-            FlatOp::For(FlatFor {
+            FlatOp::HtmlFor(FlatFor {
                 var,
                 array,
                 body,

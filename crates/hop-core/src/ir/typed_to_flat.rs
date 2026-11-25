@@ -815,10 +815,10 @@ impl<'a> Compiler<'a> {
                     );
                     compiled.push(self.compile_expr(part));
                 }
-                return self.push_html(FlatOp::Concat(compiled));
+                return self.push_html(FlatOp::HtmlConcat(compiled));
             }
             TypedExpr::HtmlText { value } => {
-                return self.push_html(FlatOp::Text(value.clone()));
+                return self.push_html(FlatOp::HtmlText(value.clone()));
             }
             TypedExpr::HtmlEscape { expr } => {
                 assert_eq!(
@@ -827,7 +827,7 @@ impl<'a> Compiler<'a> {
                     "HtmlEscape must hold a String, but holds {expr}"
                 );
                 let string = self.compile_expr(expr);
-                return self.push_html(FlatOp::Escape(string));
+                return self.push_html(FlatOp::HtmlEscape(string));
             }
             TypedExpr::Element {
                 element,
@@ -869,7 +869,7 @@ impl<'a> Compiler<'a> {
                 } else {
                     Some(self.compile_expr(children))
                 };
-                return self.push_html(FlatOp::Element(FlatHtmlElement {
+                return self.push_html(FlatOp::HtmlElement(FlatHtmlElement {
                     element: element.clone(),
                     attributes,
                     children,
@@ -1015,7 +1015,7 @@ impl<'a> Compiler<'a> {
                 let key = key.as_ref().map(|key| self.compile_value_block(key));
                 let body = self.compile_html_block(body);
                 self.pop_scope();
-                return self.push_html(FlatOp::For(FlatFor {
+                return self.push_html(FlatOp::HtmlFor(FlatFor {
                     var,
                     array,
                     key,

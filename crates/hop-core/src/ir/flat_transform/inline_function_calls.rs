@@ -205,12 +205,12 @@ impl<'a> Inliner<'a> {
                     })
                     .collect(),
             }),
-            FlatOp::For(FlatFor {
+            FlatOp::HtmlFor(FlatFor {
                 var,
                 array,
                 key,
                 body,
-            }) => FlatOp::For(FlatFor {
+            }) => FlatOp::HtmlFor(FlatFor {
                 var,
                 array,
                 key: key.map(|key| self.block(key)),

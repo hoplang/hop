@@ -241,7 +241,9 @@ impl<'a> Checker<'a> {
         modifier: IrModifier,
     ) -> Result<(), FlatTypeError> {
         let allowed = match binding.op {
-            FlatOp::Cell(_) | FlatOp::Element(_) | FlatOp::For(_) => modifier == IrModifier::Render,
+            FlatOp::Cell(_) | FlatOp::HtmlElement(_) | FlatOp::HtmlFor(_) => {
+                modifier == IrModifier::Render
+            }
             FlatOp::AssertEq(..) => modifier == IrModifier::Test,
             _ => true,
         };
@@ -311,12 +313,12 @@ impl<'a> Checker<'a> {
                 }
                 _ => false,
             },
-            FlatOp::Text(_) => html,
-            FlatOp::Escape(name) => html && self.read(*name)?.is(&FlatType::STRING),
-            FlatOp::Concat(parts) => {
+            FlatOp::HtmlText(_) => html,
+            FlatOp::HtmlEscape(name) => html && self.read(*name)?.is(&FlatType::STRING),
+            FlatOp::HtmlConcat(parts) => {
                 html && try_all(parts, |part| Ok(self.read(*part)?.is(&FlatType::HTML)))?
             }
-            FlatOp::Element(element) => {
+            FlatOp::HtmlElement(element) => {
                 let attributes = try_all(element.attributes.values(), |attribute| {
                     Ok(match attribute {
                         FlatAttribute::Value(name) => self.read(*name)?.is(&FlatType::STRING),
@@ -344,7 +346,7 @@ impl<'a> Checker<'a> {
                 };
                 html && attributes && children
             }
-            FlatOp::For(for_) => {
+            FlatOp::HtmlFor(for_) => {
                 let Some(FlatDataType::Array(element)) = self.data(for_.array)? else {
                     return Err(FlatTypeError::IllTypedBinding);
                 };

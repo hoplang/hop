@@ -1989,7 +1989,7 @@ mod tests {
         let debug = match &binding.op {
             FlatOp::Match(_) => "Match".to_string(),
             FlatOp::Cell(_) => "Cell".to_string(),
-            FlatOp::For(_) => "For".to_string(),
+            FlatOp::HtmlFor(_) => "For".to_string(),
             FlatOp::Lambda(..) => "Lambda".to_string(),
             op => format!("{op:?}"),
         };
@@ -2034,7 +2034,7 @@ mod tests {
                 .iter()
                 .map(|arm| (bound(&arm.pattern), &arm.body))
                 .collect(),
-            FlatOp::For(for_) => {
+            FlatOp::HtmlFor(for_) => {
                 let var: Vec<ValueId> = for_.var.iter().map(|binder| binder.var).collect();
                 let mut nested = Vec::new();
                 if let Some(key) = &for_.key {
@@ -2196,7 +2196,7 @@ mod tests {
                             FlatType::Data(FlatDataType::Function(_))
                         ));
                     }
-                    FlatOp::For(for_) => {
+                    FlatOp::HtmlFor(for_) => {
                         self.loops += 1;
                         self.keyed_loops += usize::from(for_.key.is_some());
                         self.closures_taken_out += usize::from(matches!(
@@ -2204,7 +2204,7 @@ mod tests {
                             Some(var) if matches!(var.typ, FlatDataType::Function(_))
                         ));
                     }
-                    FlatOp::Element(element) => {
+                    FlatOp::HtmlElement(element) => {
                         self.elements += 1;
                         if let Some(handler) = element.on_click {
                             self.clicks += 1;
@@ -2442,12 +2442,12 @@ mod tests {
             FloatLiteral               116.5    93.8    94.7     0.0
             FloatToInt                 141.0    93.8    94.1    57.5
             HtmlApply                   13.5    84.4    93.1    70.4
-            HtmlConcat                 315.5    96.9    94.0    40.6
-            HtmlElement                139.6    90.6    93.6    63.0
-            HtmlEscape                 190.1    96.9    94.0    54.7
             HtmlFor                     20.2    90.6    93.5    68.7
+            HtmlHtmlConcat             315.5    96.9    94.0    40.6
+            HtmlHtmlElement            139.6    90.6    93.6    63.0
+            HtmlHtmlEscape             190.1    96.9    94.0    54.7
+            HtmlHtmlText                77.1    93.8    94.6     0.0
             HtmlLambda                  80.5    90.6    93.1    33.1
-            HtmlText                    77.1    93.8    94.6     0.0
             IntLiteral                 169.3    90.6    94.9     0.0
             IntToFloat                 141.9    93.8    94.1    64.0
             IntToString                180.5    93.8    94.9    60.0

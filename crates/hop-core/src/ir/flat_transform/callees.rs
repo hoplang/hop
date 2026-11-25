@@ -20,7 +20,7 @@ pub fn collect_callees(
                     collect_callees(&arm.body, lambdas, created, out);
                 }
             }
-            FlatOp::For(FlatFor { key, body, .. }) => {
+            FlatOp::HtmlFor(FlatFor { key, body, .. }) => {
                 if let Some(key) = key {
                     collect_callees(key, lambdas, created, out);
                 }
@@ -35,10 +35,10 @@ pub fn collect_callees(
             FlatOp::Cell(initial) => collect_callees(initial, lambdas, created, out),
             FlatOp::Data(_)
             | FlatOp::AssertEq(..)
-            | FlatOp::Text(_)
-            | FlatOp::Escape(_)
-            | FlatOp::Concat(_)
-            | FlatOp::Element(_)
+            | FlatOp::HtmlText(_)
+            | FlatOp::HtmlEscape(_)
+            | FlatOp::HtmlConcat(_)
+            | FlatOp::HtmlElement(_)
             | FlatOp::Apply(..) => {}
         }
     }

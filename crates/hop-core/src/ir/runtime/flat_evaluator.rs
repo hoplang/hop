@@ -322,20 +322,20 @@ fn evaluate_op<'a>(
             Value::Tuple(Rc::new([]))
         }
 
-        FlatOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.as_str()))?),
+        FlatOp::HtmlText(content) => Value::Html(Html::new(HtmlNode::Text(content.as_str()))?),
 
-        FlatOp::Escape(string) => Value::Html(Html::new(HtmlNode::Escape(
+        FlatOp::HtmlEscape(string) => Value::Html(Html::new(HtmlNode::Escape(
             env[string].as_string().clone(),
         ))?),
 
-        FlatOp::Concat(parts) => Value::Html(Html::new(HtmlNode::Concat(
+        FlatOp::HtmlConcat(parts) => Value::Html(Html::new(HtmlNode::Concat(
             parts
                 .iter()
                 .map(|part| env[part].clone().unwrap_html())
                 .collect(),
         ))?),
 
-        FlatOp::Element(FlatHtmlElement {
+        FlatOp::HtmlElement(FlatHtmlElement {
             element,
             attributes,
             children,
@@ -427,7 +427,7 @@ fn evaluate_op<'a>(
             }
         }
 
-        FlatOp::For(FlatFor {
+        FlatOp::HtmlFor(FlatFor {
             var: loop_var,
             array,
             key,
