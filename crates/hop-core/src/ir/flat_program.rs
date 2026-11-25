@@ -55,80 +55,6 @@ pub struct FlatLambda {
     pub body: FlatBlock,
 }
 
-impl FlatLambda {
-    pub fn closing(
-        id: LambdaId,
-        modifier: IrModifier,
-        parameters: Vec<IrBinder<FlatType>>,
-        return_type: FlatType,
-        mut body: FlatBlock,
-        mut capture: impl FnMut(ValueId) -> IrBinder<FlatType>,
-    ) -> (FlatLambda, Vec<ValueId>) {
-        let mut bound: HashSet<ValueId> = parameters.iter().map(|param| param.var).collect();
-        let mut captured = Vec::new();
-        let mut captures: Vec<IrBinder<FlatType>> = Vec::new();
-        close_block(&mut body, &mut bound, &mut |name| {
-            let index = match captured.iter().position(|outer| *outer == name) {
-                Some(index) => index,
-                None => {
-                    captured.push(name);
-                    captures.push(capture(name));
-                    captures.len() - 1
-                }
-            };
-            captures[index].var
-        });
-        let lambda = FlatLambda {
-            id,
-            modifier,
-            captures,
-            parameters,
-            return_type,
-            body,
-        };
-        (lambda, captured)
-    }
-}
-
-fn close_block(
-    block: &mut FlatBlock,
-    bound: &mut HashSet<ValueId>,
-    capture: &mut dyn FnMut(ValueId) -> ValueId,
-) {
-    for binding in &mut block.bindings {
-        binding.op.for_each_operand_mut(&mut |name| {
-            if !bound.contains(name) {
-                *name = capture(*name);
-            }
-        });
-        match &mut binding.op {
-            FlatOp::Match(match_) => {
-                for arm in &mut match_.arms {
-                    arm.pattern.for_each_binding(&mut |binder| {
-                        bound.insert(binder.var);
-                    });
-                    close_block(&mut arm.body, bound, capture);
-                }
-            }
-            FlatOp::For(for_) => {
-                if let Some(binder) = &for_.var {
-                    bound.insert(binder.var);
-                }
-                if let Some(key) = &mut for_.key {
-                    close_block(key, bound, capture);
-                }
-                close_block(&mut for_.body, bound, capture);
-            }
-            FlatOp::Cell(initial) => close_block(initial, bound, capture),
-            _ => {}
-        }
-        bound.insert(binding.binder.var);
-    }
-    if !bound.contains(&block.result) {
-        block.result = capture(block.result);
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum FlatOp {
     Data(IrDataOp),
@@ -188,6 +114,80 @@ pub struct FlatMatchArm {
 }
 
 pub type FlatPattern = Pattern<IrBinder<FlatDataType>>;
+
+impl FlatLambda {
+    pub fn closing(
+        id: LambdaId,
+        modifier: IrModifier,
+        parameters: Vec<IrBinder<FlatType>>,
+        return_type: FlatType,
+        mut body: FlatBlock,
+        mut capture: impl FnMut(ValueId) -> IrBinder<FlatType>,
+    ) -> (FlatLambda, Vec<ValueId>) {
+        fn close_block(
+            block: &mut FlatBlock,
+            bound: &mut HashSet<ValueId>,
+            capture: &mut dyn FnMut(ValueId) -> ValueId,
+        ) {
+            for binding in &mut block.bindings {
+                binding.op.for_each_operand_mut(&mut |name| {
+                    if !bound.contains(name) {
+                        *name = capture(*name);
+                    }
+                });
+                match &mut binding.op {
+                    FlatOp::Match(match_) => {
+                        for arm in &mut match_.arms {
+                            arm.pattern.for_each_binding(&mut |binder| {
+                                bound.insert(binder.var);
+                            });
+                            close_block(&mut arm.body, bound, capture);
+                        }
+                    }
+                    FlatOp::For(for_) => {
+                        if let Some(binder) = &for_.var {
+                            bound.insert(binder.var);
+                        }
+                        if let Some(key) = &mut for_.key {
+                            close_block(key, bound, capture);
+                        }
+                        close_block(&mut for_.body, bound, capture);
+                    }
+                    FlatOp::Cell(initial) => close_block(initial, bound, capture),
+                    _ => {}
+                }
+                bound.insert(binding.binder.var);
+            }
+            if !bound.contains(&block.result) {
+                block.result = capture(block.result);
+            }
+        }
+
+        let mut bound: HashSet<ValueId> = parameters.iter().map(|param| param.var).collect();
+        let mut captured = Vec::new();
+        let mut captures: Vec<IrBinder<FlatType>> = Vec::new();
+        close_block(&mut body, &mut bound, &mut |name| {
+            let index = match captured.iter().position(|outer| *outer == name) {
+                Some(index) => index,
+                None => {
+                    captured.push(name);
+                    captures.push(capture(name));
+                    captures.len() - 1
+                }
+            };
+            captures[index].var
+        });
+        let lambda = FlatLambda {
+            id,
+            modifier,
+            captures,
+            parameters,
+            return_type,
+            body,
+        };
+        (lambda, captured)
+    }
+}
 
 impl FlatPattern {
     pub fn for_each_binding(&self, f: &mut impl FnMut(&IrBinder<FlatDataType>)) {
