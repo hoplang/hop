@@ -63,14 +63,11 @@ pub enum FlatOp {
     /// Match exhaustively.
     Match(FlatMatch),
     /// Bind a cell. Only when its path is new does the block run, and the
-    /// cell takes the value it gives. `Cell[T]`.
+    /// cell takes the value it gives. Gives the value the render gives the
+    /// cell, and a setter that updates the cell to what a closure gives for
+    /// the value the cell has then, which earlier updates of the same click
+    /// have given it. `Tuple[T, mut fn(fn(T) -> T) -> Tuple[]]`.
     Cell(FlatBlock),
-    /// Update a cell to what the closure gives for the value the cell has
-    /// then, which earlier updates of the same click have given it.
-    /// `(Cell[T], fn(T) -> T) -> Tuple[]`.
-    CellUpdate(ValueId, ValueId),
-    /// Read the value a render gives a cell. `Cell[T] -> T`.
-    CellRead(ValueId),
     /// Fail the assertion of the source unless the values are equal.
     /// `(T, T) -> Tuple[]`.
     AssertEq(AssertionId, ValueId, ValueId),
@@ -226,11 +223,7 @@ impl FlatOp {
         match self {
             FlatOp::Data(op) => op.for_each_operand(f),
             FlatOp::Text(_) | FlatOp::Cell(_) => {}
-            FlatOp::CellRead(name) | FlatOp::Escape(name) => f(*name),
-            FlatOp::CellUpdate(cell, update) => {
-                f(*cell);
-                f(*update);
-            }
+            FlatOp::Escape(name) => f(*name),
             FlatOp::AssertEq(_, left, right) => {
                 f(*left);
                 f(*right);
@@ -264,11 +257,7 @@ impl FlatOp {
         match self {
             FlatOp::Data(op) => op.for_each_operand_mut(f),
             FlatOp::Text(_) | FlatOp::Cell(_) => {}
-            FlatOp::CellRead(name) | FlatOp::Escape(name) => f(name),
-            FlatOp::CellUpdate(cell, update) => {
-                f(cell);
-                f(update);
-            }
+            FlatOp::Escape(name) => f(name),
             FlatOp::AssertEq(_, left, right) => {
                 f(left);
                 f(right);
@@ -369,8 +358,6 @@ mod test_support {
                     write!(Indent::new(f), "\n{initial}")?;
                     f.write_str("\n}")
                 }
-                FlatOp::CellUpdate(cell, update) => write!(f, "cell_update({cell}, {update})"),
-                FlatOp::CellRead(cell) => write!(f, "cell_read({cell})"),
                 FlatOp::AssertEq(assertion, left, right) => {
                     write!(f, "assert_eq#{assertion}({left}, {right})")
                 }

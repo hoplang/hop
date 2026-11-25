@@ -755,22 +755,8 @@ impl<'a> FlatBlockBuilder<'a> {
         let FlatType::Data(typ) = &initial.typ else {
             panic!("a cell holds data, not {}", initial.typ);
         };
-        let typ = FlatType::Cell(typ.clone());
+        let typ = FlatType::Data(FlatDataType::cell(typ.clone()));
         self.push(typ, FlatOp::Cell(initial.into_block()))
-    }
-
-    pub fn cell_update(&self, cell: ValueId, update: ValueId) -> ValueId {
-        self.push(
-            FlatType::Data(FlatDataType::UNIT),
-            FlatOp::CellUpdate(cell, update),
-        )
-    }
-
-    pub fn cell_read(&self, cell: ValueId) -> ValueId {
-        let FlatType::Cell(typ) = self.typ(cell) else {
-            panic!("{cell} is not a cell");
-        };
-        self.push(FlatType::Data(typ), FlatOp::CellRead(cell))
     }
 
     pub fn attr_value(&self, name: &str, value: ValueId) -> (AttributeName, FlatAttribute) {

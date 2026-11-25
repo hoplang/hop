@@ -190,7 +190,6 @@ fn parameter_type(typ: &FlatType) -> WriterType {
             result: WriterResult::Writes,
         }),
         FlatType::Data(data) => data_type(data),
-        FlatType::Cell(_) => unreachable!("the typechecker rejects a parameter of a cell"),
     }
 }
 
@@ -208,9 +207,7 @@ fn is_mut_closure(typ: &FlatType) -> bool {
 fn value_type(typ: &FlatType) -> WriterType {
     match typ {
         FlatType::Data(data) => data_type(data),
-        FlatType::Html | FlatType::Cell(_) => {
-            unreachable!("{typ:?} is not the type of a value")
-        }
+        FlatType::Html => unreachable!("{typ:?} is not the type of a value"),
     }
 }
 
@@ -220,9 +217,6 @@ fn result_type(typ: &FlatType) -> WriterResult {
     match typ {
         FlatType::Html => WriterResult::Writes,
         FlatType::Data(data) => WriterResult::Returns(Box::new(data_type(data))),
-        FlatType::Cell(_) => {
-            unreachable!("a function returns Html, data or a closure, not {typ:?}")
-        }
     }
 }
 
@@ -354,9 +348,6 @@ impl<'a> Lowerer<'a> {
             FlatType::Html => {
                 self.html_parameters.insert(binder.var);
             }
-            FlatType::Cell(_) => {
-                unreachable!("the typechecker rejects a parameter of a cell")
-            }
         }
     }
 
@@ -405,7 +396,6 @@ impl<'a> Lowerer<'a> {
             // Rendered on the empty state, a click never runs what mutates,
             // so it reads nothing.
             FlatOp::Lambda(..) if is_mut_closure(&binding.binder.typ) => {}
-            FlatOp::CellUpdate(..) => unreachable!("only what mutates updates a cell"),
             FlatOp::AssertEq(..) => unreachable!("only what tests asserts"),
             FlatOp::Lambda(_, captures) => {
                 for capture in captures {
@@ -416,10 +406,7 @@ impl<'a> Lowerer<'a> {
                 self.read(*closure, Reader::Value);
                 self.read_args(args);
             }
-            // Rendered on the empty state, a cell and a read of it are the
-            // initial value of the cell.
             FlatOp::Cell(initial) => self.analyze_block(initial),
-            FlatOp::CellRead(cell) => self.read(*cell, Reader::Value),
             FlatOp::Text(_)
             | FlatOp::Escape(_)
             | FlatOp::Concat(_)
@@ -476,11 +463,9 @@ impl<'a> Lowerer<'a> {
                     self.read_args(args);
                 }
                 FlatOp::Lambda(..) => unreachable!("a closure is bound, not written"),
-                FlatOp::Data(_)
-                | FlatOp::Cell(_)
-                | FlatOp::CellUpdate(..)
-                | FlatOp::CellRead(_)
-                | FlatOp::AssertEq(..) => unreachable!("Html is not bound by an op of a value"),
+                FlatOp::Data(_) | FlatOp::Cell(_) | FlatOp::AssertEq(..) => {
+                    unreachable!("Html is not bound by an op of a value")
+                }
             }
         }
         if !self.is_html(block.result) {
@@ -660,14 +645,15 @@ impl<'a> Lowerer<'a> {
         let op = match &binding.op {
             FlatOp::Cell(initial) => {
                 self.lower_value_bindings(&initial.bindings, out);
-                let initial = self.name(initial.result);
-                self.aliases.insert(binding.binder.var, initial);
-                return;
-            }
-            FlatOp::CellRead(cell) => {
-                let cell = self.name(*cell);
-                self.aliases.insert(binding.binder.var, cell);
-                return;
+                let setter = self.value_ids.next();
+                out.push(IrBinding {
+                    binder: IrBinder {
+                        var: setter,
+                        typ: WriterType::UNIT,
+                    },
+                    op: WriterOp::Data(IrDataOp::Tuple(Vec::new())),
+                });
+                WriterOp::Data(IrDataOp::Tuple(vec![self.name(initial.result), setter]))
             }
             FlatOp::Match(match_) => {
                 let typ = value_type(binder_type);
@@ -678,7 +664,6 @@ impl<'a> Lowerer<'a> {
             FlatOp::Lambda(..) if is_mut_closure(binder_type) => {
                 WriterOp::Data(IrDataOp::Tuple(Vec::new()))
             }
-            FlatOp::CellUpdate(..) => unreachable!("only what mutates updates a cell"),
             FlatOp::AssertEq(..) => unreachable!("only what tests asserts"),
             FlatOp::Call(function, args) => {
                 let args = self.lower_args(args, out);
@@ -1198,11 +1183,9 @@ impl<'a> Lowerer<'a> {
             }
 
             FlatOp::Lambda(..) => unreachable!("a closure is bound, not written"),
-            FlatOp::Data(_)
-            | FlatOp::Cell(_)
-            | FlatOp::CellUpdate(..)
-            | FlatOp::CellRead(_)
-            | FlatOp::AssertEq(..) => unreachable!("Html is not bound by an op of a value"),
+            FlatOp::Data(_) | FlatOp::Cell(_) | FlatOp::AssertEq(..) => {
+                unreachable!("Html is not bound by an op of a value")
+            }
         }
     }
 
@@ -1433,12 +1416,12 @@ mod tests {
                 )
                 .entrypoint("Test", [], |t| {
                     let count = t.cell(|t| t.int(0));
-                    let n = t.cell_read(count);
+                    let n = t.tuple_index(count, 0);
                     let bump = t.event_handler(|t| {
                         let incr = t.lambda([FlatType::INT], |t, params| {
                             t.add(NumericType::Int, params[0], t.int(1))
                         });
-                        t.cell_update(count, incr)
+                        t.apply(t.tuple_index(count, 1), [incr])
                     });
                     let buttons = t.call("Buttons", [t.int(2), bump]);
                     let shown = t.escape(t.int_to_string(n));
@@ -1480,25 +1463,26 @@ mod tests {
                   v18
                 }
                 mut lambda l1[
-                  v21: Cell[Int],
+                  v22: Tuple[Int, mut ((Int) -> Int) -> Tuple[]],
                 ]() -> Tuple[] {
                   let v19: (Int) -> Int = l0[]
-                  let v20: Tuple[] = cell_update(v21, v19)
-                  v20
+                  let v20: mut ((Int) -> Int) -> Tuple[] = tuple_index(v22, 1)
+                  let v21: Tuple[] = v20(v19)
+                  v21
                 }
                 entrypoint Test@e0() -> Html {
-                  let v14: Cell[Int] = cell {
+                  let v14: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     let v13: Int = 0
                     v13
                   }
-                  let v15: Int = cell_read(v14)
-                  let v22: mut () -> Tuple[] = l1[v14]
-                  let v23: Int = 2
-                  let v24: Html = f0(v23, v22)
-                  let v25: String = int_to_string(v15)
-                  let v26: Html = escape(v25)
-                  let v27: Html = concat(v26, v24)
-                  v27
+                  let v15: Int = tuple_index(v14, 0)
+                  let v23: mut () -> Tuple[] = l1[v14]
+                  let v24: Int = 2
+                  let v25: Html = f0(v24, v23)
+                  let v26: String = int_to_string(v15)
+                  let v27: Html = escape(v26)
+                  let v28: Html = concat(v27, v25)
+                  v28
                 }
 
                 -- writer --
@@ -1524,11 +1508,14 @@ mod tests {
                 }
                 page Test() {
                   let v13: Int = 0
-                  let v22: Tuple[] = ()
-                  let v23: Int = 2
-                  let v25: String = int_to_string(v13)
-                  write_string(v25)
-                  write_function f0(v23, v22)
+                  let v29: Tuple[] = ()
+                  let v14: Tuple[Int, Tuple[]] = (v13, v29)
+                  let v15: Int = tuple_index(v14, 0)
+                  let v23: Tuple[] = ()
+                  let v24: Int = 2
+                  let v26: String = int_to_string(v15)
+                  write_string(v26)
+                  write_function f0(v24, v23)
                 }
             "#]],
         );

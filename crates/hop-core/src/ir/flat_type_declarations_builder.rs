@@ -137,7 +137,6 @@ impl FlatTypeDeclarations {
 fn flat_type(ty: Ty, records: &[String], enums: &[String]) -> FlatType {
     match ty {
         Ty::Html => FlatType::Html,
-        Ty::Cell(payload) => FlatType::Cell(data_type(*payload, records, enums)),
         ty => FlatType::Data(data_type(ty, records, enums)),
     }
 }
@@ -150,7 +149,6 @@ fn data_type(ty: Ty, records: &[String], enums: &[String]) -> FlatDataType {
         Ty::Bool => FlatDataType::Bool,
         Ty::Float => FlatDataType::Float,
         Ty::Html => panic!("Html is not a data type"),
-        Ty::Cell(_) => panic!("a cell is not a data type"),
         Ty::Function {
             modifier,
             parameters,

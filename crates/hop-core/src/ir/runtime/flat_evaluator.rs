@@ -205,23 +205,41 @@ fn evaluate_apply<'a>(
             limit: MAX_CALL_DEPTH,
         });
     }
-    let lambda = closure.lambda;
-    let body_env = Env {
-        parent: None,
-        bindings: (lambda.captures.iter())
-            .chain(&lambda.parameters)
-            .map(|binder| binder.var)
-            .zip(closure.captures.iter().cloned().chain(args))
-            .collect(),
-    };
-    evaluate_block(
-        &lambda.body,
-        body_env,
-        program,
-        context,
-        depth + 1,
-        op_count,
-    )
+    match closure {
+        Closure::Lambda { lambda, captures } => {
+            let body_env = Env {
+                parent: None,
+                bindings: (lambda.captures.iter())
+                    .chain(&lambda.parameters)
+                    .map(|binder| binder.var)
+                    .zip(captures.iter().cloned().chain(args))
+                    .collect(),
+            };
+            evaluate_block(
+                &lambda.body,
+                body_env,
+                program,
+                context,
+                depth + 1,
+                op_count,
+            )
+        }
+        Closure::Setter(cell) => {
+            let mutations = context.mutations("applies the setter of a cell");
+            let [update]: [Value<'a>; 1] = args.try_into().expect("a setter takes an update");
+            let current = mutations.read(*cell).clone();
+            let value = evaluate_apply(
+                update.as_closure(),
+                vec![current],
+                program,
+                Context::Pure,
+                depth + 1,
+                op_count,
+            )?;
+            mutations.write(*cell, value);
+            Ok(Value::Tuple(Rc::new([])))
+        }
+    }
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -280,13 +298,15 @@ fn evaluate_op<'a>(
 
         FlatOp::Cell(initial) => {
             let render = context.render("binds a cell");
-            Value::Cell(render.bind_cell(var, || {
+            let cell = render.bind_cell(var, || {
                 let env = Env {
                     parent: env.freeze(),
                     bindings: Vec::new(),
                 };
                 evaluate_block(initial, env, program, Context::Pure, depth, op_count)
-            })?)
+            })?;
+            let setter = Value::Closure(Rc::new(Closure::Setter(cell)));
+            Value::Tuple(Rc::new([render.read(cell).clone(), setter]))
         }
 
         FlatOp::AssertEq(assertion, left, right) => {
@@ -300,27 +320,6 @@ fn evaluate_op<'a>(
                 });
             }
             Value::Tuple(Rc::new([]))
-        }
-
-        FlatOp::CellUpdate(cell, update) => {
-            let mutations = context.mutations("updates a cell");
-            let cell = env[cell].as_cell();
-            let current = mutations.read(cell).clone();
-            let value = evaluate_apply(
-                env[update].as_closure(),
-                vec![current],
-                program,
-                Context::Pure,
-                depth,
-                op_count,
-            )?;
-            mutations.write(cell, value);
-            Value::Tuple(Rc::new([]))
-        }
-
-        FlatOp::CellRead(cell) => {
-            let render = context.render("reads a cell");
-            render.read(env[cell].as_cell()).clone()
         }
 
         FlatOp::Text(content) => Value::Html(Html::new(HtmlNode::Text(content.as_str()))?),
@@ -481,7 +480,7 @@ fn evaluate_op<'a>(
             Value::Html(Html::new(HtmlNode::Concat(parts))?)
         }
 
-        FlatOp::Lambda(id, captures) => Value::Closure(Rc::new(Closure {
+        FlatOp::Lambda(id, captures) => Value::Closure(Rc::new(Closure::Lambda {
             lambda: (program.lambdas.iter())
                 .find(|lambda| lambda.id == *id)
                 .unwrap(),
@@ -491,10 +490,10 @@ fn evaluate_op<'a>(
         FlatOp::Apply(closure, args) => {
             let args = args.iter().map(|arg| env[arg].clone()).collect();
             let closure = env[closure].as_closure();
-            match closure.lambda.modifier {
-                IrModifier::Render => {
+            match &**closure {
+                Closure::Lambda { lambda, .. } if lambda.modifier == IrModifier::Render => {
                     let render = context.render("applies a closure that renders");
-                    render.enter(Step::Apply(var, closure.lambda.id));
+                    render.enter(Step::Apply(var, lambda.id));
                     let value = evaluate_apply(
                         closure,
                         args,
@@ -506,11 +505,11 @@ fn evaluate_op<'a>(
                     render.exit();
                     value
                 }
-                IrModifier::Mut | IrModifier::Test => {
-                    evaluate_apply(closure, args, program, context, depth, op_count)?
-                }
-                IrModifier::Pure => {
+                Closure::Lambda { lambda, .. } if lambda.modifier == IrModifier::Pure => {
                     evaluate_apply(closure, args, program, Context::Pure, depth, op_count)?
+                }
+                Closure::Lambda { .. } | Closure::Setter(_) => {
+                    evaluate_apply(closure, args, program, context, depth, op_count)?
                 }
             }
         }
@@ -750,8 +749,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 2079103 allocations
-            program evaluation: 26393 allocations
+            program generation: 2569612 allocations
+            program evaluation: 25258 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -1394,7 +1393,7 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
                     let counter = t.render_lambda([FlatType::INT], |t, params| {
-                        t.cell_read(t.cell(|_| params[0]))
+                        t.tuple_index(t.cell(|_| params[0]), 0)
                     });
                     let one = t.apply(counter, [t.int(1)]);
                     let two = t.apply(counter, [t.int(2)]);
@@ -1411,10 +1410,10 @@ mod tests {
                 render lambda l0[](
                   v0: Int,
                 ) -> Int {
-                  let v1: Cell[Int] = cell {
+                  let v1: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     v0
                   }
-                  let v2: Int = cell_read(v1)
+                  let v2: Int = tuple_index(v1, 0)
                   v2
                 }
                 entrypoint Test@e0() -> Html {

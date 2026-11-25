@@ -40,13 +40,18 @@ pub enum Value<'a> {
     Option(Option<Rc<Value<'a>>>),
     Enum(TypeName, Rc<[(FieldName, Value<'a>)]>),
     Closure(Rc<Closure<'a>>),
-    Cell(CellId),
 }
 
 #[derive(Debug)]
-pub struct Closure<'a> {
-    pub lambda: &'a FlatLambda,
-    pub captures: Vec<Value<'a>>,
+pub enum Closure<'a> {
+    /// A lambda, with the values of the names it captures.
+    Lambda {
+        lambda: &'a FlatLambda,
+        captures: Vec<Value<'a>>,
+    },
+    /// The setter of a cell, which updates it to what a closure gives for
+    /// the value the cell has.
+    Setter(CellId),
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +119,7 @@ impl<'a> Value<'a> {
     /// is an equivalence relation, so values that share an allocation are
     /// equal without looking inside, as a value that nests a shared part in
     /// itself can be exponentially larger as a tree than in memory. Panics
-    /// on Html, a closure or a cell.
+    /// on Html or a closure.
     #[cfg(test)]
     pub fn total_eq(&self, other: &Value<'_>) -> bool {
         fn all(a: &[Value<'_>], b: &[Value<'_>]) -> bool {
@@ -126,8 +131,7 @@ impl<'a> Value<'a> {
                     .all(|((a_name, a), (b_name, b))| a_name == b_name && a.total_eq(b))
         }
         match (self, other) {
-            (Value::Html(_) | Value::Closure(_) | Value::Cell(_), _)
-            | (_, Value::Html(_) | Value::Closure(_) | Value::Cell(_)) => {
+            (Value::Html(_) | Value::Closure(_), _) | (_, Value::Html(_) | Value::Closure(_)) => {
                 panic!("total_eq compares data, not {self:?} and {other:?}")
             }
             (Value::String(a), Value::String(b)) => a == b,
@@ -149,7 +153,7 @@ impl<'a> Value<'a> {
     /// Whether two values of the same type, which holds no function, are
     /// equal. Data is equal if its parts are, and a part that `==` compares
     /// is compared as `==` does, so NaN is not equal to itself. Panics on
-    /// Html, a closure or a cell.
+    /// Html or a closure.
     pub fn equals(&self, other: &Value<'_>) -> bool {
         fn all(a: &[Value<'_>], b: &[Value<'_>]) -> bool {
             a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.equals(b))
@@ -158,8 +162,7 @@ impl<'a> Value<'a> {
             a.len() == b.len() && a.iter().zip(b).all(|((_, a), (_, b))| a.equals(b))
         }
         match (self, other) {
-            (Value::Html(_) | Value::Closure(_) | Value::Cell(_), _)
-            | (_, Value::Html(_) | Value::Closure(_) | Value::Cell(_)) => {
+            (Value::Html(_) | Value::Closure(_), _) | (_, Value::Html(_) | Value::Closure(_)) => {
                 panic!("equals compares data, not {self:?} and {other:?}")
             }
             (Value::String(a), Value::String(b)) => a == b,
@@ -245,14 +248,6 @@ impl<'a> Value<'a> {
         match self {
             Value::Closure(closure) => closure,
             _ => panic!("expected a Closure value, found {self:?}"),
-        }
-    }
-
-    /// The identity of the cell. Panics if the value is not a cell.
-    pub fn as_cell(&self) -> CellId {
-        match self {
-            Value::Cell(cell) => *cell,
-            _ => panic!("expected a Cell value, found {self:?}"),
         }
     }
 
@@ -356,7 +351,7 @@ impl fmt::Display for Value<'_> {
                 f.write_str(" ")?;
                 fields(f, variant_fields)
             }
-            Value::Html(_) | Value::Closure(_) | Value::Cell(_) => {
+            Value::Html(_) | Value::Closure(_) => {
                 panic!("{self:?} is not data")
             }
         }

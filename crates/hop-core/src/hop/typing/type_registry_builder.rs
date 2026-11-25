@@ -27,7 +27,6 @@ pub enum Ty {
     Bool,
     Float,
     Html,
-    Cell(Box<Ty>),
     Named(String),
     Array(Box<Ty>),
     Option(Box<Ty>),
@@ -50,10 +49,6 @@ impl Ty {
 
     pub fn option(element: Ty) -> Ty {
         Ty::Option(Box::new(element))
-    }
-
-    pub fn cell(payload: Ty) -> Ty {
-        Ty::Cell(Box::new(payload))
     }
 
     pub fn tuple(elements: impl IntoIterator<Item = Ty>) -> Ty {
@@ -89,7 +84,6 @@ impl From<Ty> for Type {
     fn from(ty: Ty) -> Type {
         match ty {
             Ty::Html => Type::HTML,
-            Ty::Cell(_) => panic!("the surface language has no cell type"),
             data => Type::Data(data.into()),
         }
     }
@@ -103,7 +97,6 @@ impl From<Ty> for DataType {
             Ty::Bool => DataType::Bool,
             Ty::Float => DataType::Float,
             Ty::Html => panic!("Html is not a data type"),
-            Ty::Cell(_) => panic!("a cell is not a data type"),
             Ty::Function {
                 modifier,
                 parameters,

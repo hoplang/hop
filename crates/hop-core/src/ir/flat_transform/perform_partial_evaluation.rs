@@ -454,11 +454,7 @@ impl<'a> Evaluator<'a> {
             }
             // A cell is never constant, as a click may have set it.
             FlatOp::Cell(initial) => FlatOp::Cell(self.block(initial)),
-            op @ (FlatOp::Call(..)
-            | FlatOp::CellUpdate(..)
-            | FlatOp::CellRead(_)
-            | FlatOp::AssertEq(..)
-            | FlatOp::Text(_)) => op,
+            op @ (FlatOp::Call(..) | FlatOp::AssertEq(..) | FlatOp::Text(_)) => op,
         };
         // Only Html reads a concat, so this binds none for a value.
         op.for_each_operand_mut(&mut |operand| *operand = self.bind_concat(*operand, out));

@@ -54,18 +54,12 @@ pub enum FlatTypeError {
     VoidElementWithChildren,
     /// An element that is not void has no children.
     ElementWithoutChildren,
-    /// A function or a lambda takes a cell, which only a cell binding
-    /// binds.
-    CellParameter,
     /// A block has an effect that its modifier does not allow. A cell, an
-    /// element and a loop render, a write of a cell mutates, an assertion
-    /// tests, and a call or an application has the modifier of what it
-    /// calls. A read of a cell is allowed in a
-    /// block that renders or mutates. A pure block allows none of these, and
-    /// a block that renders or mutates allows its own effect.
+    /// element and a loop render, an assertion tests, and a call or an
+    /// application has the modifier of what it calls, so an application of
+    /// the setter of a cell mutates. A pure block allows none of these, and
+    /// a block that renders, mutates or tests allows its own effect.
     EffectNotAllowed,
-    /// A function returns a cell.
-    ReturnsUnreturnable,
     /// A cell holds a closure, or a value that holds one.
     CellHoldsClosure,
     /// An entrypoint takes a closure, or a value that holds one.
@@ -85,15 +79,8 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
         checker.live.clear();
         checker.scoped(|checker| {
             let expected = BoundType::of(&function.return_type);
-            if matches!(expected, BoundType::Cell(_)) {
-                return Err(FlatTypeError::ReturnsUnreturnable);
-            }
             for param in &function.parameters {
-                let typ = BoundType::of(&param.binder.typ);
-                if matches!(typ, BoundType::Cell(_)) {
-                    return Err(FlatTypeError::CellParameter);
-                }
-                checker.bind(param.binder.var, typ)?;
+                checker.bind(param.binder.var, BoundType::of(&param.binder.typ))?;
             }
             checker.block(&function.body, expected, function.modifier)
         })?;
@@ -102,9 +89,6 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
         checker.live.clear();
         checker.scoped(|checker| {
             let expected = BoundType::of(&lambda.return_type);
-            if matches!(expected, BoundType::Cell(_)) {
-                return Err(FlatTypeError::ReturnsUnreturnable);
-            }
             for capture in &lambda.captures {
                 let typ = BoundType::of(&capture.typ);
                 if typ == BoundType::Html {
@@ -113,11 +97,7 @@ pub fn typecheck(program: &FlatProgram) -> Result<(), FlatTypeError> {
                 checker.bind(capture.var, typ)?;
             }
             for param in &lambda.parameters {
-                let typ = BoundType::of(&param.typ);
-                if matches!(typ, BoundType::Cell(_)) {
-                    return Err(FlatTypeError::CellParameter);
-                }
-                checker.bind(param.var, typ)?;
+                checker.bind(param.var, BoundType::of(&param.typ))?;
             }
             checker.block(&lambda.body, expected, lambda.modifier)
         })?;
@@ -171,7 +151,6 @@ struct Name<'a> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum BoundType<'a> {
     Data(&'a FlatDataType),
-    Cell(&'a FlatDataType),
     Html,
 }
 
@@ -180,7 +159,6 @@ impl<'a> BoundType<'a> {
         match typ {
             FlatType::Data(data) => BoundType::Data(data),
             FlatType::Html => BoundType::Html,
-            FlatType::Cell(data) => BoundType::Cell(data),
         }
     }
 
@@ -189,43 +167,8 @@ impl<'a> BoundType<'a> {
     }
 }
 
-/// Whether no closure the type holds gives a cell.
-fn is_well_formed(typ: &FlatDataType) -> bool {
-    match typ {
-        FlatDataType::String
-        | FlatDataType::Bool
-        | FlatDataType::Int
-        | FlatDataType::Float
-        | FlatDataType::Record(_)
-        | FlatDataType::Enum(_) => true,
-        FlatDataType::Array(element) | FlatDataType::Option(element) => is_well_formed(element),
-        FlatDataType::Tuple(elements) => elements.iter().all(is_well_formed),
-        FlatDataType::Function(signature) => {
-            let parameters = (signature.parameters.iter()).all(|parameter| match parameter {
-                FlatType::Data(data) => is_well_formed(data),
-                _ => true,
-            });
-            let result = match &*signature.result {
-                FlatType::Html => true,
-                FlatType::Data(data) => is_well_formed(data),
-                FlatType::Cell(_) => false,
-            };
-            parameters && result
-        }
-    }
-}
-
 impl<'a> Checker<'a> {
     fn bind(&mut self, name: ValueId, typ: BoundType<'a>) -> Result<(), FlatTypeError> {
-        match typ {
-            BoundType::Data(data) if !is_well_formed(data) => {
-                return Err(FlatTypeError::IllTypedBinding);
-            }
-            BoundType::Cell(data) if self.declarations.holds_closure(data) => {
-                return Err(FlatTypeError::CellHoldsClosure);
-            }
-            _ => {}
-        }
         let bound = Name {
             typ,
             in_scope: true,
@@ -273,7 +216,7 @@ impl<'a> Checker<'a> {
     fn data(&mut self, name: ValueId) -> Result<Option<&'a FlatDataType>, FlatTypeError> {
         Ok(match self.read(name)? {
             BoundType::Data(data) => Some(data),
-            BoundType::Cell(_) | BoundType::Html => None,
+            BoundType::Html => None,
         })
     }
 
@@ -299,8 +242,6 @@ impl<'a> Checker<'a> {
     ) -> Result<(), FlatTypeError> {
         let allowed = match binding.op {
             FlatOp::Cell(_) | FlatOp::Element(_) | FlatOp::For(_) => modifier == IrModifier::Render,
-            FlatOp::CellRead(_) => modifier == IrModifier::Render,
-            FlatOp::CellUpdate(..) => modifier == IrModifier::Mut,
             FlatOp::AssertEq(..) => modifier == IrModifier::Test,
             _ => true,
         };
@@ -326,9 +267,6 @@ impl<'a> Checker<'a> {
                     )?
             }
             FlatOp::Match(match_) => {
-                if matches!(declared, BoundType::Cell(_)) {
-                    return Err(FlatTypeError::IllTypedBinding);
-                }
                 let subject = match self.data(match_.subject)? {
                     Some(FlatDataType::Function(_)) | None => {
                         return Err(FlatTypeError::MatchSubjectNotData);
@@ -351,21 +289,17 @@ impl<'a> Checker<'a> {
                 true
             }
             FlatOp::Cell(initial) => match declared {
-                BoundType::Cell(data) => {
+                BoundType::Data(cell @ FlatDataType::Tuple(elements))
+                    if elements.len() == 2 && *cell == FlatDataType::cell(elements[0].clone()) =>
+                {
+                    let value = &elements[0];
+                    if self.declarations.holds_closure(value) {
+                        return Err(FlatTypeError::CellHoldsClosure);
+                    }
                     self.scoped(|checker| {
-                        checker.block(initial, BoundType::Data(data), IrModifier::Pure)
+                        checker.block(initial, BoundType::Data(value), IrModifier::Pure)
                     })?;
                     true
-                }
-                _ => false,
-            },
-            FlatOp::CellUpdate(cell, update) => match (self.read(*cell)?, self.read(*update)?) {
-                (BoundType::Cell(data), BoundType::Data(FlatDataType::Function(signature))) => {
-                    let data = FlatType::Data(data.clone());
-                    declared == BoundType::Data(&FlatDataType::UNIT)
-                        && signature.modifier == IrModifier::Pure
-                        && signature.parameters == [data.clone()]
-                        && *signature.result == data
                 }
                 _ => false,
             },
@@ -375,10 +309,6 @@ impl<'a> Checker<'a> {
                         && left == right
                         && !self.declarations.holds_closure(left)
                 }
-                _ => false,
-            },
-            FlatOp::CellRead(cell) => match declared {
-                BoundType::Data(data) => self.read(*cell)? == BoundType::Cell(data),
                 _ => false,
             },
             FlatOp::Text(_) => html,
@@ -997,20 +927,6 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_match_on_a_cell() {
-        let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], |t| {
-                let count = t.cell(|t| t.int(0));
-                t.match_(count, |m| {
-                    m.arm(Pat::Wildcard, |t, _| t.text("any"));
-                })
-            })
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::MatchSubjectNotData);
-    }
-
-    #[test]
     fn should_reject_a_match_on_a_closure() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
@@ -1232,7 +1148,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_cell_update_of_a_cell_of_an_arm_after_the_match() {
+    fn should_reject_the_setter_of_a_cell_of_an_arm_after_the_match() {
         let inner = Cell::new(None);
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [("on", Ty::Bool)], |t| {
@@ -1245,7 +1161,8 @@ mod tests {
                     m.arm(Pat::False, |t, _| t.text("off"));
                 });
                 let zero = t.lambda([FlatType::INT], |t, _| t.int(0));
-                let reset = t.event_handler(|t| t.cell_update(inner.get().unwrap(), zero));
+                let reset =
+                    t.event_handler(|t| t.apply(t.tuple_index(inner.get().unwrap(), 1), [zero]));
                 let button = t.element_on_click("button", vec![], reset, Some(t.text("x")));
                 t.html_concat([picked, button])
             })
@@ -1255,26 +1172,12 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_cell_update_of_a_value() {
-        let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], |t| {
-                let count = t.int(0);
-                let one = t.lambda([FlatType::INT], |t, _| t.int(1));
-                let reset = t.event_handler(|t| t.cell_update(count, one));
-                t.element_on_click("button", vec![], reset, Some(t.text("x")))
-            })
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::IllTypedBinding);
-    }
-
-    #[test]
-    fn should_reject_a_cell_update_with_a_closure_of_another_type() {
+    fn should_reject_an_application_of_a_setter_to_a_closure_of_another_type() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
                 let not = t.lambda([FlatType::BOOL], |t, params| t.not(params[0]));
-                let flip = t.event_handler(|t| t.cell_update(count, not));
+                let flip = t.event_handler(|t| t.apply(t.tuple_index(count, 1), [not]));
                 t.element_on_click("button", vec![], flip, Some(t.text("x")))
             })
             .build()
@@ -1283,12 +1186,12 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_cell_update_with_a_closure_that_mutates() {
+    fn should_reject_an_application_of_a_setter_to_a_closure_that_mutates() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
                 let same = t.mut_lambda([FlatType::INT], |_, params| params[0]);
-                let keep = t.event_handler(|t| t.cell_update(count, same));
+                let keep = t.event_handler(|t| t.apply(t.tuple_index(count, 1), [same]));
                 t.element_on_click("button", vec![], keep, Some(t.text("x")))
             })
             .build()
@@ -1297,27 +1200,11 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_cell_read_in_a_body_that_mutates() {
-        let error = FlatProgramBuilder::new()
-            .entrypoint("Test", [], |t| {
-                let count = t.cell(|t| t.int(0));
-                let read = t.event_handler(|t| {
-                    t.cell_read(count);
-                    t.tuple([])
-                });
-                t.element_on_click("button", vec![], read, Some(t.text("x")))
-            })
-            .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::EffectNotAllowed);
-    }
-
-    #[test]
     fn should_reject_a_cell_in_a_pure_block() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let count = t.cell(|t| t.cell_read(t.cell(|t| t.int(0))));
-                t.escape(t.int_to_string(t.cell_read(count)))
+                let count = t.cell(|t| t.tuple_index(t.cell(|t| t.int(0)), 0));
+                t.escape(t.int_to_string(t.tuple_index(count, 0)))
             })
             .build()
             .unwrap_err();
@@ -1355,7 +1242,7 @@ mod tests {
                 let set = t.mut_lambda([FlatType::INT], |t, params| {
                     let value = params[0];
                     let to_value = t.lambda([FlatType::INT], |_, _| value);
-                    t.cell_update(count, to_value)
+                    t.apply(t.tuple_index(count, 1), [to_value])
                 });
                 t.element_on_click("button", vec![], set, Some(t.text("x")))
             })
@@ -1368,7 +1255,7 @@ mod tests {
     fn should_reject_a_click_whose_handler_gives_a_value() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let count = t.cell_read(t.cell(|t| t.int(0)));
+                let count = t.tuple_index(t.cell(|t| t.int(0)), 0);
                 let next = t.lambda([], |t, _| t.add(NumericType::Int, count, t.int(1)));
                 t.element_on_click("button", vec![], next, Some(t.text("x")))
             })
@@ -1378,18 +1265,21 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_function_that_takes_a_cell() {
-        let error = FlatProgramBuilder::new()
-            .render_function("Show", [("count", Ty::cell(Ty::Int))], Ty::Html, |t| {
-                t.escape(t.int_to_string(t.cell_read(t.param("count"))))
-            })
+    fn should_accept_a_function_that_takes_a_cell() {
+        let setter = Ty::mut_function([Ty::function([Ty::Int], Ty::Int)], Ty::tuple([]));
+        FlatProgramBuilder::new()
+            .render_function(
+                "Show",
+                [("count", Ty::tuple([Ty::Int, setter]))],
+                Ty::Html,
+                |t| t.escape(t.int_to_string(t.tuple_index(t.param("count"), 0))),
+            )
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
                 t.call("Show", [count])
             })
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::CellParameter);
+            .unwrap();
     }
 
     #[test]
@@ -1415,7 +1305,7 @@ mod tests {
         FlatProgramBuilder::new()
             .render_function("counter", [("start", Ty::Int)], Ty::Int, |t| {
                 let count = t.cell(|t| t.param("start"));
-                t.cell_read(count)
+                t.tuple_index(count, 0)
             })
             .entrypoint("Test", [], |t| {
                 let count = t.call("counter", [t.int(0)]);
@@ -1430,7 +1320,7 @@ mod tests {
         FlatProgramBuilder::new()
             .entrypoint("Test", [("on", Ty::Bool)], |t| {
                 let count = t.match_(t.param("on"), |m| {
-                    m.arm(Pat::True, |t, _| t.cell_read(t.cell(|t| t.int(1))));
+                    m.arm(Pat::True, |t, _| t.tuple_index(t.cell(|t| t.int(1)), 0));
                     m.arm(Pat::False, |t, _| t.int(0));
                 });
                 t.escape(t.int_to_string(count))
@@ -1443,7 +1333,7 @@ mod tests {
     fn should_reject_a_call_of_a_function_that_renders_in_a_pure_block() {
         let error = FlatProgramBuilder::new()
             .render_function("counter", [], Ty::Int, |t| {
-                t.cell_read(t.cell(|t| t.int(0)))
+                t.tuple_index(t.cell(|t| t.int(0)), 0)
             })
             .function("twice", [], Ty::Int, |t| {
                 let count = t.call("counter", []);
@@ -1461,10 +1351,10 @@ mod tests {
     fn should_reject_a_call_of_a_function_that_renders_in_a_cell_initializer() {
         let error = FlatProgramBuilder::new()
             .render_function("counter", [], Ty::Int, |t| {
-                t.cell_read(t.cell(|t| t.int(0)))
+                t.tuple_index(t.cell(|t| t.int(0)), 0)
             })
             .entrypoint("Test", [], |t| {
-                let count = t.cell_read(t.cell(|t| t.call("counter", [])));
+                let count = t.tuple_index(t.cell(|t| t.call("counter", [])), 0);
                 t.escape(t.int_to_string(count))
             })
             .build()
@@ -1476,7 +1366,7 @@ mod tests {
     fn should_reject_a_call_of_a_function_that_renders_in_the_key_of_a_loop() {
         let error = FlatProgramBuilder::new()
             .render_function("counter", [], Ty::Int, |t| {
-                t.cell_read(t.cell(|t| t.int(0)))
+                t.tuple_index(t.cell(|t| t.int(0)), 0)
             })
             .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
                 t.html_for_keyed(t.param("items"), |t, _| t.call("counter", []))
@@ -1491,7 +1381,7 @@ mod tests {
     fn should_reject_a_call_of_a_function_that_renders_in_a_handler() {
         let error = FlatProgramBuilder::new()
             .render_function("counter", [], Ty::Int, |t| {
-                t.cell_read(t.cell(|t| t.int(0)))
+                t.tuple_index(t.cell(|t| t.int(0)), 0)
             })
             .entrypoint("Test", [], |t| {
                 let handler = t.event_handler(|t| {
@@ -1669,7 +1559,7 @@ mod tests {
     fn should_accept_an_application_of_a_closure_that_renders_a_value() {
         FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let counter = t.render_lambda([], |t, _| t.cell_read(t.cell(|t| t.int(0))));
+                let counter = t.render_lambda([], |t, _| t.tuple_index(t.cell(|t| t.int(0)), 0));
                 let count = t.apply(counter, []);
                 t.escape(t.int_to_string(count))
             })
@@ -1681,7 +1571,7 @@ mod tests {
     fn should_reject_an_application_of_a_closure_that_renders_in_a_handler() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
-                let counter = t.render_lambda([], |t, _| t.cell_read(t.cell(|t| t.int(0))));
+                let counter = t.render_lambda([], |t, _| t.tuple_index(t.cell(|t| t.int(0)), 0));
                 let handler = t.event_handler(|t| {
                     t.apply(counter, []);
                     t.tuple([])
@@ -1742,12 +1632,12 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_an_update_outside_of_a_body_that_mutates() {
+    fn should_reject_an_application_of_a_setter_outside_of_a_body_that_mutates() {
         let error = FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
                 let one = t.lambda([FlatType::INT], |t, _| t.int(1));
-                t.lambda([], |t, _| t.cell_update(count, one));
+                t.lambda([], |t, _| t.apply(t.tuple_index(count, 1), [one]));
                 t.text("x")
             })
             .build()
@@ -1761,7 +1651,7 @@ mod tests {
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
                 let one = t.lambda([FlatType::INT], |t, _| t.int(1));
-                let bump = t.mut_lambda([], |t, _| t.cell_update(count, one));
+                let bump = t.mut_lambda([], |t, _| t.apply(t.tuple_index(count, 1), [one]));
                 t.apply(bump, []);
                 t.text("x")
             })
@@ -1849,29 +1739,27 @@ mod tests {
     }
 
     #[test]
-    fn should_reject_a_read_of_a_cell_in_a_cell_initializer() {
-        let error = FlatProgramBuilder::new()
+    fn should_accept_the_value_of_a_cell_in_a_cell_initializer() {
+        FlatProgramBuilder::new()
             .entrypoint("Test", [], |t| {
                 let count = t.cell(|t| t.int(0));
-                let step = t.cell(|t| t.cell_read(count));
-                t.escape(t.int_to_string(t.cell_read(step)))
+                let step = t.cell(|t| t.tuple_index(count, 0));
+                t.escape(t.int_to_string(t.tuple_index(step, 0)))
             })
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::EffectNotAllowed);
+            .unwrap();
     }
 
     #[test]
-    fn should_reject_a_read_of_a_cell_in_the_key_of_a_loop() {
-        let error = FlatProgramBuilder::new()
+    fn should_accept_the_value_of_a_cell_in_the_key_of_a_loop() {
+        FlatProgramBuilder::new()
             .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
                 let count = t.cell(|t| t.int(0));
-                t.html_for_keyed(t.param("items"), |t, _| t.cell_read(count))
+                t.html_for_keyed(t.param("items"), |t, _| t.tuple_index(count, 0))
                     .body(|t, _| t.text("item"))
             })
             .build()
-            .unwrap_err();
-        assert_eq!(error, FlatTypeError::EffectNotAllowed);
+            .unwrap();
     }
 
     #[test]

@@ -34,8 +34,6 @@ pub fn collect_callees(
             }
             FlatOp::Cell(initial) => collect_callees(initial, lambdas, created, out),
             FlatOp::Data(_)
-            | FlatOp::CellUpdate(..)
-            | FlatOp::CellRead(_)
             | FlatOp::AssertEq(..)
             | FlatOp::Text(_)
             | FlatOp::Escape(_)

@@ -19,8 +19,9 @@ use crate::ir::value_id::ValueId;
 ///    runs before any later click.
 ///
 /// A region is entered only by a render and dies only when a render commits
-/// without entering it. So every cell a closure captures is bound in the
-/// state that the closure's click mutates, wherever the closure is evaluated.
+/// without entering it. So the cell of every setter a closure captures is
+/// bound in the state that the closure's click mutates, wherever the closure
+/// is evaluated.
 #[derive(Debug, Clone)]
 pub struct State<'a> {
     region_tree: Rc<BTreeMap<(RegionId, Step), RegionId>>,

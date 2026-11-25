@@ -15,11 +15,10 @@ use crate::ir::value_id::ValueId;
 /// Every op outside of a body that mutates is pure, so a binding there
 /// whose name no later binding, nested block or result reads computes
 /// nothing anyone sees, and goes away with the blocks nested in it. A body
-/// that mutates keeps every binding. A cell nothing reads or updates has a value
-/// nobody sees, and an element whose Html nothing reads is never shown, so
-/// the state of its node is never seen. A click reads its handler, a cell
-/// update the cell and the closure it updates it with, and a handler nothing applies
-/// goes away. A loop variable or binding of a
+/// that mutates keeps every binding. A cell whose value and setter nothing
+/// reads has a value nobody sees, and an element whose Html nothing reads is
+/// never shown, so the state of its node is never seen. A click reads its
+/// handler, and a handler nothing applies goes away. A loop variable or binding of a
 /// pattern that nothing reads any more goes away too, and becomes `_`.
 pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
     let functions = program
@@ -201,7 +200,7 @@ mod tests {
                 .entrypoint("Test", [], |t| {
                     let n = t.cell(|t| t.int(0));
                     let one = t.lambda([FlatType::INT], |t, _| t.int(1));
-                    let set = t.event_handler(|t| t.cell_update(n, one));
+                    let set = t.event_handler(|t| t.apply(t.tuple_index(n, 1), [one]));
                     t.element_on_click("button", [], set, Some(t.text("x")))
                 })
                 .build()
@@ -215,22 +214,23 @@ mod tests {
                   v3
                 }
                 mut lambda l1[
-                  v6: Cell[Int],
-                  v7: (Int) -> Int,
+                  v7: Tuple[Int, mut ((Int) -> Int) -> Tuple[]],
+                  v8: (Int) -> Int,
                 ]() -> Tuple[] {
-                  let v5: Tuple[] = cell_update(v6, v7)
-                  v5
+                  let v5: mut ((Int) -> Int) -> Tuple[] = tuple_index(v7, 1)
+                  let v6: Tuple[] = v5(v8)
+                  v6
                 }
                 entrypoint Test@e0() -> Html {
-                  let v1: Cell[Int] = cell {
+                  let v1: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     let v0: Int = 0
                     v0
                   }
                   let v4: (Int) -> Int = l0[]
-                  let v8: mut () -> Tuple[] = l1[v1, v4]
-                  let v9: Html = text("x")
-                  let v10: Html = element("button", {}, v9) on_click v8
-                  v10
+                  let v9: mut () -> Tuple[] = l1[v1, v4]
+                  let v10: Html = text("x")
+                  let v11: Html = element("button", {}, v10) on_click v9
+                  v11
                 }
 
                 -- after --
@@ -241,22 +241,23 @@ mod tests {
                   v3
                 }
                 mut lambda l1[
-                  v6: Cell[Int],
-                  v7: (Int) -> Int,
+                  v7: Tuple[Int, mut ((Int) -> Int) -> Tuple[]],
+                  v8: (Int) -> Int,
                 ]() -> Tuple[] {
-                  let v5: Tuple[] = cell_update(v6, v7)
-                  v5
+                  let v5: mut ((Int) -> Int) -> Tuple[] = tuple_index(v7, 1)
+                  let v6: Tuple[] = v5(v8)
+                  v6
                 }
                 entrypoint Test@e0() -> Html {
-                  let v1: Cell[Int] = cell {
+                  let v1: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     let v0: Int = 0
                     v0
                   }
                   let v4: (Int) -> Int = l0[]
-                  let v8: mut () -> Tuple[] = l1[v1, v4]
-                  let v9: Html = text("x")
-                  let v10: Html = element("button", {}, v9) on_click v8
-                  v10
+                  let v9: mut () -> Tuple[] = l1[v1, v4]
+                  let v10: Html = text("x")
+                  let v11: Html = element("button", {}, v10) on_click v9
+                  v11
                 }
             "#]],
         );
@@ -271,13 +272,13 @@ mod tests {
                     let unseen = t.cell(|t| t.int(0));
                     let _idle = t.mut_lambda([], |t, _| {
                         let one = t.lambda([FlatType::INT], |t, _| t.int(1));
-                        t.cell_update(unseen, one)
+                        t.apply(t.tuple_index(unseen, 1), [one])
                     });
                     let bump = t.event_handler(|t| {
                         let incr = t.lambda([FlatType::INT], |t, params| {
                             t.add(NumericType::Int, params[0], t.int(1))
                         });
-                        t.cell_update(n, incr)
+                        t.apply(t.tuple_index(n, 1), [incr])
                     });
                     t.element_on_click("button", [], bump, Some(t.text("x")))
                 })
@@ -292,40 +293,42 @@ mod tests {
                   v5
                 }
                 mut lambda l1[
-                  v8: Cell[Int],
+                  v9: Tuple[Int, mut ((Int) -> Int) -> Tuple[]],
                 ]() -> Tuple[] {
                   let v6: (Int) -> Int = l0[]
-                  let v7: Tuple[] = cell_update(v8, v6)
-                  v7
+                  let v7: mut ((Int) -> Int) -> Tuple[] = tuple_index(v9, 1)
+                  let v8: Tuple[] = v7(v6)
+                  v8
                 }
                 lambda l2[](
-                  v10: Int,
+                  v11: Int,
                 ) -> Int {
-                  let v11: Int = 1
-                  let v12: Int = int_add(v10, v11)
-                  v12
+                  let v12: Int = 1
+                  let v13: Int = int_add(v11, v12)
+                  v13
                 }
                 mut lambda l3[
-                  v15: Cell[Int],
+                  v17: Tuple[Int, mut ((Int) -> Int) -> Tuple[]],
                 ]() -> Tuple[] {
-                  let v13: (Int) -> Int = l2[]
-                  let v14: Tuple[] = cell_update(v15, v13)
-                  v14
+                  let v14: (Int) -> Int = l2[]
+                  let v15: mut ((Int) -> Int) -> Tuple[] = tuple_index(v17, 1)
+                  let v16: Tuple[] = v15(v14)
+                  v16
                 }
                 entrypoint Test@e0() -> Html {
-                  let v1: Cell[Int] = cell {
+                  let v1: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     let v0: Int = 0
                     v0
                   }
-                  let v3: Cell[Int] = cell {
+                  let v3: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     let v2: Int = 0
                     v2
                   }
-                  let v9: mut () -> Tuple[] = l1[v3]
-                  let v16: mut () -> Tuple[] = l3[v1]
-                  let v17: Html = text("x")
-                  let v18: Html = element("button", {}, v17) on_click v16
-                  v18
+                  let v10: mut () -> Tuple[] = l1[v3]
+                  let v18: mut () -> Tuple[] = l3[v1]
+                  let v19: Html = text("x")
+                  let v20: Html = element("button", {}, v19) on_click v18
+                  v20
                 }
 
                 -- after --
@@ -336,35 +339,37 @@ mod tests {
                   v5
                 }
                 mut lambda l1[
-                  v8: Cell[Int],
+                  v9: Tuple[Int, mut ((Int) -> Int) -> Tuple[]],
                 ]() -> Tuple[] {
                   let v6: (Int) -> Int = l0[]
-                  let v7: Tuple[] = cell_update(v8, v6)
-                  v7
+                  let v7: mut ((Int) -> Int) -> Tuple[] = tuple_index(v9, 1)
+                  let v8: Tuple[] = v7(v6)
+                  v8
                 }
                 lambda l2[](
-                  v10: Int,
+                  v11: Int,
                 ) -> Int {
-                  let v11: Int = 1
-                  let v12: Int = int_add(v10, v11)
-                  v12
+                  let v12: Int = 1
+                  let v13: Int = int_add(v11, v12)
+                  v13
                 }
                 mut lambda l3[
-                  v15: Cell[Int],
+                  v17: Tuple[Int, mut ((Int) -> Int) -> Tuple[]],
                 ]() -> Tuple[] {
-                  let v13: (Int) -> Int = l2[]
-                  let v14: Tuple[] = cell_update(v15, v13)
-                  v14
+                  let v14: (Int) -> Int = l2[]
+                  let v15: mut ((Int) -> Int) -> Tuple[] = tuple_index(v17, 1)
+                  let v16: Tuple[] = v15(v14)
+                  v16
                 }
                 entrypoint Test@e0() -> Html {
-                  let v1: Cell[Int] = cell {
+                  let v1: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     let v0: Int = 0
                     v0
                   }
-                  let v16: mut () -> Tuple[] = l3[v1]
-                  let v17: Html = text("x")
-                  let v18: Html = element("button", {}, v17) on_click v16
-                  v18
+                  let v18: mut () -> Tuple[] = l3[v1]
+                  let v19: Html = text("x")
+                  let v20: Html = element("button", {}, v19) on_click v18
+                  v20
                 }
             "#]],
         );

@@ -5,7 +5,6 @@ use crate::symbols::type_name::TypeName;
 pub enum FlatType {
     Data(FlatDataType),
     Html,
-    Cell(FlatDataType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,28 +60,33 @@ impl FlatType {
     pub const FLOAT: FlatType = FlatType::Data(FlatDataType::Float);
     pub const HTML: FlatType = FlatType::Html;
 
-    pub fn function(
-        modifier: IrModifier,
-        parameters: impl IntoIterator<Item = FlatType>,
-        result: FlatType,
-    ) -> FlatType {
-        FlatType::Data(FlatDataType::Function(FlatSignature {
-            modifier,
-            parameters: parameters.into_iter().collect(),
-            result: Box::new(result),
-        }))
-    }
-
     pub fn as_data(&self) -> Option<&FlatDataType> {
         match self {
             FlatType::Data(data) => Some(data),
-            FlatType::Html | FlatType::Cell(_) => None,
+            FlatType::Html => None,
         }
     }
 }
 
 impl FlatDataType {
     pub const UNIT: FlatDataType = FlatDataType::Tuple(Vec::new());
+
+    /// What a cell of `value` binds: the value a render gives it, and the
+    /// setter that updates it to what a closure gives for the value it has.
+    /// `Tuple[T, mut fn(fn(T) -> T) -> Tuple[]]`.
+    pub fn cell(value: FlatDataType) -> FlatDataType {
+        let update = FlatDataType::Function(FlatSignature {
+            modifier: IrModifier::Pure,
+            parameters: vec![FlatType::Data(value.clone())],
+            result: Box::new(FlatType::Data(value.clone())),
+        });
+        let setter = FlatDataType::Function(FlatSignature {
+            modifier: IrModifier::Mut,
+            parameters: vec![FlatType::Data(update)],
+            result: Box::new(FlatType::Data(FlatDataType::UNIT)),
+        });
+        FlatDataType::Tuple(vec![value, setter])
+    }
 }
 
 #[cfg(test)]
@@ -97,6 +101,18 @@ mod test_support {
     use super::IrModifier;
 
     impl FlatType {
+        pub fn function(
+            modifier: IrModifier,
+            parameters: impl IntoIterator<Item = FlatType>,
+            result: FlatType,
+        ) -> FlatType {
+            FlatType::Data(FlatDataType::Function(FlatSignature {
+                modifier,
+                parameters: parameters.into_iter().collect(),
+                result: Box::new(result),
+            }))
+        }
+
         pub fn array(element: FlatDataType) -> FlatType {
             FlatType::Data(FlatDataType::Array(Box::new(element)))
         }
@@ -111,7 +127,6 @@ mod test_support {
             match self {
                 FlatType::Data(data) => data.fmt(f),
                 FlatType::Html => f.write_str("Html"),
-                FlatType::Cell(data) => write!(f, "Cell[{data}]"),
             }
         }
     }

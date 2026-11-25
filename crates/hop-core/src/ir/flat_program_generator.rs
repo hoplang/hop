@@ -586,9 +586,9 @@ impl FlatGenerator<'_, '_> {
         Some(vars.swap_remove(index))
     }
 
-    /// The names in scope that are values, or cells, by layer, of a data
-    /// type that matches pattern, each with what the variables of the
-    /// pattern bind to.
+    /// The names in scope, by layer, that are values of a data type that
+    /// matches pattern, or cells whose values are, each with what the
+    /// variables of the pattern bind to.
     fn candidates(
         b: &FlatBlockBuilder<'_>,
         scope: &Scope,
@@ -598,10 +598,15 @@ impl FlatGenerator<'_, '_> {
         let types = b.value_types();
         (scope.names_where(&types, |_| true))
             .filter_map(|name| {
-                let ((Layer::Data, FlatType::Data(typ)) | (Layer::Cell, FlatType::Cell(typ))) =
-                    (&layer, &types[name.index()])
-                else {
-                    return None;
+                let typ = match (&layer, &types[name.index()]) {
+                    (Layer::Data, FlatType::Data(typ)) => typ,
+                    (Layer::Cell, FlatType::Data(cell @ FlatDataType::Tuple(elements)))
+                        if elements.len() == 2
+                            && *cell == FlatDataType::cell(elements[0].clone()) =>
+                    {
+                        &elements[0]
+                    }
+                    _ => return None,
                 };
                 let mut subst = Subst::new();
                 match_type(pattern, typ, &mut subst).then_some((name, subst))
@@ -890,7 +895,7 @@ impl FlatGenerator<'_, '_> {
             let typ = FlatType::Data(subst[&0].clone());
             let update_type = FlatType::function(IrModifier::Pure, [typ.clone()], typ);
             let update = self.op_of_type(b, scope, &update_type, depth, nesting - 1);
-            b.cell_update(cell, update);
+            b.apply(b.tuple_index(cell, 1), [update]);
         }
     }
 
@@ -904,7 +909,6 @@ impl FlatGenerator<'_, '_> {
         match typ {
             FlatType::Data(target) => self.data_block(b, scope, target, depth),
             FlatType::Html => self.html_block(b, scope, depth),
-            FlatType::Cell(_) => unreachable!("a block produces no cell"),
         }
     }
 
@@ -919,7 +923,6 @@ impl FlatGenerator<'_, '_> {
         match typ {
             FlatType::Data(target) => self.data_op(b, scope, target, depth, nesting),
             FlatType::Html => self.html_op(b, scope, depth, nesting),
-            FlatType::Cell(_) => unreachable!("a cell is bound for a block, not asked for"),
         }
     }
 
@@ -1536,14 +1539,14 @@ impl FlatGenerator<'_, '_> {
         let mut initial = scope.inner(&b.value_types(), IrModifier::Pure);
         let cell =
             scope.push(b.cell(|b| self.literal(b, &mut initial, &subject_ty, MAX_LITERAL_DEPTH)));
-        let value = scope.push(b.cell_read(cell));
+        let value = scope.push(b.tuple_index(cell, 0));
         let mut inner = scope.inner(&b.value_types(), IrModifier::Pure);
         let handler = b.event_handler(|b| {
             let typ = FlatType::Data(subject_ty.clone());
             let update = b.lambda([typ], |b, _| {
                 self.literal(b, &mut inner, &subject_ty, MAX_LITERAL_DEPTH)
             });
-            b.cell_update(cell, update)
+            b.apply(b.tuple_index(cell, 1), [update])
         });
         let handler = scope.push(handler);
         let shown = self.match_on(b, scope, value, subject_ty, &FlatType::HTML, depth);
@@ -1890,7 +1893,7 @@ impl FlatGenerator<'_, '_> {
             return value;
         }
         let cell = scope.push(b.cell(|_| value));
-        scope.push(b.cell_read(cell))
+        scope.push(b.tuple_index(cell, 0))
     }
 
     fn call(
@@ -2396,79 +2399,77 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            24112 of 65536 input bytes consumed per program on average, at most 65536
-            3 of 32 programs exhaust the input
+            20121 of 65536 input bytes consumed per program on average, at most 65536
+            1 of 32 programs exhaust the input
 
             -- sizes --
             under 256     2  ######
-            under 1K      0
-            under 4K      4  #############
-            under 16K    12  ########################################
-            under 64K    11  ####################################
-            at 64K        3  ##########
+            under 1K      2  ######
+            under 4K      3  #########
+            under 16K    11  #################################
+            under 64K    13  ########################################
+            at 64K        1  ###
 
             -- programs --
-            276 of 32035 Html bindings have more than one reference
-            2.6 arms per match on average, at least 2 and at most 18
-            9066 of 23008 match arms bind names
-            2001 of 8891 matches produce a closure
-            12123 values are constructed of a type that holds a closure
-            2697 closures are taken out of a value that holds them
-            19232 cells
-            341 of 602 loops have a key
-            3565 of 4396 elements have a click
-            666 handlers have more than one click
-            1090 clicks apply a handler bound outside their block, 10 of them a parameter
+            275 of 28774 Html bindings have more than one reference
+            2.6 arms per match on average, at least 2 and at most 12
+            7286 of 20060 match arms bind names
+            1687 of 7864 matches produce a closure
+            10191 values are constructed of a type that holds a closure
+            5736 closures are taken out of a value that holds them
+            12734 cells
+            379 of 645 loops have a key
+            3601 of 4468 elements have a click
+            630 handlers have more than one click
+            1135 clicks apply a handler bound outside their block, 24 of them a parameter
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      203.8    93.8    96.0    78.0
-            Array                      251.2    93.8    96.3    33.1
-            ArrayEnumerate               2.8    59.4    98.9    74.4
-            ArrayFromRange              18.8    93.8    96.0     0.0
-            ArrayGet                    50.8    93.8    92.4    63.9
-            ArrayIsEmpty                 8.0    78.1    94.1    67.6
-            ArrayLength                198.2    93.8    95.5    70.2
-            BoolLiteral                 68.0    90.6    96.6     0.0
-            BoolNegation                 7.4    81.2    95.0    64.7
-            Call                        46.5    59.4    97.8    94.0
-            Cell                       601.0    96.9    95.5    60.3
-            CellRead                   601.0    96.9    95.5    60.3
-            CellUpdate                 114.2    90.6   100.0   100.0
-            Enum                       146.1    81.2    96.2    34.6
-            Equals                       7.2    78.1    94.8    82.7
-            FieldAccess                 18.0    46.9    96.5    95.1
-            FloatLiteral               145.3    93.8    96.3     0.0
-            FloatToInt                 192.8    93.8    96.0    59.6
-            HtmlApply                   14.3    93.8    95.8    75.9
-            HtmlConcat                 355.6    96.9    94.6    42.7
-            HtmlElement                137.4    93.8    96.9    72.0
-            HtmlEscape                 223.0    96.9    94.0    60.6
-            HtmlFor                     18.8    93.8    96.5    73.6
-            HtmlLambda                  87.0    93.8    95.9    37.6
-            HtmlText                    90.0    96.9    95.9     0.0
-            IntLiteral                 189.5    93.8    94.8     0.0
-            IntToFloat                 177.9    93.8    95.3    66.8
-            IntToString                240.1    93.8    94.8    66.2
-            Lambda                     419.2    93.8    96.6    56.8
-            LessThan                     6.9    84.4    95.5    80.5
-            LessThanOrEqual              7.7    81.2    96.3    81.3
-            Match                      277.8    93.8    96.1    89.9
-            MutLambda                  119.6    93.8    96.4    41.2
-            NumericAdd                 381.5    93.8    95.3    77.8
-            NumericMultiply            375.5    93.8    95.5    78.2
-            NumericNegation            387.6    93.8    95.5    66.2
-            NumericSubtract            375.6    93.8    95.5    77.6
-            OptionIsNone                 6.4    68.8    96.1    74.5
-            OptionIsSome                 6.8    68.8    94.4    69.9
-            OptionNone                  63.1    93.8    96.4     0.0
-            OptionSome                  55.8    93.8    95.3    42.7
-            Record                     117.7    68.8    95.8    36.5
-            StringConcat               243.7    93.8    94.8    54.3
-            StringIsEmpty                6.8    75.0    97.2    63.3
-            StringLiteral               83.6    96.9    95.7     0.0
-            Tuple                      257.2    93.8    97.1    31.7
-            TupleIndex                 108.9    93.8    93.9    86.7
+            Apply                      286.0    93.8    96.2    85.7
+            Array                      224.6    90.6    94.6    30.5
+            ArrayEnumerate               3.0    75.0    96.8    66.3
+            ArrayFromRange              17.3    90.6    93.1     0.0
+            ArrayGet                    43.1    87.5    90.1    62.5
+            ArrayIsEmpty                 5.6    78.1    88.8    64.2
+            ArrayLength                143.8    93.8    94.8    69.9
+            BoolLiteral                 61.8    90.6    95.1     0.0
+            BoolNegation                 6.6    75.0    93.4    54.5
+            Call                        36.8    59.4    94.4    90.5
+            Cell                       397.9    96.9    90.3    48.7
+            Enum                       127.1    78.1    93.6    32.9
+            Equals                       6.2    78.1    92.5    76.9
+            FieldAccess                  5.7    40.6    93.4    88.5
+            FloatLiteral               116.5    93.8    94.7     0.0
+            FloatToInt                 141.0    93.8    94.1    57.5
+            HtmlApply                   13.5    84.4    93.1    70.4
+            HtmlConcat                 315.5    96.9    94.0    40.6
+            HtmlElement                139.6    90.6    93.6    63.0
+            HtmlEscape                 190.1    96.9    94.0    54.7
+            HtmlFor                     20.2    90.6    93.5    68.7
+            HtmlLambda                  80.5    90.6    93.1    33.1
+            HtmlText                    77.1    93.8    94.6     0.0
+            IntLiteral                 169.3    90.6    94.9     0.0
+            IntToFloat                 141.9    93.8    94.1    64.0
+            IntToString                180.5    93.8    94.9    60.0
+            Lambda                     353.8    93.8    94.2    55.5
+            LessThan                     6.1    81.2    93.4    65.8
+            LessThanOrEqual              6.0    75.0    88.5    72.8
+            Match                      245.8    93.8    93.7    87.8
+            MutLambda                  104.9    90.6    93.0    37.9
+            NumericAdd                 291.5    93.8    94.3    76.0
+            NumericMultiply            279.7    93.8    94.3    75.5
+            NumericNegation            280.8    93.8    94.1    63.1
+            NumericSubtract            288.1    93.8    93.9    76.1
+            OptionIsNone                 5.9    75.0    94.2    65.8
+            OptionIsSome                 6.3    75.0    89.1    63.9
+            OptionNone                  56.9    90.6    95.9     0.0
+            OptionSome                  47.8    90.6    94.6    41.8
+            Record                     103.2    65.6    93.9    34.3
+            StringConcat               178.7    93.8    94.4    49.0
+            StringIsEmpty                5.8    81.2    87.5    51.6
+            StringLiteral               81.2    96.9    94.7     0.0
+            Tuple                      247.4    90.6    95.6    28.6
+            TupleIndex                 726.5    96.9    92.4    62.9
         "#]]
         .assert_eq(&report);
     }
@@ -2482,10 +2483,10 @@ mod tests {
 
                 entrypoint V0@e0() -> Html {
                   let v0: Int = -2147483648
-                  let v1: Cell[Int] = cell {
+                  let v1: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     v0
                   }
-                  let v2: Int = cell_read(v1)
+                  let v2: Int = tuple_index(v1, 0)
                   let v3: Html = concat()
                   v3
                 }
@@ -2528,10 +2529,10 @@ mod tests {
                   p3@v3: render () -> Html,
                 ) -> Html {
                   let v7: Int = -2147483648
-                  let v8: Cell[Int] = cell {
+                  let v8: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     v7
                   }
-                  let v9: Int = cell_read(v8)
+                  let v9: Int = tuple_index(v8, 0)
                   let v10: Html = concat()
                   v10
                 }
@@ -2541,10 +2542,10 @@ mod tests {
                   p2@v6: mut () -> Tuple[],
                 ) -> Html {
                   let v11: Int = -2147483648
-                  let v12: Cell[Int] = cell {
+                  let v12: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     v11
                   }
-                  let v13: Int = cell_read(v12)
+                  let v13: Int = tuple_index(v12, 0)
                   v4
                 }
                 entrypoint V0@e0(
@@ -2552,10 +2553,10 @@ mod tests {
                   p1@v15: E1,
                 ) -> Html {
                   let v16: Int = -2147483648
-                  let v17: Cell[Int] = cell {
+                  let v17: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     v16
                   }
-                  let v18: Int = cell_read(v17)
+                  let v18: Int = tuple_index(v17, 0)
                   let v19: Html = concat()
                   v19
                 }
@@ -2570,10 +2571,10 @@ mod tests {
                   p7@v27: Tuple[],
                 ) -> Html {
                   let v28: Int = -2147483648
-                  let v29: Cell[Int] = cell {
+                  let v29: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     v28
                   }
-                  let v30: Int = cell_read(v29)
+                  let v30: Int = tuple_index(v29, 0)
                   let v31: Html = concat()
                   v31
                 }
@@ -2585,10 +2586,10 @@ mod tests {
                   p4@v36: Int,
                   p5@v37: Int,
                 ) -> Html {
-                  let v38: Cell[Int] = cell {
+                  let v38: Tuple[Int, mut ((Int) -> Int) -> Tuple[]] = cell {
                     v34
                   }
-                  let v39: Int = cell_read(v38)
+                  let v39: Int = tuple_index(v38, 0)
                   let v40: Html = concat()
                   v40
                 }
