@@ -100,6 +100,7 @@ pub enum LangToken {
     Page,
     Fn,
     Pub,
+    Test,
     Some,
     None,
     // Type tokens
@@ -309,6 +310,7 @@ impl fmt::Display for LangToken {
             LangToken::Page => write!(f, "page"),
             LangToken::Fn => write!(f, "fn"),
             LangToken::Pub => write!(f, "pub"),
+            LangToken::Test => write!(f, "test"),
             LangToken::Some => write!(f, "Some"),
             LangToken::None => write!(f, "None"),
             LangToken::TypeString => write!(f, "String"),

@@ -62,8 +62,9 @@ pub enum FlatTypeError {
     /// cell binding or a mint binds.
     CellOrIdParameter,
     /// A block has an effect that its modifier does not allow. A cell, a
-    /// mint and a loop render, a write of a cell mutates, and a call or an application
-    /// has the modifier of what it calls. A read of a cell is allowed in a
+    /// mint and a loop render, a write of a cell mutates, an assertion
+    /// tests, and a call or an application has the modifier of what it
+    /// calls. A read of a cell is allowed in a
     /// block that renders or mutates. A pure block allows none of these, and
     /// a block that renders or mutates allows its own effect.
     EffectNotAllowed,
@@ -310,6 +311,7 @@ impl<'a> Checker<'a> {
             FlatOp::Cell(_) | FlatOp::Mint | FlatOp::For(_) => modifier == IrModifier::Render,
             FlatOp::CellRead(_) => modifier == IrModifier::Render,
             FlatOp::CellUpdate(..) => modifier == IrModifier::Mut,
+            FlatOp::AssertEq(..) => modifier == IrModifier::Test,
             _ => true,
         };
         if !allowed {
@@ -376,6 +378,14 @@ impl<'a> Checker<'a> {
                         && signature.modifier == IrModifier::Pure
                         && signature.parameters == [data.clone()]
                         && *signature.result == data
+                }
+                _ => false,
+            },
+            FlatOp::AssertEq(_, left, right) => match (self.read(*left)?, self.read(*right)?) {
+                (BoundType::Data(left), BoundType::Data(right)) => {
+                    declared == BoundType::Data(&FlatDataType::UNIT)
+                        && left == right
+                        && !self.declarations.holds_closure(left)
                 }
                 _ => false,
             },

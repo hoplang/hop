@@ -145,6 +145,7 @@ pub fn step(iter: &mut DocumentCursor) -> Option<LexStep> {
                 "pub" => LangToken::Pub,
                 "render" => LangToken::Render,
                 "record" => LangToken::Record,
+                "test" => LangToken::Test,
                 "true" => LangToken::True,
                 // Constructors
                 "None" => LangToken::None,

@@ -458,6 +458,7 @@ impl<'a> Evaluator<'a> {
             | FlatOp::Mint
             | FlatOp::CellUpdate(..)
             | FlatOp::CellRead(_)
+            | FlatOp::AssertEq(..)
             | FlatOp::Text(_)) => op,
         };
         // Only Html reads a concat, so this binds none for a value.

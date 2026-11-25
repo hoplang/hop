@@ -2,6 +2,7 @@ mod build;
 mod fmt;
 mod lsp;
 mod project;
+mod test;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use project::Project;
@@ -37,6 +38,17 @@ enum Commands {
         project: Option<String>,
         /// Specific .hop file to format (formats all files if not specified)
         file: Option<String>,
+    },
+    /// Run the tests of a hop project
+    Test {
+        /// Path to project root
+        #[arg(long)]
+        project: Option<String>,
+        /// Run only the tests of this .hop file
+        #[arg(long)]
+        file: Option<String>,
+        /// Run only the tests with this name
+        name: Option<String>,
     },
     /// Run the LSP server
     #[command(hide = true)]
@@ -82,6 +94,42 @@ fn main() -> anyhow::Result<()> {
             );
 
             println!();
+        }
+        Some(Commands::Test {
+            project,
+            file,
+            name,
+        }) => {
+            use std::time::Instant;
+            let start_time = Instant::now();
+
+            let proj = match (project, file) {
+                (Some(d), _) => Project::open(Path::new(d))?,
+                // A file names its project, wherever the command runs.
+                (None, Some(file)) => Project::find_traversing_superdirectories(Path::new(file))?,
+                (None, None) => Project::find_traversing_superdirectories(Path::new("."))?,
+            };
+
+            let results = test::execute(&proj, file.as_deref(), name.as_deref())?;
+            let elapsed = start_time.elapsed();
+
+            if results.is_empty() && (file.is_some() || name.is_some()) {
+                anyhow::bail!("No test matched");
+            }
+
+            let failed = (results.iter())
+                .filter(|result| !result.failures.is_empty())
+                .count();
+            print_header(&format!(
+                "{} passed, {failed} failed in {} ms",
+                results.len() - failed,
+                elapsed.as_millis()
+            ));
+            println!("{}", test::render(&results));
+
+            if failed > 0 {
+                std::process::exit(1);
+            }
         }
         Some(Commands::Build {
             project,

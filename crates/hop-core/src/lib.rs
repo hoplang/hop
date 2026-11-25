@@ -42,4 +42,4 @@ pub use project_root::{ProjectRoot, ProjectRootError};
 pub use root_contained_file_path::RootContainedFilePath;
 pub use root_relative_file_path::RootRelativeFilePath;
 pub use root_relative_path::{RootRelativePath, RootRelativePathError};
-pub use session::{EvaluatePageError, FormatError, Session};
+pub use session::{EvaluatePageError, FormatError, RunTestsError, Session, TestResult};

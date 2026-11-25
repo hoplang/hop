@@ -49,6 +49,8 @@ pub enum ParsedType {
 pub enum ParsedModifier {
     Render,
     Mut,
+    /// Only a function declaration is a test, never a lambda or a type.
+    Test,
 }
 
 impl ParsedModifier {
@@ -56,6 +58,7 @@ impl ParsedModifier {
         match self {
             ParsedModifier::Render => "render",
             ParsedModifier::Mut => "mut",
+            ParsedModifier::Test => "test",
         }
     }
 }

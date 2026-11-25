@@ -9,10 +9,11 @@ use crate::dependency_graph::DependencyGraph;
 use crate::document::{CheapString, Document, DocumentPosition, PositionEncoding};
 use crate::hop::format;
 use crate::hop::parsing::{ParseError, ParsedModule, parse};
-use crate::hop::typing::{Export, TypeError, TypeRegistry, TypedModule, typecheck};
+use crate::hop::typing::{Export, Modifier, TypeError, TypeRegistry, TypedModule, typecheck};
 use crate::hover_annotation::HoverAnnotation;
 use crate::ir::flat_program::FlatProgram;
 use crate::ir::ir_page::IrPage;
+use crate::ir::ir_test::IrTests;
 use crate::ir::{
     DocumentShell, TailwindInjection, flat_to_writer, optimize_flat, transpile, typed_to_flat,
 };
@@ -273,7 +274,51 @@ impl Session {
             .collect();
         // Only the functions the selected pages reach are compiled, so a
         // build of one page holds what that page actually needs.
-        typed_to_flat(pages, &functions, &self.type_registry, asset_path_rewriter)
+        let (program, pages, _) = typed_to_flat(
+            pages,
+            &[],
+            &functions,
+            &self.type_registry,
+            asset_path_rewriter,
+        );
+        (program, pages)
+    }
+
+    /// Compile every test, or those of `module` if it is given, and of those
+    /// the tests called `name` if it is given, with the functions they reach.
+    /// A test is a test fn without parameters: one with parameters is for
+    /// tests to call.
+    pub(super) fn compile_tests(
+        &self,
+        module: Option<&RootContainedFilePath>,
+        name: Option<&str>,
+    ) -> (FlatProgram, IrTests) {
+        // Sorted by module for a deterministic order.
+        let mut document_ids: Vec<_> = self.typed_modules.keys().collect();
+        document_ids.sort();
+        let functions: Vec<_> = document_ids
+            .iter()
+            .flat_map(|id| {
+                self.typed_modules[*id]
+                    .function_declarations()
+                    .iter()
+                    .map(move |decl| (*id, decl))
+            })
+            .collect();
+        let tests: Vec<_> = functions
+            .iter()
+            .filter(|(id, decl)| {
+                decl.modifier == Modifier::Test
+                    && decl.params.is_empty()
+                    && decl.rest_param.is_none()
+                    && module.is_none_or(|module| *id == module)
+                    && name.is_none_or(|name| decl.name.as_str() == name)
+            })
+            .map(|(id, decl)| (*id, &decl.name))
+            .collect();
+        let (program, _, tests) =
+            typed_to_flat(Vec::new(), &tests, &functions, &self.type_registry, None);
+        (program, tests)
     }
 
     /// Return the names of every page declared across all modules, sorted.

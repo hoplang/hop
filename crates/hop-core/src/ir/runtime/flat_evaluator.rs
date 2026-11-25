@@ -9,6 +9,7 @@ use crate::ir::flat_program::{
     FlatBinding, FlatBlock, FlatFor, FlatFunction, FlatMatch, FlatOp, FlatProgram,
 };
 use crate::ir::flat_type::IrModifier;
+use crate::ir::function_id::FunctionId;
 use crate::ir::ir_data_op::IrDataOp;
 use crate::ir::ir_page::IrPage;
 use crate::ir::runtime::bounded_vec::BoundedVec;
@@ -16,6 +17,7 @@ use crate::ir::runtime::eval_error::EvalError;
 use crate::ir::runtime::state::{
     IterationKey, MutationTransaction, RenderTransaction, State, Step,
 };
+use crate::ir::runtime::test_run::{AssertionFailure, TestRun};
 use crate::ir::runtime::value::{
     Closure, Env, Html, HtmlAttribute, HtmlNode, MAX_ARRAY_LENGTH, MAX_STRING_LENGTH, Value,
 };
@@ -114,6 +116,22 @@ pub(super) fn invoke_entrypoint<'a>(
         &mut 0,
     )?;
     Ok((value, render.commit()))
+}
+
+/// Evaluate a test, a function without parameters that tests, in the run.
+/// An assertion that fails does not end the test. A test that the evaluator
+/// cannot evaluate within its limits ends there, and the run keeps the
+/// assertions that failed before it.
+pub fn evaluate_test<'a>(
+    program: &'a FlatProgram,
+    function: FunctionId,
+    run: &mut TestRun<'a>,
+) -> Result<(), EvalError> {
+    let decl = (program.functions.iter())
+        .find(|decl| decl.function.id == function)
+        .expect("the program declares the test");
+    evaluate_function(program, decl, Vec::new(), Context::Test(run), 0, &mut 0)?;
+    Ok(())
 }
 
 fn evaluate_function<'a>(
@@ -276,6 +294,19 @@ fn evaluate_op<'a>(
             Value::Id(render.bind_element(var))
         }
 
+        FlatOp::AssertEq(assertion, left, right) => {
+            let run = context.test("asserts");
+            let (left, right) = (&env[left], &env[right]);
+            if !left.equals(right) {
+                run.failures.push(AssertionFailure {
+                    assertion: *assertion,
+                    left: left.clone(),
+                    right: right.clone(),
+                });
+            }
+            Value::Tuple(Rc::new([]))
+        }
+
         FlatOp::CellUpdate(cell, update) => {
             let mutations = context.mutations("updates a cell");
             let cell = env[cell].as_cell();
@@ -374,7 +405,7 @@ fn evaluate_op<'a>(
                     render.exit();
                     value
                 }
-                IrModifier::Mut => {
+                IrModifier::Mut | IrModifier::Test => {
                     evaluate_function(program, callee, values, context, depth, op_count)?
                 }
                 IrModifier::Pure => {
@@ -481,7 +512,7 @@ fn evaluate_op<'a>(
                     render.exit();
                     value
                 }
-                IrModifier::Mut => {
+                IrModifier::Mut | IrModifier::Test => {
                     evaluate_apply(closure, args, program, context, depth, op_count)?
                 }
                 IrModifier::Pure => {
@@ -496,6 +527,7 @@ enum Context<'t, 'a> {
     Pure,
     Render(&'t mut RenderTransaction<'a>),
     Mut(&'t mut MutationTransaction<'a>),
+    Test(&'t mut TestRun<'a>),
 }
 
 impl<'t, 'a> Context<'t, 'a> {
@@ -504,20 +536,34 @@ impl<'t, 'a> Context<'t, 'a> {
             Context::Pure => Context::Pure,
             Context::Render(render) => Context::Render(render),
             Context::Mut(mutations) => Context::Mut(mutations),
+            Context::Test(run) => Context::Test(run),
         }
     }
 
     fn render(self, what: &str) -> &'t mut RenderTransaction<'a> {
         match self {
             Context::Render(render) => render,
-            Context::Pure | Context::Mut(_) => panic!("only a block that renders {what}"),
+            Context::Pure | Context::Mut(_) | Context::Test(_) => {
+                panic!("only a block that renders {what}")
+            }
         }
     }
 
     fn mutations(self, what: &str) -> &'t mut MutationTransaction<'a> {
         match self {
             Context::Mut(mutations) => mutations,
-            Context::Pure | Context::Render(_) => panic!("only a block that mutates {what}"),
+            Context::Pure | Context::Render(_) | Context::Test(_) => {
+                panic!("only a block that mutates {what}")
+            }
+        }
+    }
+
+    fn test(self, what: &str) -> &'t mut TestRun<'a> {
+        match self {
+            Context::Test(run) => run,
+            Context::Pure | Context::Render(_) | Context::Mut(_) => {
+                panic!("only a block that tests {what}")
+            }
         }
     }
 }

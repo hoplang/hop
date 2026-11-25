@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::Index;
 use std::rc::Rc;
 
@@ -146,6 +147,36 @@ impl<'a> Value<'a> {
         }
     }
 
+    /// Whether two values of the same type, which holds no function, are
+    /// equal. Data is equal if its parts are, and a part that `==` compares
+    /// is compared as `==` does, so NaN is not equal to itself. Panics on
+    /// Html, a closure, a cell or an identity.
+    pub fn equals(&self, other: &Value<'_>) -> bool {
+        fn all(a: &[Value<'_>], b: &[Value<'_>]) -> bool {
+            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.equals(b))
+        }
+        fn fields(a: &[(FieldName, Value<'_>)], b: &[(FieldName, Value<'_>)]) -> bool {
+            a.len() == b.len() && a.iter().zip(b).all(|((_, a), (_, b))| a.equals(b))
+        }
+        match (self, other) {
+            (Value::Html(_) | Value::Closure(_) | Value::Cell(_) | Value::Id(_), _)
+            | (_, Value::Html(_) | Value::Closure(_) | Value::Cell(_) | Value::Id(_)) => {
+                panic!("equals compares data, not {self:?} and {other:?}")
+            }
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Int(a), Value::Int(b)) => a == b,
+            (Value::Float(a), Value::Float(b)) => a == b,
+            (Value::Array(a), Value::Array(b)) => all(a, b),
+            (Value::Tuple(a), Value::Tuple(b)) => all(a, b),
+            (Value::Record(a), Value::Record(b)) => fields(a, b),
+            (Value::Option(Some(a)), Value::Option(Some(b))) => a.equals(b),
+            (Value::Option(None), Value::Option(None)) => true,
+            (Value::Enum(a_name, a), Value::Enum(b_name, b)) => a_name == b_name && fields(a, b),
+            _ => false,
+        }
+    }
+
     /// Panics if the value is not Html.
     pub fn unwrap_html(self) -> Html<'a> {
         match self {
@@ -275,6 +306,68 @@ impl<'a> Value<'a> {
                 .zip(elements.iter())
                 .all(|(arg, element)| element.matches(arg, bound)),
             _ => panic!("{self:?} cannot match the pattern {pattern:?}"),
+        }
+    }
+}
+
+impl fmt::Display for Value<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn fields(f: &mut fmt::Formatter<'_>, fields: &[(FieldName, Value<'_>)]) -> fmt::Result {
+            f.write_str("{")?;
+            for (index, (name, value)) in fields.iter().enumerate() {
+                let sep = if index > 0 { ", " } else { "" };
+                write!(f, "{sep}{}: {value}", name.as_str())?;
+            }
+            f.write_str("}")
+        }
+        match self {
+            Value::String(string) => {
+                f.write_str("\"")?;
+                for ch in string.chars() {
+                    match ch {
+                        '\n' => f.write_str("\\n")?,
+                        '\t' => f.write_str("\\t")?,
+                        '\r' => f.write_str("\\r")?,
+                        '\\' => f.write_str("\\\\")?,
+                        '"' => f.write_str("\\\"")?,
+                        ch => write!(f, "{ch}")?,
+                    }
+                }
+                f.write_str("\"")
+            }
+            Value::Bool(value) => write!(f, "{value}"),
+            Value::Int(value) => write!(f, "{value}"),
+            Value::Float(value) => write!(f, "{value:?}"),
+            Value::Array(elements) => {
+                f.write_str("[")?;
+                for (index, element) in elements.iter().enumerate() {
+                    let sep = if index > 0 { ", " } else { "" };
+                    write!(f, "{sep}{element}")?;
+                }
+                f.write_str("]")
+            }
+            Value::Tuple(elements) => {
+                f.write_str("(")?;
+                for (index, element) in elements.iter().enumerate() {
+                    let sep = if index > 0 { ", " } else { "" };
+                    write!(f, "{sep}{element}")?;
+                }
+                f.write_str(if elements.len() == 1 { ",)" } else { ")" })
+            }
+            Value::Record(record) => fields(f, record),
+            Value::Option(Some(value)) => write!(f, "Some({value})"),
+            Value::Option(None) => f.write_str("None"),
+            Value::Enum(variant, variant_fields) => {
+                f.write_str(variant.as_str())?;
+                if variant_fields.is_empty() {
+                    return Ok(());
+                }
+                f.write_str(" ")?;
+                fields(f, variant_fields)
+            }
+            Value::Html(_) | Value::Closure(_) | Value::Cell(_) | Value::Id(_) => {
+                panic!("{self:?} is not data")
+            }
         }
     }
 }

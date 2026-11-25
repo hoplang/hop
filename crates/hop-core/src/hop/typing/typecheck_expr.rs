@@ -6,7 +6,10 @@ use super::type_env::{Name, NameKind};
 use super::type_registry::{ResolvedType, TypeRegistry};
 use super::typecheck_call::{Argument, CallArguments, Callee, NamedArgument, typecheck_call};
 use super::typecheck_lambda::typecheck_lambda;
-use super::typecheck_macro::{typecheck_asset, typecheck_format, typecheck_join, typecheck_state};
+use super::typecheck_macro::{
+    typecheck_assert, typecheck_assert_eq, typecheck_asset, typecheck_format, typecheck_join,
+    typecheck_state,
+};
 use super::typecheck_markup::typecheck_markup;
 use super::typecheck_match::typecheck_match;
 use super::typecheck_pattern::typecheck_pattern;
@@ -1324,6 +1327,36 @@ pub fn typecheck_expr(
                         errors,
                     );
                 }
+                "assert" => {
+                    return typecheck_assert(
+                        args,
+                        subject_range,
+                        range,
+                        forwarded_params,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        errors,
+                    );
+                }
+                "assert_eq" => {
+                    return typecheck_assert_eq(
+                        args,
+                        subject_range,
+                        range,
+                        forwarded_params,
+                        var_env,
+                        type_env,
+                        registry,
+                        annotations,
+                        definition_links,
+                        asset_references,
+                        errors,
+                    );
+                }
                 _ => {
                     errors.push(TypeError::new(
                         TypeErrorKind::UnknownMacro { name: name.clone() },
@@ -1617,7 +1650,7 @@ pub fn typecheck_block(
         let binding = match statement {
             ParsedStatement::Let(binding) => binding,
             ParsedStatement::Expr { expr, range } => {
-                if !var_env.mutates() {
+                if !var_env.mutates() && !var_env.tests() {
                     errors.push(TypeError::new(
                         TypeErrorKind::StatementOutsideMut,
                         range.clone(),

@@ -55,10 +55,14 @@ pub fn parse(document: Document, errors: &mut Vec<ParseError>) -> ParsedModule {
                 pub_range,
             )
             .map(|function| ParsedDeclaration::Function(Box::new(function))),
-            Some((token @ (LangToken::Mut | LangToken::Render), modifier_range)) => {
+            Some((
+                token @ (LangToken::Mut | LangToken::Render | LangToken::Test),
+                modifier_range,
+            )) => {
                 let modifier = match token {
                     LangToken::Mut => ParsedModifier::Mut,
                     LangToken::Render => ParsedModifier::Render,
+                    LangToken::Test => ParsedModifier::Test,
                     _ => unreachable!(),
                 };
                 parse_helpers::expect_token(&mut iter, &mut comments, errors, &LangToken::Fn)
@@ -6004,9 +6008,9 @@ mod tests {
     fn accepts_unknown_escape_sequences() {
         // Reported when the literal is cooked, not while parsing.
         accept(
-            r#"fn test() -> String {"invalid\q"}"#,
+            r#"fn f() -> String {"invalid\q"}"#,
             expect![[r#"
-                fn test() -> String {
+                fn f() -> String {
                   "invalid\q"
                 }
             "#]],
@@ -7294,5 +7298,105 @@ mod tests {
             }
             Ok(())
         });
+    }
+
+    #[test]
+    fn accepts_a_test_fn() {
+        accept(
+            indoc! {r#"
+              test fn doubles() -> Tuple[] {
+                let four = double(2);
+                assert!(four > 3);
+                assert_eq!(four, 4)
+              }
+
+              pub test fn is_positive(x: Int) -> Tuple[] {
+                assert!(x > 0)
+              }
+            "#},
+            expect![[r#"
+                test fn doubles() -> Tuple[] {
+                  let four = double(2);
+                  assert!(gt(four, 3));
+                  assert_eq!(four, 4)
+                }
+
+                pub test fn is_positive(x: Int) -> Tuple[] {
+                  assert!(gt(x, 0))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_test_before_a_record_a_lambda_and_a_function_type() {
+        reject(
+            indoc! {r#"
+              test record Item {
+                label: String,
+              }
+
+              fn apply(check: test fn(Int) -> Tuple[]) -> Tuple[] {
+                check(1)
+              }
+
+              fn checker() -> Tuple[] {
+                let check = test fn(x: Int) { assert!(x > 0) };
+                check(1)
+              }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Expected token 'fn' but got 'record'
+                 1 | test record Item {
+                   |      ^^^^^^
+
+                error: Expected type name but got 'test'
+                 4 | 
+                 5 | fn apply(check: test fn(Int) -> Tuple[]) -> Tuple[] {
+                   |                 ^^^^
+
+                error: Expected token '{' but got ')'
+                 4 | 
+                 5 | fn apply(check: test fn(Int) -> Tuple[]) -> Tuple[] {
+                   |                                        ^
+
+                error: Unexpected token 'test'
+                 9 | fn checker() -> Tuple[] {
+                10 |   let check = test fn(x: Int) { assert!(x > 0) };
+                   |               ^^^^
+                -- ast --
+                record Item {
+                  label: String,
+                }
+
+                fn apply() -> Tuple[] {
+                  check(1)
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_test_as_a_name() {
+        reject(
+            indoc! {r#"
+              fn double(test: Int) -> Int {
+                test * 2
+              }
+            "#},
+            expect![[r#"
+                -- errors --
+                error: Expected identifier but got 'test'
+                1 | fn double(test: Int) -> Int {
+                  |           ^^^^
+
+                error: Unexpected token 'test'
+                1 | fn double(test: Int) -> Int {
+                2 |   test * 2
+                  |   ^^^^
+                -- ast --
+            "#]],
+        );
     }
 }

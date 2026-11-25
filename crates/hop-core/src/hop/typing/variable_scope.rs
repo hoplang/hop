@@ -41,6 +41,7 @@ pub enum Context {
 pub enum Position {
     PureFn,
     MutFn,
+    TestFn,
     InitialValue,
     Key,
 }
@@ -116,6 +117,10 @@ impl VariableScope {
 
     pub fn mutates(&self) -> bool {
         matches!(self.context, Context::Outside(Position::MutFn))
+    }
+
+    pub fn tests(&self) -> bool {
+        matches!(self.context, Context::Outside(Position::TestFn))
     }
 
     pub fn set_context(&mut self, context: Context) -> Context {

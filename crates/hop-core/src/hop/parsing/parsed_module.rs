@@ -330,6 +330,7 @@ impl Display for ParsedFunctionDeclaration {
             match &self.modifier {
                 Some((ParsedModifier::Render, _)) => "render ",
                 Some((ParsedModifier::Mut, _)) => "mut ",
+                Some((ParsedModifier::Test, _)) => "test ",
                 None => "",
             },
             self.name.as_str(),

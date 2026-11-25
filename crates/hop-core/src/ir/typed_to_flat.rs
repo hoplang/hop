@@ -8,6 +8,7 @@ use crate::hop::typing::{
     TypedAttribute, TypedExpr, TypedFunctionDeclaration, TypedLoopSource, TypedPageDeclaration,
     TypedParameter, TypedPattern, TypedRecordUpdateField, TypedStatement,
 };
+use crate::ir::assertion_id::AssertionId;
 use crate::ir::entrypoint_id::EntrypointId;
 use crate::ir::flat_html_element::{FlatAttribute, FlatHtmlElement};
 use crate::ir::flat_program::{
@@ -36,12 +37,19 @@ use std::collections::HashMap;
 
 use super::ir_page::IrPage;
 use super::ir_parameter::IrParameter;
+use super::ir_test::{IrAssertion, IrTest, IrTests};
 
-/// Compile the pages and the functions they reach.
+/// Compile the pages, the tests and the functions they reach.
 ///
 /// Flat has no pages. A page compiles to an entrypoint for its head, if
 /// it has one, and one for its body, and the pages that point at them are
 /// returned beside the program.
+///
+/// Flat has no tests either. A test is a function without parameters that
+/// tests, and the tests that point at the functions of `tests` are returned
+/// beside the program. An assertion compiles to an AssertEq that points at
+/// where it is written, which is returned with the tests. An `assert!`
+/// compiles to an AssertEq of its condition and true.
 ///
 /// Each expression that computes a value becomes one binding with a fresh
 /// name, in evaluation order. A let binds nothing, its variable is the name
@@ -66,10 +74,11 @@ use super::ir_parameter::IrParameter;
 /// only passes it on.
 pub fn typed_to_flat(
     pages: Vec<TypedPageDeclaration>,
+    tests: &[(&RootContainedFilePath, &FunctionName)],
     source_functions: &[(&RootContainedFilePath, &TypedFunctionDeclaration)],
     registry: &TypeRegistry,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
-) -> (FlatProgram, Vec<IrPage>) {
+) -> (FlatProgram, Vec<IrPage>, IrTests) {
     let mut value_ids = ValueIdCounter::new();
     let mut function_ids = FunctionIdCounter::new();
 
@@ -94,6 +103,24 @@ pub fn typed_to_flat(
         .map(|page| compiler.compile_page_decl(page))
         .collect();
 
+    let tests: Vec<IrTest> = tests
+        .iter()
+        .map(|&(module, name)| {
+            let function = compiler.function_id_counter.next();
+            compiler.specializations.push(Specialization {
+                module: module.clone(),
+                name: name.clone(),
+                shape: Vec::new(),
+                id: function,
+            });
+            IrTest {
+                module: module.clone(),
+                name: name.clone(),
+                function,
+            }
+        })
+        .collect();
+
     // Compiling a body requests the specializations it calls, so this runs
     // until every request is compiled.
     let mut functions: Vec<(usize, FlatFunction)> = Vec::new();
@@ -114,6 +141,10 @@ pub fn typed_to_flat(
         .map(|page| page.declare(&mut entrypoints))
         .collect();
 
+    let tests = IrTests {
+        tests,
+        assertions: compiler.assertions,
+    };
     let program = FlatProgram {
         types: lower_type_declarations(registry),
         functions,
@@ -124,7 +155,7 @@ pub fn typed_to_flat(
     if let Err(error) = flat_typecheck::typecheck(&program) {
         panic!("typed_to_flat produced an ill-typed program: {error:?}");
     }
-    (program, pages)
+    (program, pages, tests)
 }
 
 /// A function compiled for one list of attributes supplied to its rest.
@@ -193,6 +224,8 @@ struct Compiler<'a> {
     lambda_id_counter: LambdaIdCounter,
     lambdas: Vec<FlatLambda>,
     types: HashMap<ValueId, FlatType>,
+    /// The assertions compiled so far, by the id of each.
+    assertions: Vec<IrAssertion>,
     asset_path_rewriter: Option<Arc<dyn AssetPathRewriter>>,
 }
 
@@ -216,6 +249,7 @@ impl<'a> Compiler<'a> {
             lambda_id_counter: LambdaIdCounter::new(),
             lambdas: Vec::new(),
             types: HashMap::new(),
+            assertions: Vec::new(),
             asset_path_rewriter,
         }
     }
@@ -1001,6 +1035,26 @@ impl<'a> Compiler<'a> {
             // A state binds a cell, whose initial value is compiled as a
             // block of its own. Its value is a tuple of a read of the cell
             // and a mut fn that updates the cell with the function it takes.
+            TypedExpr::Assert { condition, range } => {
+                let condition = self.compile_expr(condition);
+                let expected = self.push(Type::BOOL, FlatOp::Data(IrDataOp::BoolLiteral(true)));
+                let assertion = AssertionId::new(self.assertions.len());
+                self.assertions.push(IrAssertion {
+                    range: range.clone(),
+                    reports_operands: false,
+                });
+                FlatOp::AssertEq(assertion, condition, expected)
+            }
+            TypedExpr::AssertEq { left, right, range } => {
+                let left = self.compile_expr(left);
+                let right = self.compile_expr(right);
+                let assertion = AssertionId::new(self.assertions.len());
+                self.assertions.push(IrAssertion {
+                    range: range.clone(),
+                    reports_operands: true,
+                });
+                FlatOp::AssertEq(assertion, left, right)
+            }
             TypedExpr::State { initial, .. } => {
                 let Type::Data(data) = initial.typ() else {
                     unreachable!("a cell holds data");

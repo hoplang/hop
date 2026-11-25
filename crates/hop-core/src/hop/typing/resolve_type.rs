@@ -109,7 +109,7 @@ pub fn check_function_type(function: &FunctionType) -> Option<TypeErrorKind> {
         let result = function.result.as_ref().clone();
         match function.modifier {
             Modifier::Mut => return Some(TypeErrorKind::MutFunctionReturnsNonData { result }),
-            Modifier::Pure | Modifier::Render => {}
+            Modifier::Pure | Modifier::Render | Modifier::Test => {}
         }
     }
     None

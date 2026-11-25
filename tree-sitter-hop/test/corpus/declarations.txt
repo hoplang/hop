@@ -227,3 +227,43 @@ fn f(row: fn(String, Int) -> Html, none: fn() -> Array[Int]) -> Html {
           (string_literal
             (string_content))
           (integer_literal))))))
+
+================================================================================
+test fn
+================================================================================
+
+test fn doubles() -> Tuple[] {
+  let four = double(2);
+  assert!(four > 3);
+  assert_eq!(four, 4)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (function_declaration
+    (test_modifier)
+    (identifier)
+    (parameters)
+    (generic_type
+      (type_identifier)
+      (type_arguments))
+    (block
+      (let_statement
+        (identifier)
+        (call_expression
+          (identifier)
+          (arguments
+            (integer_literal))))
+      (expression_statement
+        (macro_invocation
+          (identifier)
+          (arguments
+            (binary_expression
+              (identifier)
+              (integer_literal)))))
+      (macro_invocation
+        (identifier)
+        (arguments
+          (identifier)
+          (integer_literal))))))

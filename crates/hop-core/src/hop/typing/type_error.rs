@@ -377,6 +377,7 @@ pub enum TypeErrorKind {
         match position {
             Position::PureFn => "state! needs a render fn",
             Position::MutFn => "state! in a mut fn",
+            Position::TestFn => "state! in a test fn",
             Position::InitialValue => "state! in an initial value",
             Position::Key => "state! in a key",
         }
@@ -388,6 +389,7 @@ pub enum TypeErrorKind {
         match position {
             Position::PureFn => "Markup needs a render fn",
             Position::MutFn => "Markup in a mut fn",
+            Position::TestFn => "Markup in a test fn",
             Position::InitialValue => "Markup in an initial value",
             Position::Key => "Markup in a key",
         }
@@ -411,14 +413,33 @@ pub enum TypeErrorKind {
         match position {
             Position::PureFn => "Render fn called from a non-render fn",
             Position::MutFn => "Render fn called from a mut fn",
+            Position::TestFn => "Render fn called from a test fn",
             Position::InitialValue => "Render fn called in an initial value",
             Position::Key => "Render fn called in a key",
         }
     )]
     RenderCallNotAllowed { position: Position },
 
-    #[error("A statement has no effect outside a mut fn")]
+    #[error("A statement has no effect outside a mut fn or a test fn")]
     StatementOutsideMut,
+
+    #[error("A test fn must return Tuple[]")]
+    TestReturnType,
+
+    #[error("Call to a test fn from outside a test fn")]
+    TestCallOutsideTest,
+
+    #[error("{name}! needs a test fn")]
+    AssertMacroNotAllowed { name: CheapString },
+
+    #[error("assert! takes exactly one argument, got {actual}")]
+    AssertMacroArity { actual: usize },
+
+    #[error("assert_eq! takes exactly two arguments, got {actual}")]
+    AssertEqMacroArity { actual: usize },
+
+    #[error("assert_eq! cannot compare {typ}")]
+    AssertEqMacroNotComparable { typ: Type },
 
     #[error("Call to a mut fn from a non-mut fn")]
     MutCallOutsideMut,

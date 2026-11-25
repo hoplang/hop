@@ -101,7 +101,7 @@ module.exports = grammar({
     function_declaration: ($) =>
       seq(
         optional($.visibility_modifier),
-        optional(choice($.mutable_specifier, $.render_modifier)),
+        optional(choice($.mutable_specifier, $.render_modifier, $.test_modifier)),
         "fn",
         // A function with a capitalised name, e.g. `fn Card(...)`, can also be
         // called from markup.
@@ -186,6 +186,9 @@ module.exports = grammar({
     mutable_specifier: (_) => "mut",
 
     render_modifier: (_) => "render",
+
+    // Marks a function declaration as a test.
+    test_modifier: (_) => "test",
 
     _expression: ($) =>
       choice(

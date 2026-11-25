@@ -883,6 +883,10 @@
           "named": true
         },
         {
+          "type": "test_modifier",
+          "named": true
+        },
+        {
           "type": "visibility_modifier",
           "named": true
         }
@@ -1986,6 +1990,10 @@
   },
   {
     "type": "tag_name",
+    "named": true
+  },
+  {
+    "type": "test_modifier",
     "named": true
   },
   {

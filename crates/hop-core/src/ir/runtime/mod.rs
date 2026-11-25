@@ -7,6 +7,7 @@ pub mod flat_evaluator;
 pub mod page_runtime;
 pub mod random;
 mod state;
+pub mod test_run;
 pub mod value;
 #[cfg(test)]
 pub mod value_builder;

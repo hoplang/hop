@@ -185,6 +185,13 @@ pub fn typecheck_call(
                 ));
                 return None;
             }
+            if signature.modifier == Modifier::Test && !var_env.tests() {
+                errors.push(TypeError::new(
+                    TypeErrorKind::TestCallOutsideTest,
+                    DocumentRange::clone(report_range),
+                ));
+                return None;
+            }
             if signature.modifier == Modifier::Render {
                 var_env.require(
                     |_| false,

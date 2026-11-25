@@ -1,0 +1,15 @@
+[
+  {
+    "label": "hop test $GRAM_CUSTOM_name",
+    "command": "hop",
+    "args": ["test", "--file", "\"$GRAM_FILE\"", "$GRAM_CUSTOM_name"],
+    "tags": ["hop-test"],
+    "save": "all"
+  },
+  {
+    "label": "hop test",
+    "command": "hop",
+    "args": ["test", "--file", "\"$GRAM_FILE\""],
+    "save": "all"
+  }
+]

@@ -29,7 +29,7 @@ pub fn eliminate_dead_bindings(program: FlatProgram) -> FlatProgram {
             body: eliminate_block(
                 function.body,
                 &mut HashSet::new(),
-                function.modifier == IrModifier::Mut,
+                matches!(function.modifier, IrModifier::Mut | IrModifier::Test),
             ),
             ..function
         })

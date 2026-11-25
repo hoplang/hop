@@ -1234,6 +1234,7 @@ impl FlatGenerator<'_, '_> {
                     IrModifier::Mut => b.mut_lambda(parameters, body),
                     IrModifier::Render => b.render_lambda(parameters, body),
                     IrModifier::Pure => b.lambda(parameters, body),
+                    IrModifier::Test => unreachable!("only a declared function tests"),
                 }
             }
         };

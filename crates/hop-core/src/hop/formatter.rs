@@ -904,6 +904,7 @@ fn format_type<'a>(arena: &'a Arena<'a>, ty: &ParsedType) -> DocBuilder<'a, Aren
             .text(match modifier {
                 Some((ParsedModifier::Render, _)) => "render fn(",
                 Some((ParsedModifier::Mut, _)) => "mut fn(",
+                Some((ParsedModifier::Test, _)) => "test fn(",
                 None => "fn(",
             })
             .append(
@@ -1023,6 +1024,7 @@ fn format_expr<'a>(
             .text(match modifier {
                 Some((ParsedModifier::Render, _)) => "render fn(",
                 Some((ParsedModifier::Mut, _)) => "mut fn(",
+                Some((ParsedModifier::Test, _)) => "test fn(",
                 None => "fn(",
             })
             .append(arena.intersperse(
@@ -6207,6 +6209,35 @@ mod tests {
                       </li>
                     }}
                   </ul>
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn formats_a_test_fn() {
+        check(
+            indoc! {r#"
+                // doubles
+                test   fn doubles ( ) -> Tuple[]{
+                  let four=double(2);
+                  // more than three
+                  assert!(four>3);
+                  assert_eq!(four,4)
+                }
+                pub test fn is_positive(x: Int) -> Tuple[] { assert!(x > 0) }
+            "#},
+            expect![[r#"
+                // doubles
+                test fn doubles() -> Tuple[] {
+                  let four = double(2);
+                  // more than three
+                  assert!(four > 3);
+                  assert_eq!(four, 4)
+                }
+
+                pub test fn is_positive(x: Int) -> Tuple[] {
+                  assert!(x > 0)
                 }
             "#]],
         );

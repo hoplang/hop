@@ -26,6 +26,8 @@ pub enum Modifier {
     Pure,
     Render,
     Mut,
+    /// Only a declared function is a test, so no function type has it.
+    Test,
 }
 
 impl Modifier {
@@ -33,6 +35,7 @@ impl Modifier {
         match declared {
             Some(ParsedModifier::Render) => Modifier::Render,
             Some(ParsedModifier::Mut) => Modifier::Mut,
+            Some(ParsedModifier::Test) => Modifier::Test,
             None if result.renders_html() => Modifier::Render,
             None => Modifier::Pure,
         }
@@ -44,6 +47,7 @@ impl Modifier {
             Modifier::Render if result.renders_html() => "",
             Modifier::Render => "render ",
             Modifier::Mut => "mut ",
+            Modifier::Test => "test ",
         }
     }
 }

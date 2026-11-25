@@ -109,7 +109,7 @@ pub fn flat_to_writer(
         bound: HashSet::new(),
     };
     let functions: Vec<FlatFunction> = (functions.into_iter())
-        .filter(|function| function.modifier != IrModifier::Mut)
+        .filter(|function| !matches!(function.modifier, IrModifier::Mut | IrModifier::Test))
         .collect();
     for function in &functions {
         for param in &function.parameters {
@@ -408,6 +408,7 @@ impl<'a> Lowerer<'a> {
             // so it reads nothing.
             FlatOp::Lambda(..) if is_mut_closure(&binding.binder.typ) => {}
             FlatOp::CellUpdate(..) => unreachable!("only what mutates updates a cell"),
+            FlatOp::AssertEq(..) => unreachable!("only what tests asserts"),
             FlatOp::Lambda(_, captures) => {
                 for capture in captures {
                     self.read(*capture, Reader::Value);
@@ -482,7 +483,8 @@ impl<'a> Lowerer<'a> {
                 | FlatOp::Cell(_)
                 | FlatOp::Mint
                 | FlatOp::CellUpdate(..)
-                | FlatOp::CellRead(_) => unreachable!("Html is not bound by an op of a value"),
+                | FlatOp::CellRead(_)
+                | FlatOp::AssertEq(..) => unreachable!("Html is not bound by an op of a value"),
             }
         }
         if !self.is_html(block.result) {
@@ -682,6 +684,7 @@ impl<'a> Lowerer<'a> {
                 WriterOp::Data(IrDataOp::Tuple(Vec::new()))
             }
             FlatOp::CellUpdate(..) => unreachable!("only what mutates updates a cell"),
+            FlatOp::AssertEq(..) => unreachable!("only what tests asserts"),
             FlatOp::Call(function, args) => {
                 let args = self.lower_args(args, out);
                 WriterOp::Call(self.callees[function].clone(), args)
@@ -1204,7 +1207,8 @@ impl<'a> Lowerer<'a> {
             | FlatOp::Cell(_)
             | FlatOp::Mint
             | FlatOp::CellUpdate(..)
-            | FlatOp::CellRead(_) => unreachable!("Html is not bound by an op of a value"),
+            | FlatOp::CellRead(_)
+            | FlatOp::AssertEq(..) => unreachable!("Html is not bound by an op of a value"),
         }
     }
 

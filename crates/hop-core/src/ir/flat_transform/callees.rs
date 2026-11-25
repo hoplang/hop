@@ -37,6 +37,7 @@ pub fn collect_callees(
             | FlatOp::Mint
             | FlatOp::CellUpdate(..)
             | FlatOp::CellRead(_)
+            | FlatOp::AssertEq(..)
             | FlatOp::Text(_)
             | FlatOp::Escape(_)
             | FlatOp::Concat(_)

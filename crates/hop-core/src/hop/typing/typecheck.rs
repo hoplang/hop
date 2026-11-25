@@ -773,6 +773,13 @@ fn create_function_signature<'a>(
         ));
         return None;
     }
+    if modifier == Modifier::Test && return_type != Type::UNIT {
+        errors.push(TypeError::new(
+            TypeErrorKind::TestReturnType,
+            function.return_type.range().clone(),
+        ));
+        return None;
+    }
 
     Some(PendingFunction {
         function,
@@ -851,6 +858,7 @@ fn typecheck_function_body(
         Modifier::Pure => Context::Outside(Position::PureFn),
         Modifier::Render => Context::Render,
         Modifier::Mut => Context::Outside(Position::MutFn),
+        Modifier::Test => Context::Outside(Position::TestFn),
     });
     let typed_body = typecheck_block(
         body,
@@ -16108,7 +16116,7 @@ mod tests {
                 }
             "#},
             expect![[r#"
-                error: A statement has no effect outside a mut fn
+                error: A statement has no effect outside a mut fn or a test fn
                   --> main.hop (line 2, col 3)
                 1 | fn double(n: Int) -> Int {
                 2 |   n + 1;
@@ -16789,6 +16797,286 @@ mod tests {
                 1 | fn Counter() -> Html {
                 2 |   let (count, count) = state!(0);
                   |               ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn accepts_assertions_in_a_test_fn() {
+        accept(
+            indoc! {r#"
+                -- main.hop --
+                fn double(x: Int) -> Int {
+                  x * 2
+                }
+
+                test fn is_even(x: Int) -> Tuple[] {
+                  assert_eq!(double(x), x + x)
+                }
+
+                test fn doubles() -> Tuple[] {
+                  let four = double(2);
+                  assert!(four > 3);
+                  assert_eq!([four], []);
+                  is_even(four);
+                  match four > 3 {
+                    true => assert_eq!(four, 4),
+                    false => is_even(1),
+                  }
+                }
+            "#},
+            expect![[r#"
+                -- main.hop --
+                fn double(x: Int) -> Int {
+                  mul(x, 2)
+                }
+
+                test fn doubles() -> Tuple[] {
+                  let four = double(x: 2) in assert!(gt(four, 3)); assert_eq!([four], []); is_even(x: four); match gt(four, 3) {
+                    true => assert_eq!(four, 4),
+                    false => is_even(x: 1),
+                  }
+                }
+
+                test fn is_even(x: Int) -> Tuple[] {
+                  assert_eq!(double(x: x), add(x, x))
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_test_fn_that_does_not_return_the_empty_tuple() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                test fn holds() -> Bool {
+                  true
+                }
+            "#},
+            expect![[r#"
+                error: A test fn must return Tuple[]
+                  --> main.hop (line 1, col 20)
+                1 | test fn holds() -> Bool {
+                  |                    ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_an_assertion_outside_a_test_fn() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn check(x: Int) -> Tuple[] {
+                  assert!(x > 0)
+                }
+
+                mut fn press(x: Int) -> Tuple[] {
+                  assert_eq!(x, 1)
+                }
+
+                test fn applies() -> Tuple[] {
+                  let positive = fn(x: Int) { assert!(x > 0) };
+                  positive(1)
+                }
+            "#},
+            expect![[r#"
+                error: assert! needs a test fn
+                  --> main.hop (line 2, col 3)
+                 1 | fn check(x: Int) -> Tuple[] {
+                 2 |   assert!(x > 0)
+                   |   ^^^^^^^
+
+                error: assert_eq! needs a test fn
+                  --> main.hop (line 6, col 3)
+                 5 | mut fn press(x: Int) -> Tuple[] {
+                 6 |   assert_eq!(x, 1)
+                   |   ^^^^^^^^^^
+
+                error: assert! needs a test fn
+                  --> main.hop (line 10, col 31)
+                 9 | test fn applies() -> Tuple[] {
+                10 |   let positive = fn(x: Int) { assert!(x > 0) };
+                   |                               ^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_a_call_of_a_test_fn_from_outside_a_test_fn() {
+        reject(
+            indoc! {r#"
+                -- checks.hop --
+                pub test fn is_positive(x: Int) -> Tuple[] {
+                  assert!(x > 0)
+                }
+
+                -- main.hop --
+                import checks::is_positive
+
+                fn run() -> Tuple[] {
+                  is_positive(1)
+                }
+
+                mut fn press() -> Tuple[] {
+                  is_positive(1)
+                }
+
+                test fn holds() -> Tuple[] {
+                  is_positive(1)
+                }
+            "#},
+            expect![[r#"
+                error: Call to a test fn from outside a test fn
+                  --> main.hop (line 4, col 3)
+                 3 | fn run() -> Tuple[] {
+                 4 |   is_positive(1)
+                   |   ^^^^^^^^^^^^^^
+
+                error: Call to a test fn from outside a test fn
+                  --> main.hop (line 8, col 3)
+                 7 | mut fn press() -> Tuple[] {
+                 8 |   is_positive(1)
+                   |   ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_assertions_with_the_wrong_number_of_arguments() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                test fn counts() -> Tuple[] {
+                  assert!();
+                  assert!(true, false);
+                  assert_eq!(1);
+                  assert_eq!(1, 2, 3)
+                }
+            "#},
+            expect![[r#"
+                error: assert! takes exactly one argument, got 0
+                  --> main.hop (line 2, col 3)
+                1 | test fn counts() -> Tuple[] {
+                2 |   assert!();
+                  |   ^^^^^^^^^
+
+                error: assert! takes exactly one argument, got 2
+                  --> main.hop (line 3, col 3)
+                2 |   assert!();
+                3 |   assert!(true, false);
+                  |   ^^^^^^^^^^^^^^^^^^^^
+
+                error: assert_eq! takes exactly two arguments, got 1
+                  --> main.hop (line 4, col 3)
+                3 |   assert!(true, false);
+                4 |   assert_eq!(1);
+                  |   ^^^^^^^^^^^^^
+
+                error: assert_eq! takes exactly two arguments, got 3
+                  --> main.hop (line 5, col 3)
+                4 |   assert_eq!(1);
+                5 |   assert_eq!(1, 2, 3)
+                  |   ^^^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_assertions_whose_arguments_have_the_wrong_type() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                test fn compares() -> Tuple[] {
+                  assert!(1);
+                  assert_eq!(1, "1");
+                  assert_eq!(fn(x: Int) { x }, fn(x: Int) { x })
+                }
+            "#},
+            expect![[r#"
+                error: Expected Bool got Int
+                  --> main.hop (line 2, col 11)
+                1 | test fn compares() -> Tuple[] {
+                2 |   assert!(1);
+                  |           ^
+
+                error: Expected Int got String
+                  --> main.hop (line 3, col 17)
+                2 |   assert!(1);
+                3 |   assert_eq!(1, "1");
+                  |                 ^^^
+
+                error: assert_eq! cannot compare fn(Int) -> Int
+                  --> main.hop (line 4, col 14)
+                3 |   assert_eq!(1, "1");
+                4 |   assert_eq!(fn(x: Int) { x }, fn(x: Int) { x })
+                  |              ^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_what_renders_and_what_mutates_in_a_test_fn() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Badge(label: String) -> Html {
+                  <span>{label}</span>
+                }
+
+                render fn use_count() -> Int {
+                  let (count, _) = state!(0);
+                  count
+                }
+
+                mut fn press() -> Tuple[] {
+                  ()
+                }
+
+                test fn renders() -> Tuple[] {
+                  let (count, _) = state!(0);
+                  assert_eq!(count, use_count());
+                  press();
+                  assert_eq!(<Badge label="A"/>, <span>A</span>)
+                }
+            "#},
+            expect![[r#"
+                error: state! in a test fn
+                  --> main.hop (line 15, col 20)
+                14 | test fn renders() -> Tuple[] {
+                15 |   let (count, _) = state!(0);
+                   |                    ^^^^^^
+
+                error: Render fn called from a test fn
+                  --> main.hop (line 16, col 21)
+                15 |   let (count, _) = state!(0);
+                16 |   assert_eq!(count, use_count());
+                   |                     ^^^^^^^^^^^
+
+                error: Call to a mut fn from a non-mut fn
+                  --> main.hop (line 17, col 3)
+                16 |   assert_eq!(count, use_count());
+                17 |   press();
+                   |   ^^^^^^^
+
+                error: Markup in a test fn
+                  --> main.hop (line 18, col 14)
+                17 |   press();
+                18 |   assert_eq!(<Badge label="A"/>, <span>A</span>)
+                   |              ^^^^^^^^^^^^^^^^^^
+
+                error: assert_eq! cannot compare Html
+                  --> main.hop (line 18, col 14)
+                17 |   press();
+                18 |   assert_eq!(<Badge label="A"/>, <span>A</span>)
+                   |              ^^^^^^^^^^^^^^^^^^
+
+                error: Markup in a test fn
+                  --> main.hop (line 18, col 34)
+                17 |   press();
+                18 |   assert_eq!(<Badge label="A"/>, <span>A</span>)
+                   |                                  ^^^^^^^^^^^^^^
             "#]],
         );
     }

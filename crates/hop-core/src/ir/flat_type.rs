@@ -28,6 +28,7 @@ pub enum IrModifier {
     Pure,
     Render,
     Mut,
+    Test,
 }
 
 impl IrModifier {
@@ -42,6 +43,7 @@ impl From<Modifier> for IrModifier {
             Modifier::Pure => IrModifier::Pure,
             Modifier::Render => IrModifier::Render,
             Modifier::Mut => IrModifier::Mut,
+            Modifier::Test => IrModifier::Test,
         }
     }
 }
@@ -122,6 +124,7 @@ mod test_support {
                 IrModifier::Pure => Ok(()),
                 IrModifier::Render => f.write_str("render "),
                 IrModifier::Mut => f.write_str("mut "),
+                IrModifier::Test => f.write_str("test "),
             }
         }
     }

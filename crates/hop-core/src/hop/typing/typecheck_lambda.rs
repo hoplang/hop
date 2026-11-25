@@ -113,6 +113,7 @@ pub fn typecheck_lambda(
     let outer = var_env.enter_lambda(match (declared, expected_result) {
         (Some(ParsedModifier::Mut), _) => Context::Outside(Position::MutFn),
         (Some(ParsedModifier::Render), _) => Context::Render,
+        (Some(ParsedModifier::Test), _) => unreachable!("the parser has no test lambda"),
         (None, Some(result)) if result.renders_html() => Context::Render,
         (None, Some(_)) => Context::Outside(Position::PureFn),
         (None, None) => Context::Undecided,

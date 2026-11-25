@@ -373,6 +373,10 @@
                 {
                   "type": "SYMBOL",
                   "name": "render_modifier"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "test_modifier"
                 }
               ]
             },
@@ -1010,6 +1014,10 @@
     "render_modifier": {
       "type": "STRING",
       "value": "render"
+    },
+    "test_modifier": {
+      "type": "STRING",
+      "value": "test"
     },
     "_expression": {
       "type": "CHOICE",

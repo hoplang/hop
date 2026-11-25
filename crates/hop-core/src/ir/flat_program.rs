@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::document::CheapString;
 use crate::hop::typing::Pattern;
+use crate::ir::assertion_id::AssertionId;
 use crate::ir::flat_html_element::FlatHtmlElement;
 use crate::ir::flat_type::{FlatDataType, FlatType, IrModifier};
 use crate::ir::flat_type_declarations::FlatTypeDeclarations;
@@ -147,6 +148,9 @@ pub enum FlatOp {
     CellUpdate(ValueId, ValueId),
     /// Read the value a render gives a cell. `Cell[T] -> T`.
     CellRead(ValueId),
+    /// Fail the assertion of the source unless the values are equal.
+    /// `(T, T) -> Tuple[]`.
+    AssertEq(AssertionId, ValueId, ValueId),
     /// Render text as written. `Html`.
     Text(CheapString),
     /// Html-escape a string. `String -> Html`.
@@ -230,6 +234,10 @@ impl FlatOp {
                 f(*cell);
                 f(*update);
             }
+            FlatOp::AssertEq(_, left, right) => {
+                f(*left);
+                f(*right);
+            }
             FlatOp::Call(_, names) | FlatOp::Lambda(_, names) | FlatOp::Concat(names) => {
                 for name in names {
                     f(*name);
@@ -264,6 +272,10 @@ impl FlatOp {
             FlatOp::CellUpdate(cell, update) => {
                 f(cell);
                 f(update);
+            }
+            FlatOp::AssertEq(_, left, right) => {
+                f(left);
+                f(right);
             }
             FlatOp::Call(_, names) | FlatOp::Lambda(_, names) | FlatOp::Concat(names) => {
                 for name in names {
@@ -365,6 +377,9 @@ mod test_support {
                 FlatOp::Mint => f.write_str("mint()"),
                 FlatOp::CellUpdate(cell, update) => write!(f, "cell_update({cell}, {update})"),
                 FlatOp::CellRead(cell) => write!(f, "cell_read({cell})"),
+                FlatOp::AssertEq(assertion, left, right) => {
+                    write!(f, "assert_eq#{assertion}({left}, {right})")
+                }
                 FlatOp::Text(content) => write!(f, "text({:?})", content.as_str()),
                 FlatOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),
                 FlatOp::Escape(string) => write!(f, "escape({string})"),

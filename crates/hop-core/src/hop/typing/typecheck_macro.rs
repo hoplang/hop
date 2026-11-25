@@ -308,3 +308,144 @@ pub fn typecheck_state(
         typ: Type::Data(DataType::Tuple(vec![data, setter])),
     })
 }
+
+/// Typecheck `assert!(condition)`, which is allowed only in a test fn. Its
+/// condition is a Bool, and its type is `Tuple[]`.
+pub fn typecheck_assert(
+    args: &[ParsedExpr],
+    subject_range: &DocumentRange,
+    range: &DocumentRange,
+    forwarded_params: &[VarName],
+    var_env: &mut VariableScope,
+    type_env: &TypeEnv,
+    registry: &TypeRegistry,
+    annotations: &mut Vec<HoverAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+    errors: &mut Vec<TypeError>,
+) -> Option<TypedExpr> {
+    if !var_env.tests() {
+        errors.push(TypeError::new(
+            TypeErrorKind::AssertMacroNotAllowed {
+                name: CheapString::new("assert".to_string()),
+            },
+            subject_range.clone(),
+        ));
+    }
+    let [condition] = args else {
+        errors.push(TypeError::new(
+            TypeErrorKind::AssertMacroArity { actual: args.len() },
+            range.clone(),
+        ));
+        return None;
+    };
+    let typed_condition = typecheck_expr(
+        condition,
+        Some(&Type::BOOL),
+        forwarded_params,
+        var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    )?;
+    if typed_condition.typ() != Type::BOOL {
+        errors.push(TypeError::new(
+            TypeErrorKind::TypeMismatch {
+                context: TypeMismatchContext::MacroArgument,
+                expected: Type::BOOL,
+                found: typed_condition.typ(),
+            },
+            condition.range().clone(),
+        ));
+        return None;
+    }
+    Some(TypedExpr::Assert {
+        condition: Box::new(typed_condition),
+        range: range.clone(),
+    })
+}
+
+/// Typecheck `assert_eq!(left, right)`, which is allowed only in a test fn.
+/// Its operands have the same type, which is data, and its type is
+/// `Tuple[]`.
+pub fn typecheck_assert_eq(
+    args: &[ParsedExpr],
+    subject_range: &DocumentRange,
+    range: &DocumentRange,
+    forwarded_params: &[VarName],
+    var_env: &mut VariableScope,
+    type_env: &TypeEnv,
+    registry: &TypeRegistry,
+    annotations: &mut Vec<HoverAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
+    asset_references: &mut Vec<AssetReference>,
+    errors: &mut Vec<TypeError>,
+) -> Option<TypedExpr> {
+    if !var_env.tests() {
+        errors.push(TypeError::new(
+            TypeErrorKind::AssertMacroNotAllowed {
+                name: CheapString::new("assert_eq".to_string()),
+            },
+            subject_range.clone(),
+        ));
+    }
+    let [left, right] = args else {
+        errors.push(TypeError::new(
+            TypeErrorKind::AssertEqMacroArity { actual: args.len() },
+            range.clone(),
+        ));
+        return None;
+    };
+    let typed_left = typecheck_expr(
+        left,
+        None,
+        forwarded_params,
+        var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    );
+    let left_type = typed_left.as_ref().map(TypedExpr::typ);
+    let typed_right = typecheck_expr(
+        right,
+        left_type.as_ref(),
+        forwarded_params,
+        var_env,
+        type_env,
+        registry,
+        annotations,
+        definition_links,
+        asset_references,
+        errors,
+    );
+    let (typed_left, typed_right, left_type) = (typed_left?, typed_right?, left_type?);
+    if !matches!(&left_type, Type::Data(data) if registry.is_data(data)) {
+        errors.push(TypeError::new(
+            TypeErrorKind::AssertEqMacroNotComparable { typ: left_type },
+            left.range().clone(),
+        ));
+        return None;
+    }
+    if typed_right.typ() != left_type {
+        errors.push(TypeError::new(
+            TypeErrorKind::TypeMismatch {
+                context: TypeMismatchContext::MacroArgument,
+                expected: left_type,
+                found: typed_right.typ(),
+            },
+            right.range().clone(),
+        ));
+        return None;
+    }
+    Some(TypedExpr::AssertEq {
+        left: Box::new(typed_left),
+        right: Box::new(typed_right),
+        range: range.clone(),
+    })
+}

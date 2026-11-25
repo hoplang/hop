@@ -75,6 +75,7 @@ pub(super) fn is_reserved_name(name: &str) -> bool {
             | "static"
             | "struct"
             | "super"
+            | "test"
             | "this"
             | "throw"
             | "trait"

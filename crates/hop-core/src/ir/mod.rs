@@ -1,3 +1,4 @@
+mod assertion_id;
 mod document_shell;
 mod entrypoint_id;
 mod flat_html_element;
@@ -16,6 +17,7 @@ mod ir_function;
 mod ir_lambda;
 pub mod ir_page;
 pub mod ir_parameter;
+pub mod ir_test;
 mod lambda_id;
 mod typed_to_flat;
 mod value_id;

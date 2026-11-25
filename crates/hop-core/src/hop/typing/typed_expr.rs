@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Write};
 
 use crate::display::{Indent, join, write_lines, write_tuple};
-use crate::document::CheapString;
+use crate::document::{CheapString, DocumentRange};
 use crate::hop::typing::typed_pattern::TypedPattern;
 use crate::html::HtmlElementKind;
 use crate::root_contained_file_path::RootContainedFilePath;
@@ -260,6 +260,24 @@ pub enum TypedExpr {
     /// holds and a mut fn that updates the cell with the function it takes.
     State { initial: Box<Self>, typ: Type },
 
+    /// An assertion that the condition is true, e.g. assert!(x > 0), which
+    /// a test fn makes. Its value is the empty tuple, and `range` is where
+    /// it is written, which a test that fails reports.
+    Assert {
+        condition: Box<Self>,
+        range: DocumentRange,
+    },
+
+    /// An assertion that two values of the same data type are equal, e.g.
+    /// assert_eq!(x, 1), which a test fn makes. Its value is the empty
+    /// tuple, and `range` is where it is written, which a test that fails
+    /// reports.
+    AssertEq {
+        left: Box<Self>,
+        right: Box<Self>,
+        range: DocumentRange,
+    },
+
     /// A lambda, e.g. fn(x: Int) { x * 2 }. Its type is a function.
     Lambda {
         params: Vec<(Option<VarName>, Type)>,
@@ -357,6 +375,8 @@ impl TypedExpr {
             | TypedExpr::Call { typ, .. } => typ.clone(),
 
             TypedExpr::Block { tail, .. } => tail.typ(),
+
+            TypedExpr::Assert { .. } | TypedExpr::AssertEq { .. } => Type::UNIT,
 
             TypedExpr::FloatLiteral { .. } | TypedExpr::IntToFloat { .. } => Type::FLOAT,
             TypedExpr::IntLiteral { .. } => Type::INT,
@@ -583,6 +603,8 @@ impl Display for TypedExpr {
             }
             TypedExpr::Asset { path } => write!(f, "asset!(\"/{}\")", path.as_str()),
             TypedExpr::State { initial, .. } => write!(f, "state!({initial})"),
+            TypedExpr::Assert { condition, .. } => write!(f, "assert!({condition})"),
+            TypedExpr::AssertEq { left, right, .. } => write!(f, "assert_eq!({left}, {right})"),
             TypedExpr::Lambda { params, body, typ } => {
                 if let Type::Data(DataType::Function(function)) = typ {
                     f.write_str(function.modifier.prefix(&function.result))?;
