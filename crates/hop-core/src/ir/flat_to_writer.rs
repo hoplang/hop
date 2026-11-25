@@ -190,9 +190,7 @@ fn parameter_type(typ: &FlatType) -> WriterType {
             result: WriterResult::Writes,
         }),
         FlatType::Data(data) => data_type(data),
-        FlatType::Cell(_) | FlatType::ElementId => {
-            unreachable!("the typechecker rejects a parameter of a cell or an identity")
-        }
+        FlatType::Cell(_) => unreachable!("the typechecker rejects a parameter of a cell"),
     }
 }
 
@@ -210,7 +208,7 @@ fn is_mut_closure(typ: &FlatType) -> bool {
 fn value_type(typ: &FlatType) -> WriterType {
     match typ {
         FlatType::Data(data) => data_type(data),
-        FlatType::Html | FlatType::Cell(_) | FlatType::ElementId => {
+        FlatType::Html | FlatType::Cell(_) => {
             unreachable!("{typ:?} is not the type of a value")
         }
     }
@@ -222,7 +220,7 @@ fn result_type(typ: &FlatType) -> WriterResult {
     match typ {
         FlatType::Html => WriterResult::Writes,
         FlatType::Data(data) => WriterResult::Returns(Box::new(data_type(data))),
-        FlatType::Cell(_) | FlatType::ElementId => {
+        FlatType::Cell(_) => {
             unreachable!("a function returns Html, data or a closure, not {typ:?}")
         }
     }
@@ -356,8 +354,8 @@ impl<'a> Lowerer<'a> {
             FlatType::Html => {
                 self.html_parameters.insert(binder.var);
             }
-            FlatType::Cell(_) | FlatType::ElementId => {
-                unreachable!("the typechecker rejects a parameter of a cell or an identity")
+            FlatType::Cell(_) => {
+                unreachable!("the typechecker rejects a parameter of a cell")
             }
         }
     }
@@ -422,7 +420,6 @@ impl<'a> Lowerer<'a> {
             // initial value of the cell.
             FlatOp::Cell(initial) => self.analyze_block(initial),
             FlatOp::CellRead(cell) => self.read(*cell, Reader::Value),
-            FlatOp::Mint => {}
             FlatOp::Text(_)
             | FlatOp::Escape(_)
             | FlatOp::Concat(_)
@@ -481,7 +478,6 @@ impl<'a> Lowerer<'a> {
                 FlatOp::Lambda(..) => unreachable!("a closure is bound, not written"),
                 FlatOp::Data(_)
                 | FlatOp::Cell(_)
-                | FlatOp::Mint
                 | FlatOp::CellUpdate(..)
                 | FlatOp::CellRead(_)
                 | FlatOp::AssertEq(..) => unreachable!("Html is not bound by an op of a value"),
@@ -673,7 +669,6 @@ impl<'a> Lowerer<'a> {
                 self.aliases.insert(binding.binder.var, cell);
                 return;
             }
-            FlatOp::Mint => return,
             FlatOp::Match(match_) => {
                 let typ = value_type(binder_type);
                 let alias = self.lower_data_match(match_, &typ, out);
@@ -1205,7 +1200,6 @@ impl<'a> Lowerer<'a> {
             FlatOp::Lambda(..) => unreachable!("a closure is bound, not written"),
             FlatOp::Data(_)
             | FlatOp::Cell(_)
-            | FlatOp::Mint
             | FlatOp::CellUpdate(..)
             | FlatOp::CellRead(_)
             | FlatOp::AssertEq(..) => unreachable!("Html is not bound by an op of a value"),
@@ -1214,7 +1208,6 @@ impl<'a> Lowerer<'a> {
 
     fn write_element(&mut self, element: &'a FlatHtmlElement, out: &mut Vec<WriterStmt>) {
         let FlatHtmlElement {
-            identity: _,
             element,
             attributes,
             children,
@@ -1426,7 +1419,6 @@ mod tests {
                             m.arm(Pat::False, |t, _| {
                                 let label = t.escape(t.int_to_string(t.param("n")));
                                 let button = t.element_on_click(
-                                    t.mint(),
                                     "button",
                                     [],
                                     t.param("on_press"),
@@ -1462,7 +1454,7 @@ mod tests {
                 ) -> Html {
                   let v2: Int = 0
                   let v3: Bool = int_lt_eq(v0, v2)
-                  let v13: Html = match v3 {
+                  let v12: Html = match v3 {
                     true => {
                       let v4: Html = concat()
                       v4
@@ -1470,44 +1462,43 @@ mod tests {
                     false => {
                       let v5: String = int_to_string(v0)
                       let v6: Html = escape(v5)
-                      let v7: ElementId = mint()
-                      let v8: Html = element(v7, "button", {}, v6) on_click v1
-                      let v9: Int = 1
-                      let v10: Int = int_sub(v0, v9)
-                      let v11: Html = f0(v10, v1)
-                      let v12: Html = concat(v8, v11)
-                      v12
+                      let v7: Html = element("button", {}, v6) on_click v1
+                      let v8: Int = 1
+                      let v9: Int = int_sub(v0, v8)
+                      let v10: Html = f0(v9, v1)
+                      let v11: Html = concat(v7, v10)
+                      v11
                     }
                   }
-                  v13
+                  v12
                 }
                 lambda l0[](
-                  v17: Int,
+                  v16: Int,
                 ) -> Int {
-                  let v18: Int = 1
-                  let v19: Int = int_add(v17, v18)
-                  v19
+                  let v17: Int = 1
+                  let v18: Int = int_add(v16, v17)
+                  v18
                 }
                 mut lambda l1[
-                  v22: Cell[Int],
+                  v21: Cell[Int],
                 ]() -> Tuple[] {
-                  let v20: (Int) -> Int = l0[]
-                  let v21: Tuple[] = cell_update(v22, v20)
-                  v21
+                  let v19: (Int) -> Int = l0[]
+                  let v20: Tuple[] = cell_update(v21, v19)
+                  v20
                 }
                 entrypoint Test@e0() -> Html {
-                  let v15: Cell[Int] = cell {
-                    let v14: Int = 0
-                    v14
+                  let v14: Cell[Int] = cell {
+                    let v13: Int = 0
+                    v13
                   }
-                  let v16: Int = cell_read(v15)
-                  let v23: mut () -> Tuple[] = l1[v15]
-                  let v24: Int = 2
-                  let v25: Html = f0(v24, v23)
-                  let v26: String = int_to_string(v16)
-                  let v27: Html = escape(v26)
-                  let v28: Html = concat(v27, v25)
-                  v28
+                  let v15: Int = cell_read(v14)
+                  let v22: mut () -> Tuple[] = l1[v14]
+                  let v23: Int = 2
+                  let v24: Html = f0(v23, v22)
+                  let v25: String = int_to_string(v15)
+                  let v26: Html = escape(v25)
+                  let v27: Html = concat(v26, v24)
+                  v27
                 }
 
                 -- writer --
@@ -1522,22 +1513,22 @@ mod tests {
                     }
                     false => {
                       let v5: String = int_to_string(v0)
-                      let v9: Int = 1
-                      let v10: Int = int_sub(v0, v9)
+                      let v8: Int = 1
+                      let v9: Int = int_sub(v0, v8)
                       write("<button>")
                       write_string(v5)
                       write("</button>")
-                      write_function f0(v10, v1)
+                      write_function f0(v9, v1)
                     }
                   }
                 }
                 page Test() {
-                  let v14: Int = 0
-                  let v23: Tuple[] = ()
-                  let v24: Int = 2
-                  let v26: String = int_to_string(v14)
-                  write_string(v26)
-                  write_function f0(v24, v23)
+                  let v13: Int = 0
+                  let v22: Tuple[] = ()
+                  let v23: Int = 2
+                  let v25: String = int_to_string(v13)
+                  write_string(v25)
+                  write_function f0(v23, v22)
                 }
             "#]],
         );
@@ -1570,14 +1561,9 @@ mod tests {
                     let prefix = t.param("prefix");
                     let row = t.render_lambda([FlatType::INT], |t, params| {
                         let text = t.string_concat([prefix, t.int_to_string(params[0])]);
-                        t.element(t.mint(), "li", [], Some(t.escape(text)))
+                        t.element("li", [], Some(t.escape(text)))
                     });
-                    t.element(
-                        t.mint(),
-                        "ul",
-                        [],
-                        Some(t.call("Countdown", [t.int(3), row])),
-                    )
+                    t.element("ul", [], Some(t.call("Countdown", [t.int(3), row])))
                 })
                 .build()
                 .unwrap(),
@@ -1606,26 +1592,24 @@ mod tests {
                   v10
                 }
                 render lambda l0[
-                  v18: String,
+                  v17: String,
                 ](
                   v12: Int,
                 ) -> Html {
                   let v13: String = int_to_string(v12)
-                  let v14: String = string_concat(v18, v13)
-                  let v15: ElementId = mint()
-                  let v16: Html = escape(v14)
-                  let v17: Html = element(v15, "li", {}, v16)
-                  v17
+                  let v14: String = string_concat(v17, v13)
+                  let v15: Html = escape(v14)
+                  let v16: Html = element("li", {}, v15)
+                  v16
                 }
                 entrypoint Test@e0(
                   prefix@v11: String,
                 ) -> Html {
-                  let v19: render (Int) -> Html = l0[v11]
-                  let v20: ElementId = mint()
-                  let v21: Int = 3
-                  let v22: Html = f0(v21, v19)
-                  let v23: Html = element(v20, "ul", {}, v22)
-                  v23
+                  let v18: render (Int) -> Html = l0[v11]
+                  let v19: Int = 3
+                  let v20: Html = f0(v19, v18)
+                  let v21: Html = element("ul", {}, v20)
+                  v21
                 }
 
                 -- writer --
@@ -1647,7 +1631,7 @@ mod tests {
                   }
                 }
                 page Test(prefix@v11: String) {
-                  let v19: (Int) -> Html = fn(
+                  let v18: (Int) -> Html = fn(
                     v12: Int,
                   ) {
                     let v13: String = int_to_string(v12)
@@ -1656,9 +1640,9 @@ mod tests {
                     write_string(v13)
                     write("</li>")
                   }
-                  let v21: Int = 3
+                  let v19: Int = 3
                   write("<ul>")
-                  write_function f0(v21, v19)
+                  write_function f0(v19, v18)
                   write("</ul>")
                 }
             "#]],
@@ -1823,7 +1807,7 @@ mod tests {
                 )
                 .entrypoint("Test", [], |t| {
                     let wrap = t.render_lambda([FlatType::HTML], |t, params| {
-                        t.element(t.mint(), "b", [], Some(params[0]))
+                        t.element("b", [], Some(params[0]))
                     });
                     t.call("Wrap", [t.int(2), wrap])
                 })
@@ -1855,15 +1839,14 @@ mod tests {
                 render lambda l0[](
                   v10: Html,
                 ) -> Html {
-                  let v11: ElementId = mint()
-                  let v12: Html = element(v11, "b", {}, v10)
-                  v12
+                  let v11: Html = element("b", {}, v10)
+                  v11
                 }
                 entrypoint Test@e0() -> Html {
-                  let v13: render (Html) -> Html = l0[]
-                  let v14: Int = 2
-                  let v15: Html = f0(v14, v13)
-                  v15
+                  let v12: render (Html) -> Html = l0[]
+                  let v13: Int = 2
+                  let v14: Html = f0(v13, v12)
+                  v14
                 }
 
                 -- writer --
@@ -1880,23 +1863,23 @@ mod tests {
                     false => {
                       let v5: Int = 1
                       let v6: Int = int_sub(v0, v5)
-                      let v16: () -> Html = fn() {
+                      let v15: () -> Html = fn() {
                         write_function f0(v6, v1)
                       }
-                      write_apply v1(v16)
+                      write_apply v1(v15)
                     }
                   }
                 }
                 page Test() {
-                  let v13: (() -> Html) -> Html = fn(
+                  let v12: (() -> Html) -> Html = fn(
                     v10: () -> Html,
                   ) {
                     write("<b>")
                     write_apply v10()
                     write("</b>")
                   }
-                  let v14: Int = 2
-                  write_function f0(v14, v13)
+                  let v13: Int = 2
+                  write_function f0(v13, v12)
                 }
             "#]],
         );
@@ -1922,8 +1905,8 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [("label", Ty::String)], |t| {
-                    t.element(t.mint(), "i", [], Some(t.text("*")));
-                    let badge = t.element(t.mint(), "b", [], Some(t.escape(t.param("label"))));
+                    t.element("i", [], Some(t.text("*")));
+                    let badge = t.element("b", [], Some(t.escape(t.param("label"))));
                     let width = t.call("Width", [badge, t.int(3)]);
                     t.escape(t.int_to_string(width))
                 })
@@ -1956,14 +1939,13 @@ mod tests {
                 entrypoint Test@e0(
                   label@v11: String,
                 ) -> Html {
-                  let v15: ElementId = mint()
-                  let v16: Html = escape(v11)
-                  let v17: Html = element(v15, "b", {}, v16)
-                  let v18: Int = 3
-                  let v19: Int = f0(v17, v18)
-                  let v20: String = int_to_string(v19)
-                  let v21: Html = escape(v20)
-                  v21
+                  let v14: Html = escape(v11)
+                  let v15: Html = element("b", {}, v14)
+                  let v16: Int = 3
+                  let v17: Int = f0(v15, v16)
+                  let v18: String = int_to_string(v17)
+                  let v19: Html = escape(v18)
+                  v19
                 }
 
                 -- writer --
@@ -1973,7 +1955,7 @@ mod tests {
                 ) -> Int {
                   let v2: Int = 0
                   let v3: Bool = int_lt_eq(v1, v2)
-                  let v23: Int = match v3 {
+                  let v21: Int = match v3 {
                     true => {
                       let v4: Int = 0
                       v4
@@ -1987,18 +1969,18 @@ mod tests {
                       v9
                     }
                   }
-                  v23
+                  v21
                 }
                 page Test(label@v11: String) {
-                  let v18: Int = 3
-                  let v22: () -> Html = fn() {
+                  let v16: Int = 3
+                  let v20: () -> Html = fn() {
                     write("<b>")
                     write_string(v11)
                     write("</b>")
                   }
-                  let v19: Int = f0(v22, v18)
-                  let v20: String = int_to_string(v19)
-                  write_string(v20)
+                  let v17: Int = f0(v20, v16)
+                  let v18: String = int_to_string(v17)
+                  write_string(v18)
                 }
             "#]],
         );
@@ -2159,27 +2141,25 @@ mod tests {
                   title@v0: String,
                 ) -> Html {
                   let v1: Html = escape(v0)
-                  let v3: ElementId = mint()
-                  let v4: Html = element(v3, "title", {}, v1)
-                  v4
+                  let v3: Html = element("title", {}, v1)
+                  v3
                 }
                 entrypoint body@e1(
-                  title@v5: String,
+                  title@v4: String,
                 ) -> Html {
-                  let v6: Html = escape(v5)
-                  let v8: ElementId = mint()
-                  let v9: Html = element(v8, "h1", {}, v6)
-                  v9
+                  let v5: Html = escape(v4)
+                  let v7: Html = element("h1", {}, v5)
+                  v7
                 }
 
                 -- writer --
-                page Test(title@v5: String) {
+                page Test(title@v4: String) {
                   write("<!doctype html><html><head><meta charset=\"utf-8\"><meta content=\"width=device-width, initial-scale=1\" name=\"viewport\">")
                   write("<title>")
-                  write_string(v5)
+                  write_string(v4)
                   write("</title>")
                   write("</head><body><h1>")
-                  write_string(v5)
+                  write_string(v4)
                   write("</h1>")
                   write("</body></html>")
                 }
@@ -2206,11 +2186,9 @@ mod tests {
                   id@v0: String,
                   flag@v1: Bool,
                 ) -> Html {
-                  let v5: ElementId = mint()
-                  let v6: Html = element(v5, "input", {disabled, checked: v1})
-                  let v8: ElementId = mint()
-                  let v9: Html = element(v8, "div", {class: "a<b", id: v0}, v6)
-                  v9
+                  let v5: Html = element("input", {disabled, checked: v1})
+                  let v7: Html = element("div", {class: "a<b", id: v0}, v5)
+                  v7
                 }
 
                 -- writer --
@@ -2252,17 +2230,15 @@ mod tests {
                   items@v0: Array[String],
                 ) -> Html {
                   let v1: Html = text("before")
-                  let v7: Html = for v2: String in v0 {
+                  let v6: Html = for v2: String in v0 {
                     let v3: Html = escape(v2)
-                    let v5: ElementId = mint()
-                    let v6: Html = element(v5, "li", {}, v3)
-                    v6
+                    let v5: Html = element("li", {}, v3)
+                    v5
                   }
-                  let v8: Html = text("after")
-                  let v10: ElementId = mint()
-                  let v9: Html = concat(v1, v7, v8)
-                  let v11: Html = element(v10, "ul", {}, v9)
-                  v11
+                  let v7: Html = text("after")
+                  let v8: Html = concat(v1, v6, v7)
+                  let v9: Html = element("ul", {}, v8)
+                  v9
                 }
 
                 -- writer --
@@ -2297,13 +2273,11 @@ mod tests {
                 -- flat --
                 entrypoint body@e0() -> Html {
                   let v0: Html = text("Hello")
-                  let v2: ElementId = mint()
-                  let v3: Html = element(v2, "p", {}, v0)
-                  let v4: Html = text("World")
-                  let v6: ElementId = mint()
-                  let v7: Html = element(v6, "p", {}, v4)
-                  let v8: Html = concat(v3, v7)
-                  v8
+                  let v2: Html = element("p", {}, v0)
+                  let v3: Html = text("World")
+                  let v5: Html = element("p", {}, v3)
+                  let v6: Html = concat(v2, v5)
+                  v6
                 }
 
                 -- writer --
@@ -2334,13 +2308,11 @@ mod tests {
                 entrypoint body@e0() -> Html {
                   let v0: Html = text("aaaaaaaaaaaaaaaaaaaaaaaaa")
                   let v1: Html = text("bbbbbbbbbbbbbbbbbbbbbbbbb")
-                  let v3: ElementId = mint()
-                  let v4: Html = element(v3, "b", {}, v1)
-                  let v5: Html = text("ccccccccccccccccccccccccc")
-                  let v7: ElementId = mint()
-                  let v6: Html = concat(v0, v4, v5)
-                  let v8: Html = element(v7, "p", {}, v6)
-                  v8
+                  let v3: Html = element("b", {}, v1)
+                  let v4: Html = text("ccccccccccccccccccccccccc")
+                  let v5: Html = concat(v0, v3, v4)
+                  let v6: Html = element("p", {}, v5)
+                  v6
                 }
 
                 -- writer --
@@ -2372,10 +2344,9 @@ mod tests {
                   let v1: String = "a<"
                   let v3: String = ">b"
                   let v4: String = string_concat(v1, v0, v3)
-                  let v6: ElementId = mint()
                   let v5: Html = concat()
-                  let v7: Html = element(v6, "p", {title: v4}, v5)
-                  v7
+                  let v6: Html = element("p", {title: v4}, v5)
+                  v6
                 }
 
                 -- writer --
@@ -2409,31 +2380,29 @@ mod tests {
                   nickname@v1: Option[String],
                 ) -> Html {
                   let v2: Tuple[Bool, Option[String]] = (v0, v1)
-                  let v13: Html = match v2 {
+                  let v11: Html = match v2 {
                     (true, Some(v3: String)) => {
                       let v5: Html = escape(v3)
-                      let v7: ElementId = mint()
-                      let v8: Html = element(v7, "p", {class: "member"}, v5)
-                      v8
+                      let v7: Html = element("p", {class: "member"}, v5)
+                      v7
                     }
                     _ => {
-                      let v9: Html = text("guest")
-                      let v11: ElementId = mint()
-                      let v12: Html = element(v11, "p", {}, v9)
-                      v12
+                      let v8: Html = text("guest")
+                      let v10: Html = element("p", {}, v8)
+                      v10
                     }
                   }
-                  v13
+                  v11
                 }
 
                 -- writer --
                 page Test(signed_in@v0: Bool, nickname@v1: Option[String]) {
                   match v1 {
-                    Some(v14: String) => {
+                    Some(v12: String) => {
                       match v0 {
                         true => {
                           write("<p class=\"member\">")
-                          write_string(v14)
+                          write_string(v12)
                           write("</p>")
                         }
                         false => {
@@ -2624,81 +2593,76 @@ mod tests {
                     }
                   }
                   let v7: Html = escape(v6)
-                  let v9: ElementId = mint()
-                  let v10: Html = element(v9, "p", {}, v7)
-                  let v11: Tuple[Bool, Option[String]] = (v0, v1)
-                  let v31: Html = match v11 {
-                    (true, Some(v12: String)) => {
-                      let v13: Html = escape(v12)
-                      let v15: ElementId = mint()
-                      let v16: Html = element(v15, "p", {}, v13)
-                      v16
+                  let v9: Html = element("p", {}, v7)
+                  let v10: Tuple[Bool, Option[String]] = (v0, v1)
+                  let v27: Html = match v10 {
+                    (true, Some(v11: String)) => {
+                      let v12: Html = escape(v11)
+                      let v14: Html = element("p", {}, v12)
+                      v14
                     }
                     _ => {
-                      let v17: String = int_to_string(v2)
-                      let v18: Html = escape(v17)
-                      let v19: Int = 1
-                      let v20: Array[Int] = array_from_range(v19, v2)
-                      let v27: Html = for v21: Int in v20 {
-                        let v22: String = int_to_string(v21)
-                        let v23: Html = escape(v22)
-                        let v25: ElementId = mint()
-                        let v26: Html = element(v25, "b", {}, v23)
-                        v26
+                      let v15: String = int_to_string(v2)
+                      let v16: Html = escape(v15)
+                      let v17: Int = 1
+                      let v18: Array[Int] = array_from_range(v17, v2)
+                      let v24: Html = for v19: Int in v18 {
+                        let v20: String = int_to_string(v19)
+                        let v21: Html = escape(v20)
+                        let v23: Html = element("b", {}, v21)
+                        v23
                       }
-                      let v29: ElementId = mint()
-                      let v28: Html = concat(v18, v27)
-                      let v30: Html = element(v29, "p", {}, v28)
-                      v30
+                      let v25: Html = concat(v16, v24)
+                      let v26: Html = element("p", {}, v25)
+                      v26
                     }
                   }
-                  let v33: ElementId = mint()
-                  let v32: Html = concat(v10, v31)
-                  let v34: Html = element(v33, "div", {}, v32)
-                  v34
+                  let v28: Html = concat(v9, v27)
+                  let v29: Html = element("div", {}, v28)
+                  v29
                 }
 
                 -- writer --
                 page Test(signed_in@v0: Bool, nickname@v1: Option[String], count@v2: Int) {
-                  let v38: String = match v1 {
-                    Some(v35: String) => {
-                      let v36: String = match v0 {
+                  let v33: String = match v1 {
+                    Some(v30: String) => {
+                      let v31: String = match v0 {
                         true => {
-                          v35
+                          v30
                         }
                         false => {
                           let v5: String = int_to_string(v2)
                           v5
                         }
                       }
-                      v36
+                      v31
                     }
                     None => {
-                      let v37: String = int_to_string(v2)
-                      v37
+                      let v32: String = int_to_string(v2)
+                      v32
                     }
                   }
                   write("<div><p>")
-                  write_string(v38)
+                  write_string(v33)
                   write("</p>")
                   match v1 {
-                    Some(v39: String) => {
+                    Some(v34: String) => {
                       match v0 {
                         true => {
                           write("<p>")
-                          write_string(v39)
+                          write_string(v34)
                           write("</p>")
                         }
                         false => {
-                          let v17: String = int_to_string(v2)
-                          let v19: Int = 1
-                          let v20: Array[Int] = array_from_range(v19, v2)
+                          let v15: String = int_to_string(v2)
+                          let v17: Int = 1
+                          let v18: Array[Int] = array_from_range(v17, v2)
                           write("<p>")
-                          write_string(v17)
-                          for v21: Int in v20 {
-                            let v22: String = int_to_string(v21)
+                          write_string(v15)
+                          for v19: Int in v18 {
+                            let v20: String = int_to_string(v19)
                             write("<b>")
-                            write_string(v22)
+                            write_string(v20)
                             write("</b>")
                           }
                           write("</p>")
@@ -2706,15 +2670,15 @@ mod tests {
                       }
                     }
                     None => {
-                      let v40: String = int_to_string(v2)
-                      let v41: Int = 1
-                      let v42: Array[Int] = array_from_range(v41, v2)
+                      let v35: String = int_to_string(v2)
+                      let v36: Int = 1
+                      let v37: Array[Int] = array_from_range(v36, v2)
                       write("<p>")
-                      write_string(v40)
-                      for v43: Int in v42 {
-                        let v44: String = int_to_string(v43)
+                      write_string(v35)
+                      for v38: Int in v37 {
+                        let v39: String = int_to_string(v38)
                         write("<b>")
-                        write_string(v44)
+                        write_string(v39)
                         write("</b>")
                       }
                       write("</p>")
@@ -2756,27 +2720,24 @@ mod tests {
                 entrypoint body@e0(
                   session@v0: Session,
                 ) -> Html {
-                  let v15: Html = match v0 {
+                  let v12: Html = match v0 {
                     Session::SignedIn {user: User {name@v1: String, admin: true}} => {
                       let v2: Html = escape(v1)
-                      let v4: ElementId = mint()
-                      let v5: Html = element(v4, "b", {}, v2)
-                      v5
+                      let v4: Html = element("b", {}, v2)
+                      v4
                     }
-                    Session::SignedIn {user: User {name@v6: String, admin: false}} => {
-                      let v7: Html = escape(v6)
-                      let v9: ElementId = mint()
-                      let v10: Html = element(v9, "i", {}, v7)
-                      v10
+                    Session::SignedIn {user: User {name@v5: String, admin: false}} => {
+                      let v6: Html = escape(v5)
+                      let v8: Html = element("i", {}, v6)
+                      v8
                     }
                     Session::Guest => {
-                      let v11: Html = text("guest")
-                      let v13: ElementId = mint()
-                      let v14: Html = element(v13, "p", {}, v11)
-                      v14
+                      let v9: Html = text("guest")
+                      let v11: Html = element("p", {}, v9)
+                      v11
                     }
                   }
-                  v15
+                  v12
                 }
 
                 -- writer --
@@ -2785,18 +2746,18 @@ mod tests {
                     Session::Guest => {
                       write("<p>guest</p>")
                     }
-                    Session::SignedIn {user@v16: User} => {
-                      let v17: String = v16.name
-                      let v18: Bool = v16.admin
-                      match v18 {
+                    Session::SignedIn {user@v13: User} => {
+                      let v14: String = v13.name
+                      let v15: Bool = v13.admin
+                      match v15 {
                         true => {
                           write("<b>")
-                          write_string(v17)
+                          write_string(v14)
                           write("</b>")
                         }
                         false => {
                           write("<i>")
-                          write_string(v17)
+                          write_string(v14)
                           write("</i>")
                         }
                       }
@@ -2846,18 +2807,17 @@ mod tests {
                     }
                   }
                   let v8: Html = escape(v7)
-                  let v10: ElementId = mint()
-                  let v11: Html = element(v10, "p", {}, v8)
-                  v11
+                  let v10: Html = element("p", {}, v8)
+                  v10
                 }
 
                 -- writer --
                 page Test(count@v0: Option[Int], exact@v1: Bool) {
-                  let v14: String = match v0 {
-                    Some(v12: Int) => {
-                      let v13: String = match v1 {
+                  let v13: String = match v0 {
+                    Some(v11: Int) => {
+                      let v12: String = match v1 {
                         true => {
-                          let v4: String = int_to_string(v12)
+                          let v4: String = int_to_string(v11)
                           v4
                         }
                         false => {
@@ -2865,7 +2825,7 @@ mod tests {
                           v5
                         }
                       }
-                      v13
+                      v12
                     }
                     None => {
                       let v6: String = "none"
@@ -2873,7 +2833,7 @@ mod tests {
                     }
                   }
                   write("<p>")
-                  write_string(v14)
+                  write_string(v13)
                   write("</p>")
                 }
             "#]],
@@ -2901,65 +2861,63 @@ mod tests {
             expect![[r#"
                 -- flat --
                 render fn Nest@f0(
-                  depth@v8: Int,
-                  children@v9: Html,
+                  depth@v7: Int,
+                  children@v8: Html,
                 ) -> Html {
-                  let v10: Int = 0
-                  let v11: Bool = int_lt(v10, v8)
-                  let v19: Html = match v11 {
+                  let v9: Int = 0
+                  let v10: Bool = int_lt(v9, v7)
+                  let v17: Html = match v10 {
                     true => {
-                      let v12: Int = 1
-                      let v13: Int = int_sub(v8, v12)
-                      let v15: Html = f0(v13, v9)
-                      let v17: ElementId = mint()
-                      let v18: Html = element(v17, "div", {}, v15)
-                      v18
+                      let v11: Int = 1
+                      let v12: Int = int_sub(v7, v11)
+                      let v14: Html = f0(v12, v8)
+                      let v16: Html = element("div", {}, v14)
+                      v16
                     }
                     false => {
-                      v9
+                      v8
                     }
                   }
-                  v19
+                  v17
                 }
                 entrypoint body@e0(
                   name@v0: String,
                 ) -> Html {
                   let v1: Int = 2
                   let v2: Html = escape(v0)
-                  let v4: ElementId = mint()
-                  let v5: Html = element(v4, "b", {}, v2)
-                  let v7: Html = f0(v1, v5)
-                  v7
+                  let v4: Html = element("b", {}, v2)
+                  let v6: Html = f0(v1, v4)
+                  v6
                 }
 
                 -- writer --
                 fn Nest@f0(
-                  depth@v8: Int,
-                  children@v9: () -> Html,
+                  depth@v7: Int,
+                  children@v8: () -> Html,
                 ) -> Html {
-                  let v10: Int = 0
-                  let v11: Bool = int_lt(v10, v8)
-                  match v11 {
+                  let v9: Int = 0
+                  let v10: Bool = int_lt(v9, v7)
+                  match v10 {
                     true => {
-                      let v12: Int = 1
-                      let v13: Int = int_sub(v8, v12)
+                      let v11: Int = 1
+                      let v12: Int = int_sub(v7, v11)
                       write("<div>")
-                      write_function f0(v13, v9)
+                      write_function f0(v12, v8)
                       write("</div>")
                     }
                     false => {
-                      write_apply v9()
+                      write_apply v8()
                     }
                   }
                 }
                 page Test(name@v0: String) {
                   let v1: Int = 2
-                  let v20: () -> Html = fn() {
+                  let v18: () -> Html = fn() {
                     write("<b>")
                     write_string(v0)
                     write("</b>")
                   }
-                  write_function f0(v1, v20)
+                  write_function f0(v1, v18)
                 }
             "#]],
         );
@@ -2975,17 +2933,13 @@ mod tests {
                     |t| {
                         let greeting = t.match_(t.param("name"), |m| {
                             m.arm(Pat::some(Pat::bind("n")), |t, arm| {
-                                t.element(t.mint(), "b", [], Some(t.escape(arm.binding("n"))))
+                                t.element("b", [], Some(t.escape(arm.binding("n"))))
                             });
                             m.arm(Pat::None, |t, _| t.text("anonymous"));
                         });
                         t.match_(t.param("formal"), |m| {
-                            m.arm(Pat::True, |t, _| {
-                                t.element(t.mint(), "p", [], Some(greeting))
-                            });
-                            m.arm(Pat::False, |t, _| {
-                                t.element(t.mint(), "i", [], Some(greeting))
-                            });
+                            m.arm(Pat::True, |t, _| t.element("p", [], Some(greeting)));
+                            m.arm(Pat::False, |t, _| t.element("i", [], Some(greeting)));
                         })
                     },
                 )
@@ -2997,31 +2951,28 @@ mod tests {
                   name@v0: Option[String],
                   formal@v1: Bool,
                 ) -> Html {
-                  let v7: Html = match v0 {
+                  let v6: Html = match v0 {
                     Some(v2: String) => {
-                      let v3: ElementId = mint()
-                      let v4: Html = escape(v2)
-                      let v5: Html = element(v3, "b", {}, v4)
-                      v5
+                      let v3: Html = escape(v2)
+                      let v4: Html = element("b", {}, v3)
+                      v4
                     }
                     None => {
-                      let v6: Html = text("anonymous")
-                      v6
+                      let v5: Html = text("anonymous")
+                      v5
                     }
                   }
-                  let v12: Html = match v1 {
+                  let v9: Html = match v1 {
                     true => {
-                      let v8: ElementId = mint()
-                      let v9: Html = element(v8, "p", {}, v7)
-                      v9
+                      let v7: Html = element("p", {}, v6)
+                      v7
                     }
                     false => {
-                      let v10: ElementId = mint()
-                      let v11: Html = element(v10, "i", {}, v7)
-                      v11
+                      let v8: Html = element("i", {}, v6)
+                      v8
                     }
                   }
-                  v12
+                  v9
                 }
 
                 -- writer --
@@ -3030,9 +2981,9 @@ mod tests {
                     true => {
                       write("<p>")
                       match v0 {
-                        Some(v13: String) => {
+                        Some(v10: String) => {
                           write("<b>")
-                          write_string(v13)
+                          write_string(v10)
                           write("</b>")
                         }
                         None => {
@@ -3044,9 +2995,9 @@ mod tests {
                     false => {
                       write("<i>")
                       match v0 {
-                        Some(v14: String) => {
+                        Some(v11: String) => {
                           write("<b>")
-                          write_string(v14)
+                          write_string(v11)
                           write("</b>")
                         }
                         None => {
@@ -3073,16 +3024,10 @@ mod tests {
                         let data_x =
                             t.int_to_string(t.add(NumericType::Int, t.param("n"), t.int(1)));
                         t.element(
-                            t.mint(),
                             "ul",
                             [],
                             Some(t.html_for(t.param("items"), |t, _| {
-                                t.element(
-                                    t.mint(),
-                                    "li",
-                                    [t.attr_value("data-x", data_x)],
-                                    Some(t.text("x")),
-                                )
+                                t.element("li", [t.attr_value("data-x", data_x)], Some(t.text("x")))
                             })),
                         )
                     },
@@ -3098,15 +3043,13 @@ mod tests {
                   let v3: Int = 1
                   let v4: Int = int_add(v1, v3)
                   let v5: String = int_to_string(v4)
-                  let v6: ElementId = mint()
-                  let v11: Html = for _ in v0 {
-                    let v8: ElementId = mint()
-                    let v9: Html = text("x")
-                    let v10: Html = element(v8, "li", {data-x: v5}, v9)
-                    v10
+                  let v9: Html = for _ in v0 {
+                    let v7: Html = text("x")
+                    let v8: Html = element("li", {data-x: v5}, v7)
+                    v8
                   }
-                  let v12: Html = element(v6, "ul", {}, v11)
-                  v12
+                  let v10: Html = element("ul", {}, v9)
+                  v10
                 }
 
                 -- writer --
@@ -3131,17 +3074,17 @@ mod tests {
         check_program(
             FlatProgramBuilder::new()
                 .render_function("Badge", [("label", Ty::String)], Ty::Html, |t| {
-                    t.element(t.mint(), "span", [], Some(t.escape(t.param("label"))))
+                    t.element("span", [], Some(t.escape(t.param("label"))))
                 })
                 .render_function("Wrap", [("content", Ty::Html)], Ty::Html, |t| {
-                    t.element(t.mint(), "div", [], Some(t.param("content")))
+                    t.element("div", [], Some(t.param("content")))
                 })
                 .entrypoint("Test", [("label", Ty::String)], |t| {
                     t.call(
                         "Wrap",
                         [t.html_concat(vec![
                             t.call("Badge", vec![t.param("label")]),
-                            t.element(t.mint(), "b", vec![], Some(t.html_concat(vec![]))),
+                            t.element("b", vec![], Some(t.html_concat(vec![]))),
                         ])],
                     )
                 })
@@ -3150,24 +3093,21 @@ mod tests {
             expect![[r#"
                 -- flat --
                 entrypoint Test@e0(
-                  label@v7: String,
+                  label@v5: String,
                 ) -> Html {
-                  let v14: ElementId = mint()
-                  let v15: Html = escape(v7)
-                  let v16: Html = element(v14, "span", {}, v15)
-                  let v9: ElementId = mint()
-                  let v10: Html = concat()
-                  let v11: Html = element(v9, "b", {}, v10)
-                  let v17: ElementId = mint()
-                  let v12: Html = concat(v16, v11)
-                  let v18: Html = element(v17, "div", {}, v12)
-                  v18
+                  let v11: Html = escape(v5)
+                  let v12: Html = element("span", {}, v11)
+                  let v7: Html = concat()
+                  let v8: Html = element("b", {}, v7)
+                  let v9: Html = concat(v12, v8)
+                  let v13: Html = element("div", {}, v9)
+                  v13
                 }
 
                 -- writer --
-                page Test(label@v7: String) {
+                page Test(label@v5: String) {
                   write("<div><span>")
-                  write_string(v7)
+                  write_string(v5)
                   write("</span><b></b></div>")
                 }
             "#]],

@@ -202,7 +202,7 @@ mod tests {
                     let n = t.cell(|t| t.int(0));
                     let one = t.lambda([FlatType::INT], |t, _| t.int(1));
                     let set = t.event_handler(|t| t.cell_update(n, one));
-                    t.element_on_click(t.mint(), "button", [], set, Some(t.text("x")))
+                    t.element_on_click("button", [], set, Some(t.text("x")))
                 })
                 .build()
                 .unwrap(),
@@ -228,10 +228,9 @@ mod tests {
                   }
                   let v4: (Int) -> Int = l0[]
                   let v8: mut () -> Tuple[] = l1[v1, v4]
-                  let v9: ElementId = mint()
-                  let v10: Html = text("x")
-                  let v11: Html = element(v9, "button", {}, v10) on_click v8
-                  v11
+                  let v9: Html = text("x")
+                  let v10: Html = element("button", {}, v9) on_click v8
+                  v10
                 }
 
                 -- after --
@@ -255,10 +254,9 @@ mod tests {
                   }
                   let v4: (Int) -> Int = l0[]
                   let v8: mut () -> Tuple[] = l1[v1, v4]
-                  let v9: ElementId = mint()
-                  let v10: Html = text("x")
-                  let v11: Html = element(v9, "button", {}, v10) on_click v8
-                  v11
+                  let v9: Html = text("x")
+                  let v10: Html = element("button", {}, v9) on_click v8
+                  v10
                 }
             "#]],
         );
@@ -281,7 +279,7 @@ mod tests {
                         });
                         t.cell_update(n, incr)
                     });
-                    t.element_on_click(t.mint(), "button", [], bump, Some(t.text("x")))
+                    t.element_on_click("button", [], bump, Some(t.text("x")))
                 })
                 .build()
                 .unwrap(),
@@ -325,10 +323,9 @@ mod tests {
                   }
                   let v9: mut () -> Tuple[] = l1[v3]
                   let v16: mut () -> Tuple[] = l3[v1]
-                  let v17: ElementId = mint()
-                  let v18: Html = text("x")
-                  let v19: Html = element(v17, "button", {}, v18) on_click v16
-                  v19
+                  let v17: Html = text("x")
+                  let v18: Html = element("button", {}, v17) on_click v16
+                  v18
                 }
 
                 -- after --
@@ -365,10 +362,9 @@ mod tests {
                     v0
                   }
                   let v16: mut () -> Tuple[] = l3[v1]
-                  let v17: ElementId = mint()
-                  let v18: Html = text("x")
-                  let v19: Html = element(v17, "button", {}, v18) on_click v16
-                  v19
+                  let v17: Html = text("x")
+                  let v18: Html = element("button", {}, v17) on_click v16
+                  v18
                 }
             "#]],
         );

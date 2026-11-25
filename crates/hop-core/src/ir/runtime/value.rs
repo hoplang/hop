@@ -41,7 +41,6 @@ pub enum Value<'a> {
     Enum(TypeName, Rc<[(FieldName, Value<'a>)]>),
     Closure(Rc<Closure<'a>>),
     Cell(CellId),
-    Id(ElementId),
 }
 
 #[derive(Debug)]
@@ -115,7 +114,7 @@ impl<'a> Value<'a> {
     /// is an equivalence relation, so values that share an allocation are
     /// equal without looking inside, as a value that nests a shared part in
     /// itself can be exponentially larger as a tree than in memory. Panics
-    /// on Html, a closure, a cell or an identity.
+    /// on Html, a closure or a cell.
     #[cfg(test)]
     pub fn total_eq(&self, other: &Value<'_>) -> bool {
         fn all(a: &[Value<'_>], b: &[Value<'_>]) -> bool {
@@ -127,8 +126,8 @@ impl<'a> Value<'a> {
                     .all(|((a_name, a), (b_name, b))| a_name == b_name && a.total_eq(b))
         }
         match (self, other) {
-            (Value::Html(_) | Value::Closure(_) | Value::Cell(_) | Value::Id(_), _)
-            | (_, Value::Html(_) | Value::Closure(_) | Value::Cell(_) | Value::Id(_)) => {
+            (Value::Html(_) | Value::Closure(_) | Value::Cell(_), _)
+            | (_, Value::Html(_) | Value::Closure(_) | Value::Cell(_)) => {
                 panic!("total_eq compares data, not {self:?} and {other:?}")
             }
             (Value::String(a), Value::String(b)) => a == b,
@@ -150,7 +149,7 @@ impl<'a> Value<'a> {
     /// Whether two values of the same type, which holds no function, are
     /// equal. Data is equal if its parts are, and a part that `==` compares
     /// is compared as `==` does, so NaN is not equal to itself. Panics on
-    /// Html, a closure, a cell or an identity.
+    /// Html, a closure or a cell.
     pub fn equals(&self, other: &Value<'_>) -> bool {
         fn all(a: &[Value<'_>], b: &[Value<'_>]) -> bool {
             a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.equals(b))
@@ -159,8 +158,8 @@ impl<'a> Value<'a> {
             a.len() == b.len() && a.iter().zip(b).all(|((_, a), (_, b))| a.equals(b))
         }
         match (self, other) {
-            (Value::Html(_) | Value::Closure(_) | Value::Cell(_) | Value::Id(_), _)
-            | (_, Value::Html(_) | Value::Closure(_) | Value::Cell(_) | Value::Id(_)) => {
+            (Value::Html(_) | Value::Closure(_) | Value::Cell(_), _)
+            | (_, Value::Html(_) | Value::Closure(_) | Value::Cell(_)) => {
                 panic!("equals compares data, not {self:?} and {other:?}")
             }
             (Value::String(a), Value::String(b)) => a == b,
@@ -254,14 +253,6 @@ impl<'a> Value<'a> {
         match self {
             Value::Cell(cell) => *cell,
             _ => panic!("expected a Cell value, found {self:?}"),
-        }
-    }
-
-    /// Panics if the value is not an identity.
-    pub fn as_id(&self) -> ElementId {
-        match self {
-            Value::Id(id) => *id,
-            _ => panic!("expected an Id value, found {self:?}"),
         }
     }
 
@@ -365,7 +356,7 @@ impl fmt::Display for Value<'_> {
                 f.write_str(" ")?;
                 fields(f, variant_fields)
             }
-            Value::Html(_) | Value::Closure(_) | Value::Cell(_) | Value::Id(_) => {
+            Value::Html(_) | Value::Closure(_) | Value::Cell(_) => {
                 panic!("{self:?} is not data")
             }
         }

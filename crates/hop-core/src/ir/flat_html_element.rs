@@ -7,7 +7,6 @@ use crate::symbols::attribute_name::AttributeName;
 
 #[derive(Debug, Clone)]
 pub struct FlatHtmlElement {
-    pub identity: ValueId,
     pub element: HtmlElementKind,
     pub attributes: IndexMap<AttributeName, FlatAttribute>,
     pub children: Option<ValueId>,

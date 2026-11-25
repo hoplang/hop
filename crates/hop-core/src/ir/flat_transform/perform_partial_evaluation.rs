@@ -455,7 +455,6 @@ impl<'a> Evaluator<'a> {
             // A cell is never constant, as a click may have set it.
             FlatOp::Cell(initial) => FlatOp::Cell(self.block(initial)),
             op @ (FlatOp::Call(..)
-            | FlatOp::Mint
             | FlatOp::CellUpdate(..)
             | FlatOp::CellRead(_)
             | FlatOp::AssertEq(..)
@@ -878,32 +877,30 @@ mod tests {
                 ) -> Html {
                   let v1: Bool = true
                   let v2: Tuple[Bool, Option[String]] = (v1, v0)
-                  let v15: Html = match v2 {
+                  let v13: Html = match v2 {
                     (false, _) => {
                       let v3: Html = text("guest")
                       let v4: Html = concat(v3)
-                      let v5: ElementId = mint()
-                      let v6: Html = element(v5, "p", {}, v4)
-                      v6
+                      let v5: Html = element("p", {}, v4)
+                      v5
                     }
-                    (true, v7: Option[String]) => {
-                      let v10: String = match v7 {
-                        Some(v8: String) => {
-                          v8
+                    (true, v6: Option[String]) => {
+                      let v9: String = match v6 {
+                        Some(v7: String) => {
+                          v7
                         }
                         None => {
-                          let v9: String = "member"
-                          v9
+                          let v8: String = "member"
+                          v8
                         }
                       }
-                      let v11: Html = escape(v10)
-                      let v12: Html = concat(v11)
-                      let v13: ElementId = mint()
-                      let v14: Html = element(v13, "p", {}, v12)
-                      v14
+                      let v10: Html = escape(v9)
+                      let v11: Html = concat(v10)
+                      let v12: Html = element("p", {}, v11)
+                      v12
                     }
                   }
-                  v15
+                  v13
                 }
 
                 -- after --
@@ -912,19 +909,18 @@ mod tests {
                 ) -> Html {
                   let v1: Bool = true
                   let v2: Tuple[Bool, Option[String]] = (v1, v0)
-                  let v10: String = match v0 {
-                    Some(v8: String) => {
-                      v8
+                  let v9: String = match v0 {
+                    Some(v7: String) => {
+                      v7
                     }
                     None => {
-                      let v9: String = "member"
-                      v9
+                      let v8: String = "member"
+                      v8
                     }
                   }
-                  let v11: Html = escape(v10)
-                  let v13: ElementId = mint()
-                  let v14: Html = element(v13, "p", {}, v11)
-                  v14
+                  let v10: Html = escape(v9)
+                  let v12: Html = element("p", {}, v10)
+                  v12
                 }
             "#]],
         );
@@ -950,23 +946,21 @@ mod tests {
                 ) -> Html {
                   let v1: Bool = true
                   let v2: Tuple[Bool, Option[String]] = (v1, v0)
-                  let v12: Html = match v2 {
+                  let v10: Html = match v2 {
                     (true, Some(v3: String)) => {
                       let v4: Html = escape(v3)
                       let v5: Html = concat(v4)
-                      let v6: ElementId = mint()
-                      let v7: Html = element(v6, "p", {}, v5)
-                      v7
+                      let v6: Html = element("p", {}, v5)
+                      v6
                     }
                     (_, _) => {
-                      let v8: Html = text("member")
-                      let v9: Html = concat(v8)
-                      let v10: ElementId = mint()
-                      let v11: Html = element(v10, "p", {}, v9)
-                      v11
+                      let v7: Html = text("member")
+                      let v8: Html = concat(v7)
+                      let v9: Html = element("p", {}, v8)
+                      v9
                     }
                   }
-                  v12
+                  v10
                 }
 
                 -- after --
@@ -975,21 +969,19 @@ mod tests {
                 ) -> Html {
                   let v1: Bool = true
                   let v2: Tuple[Bool, Option[String]] = (v1, v0)
-                  let v12: Html = match v2 {
+                  let v10: Html = match v2 {
                     (true, Some(v3: String)) => {
                       let v4: Html = escape(v3)
-                      let v6: ElementId = mint()
-                      let v7: Html = element(v6, "p", {}, v4)
-                      v7
+                      let v6: Html = element("p", {}, v4)
+                      v6
                     }
                     (_, _) => {
-                      let v8: Html = text("member")
-                      let v10: ElementId = mint()
-                      let v11: Html = element(v10, "p", {}, v8)
-                      v11
+                      let v7: Html = text("member")
+                      let v9: Html = element("p", {}, v7)
+                      v9
                     }
                   }
-                  v12
+                  v10
                 }
             "#]],
         );
@@ -1676,7 +1668,6 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
                     t.element(
-                        t.mint(),
                         "p",
                         [
                             t.attr_value("class", t.str("note")),
@@ -1691,24 +1682,22 @@ mod tests {
             expect![[r#"
                 -- before --
                 entrypoint Test@e0() -> Html {
-                  let v0: ElementId = mint()
-                  let v1: String = "note"
-                  let v2: Bool = true
-                  let v3: Bool = false
-                  let v4: Html = text("text")
-                  let v5: Html = element(v0, "p", {class: v1, hidden: v2, open: v3}, v4)
-                  v5
+                  let v0: String = "note"
+                  let v1: Bool = true
+                  let v2: Bool = false
+                  let v3: Html = text("text")
+                  let v4: Html = element("p", {class: v0, hidden: v1, open: v2}, v3)
+                  v4
                 }
 
                 -- after --
                 entrypoint Test@e0() -> Html {
-                  let v0: ElementId = mint()
-                  let v1: String = "note"
-                  let v2: Bool = true
-                  let v3: Bool = false
-                  let v4: Html = text("text")
-                  let v5: Html = element(v0, "p", {class: "note", hidden}, v4)
-                  v5
+                  let v0: String = "note"
+                  let v1: Bool = true
+                  let v2: Bool = false
+                  let v3: Html = text("text")
+                  let v4: Html = element("p", {class: "note", hidden}, v3)
+                  v4
                 }
             "#]],
         );
@@ -1758,12 +1747,7 @@ mod tests {
                 .entrypoint("Test", [("items", Ty::array(Ty::Int))], |t| {
                     let label = t.str("row");
                     t.html_for_unbound(t.param("items"), |t| {
-                        t.element(
-                            t.mint(),
-                            "li",
-                            [t.attr_value("title", label)],
-                            Some(t.escape(label)),
-                        )
+                        t.element("li", [t.attr_value("title", label)], Some(t.escape(label)))
                     })
                 })
                 .build()
@@ -1774,13 +1758,12 @@ mod tests {
                   items@v0: Array[Int],
                 ) -> Html {
                   let v1: String = "row"
-                  let v5: Html = for _ in v0 {
-                    let v2: ElementId = mint()
-                    let v3: Html = escape(v1)
-                    let v4: Html = element(v2, "li", {title: v1}, v3)
-                    v4
+                  let v4: Html = for _ in v0 {
+                    let v2: Html = escape(v1)
+                    let v3: Html = element("li", {title: v1}, v2)
+                    v3
                   }
-                  v5
+                  v4
                 }
 
                 -- after --
@@ -1788,13 +1771,12 @@ mod tests {
                   items@v0: Array[Int],
                 ) -> Html {
                   let v1: String = "row"
-                  let v5: Html = for _ in v0 {
-                    let v2: ElementId = mint()
-                    let v3: Html = text("row")
-                    let v4: Html = element(v2, "li", {title: "row"}, v3)
-                    v4
+                  let v4: Html = for _ in v0 {
+                    let v2: Html = text("row")
+                    let v3: Html = element("li", {title: "row"}, v2)
+                    v3
                   }
-                  v5
+                  v4
                 }
             "#]],
         );

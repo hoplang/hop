@@ -6,7 +6,6 @@ pub enum FlatType {
     Data(FlatDataType),
     Html,
     Cell(FlatDataType),
-    ElementId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,7 +76,7 @@ impl FlatType {
     pub fn as_data(&self) -> Option<&FlatDataType> {
         match self {
             FlatType::Data(data) => Some(data),
-            FlatType::Html | FlatType::Cell(_) | FlatType::ElementId => None,
+            FlatType::Html | FlatType::Cell(_) => None,
         }
     }
 }
@@ -113,7 +112,6 @@ mod test_support {
                 FlatType::Data(data) => data.fmt(f),
                 FlatType::Html => f.write_str("Html"),
                 FlatType::Cell(data) => write!(f, "Cell[{data}]"),
-                FlatType::ElementId => f.write_str("ElementId"),
             }
         }
     }

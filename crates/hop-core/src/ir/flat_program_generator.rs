@@ -60,10 +60,6 @@ const MATCHED_CLOSURE_ODDS: u8 = 32;
 /// How often a loop that binds its variable has a key.
 const KEY_ODDS: u8 = 204;
 
-/// How often a block that renders Html mints an identity before the ops
-/// that may take it, so that an element in each arm of a match can share it.
-const EARLY_MINT_ODDS: u8 = 64;
-
 /// How often an op that renders Html may be a toggle: a cell, a match on
 /// it and a click that writes it.
 const TOGGLE_ODDS: u8 = 64;
@@ -141,7 +137,7 @@ const STRING_LITERALS: &[&str] = &[
 #[derive(Clone, Copy)]
 struct Name {
     var: ValueId,
-    /// Whether the path has used the Html or the identity.
+    /// Whether the path has used the Html.
     used: bool,
 }
 
@@ -167,10 +163,7 @@ impl Scope {
     fn inner(&self, types: &[FlatType], modifier: IrModifier) -> Scope {
         Scope {
             names: (self.names.iter().copied())
-                .filter(|name| {
-                    let typ = &types[name.var.index()];
-                    *typ != FlatType::Html && *typ != FlatType::ElementId
-                })
+                .filter(|name| types[name.var.index()] != FlatType::Html)
                 .collect(),
             modifier,
         }
@@ -850,9 +843,6 @@ impl FlatGenerator<'_, '_> {
     }
 
     fn html_block(&mut self, b: &FlatBlockBuilder<'_>, scope: &mut Scope, depth: usize) -> ValueId {
-        if scope.modifier == IrModifier::Render && self.chance(EARLY_MINT_ODDS) {
-            scope.push(b.mint());
-        }
         if self.chance(DEAD_BINDING_ODDS) {
             let ty = self.random_type(1);
             let typ = self.flat_type(ty);
@@ -915,7 +905,6 @@ impl FlatGenerator<'_, '_> {
             FlatType::Data(target) => self.data_block(b, scope, target, depth),
             FlatType::Html => self.html_block(b, scope, depth),
             FlatType::Cell(_) => unreachable!("a block produces no cell"),
-            FlatType::ElementId => unreachable!("a block produces no identity"),
         }
     }
 
@@ -931,9 +920,6 @@ impl FlatGenerator<'_, '_> {
             FlatType::Data(target) => self.data_op(b, scope, target, depth, nesting),
             FlatType::Html => self.html_op(b, scope, depth, nesting),
             FlatType::Cell(_) => unreachable!("a cell is bound for a block, not asked for"),
-            FlatType::ElementId => {
-                unreachable!("an identity is minted for an element, not asked for")
-            }
         }
     }
 
@@ -1116,18 +1102,11 @@ impl FlatGenerator<'_, '_> {
         depth: usize,
         nesting: usize,
     ) -> ValueId {
-        let identity = match self.name_in_scope(b, scope, &FlatType::ElementId) {
-            Some(early) => {
-                scope.set_used(early, true);
-                early
-            }
-            None => b.mint(),
-        };
         if !self.chance(CLICK_ODDS) {
-            return b.element(identity, tag, attributes, children);
+            return b.element(tag, attributes, children);
         }
         let handler = self.op_of_type(b, scope, &handler_type(), depth, nesting);
-        b.element_on_click(identity, tag, attributes, handler, children)
+        b.element_on_click(tag, attributes, handler, children)
     }
 
     fn data_leaf(
@@ -1575,7 +1554,6 @@ impl FlatGenerator<'_, '_> {
             .map(|(tag, _)| *tag)
             .collect();
         b.element_on_click(
-            b.mint(),
             self.u.choose(&tags).unwrap(),
             Vec::new(),
             handler,
@@ -2128,30 +2106,23 @@ mod tests {
         block: &FlatBlock,
         references: &mut HashMap<ValueId, usize>,
         html: &mut HashSet<ValueId>,
-        ids: &mut HashSet<ValueId>,
     ) {
         for binding in &block.bindings {
-            match binding.op {
-                FlatOp::Mint => {
-                    ids.insert(binding.binder.var);
+            let renders = match &binding.binder.typ {
+                FlatType::Html => true,
+                FlatType::Data(FlatDataType::Function(signature)) => {
+                    *signature.result == FlatType::Html
                 }
-                _ if match &binding.binder.typ {
-                    FlatType::Html => true,
-                    FlatType::Data(FlatDataType::Function(signature)) => {
-                        *signature.result == FlatType::Html
-                    }
-                    _ => false,
-                } =>
-                {
-                    html.insert(binding.binder.var);
-                }
-                _ => {}
+                _ => false,
+            };
+            if renders {
+                html.insert(binding.binder.var);
             }
             binding.op.for_each_operand(&mut |operand| {
                 *references.entry(operand).or_default() += 1;
             });
             for (_, body) in nested(binding) {
-                count_references(body, references, html, ids);
+                count_references(body, references, html);
             }
         }
         *references.entry(block.result).or_default() += 1;
@@ -2280,8 +2251,6 @@ mod tests {
         let mut sizes = [0usize; SIZE_EDGES.len() + 1];
         let mut html_bindings = 0;
         let mut shared_html = 0;
-        let mut id_bindings = 0;
-        let mut shared_ids = 0;
         let mut shape_stats = ShapeStats::default();
         for _ in 0..SAMPLES {
             let bytes: Vec<u8> = (0..INPUT_LEN).map(|_| rng.random()).collect();
@@ -2339,15 +2308,9 @@ mod tests {
             }
             let mut references = HashMap::new();
             let mut html = HashSet::new();
-            let mut ids = HashSet::new();
             for &body in &bodies {
-                count_references(body, &mut references, &mut html, &mut ids);
+                count_references(body, &mut references, &mut html);
             }
-            id_bindings += ids.len();
-            shared_ids += ids
-                .iter()
-                .filter(|name| references.get(name).copied().unwrap_or(0) > 1)
-                .count();
             html_bindings += html.len();
             shared_html += html
                 .iter()
@@ -2400,7 +2363,6 @@ mod tests {
              {sizes}\n\
              -- programs --\n\
              {shared_html} of {html_bindings} Html bindings have more than one reference\n\
-             {shared_ids} of {id_bindings} mints have more than one reference\n\
              {:.1} arms per match on average, at least {fewest_arms} and at most {most_arms}\n\
              {binding_arms} of {arms} match arms bind names\n\
              {closure_matches} of {} matches produce a closure\n\
@@ -2434,82 +2396,79 @@ mod tests {
         }
         expect![[r#"
             -- generation --
-            24105 of 65536 input bytes consumed per program on average, at most 65536
+            24112 of 65536 input bytes consumed per program on average, at most 65536
             3 of 32 programs exhaust the input
 
             -- sizes --
-            under 256     1  ##
+            under 256     2  ######
             under 1K      0
-            under 4K      2  #####
-            under 16K    15  ########################################
-            under 64K    11  #############################
-            at 64K        3  ########
+            under 4K      4  #############
+            under 16K    12  ########################################
+            under 64K    11  ####################################
+            at 64K        3  ##########
 
             -- programs --
-            285 of 28458 Html bindings have more than one reference
-            6 of 3743 mints have more than one reference
-            2.4 arms per match on average, at least 2 and at most 27
-            7405 of 23783 match arms bind names
-            2159 of 9792 matches produce a closure
-            10548 values are constructed of a type that holds a closure
-            1351 closures are taken out of a value that holds them
-            16541 cells
-            274 of 470 loops have a key
-            2862 of 3543 elements have a click
-            540 handlers have more than one click
-            817 clicks apply a handler bound outside their block, 5 of them a parameter
+            276 of 32035 Html bindings have more than one reference
+            2.6 arms per match on average, at least 2 and at most 18
+            9066 of 23008 match arms bind names
+            2001 of 8891 matches produce a closure
+            12123 values are constructed of a type that holds a closure
+            2697 closures are taken out of a value that holds them
+            19232 cells
+            341 of 602 loops have a key
+            3565 of 4396 elements have a click
+            666 handlers have more than one click
+            1090 clicks apply a handler bound outside their block, 10 of them a parameter
 
             -- ops --
             op                   ops/program % progs  % live   % dyn
-            Apply                      223.2    96.9    94.7    78.5
-            Array                      265.1    96.9    95.1    33.0
-            ArrayEnumerate               2.2    65.6    95.8    68.1
-            ArrayFromRange              16.0    96.9    94.3     0.0
-            ArrayGet                    55.7    96.9    91.6    63.9
-            ArrayIsEmpty                 5.4    93.8    98.3    74.6
-            ArrayLength                210.2    96.9    94.8    69.4
-            BoolLiteral                 71.2    96.9    95.6     0.0
-            BoolNegation                 5.8    87.5    96.2    63.6
-            Call                        48.8    71.9    95.5    92.1
-            Cell                       516.9   100.0    94.5    57.0
-            CellRead                   516.9   100.0    94.4    57.0
-            CellUpdate                 111.9    96.9   100.0   100.0
-            Enum                       156.2    84.4    95.4    36.8
-            Equals                       6.2    87.5    97.5    79.7
-            FieldAccess                 20.1    43.8    96.4    93.0
-            FloatLiteral               158.3    96.9    95.7     0.0
-            FloatToInt                 207.9    96.9    95.2    57.5
-            HtmlApply                   12.0    93.8    93.2    76.8
-            HtmlConcat                 317.4   100.0    94.3    41.6
-            HtmlElement                110.7   100.0    97.7    69.5
-            HtmlEscape                 201.5    96.9    93.6    55.4
-            HtmlFor                     14.7    96.9    94.5    72.3
-            HtmlLambda                  83.5    96.9    93.9    38.5
-            HtmlText                    76.8    96.9    95.7     0.0
-            HtmlTupleIndex               0.1     3.1    66.7    33.3
-            IntLiteral                 208.3   100.0    95.2     0.0
-            IntToFloat                 189.2    96.9    95.0    66.6
-            IntToString                230.8    96.9    95.4    64.4
-            Lambda                     426.8    96.9    95.3    57.5
-            LessThan                     6.3    81.2    97.0    79.8
-            LessThanOrEqual              7.1    87.5    94.3    78.9
-            Match                      306.0    96.9    94.9    90.1
-            Mint                       117.0   100.0    92.2     0.0
-            MutLambda                  127.3   100.0    95.6    35.8
-            NumericAdd                 399.0    96.9    95.2    75.6
-            NumericMultiply            392.6    96.9    94.9    75.8
-            NumericNegation            400.2    96.9    94.8    64.6
-            NumericSubtract            401.0    96.9    95.0    75.7
-            OptionIsNone                 6.3    90.6    95.5    74.3
-            OptionIsSome                 6.7    96.9    96.3    67.8
-            OptionNone                  78.2    96.9    96.2     0.0
-            OptionSome                  60.1    96.9    95.4    43.3
-            Record                     130.0    71.9    94.5    35.8
-            StringConcat               233.1    96.9    95.5    53.4
-            StringIsEmpty                6.4    93.8    95.6    62.7
-            StringLiteral               94.4    96.9    96.2     0.0
-            Tuple                      303.0   100.0    96.6    30.6
-            TupleIndex                  71.8    96.9    93.6    85.9
+            Apply                      203.8    93.8    96.0    78.0
+            Array                      251.2    93.8    96.3    33.1
+            ArrayEnumerate               2.8    59.4    98.9    74.4
+            ArrayFromRange              18.8    93.8    96.0     0.0
+            ArrayGet                    50.8    93.8    92.4    63.9
+            ArrayIsEmpty                 8.0    78.1    94.1    67.6
+            ArrayLength                198.2    93.8    95.5    70.2
+            BoolLiteral                 68.0    90.6    96.6     0.0
+            BoolNegation                 7.4    81.2    95.0    64.7
+            Call                        46.5    59.4    97.8    94.0
+            Cell                       601.0    96.9    95.5    60.3
+            CellRead                   601.0    96.9    95.5    60.3
+            CellUpdate                 114.2    90.6   100.0   100.0
+            Enum                       146.1    81.2    96.2    34.6
+            Equals                       7.2    78.1    94.8    82.7
+            FieldAccess                 18.0    46.9    96.5    95.1
+            FloatLiteral               145.3    93.8    96.3     0.0
+            FloatToInt                 192.8    93.8    96.0    59.6
+            HtmlApply                   14.3    93.8    95.8    75.9
+            HtmlConcat                 355.6    96.9    94.6    42.7
+            HtmlElement                137.4    93.8    96.9    72.0
+            HtmlEscape                 223.0    96.9    94.0    60.6
+            HtmlFor                     18.8    93.8    96.5    73.6
+            HtmlLambda                  87.0    93.8    95.9    37.6
+            HtmlText                    90.0    96.9    95.9     0.0
+            IntLiteral                 189.5    93.8    94.8     0.0
+            IntToFloat                 177.9    93.8    95.3    66.8
+            IntToString                240.1    93.8    94.8    66.2
+            Lambda                     419.2    93.8    96.6    56.8
+            LessThan                     6.9    84.4    95.5    80.5
+            LessThanOrEqual              7.7    81.2    96.3    81.3
+            Match                      277.8    93.8    96.1    89.9
+            MutLambda                  119.6    93.8    96.4    41.2
+            NumericAdd                 381.5    93.8    95.3    77.8
+            NumericMultiply            375.5    93.8    95.5    78.2
+            NumericNegation            387.6    93.8    95.5    66.2
+            NumericSubtract            375.6    93.8    95.5    77.6
+            OptionIsNone                 6.4    68.8    96.1    74.5
+            OptionIsSome                 6.8    68.8    94.4    69.9
+            OptionNone                  63.1    93.8    96.4     0.0
+            OptionSome                  55.8    93.8    95.3    42.7
+            Record                     117.7    68.8    95.8    36.5
+            StringConcat               243.7    93.8    94.8    54.3
+            StringIsEmpty                6.8    75.0    97.2    63.3
+            StringLiteral               83.6    96.9    95.7     0.0
+            Tuple                      257.2    93.8    97.1    31.7
+            TupleIndex                 108.9    93.8    93.9    86.7
         "#]]
         .assert_eq(&report);
     }
@@ -2522,14 +2481,13 @@ mod tests {
             expect![[r#"
 
                 entrypoint V0@e0() -> Html {
-                  let v0: ElementId = mint()
-                  let v1: Int = -2147483648
-                  let v2: Cell[Int] = cell {
-                    v1
+                  let v0: Int = -2147483648
+                  let v1: Cell[Int] = cell {
+                    v0
                   }
-                  let v3: Int = cell_read(v2)
-                  let v4: Html = concat()
-                  v4
+                  let v2: Int = cell_read(v1)
+                  let v3: Html = concat()
+                  v3
                 }
             "#]],
         );
@@ -2569,75 +2527,70 @@ mod tests {
                   p2@v2: mut () -> Tuple[],
                   p3@v3: render () -> Html,
                 ) -> Html {
-                  let v7: ElementId = mint()
-                  let v8: Int = -2147483648
-                  let v9: Cell[Int] = cell {
-                    v8
+                  let v7: Int = -2147483648
+                  let v8: Cell[Int] = cell {
+                    v7
                   }
-                  let v10: Int = cell_read(v9)
-                  let v11: Html = concat()
-                  v11
+                  let v9: Int = cell_read(v8)
+                  let v10: Html = concat()
+                  v10
                 }
                 render fn C1@f1(
                   p0@v4: Html,
                   p1@v5: E1,
                   p2@v6: mut () -> Tuple[],
                 ) -> Html {
-                  let v12: ElementId = mint()
-                  let v13: Int = -2147483648
-                  let v14: Cell[Int] = cell {
-                    v13
+                  let v11: Int = -2147483648
+                  let v12: Cell[Int] = cell {
+                    v11
                   }
-                  let v15: Int = cell_read(v14)
+                  let v13: Int = cell_read(v12)
                   v4
                 }
                 entrypoint V0@e0(
-                  p0@v16: E1,
-                  p1@v17: E1,
+                  p0@v14: E1,
+                  p1@v15: E1,
                 ) -> Html {
-                  let v18: ElementId = mint()
-                  let v19: Int = -2147483648
-                  let v20: Cell[Int] = cell {
-                    v19
+                  let v16: Int = -2147483648
+                  let v17: Cell[Int] = cell {
+                    v16
                   }
-                  let v21: Int = cell_read(v20)
-                  let v22: Html = concat()
-                  v22
+                  let v18: Int = cell_read(v17)
+                  let v19: Html = concat()
+                  v19
                 }
                 entrypoint V1@e1(
-                  p0@v23: Array[Option[Int]],
-                  p1@v24: Tuple[],
-                  p2@v25: Array[Option[Float]],
-                  p3@v26: E1,
-                  p4@v27: Option[Array[E1]],
-                  p5@v28: Tuple[Array[Bool], Option[E1]],
-                  p6@v29: E1,
-                  p7@v30: Tuple[],
+                  p0@v20: Array[Option[Int]],
+                  p1@v21: Tuple[],
+                  p2@v22: Array[Option[Float]],
+                  p3@v23: E1,
+                  p4@v24: Option[Array[E1]],
+                  p5@v25: Tuple[Array[Bool], Option[E1]],
+                  p6@v26: E1,
+                  p7@v27: Tuple[],
                 ) -> Html {
-                  let v31: ElementId = mint()
-                  let v32: Int = -2147483648
-                  let v33: Cell[Int] = cell {
-                    v32
+                  let v28: Int = -2147483648
+                  let v29: Cell[Int] = cell {
+                    v28
                   }
-                  let v34: Int = cell_read(v33)
-                  let v35: Html = concat()
-                  v35
+                  let v30: Int = cell_read(v29)
+                  let v31: Html = concat()
+                  v31
                 }
                 entrypoint V2@e2(
-                  p0@v36: Bool,
-                  p1@v37: Tuple[Tuple[E1, E1, E1], Tuple[Float, E1, Int], Int],
-                  p2@v38: Int,
-                  p3@v39: Int,
-                  p4@v40: Int,
-                  p5@v41: Int,
+                  p0@v32: Bool,
+                  p1@v33: Tuple[Tuple[E1, E1, E1], Tuple[Float, E1, Int], Int],
+                  p2@v34: Int,
+                  p3@v35: Int,
+                  p4@v36: Int,
+                  p5@v37: Int,
                 ) -> Html {
-                  let v42: ElementId = mint()
-                  let v43: Cell[Int] = cell {
-                    v38
+                  let v38: Cell[Int] = cell {
+                    v34
                   }
-                  let v44: Int = cell_read(v43)
-                  let v45: Html = concat()
-                  v45
+                  let v39: Int = cell_read(v38)
+                  let v40: Html = concat()
+                  v40
                 }
             "#]],
         );
@@ -2658,125 +2611,19 @@ mod tests {
                   W1 {f0: Bool},
                 }
 
-                lambda l0[
-                  v16: E1,
-                ]() -> E1 {
-                  v16
-                }
-                lambda l1[]() -> Array[Option[E0]] {
-                  let v0: Bool = false
-                  let v1: Bool = false
-                  let v2: E1 = W1 {f0: v0}
-                  let v3: Tuple[Bool, Bool, E1] = (v0, v1, v2)
-                  let v30: E1 = match v3 {
-                    (true, true, E1::W1 {f0@v4: Bool}) => {
-                      let v5: E1 = tuple_index(v3, 2)
-                      v5
-                    }
-                    (true, true, E1::W0 {f0@v6: render (E1, Option[String]) -> Html, f1: _}) => {
-                      let v7: E1 = tuple_index(v3, 2)
-                      v7
-                    }
-                    (true, false, E1::W1 {f0@v8: Bool}) => {
-                      v2
-                    }
-                    (true, false, E1::W0 {f0@v9: render (E1, Option[String]) -> Html, f1: _}) => {
-                      v2
-                    }
-                    (v10: Bool, true, E1::W1 {f0@v11: Bool}) => {
-                      let v12: E1 = tuple_index(v3, 2)
-                      v12
-                    }
-                    (v13: Bool, true, E1::W0 {f0@v14: render (E1, Option[String]) -> Html, f1: _}) => {
-                      let v15: Bool = tuple_index(v3, 1)
-                      let v23: E1 = match v15 {
-                        false => {
-                          v2
-                        }
-                        true => {
-                          let v22: E1 = match v15 {
-                            false => {
-                              let v20: E1 = match v0 {
-                                true => {
-                                  let v17: () -> E1 = l0[v2]
-                                  let v18: E1 = v17()
-                                  v18
-                                }
-                                v19: Bool => {
-                                  v2
-                                }
-                              }
-                              v20
-                            }
-                            true => {
-                              let v21: Int = -2147483648
-                              v2
-                            }
-                          }
-                          v22
-                        }
-                      }
-                      v23
-                    }
-                    (v24: Bool, false, E1::W1 {f0@v25: Bool}) => {
-                      let v26: Int = -2147483648
-                      v2
-                    }
-                    (v27: Bool, false, E1::W0 {f0@v28: render (E1, Option[String]) -> Html, f1: _}) => {
-                      let v29: Int = -2147483648
-                      v2
-                    }
-                  }
-                  let v38: Array[Option[E0]] = match v30 {
-                    E1::W0 {f0@v31: render (E1, Option[String]) -> Html, f1@v32: Float} => {
-                      let v33: Int = -2147483648
-                      let v34: Array[Option[E0]] = []
-                      v34
-                    }
-                    v35: E1 => {
-                      let v36: Int = -2147483648
-                      let v37: Array[Option[E0]] = []
-                      v37
-                    }
-                  }
-                  v38
+                mut lambda l0[]() -> Tuple[] {
+                  let v1: Tuple[] = ()
+                  v1
                 }
                 entrypoint V0@e0() -> Html {
-                  let v39: () -> Array[Option[E0]] = l1[]
-                  let v40: Array[Option[E0]] = v39()
-                  let v41: Cell[Array[Option[E0]]] = cell {
-                    v40
-                  }
-                  let v42: Array[Option[E0]] = cell_read(v41)
-                  let v43: Array[Tuple[Int, Option[E0]]] = array_enumerate(v42)
-                  let v44: Cell[Array[Tuple[Int, Option[E0]]]] = cell {
-                    v43
-                  }
-                  let v45: Array[Tuple[Int, Option[E0]]] = cell_read(v44)
-                  let v53: Html = for v46: Tuple[Int, Option[E0]] in v45 key {
-                    let v47: String = ""
-                    v47
-                  } {
-                    let v48: ElementId = mint()
-                    let v49: Int = -2147483648
-                    let v50: Cell[Int] = cell {
-                      v49
-                    }
-                    let v51: Int = cell_read(v50)
-                    let v52: Html = concat()
-                    v52
-                  }
-                  v53
+                  let v0: Html = text("a\"b'c")
+                  let v2: mut () -> Tuple[] = l0[]
+                  let v3: Html = element("span", {}, v0) on_click v2
+                  v3
                 }
                 entrypoint V1@e1() -> Html {
-                  let v54: ElementId = mint()
-                  let v55: Int = -2147483648
-                  let v56: Cell[Int] = cell {
-                    v55
-                  }
-                  let v57: Int = cell_read(v56)
-                  let v58: Html = concat()
-                  v58
+                  let v4: Html = text("a\"b'c")
+                  v4
                 }
             "#]],
         );

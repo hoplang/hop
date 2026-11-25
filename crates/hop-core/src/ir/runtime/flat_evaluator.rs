@@ -289,11 +289,6 @@ fn evaluate_op<'a>(
             })?)
         }
 
-        FlatOp::Mint => {
-            let render = context.render("mints an identity");
-            Value::Id(render.bind_element(var))
-        }
-
         FlatOp::AssertEq(assertion, left, right) => {
             let run = context.test("asserts");
             let (left, right) = (&env[left], &env[right]);
@@ -342,7 +337,6 @@ fn evaluate_op<'a>(
         ))?),
 
         FlatOp::Element(FlatHtmlElement {
-            identity,
             element,
             attributes,
             children,
@@ -379,7 +373,7 @@ fn evaluate_op<'a>(
                 attributes: rendered,
                 children,
                 on_click,
-                identity: env[identity].as_id(),
+                identity: context.render("binds an element").bind_element(var),
             })?)
         }
 
@@ -756,8 +750,8 @@ mod tests {
             .seed(seed << 32 | ARBTEST_SIZE_BYTES);
         }
         expect![[r#"
-            program generation: 2263782 allocations
-            program evaluation: 34485 allocations
+            program generation: 2079103 allocations
+            program evaluation: 26393 allocations
         "#]]
         .assert_eq(&format!(
             "program generation: {generation_allocs} allocations\nprogram evaluation: {evaluation_allocs} allocations\n"
@@ -785,11 +779,10 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Items", [("items", Ty::array(Ty::String))], |t| {
                     t.element(
-                        t.mint(),
                         "ul",
                         [],
                         Some(t.html_for(t.param("items"), |t, item| {
-                            t.element(t.mint(), "li", vec![], Some(t.escape(item)))
+                            t.element("li", vec![], Some(t.escape(item)))
                         })),
                     )
                 })
@@ -801,15 +794,13 @@ mod tests {
                 entrypoint Items@e0(
                   items@v0: Array[String],
                 ) -> Html {
-                  let v1: ElementId = mint()
-                  let v6: Html = for v2: String in v0 {
-                    let v3: ElementId = mint()
-                    let v4: Html = escape(v2)
-                    let v5: Html = element(v3, "li", {}, v4)
-                    v5
+                  let v4: Html = for v1: String in v0 {
+                    let v2: Html = escape(v1)
+                    let v3: Html = element("li", {}, v2)
+                    v3
                   }
-                  let v7: Html = element(v1, "ul", {}, v6)
-                  v7
+                  let v5: Html = element("ul", {}, v4)
+                  v5
                 }
 
                 -- after --
@@ -1139,7 +1130,7 @@ mod tests {
         check(
             FlatProgramBuilder::new()
                 .entrypoint("Test", [], |t| {
-                    t.element(t.mint(), "div", [], Some(t.text("Hello World")))
+                    t.element("div", [], Some(t.text("Hello World")))
                 })
                 .build()
                 .unwrap(),
@@ -1147,10 +1138,9 @@ mod tests {
             expect![[r#"
                 -- before --
                 entrypoint Test@e0() -> Html {
-                  let v0: ElementId = mint()
-                  let v1: Html = text("Hello World")
-                  let v2: Html = element(v0, "div", {}, v1)
-                  v2
+                  let v0: Html = text("Hello World")
+                  let v1: Html = element("div", {}, v0)
+                  v1
                 }
 
                 -- after --
@@ -1165,7 +1155,6 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("cls", Ty::String), ("flag", Ty::Bool)], |t| {
                     t.element(
-                        t.mint(),
                         "input",
                         [
                             t.attr_value("class", t.param("cls")),
@@ -1184,10 +1173,9 @@ mod tests {
                   cls@v0: String,
                   flag@v1: Bool,
                 ) -> Html {
-                  let v2: ElementId = mint()
-                  let v3: Bool = false
-                  let v4: Html = element(v2, "input", {class: v0, disabled: v1, checked: v3})
-                  v4
+                  let v2: Bool = false
+                  let v3: Html = element("input", {class: v0, disabled: v1, checked: v2})
+                  v3
                 }
 
                 -- after --
@@ -1228,7 +1216,7 @@ mod tests {
                 .entrypoint("Test", [("show", Ty::Bool)], |t| {
                     t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| {
-                            t.element(t.mint(), "div", [], Some(t.text("Visible")))
+                            t.element("div", [], Some(t.text("Visible")))
                         });
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
@@ -1241,19 +1229,18 @@ mod tests {
                 entrypoint Test@e0(
                   show@v0: Bool,
                 ) -> Html {
-                  let v5: Html = match v0 {
+                  let v4: Html = match v0 {
                     true => {
-                      let v1: ElementId = mint()
-                      let v2: Html = text("Visible")
-                      let v3: Html = element(v1, "div", {}, v2)
-                      v3
+                      let v1: Html = text("Visible")
+                      let v2: Html = element("div", {}, v1)
+                      v2
                     }
                     false => {
-                      let v4: Html = concat()
-                      v4
+                      let v3: Html = concat()
+                      v3
                     }
                   }
-                  v5
+                  v4
                 }
 
                 -- after --
@@ -1269,7 +1256,7 @@ mod tests {
                 .entrypoint("Test", [("show", Ty::Bool)], |t| {
                     t.match_(t.param("show"), |m| {
                         m.arm(Pat::True, |t, _| {
-                            t.element(t.mint(), "div", [], Some(t.text("Hidden")))
+                            t.element("div", [], Some(t.text("Hidden")))
                         });
                         m.arm(Pat::False, |t, _| t.html_concat([]));
                     })
@@ -1282,19 +1269,18 @@ mod tests {
                 entrypoint Test@e0(
                   show@v0: Bool,
                 ) -> Html {
-                  let v5: Html = match v0 {
+                  let v4: Html = match v0 {
                     true => {
-                      let v1: ElementId = mint()
-                      let v2: Html = text("Hidden")
-                      let v3: Html = element(v1, "div", {}, v2)
-                      v3
+                      let v1: Html = text("Hidden")
+                      let v2: Html = element("div", {}, v1)
+                      v2
                     }
                     false => {
-                      let v4: Html = concat()
-                      v4
+                      let v3: Html = concat()
+                      v3
                     }
                   }
-                  v5
+                  v4
                 }
 
                 -- after --
@@ -1309,10 +1295,7 @@ mod tests {
             FlatProgramBuilder::new()
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     t.html_for(t.param("items"), |t, item| {
-                        t.html_concat([
-                            t.element(t.mint(), "li", vec![], Some(t.escape(item))),
-                            t.text("\n"),
-                        ])
+                        t.html_concat([t.element("li", vec![], Some(t.escape(item))), t.text("\n")])
                     })
                 })
                 .build()
@@ -1328,15 +1311,14 @@ mod tests {
                 entrypoint Test@e0(
                   items@v0: Array[String],
                 ) -> Html {
-                  let v7: Html = for v1: String in v0 {
-                    let v2: ElementId = mint()
-                    let v3: Html = escape(v1)
-                    let v4: Html = element(v2, "li", {}, v3)
-                    let v5: Html = text("\n")
-                    let v6: Html = concat(v4, v5)
-                    v6
+                  let v6: Html = for v1: String in v0 {
+                    let v2: Html = escape(v1)
+                    let v3: Html = element("li", {}, v2)
+                    let v4: Html = text("\n")
+                    let v5: Html = concat(v3, v4)
+                    v5
                   }
-                  v7
+                  v6
                 }
 
                 -- after --
@@ -1520,14 +1502,14 @@ mod tests {
                     |t| {
                         let rows =
                             t.html_for(t.param("items"), |t, item| t.apply(t.param("row"), [item]));
-                        t.element(t.mint(), "ul", [], Some(rows))
+                        t.element("ul", [], Some(rows))
                     },
                 )
                 .entrypoint("Test", [("items", Ty::array(Ty::String))], |t| {
                     let prefix = t.str("- ");
                     let row = t.render_lambda([FlatType::STRING], |t, params| {
                         let text = t.html_concat([t.escape(prefix), t.escape(params[0])]);
-                        t.element(t.mint(), "li", [], Some(text))
+                        t.element("li", [], Some(text))
                     });
                     t.call("Rows", [t.param("items"), row])
                 })
@@ -1544,29 +1526,27 @@ mod tests {
                     let v3: Html = v1(v2)
                     v3
                   }
-                  let v5: ElementId = mint()
-                  let v6: Html = element(v5, "ul", {}, v4)
-                  v6
+                  let v5: Html = element("ul", {}, v4)
+                  v5
                 }
                 render lambda l0[
-                  v15: String,
+                  v13: String,
                 ](
-                  v9: String,
+                  v8: String,
                 ) -> Html {
-                  let v10: Html = escape(v15)
-                  let v11: Html = escape(v9)
-                  let v12: Html = concat(v10, v11)
-                  let v13: ElementId = mint()
-                  let v14: Html = element(v13, "li", {}, v12)
-                  v14
+                  let v9: Html = escape(v13)
+                  let v10: Html = escape(v8)
+                  let v11: Html = concat(v9, v10)
+                  let v12: Html = element("li", {}, v11)
+                  v12
                 }
                 entrypoint Test@e0(
-                  items@v7: Array[String],
+                  items@v6: Array[String],
                 ) -> Html {
-                  let v8: String = "- "
-                  let v16: render (String) -> Html = l0[v8]
-                  let v17: Html = f0(v7, v16)
-                  v17
+                  let v7: String = "- "
+                  let v14: render (String) -> Html = l0[v7]
+                  let v15: Html = f0(v6, v14)
+                  v15
                 }
 
                 -- after --

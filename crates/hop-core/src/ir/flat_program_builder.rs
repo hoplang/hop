@@ -716,41 +716,33 @@ impl<'a> FlatBlockBuilder<'a> {
         self.push_html(FlatOp::Text(CheapString::new(content.to_string())))
     }
 
-    pub fn mint(&self) -> ValueId {
-        self.push(FlatType::ElementId, FlatOp::Mint)
-    }
-
     pub fn element(
         &self,
-        identity: ValueId,
         tag: &str,
         attributes: impl IntoIterator<Item = (AttributeName, FlatAttribute)>,
         children: Option<ValueId>,
     ) -> ValueId {
-        self.push_element(identity, tag, attributes, children, None)
+        self.push_element(tag, attributes, children, None)
     }
 
     pub fn element_on_click(
         &self,
-        identity: ValueId,
         tag: &str,
         attributes: impl IntoIterator<Item = (AttributeName, FlatAttribute)>,
         event_handler: ValueId,
         children: Option<ValueId>,
     ) -> ValueId {
-        self.push_element(identity, tag, attributes, children, Some(event_handler))
+        self.push_element(tag, attributes, children, Some(event_handler))
     }
 
     fn push_element(
         &self,
-        identity: ValueId,
         tag: &str,
         attributes: impl IntoIterator<Item = (AttributeName, FlatAttribute)>,
         children: Option<ValueId>,
         on_click: Option<ValueId>,
     ) -> ValueId {
         self.push_html(FlatOp::Element(FlatHtmlElement {
-            identity,
             element: HtmlElementKind::parse(tag).unwrap(),
             attributes: attributes.into_iter().collect(),
             children,

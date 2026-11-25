@@ -139,9 +139,6 @@ pub enum FlatOp {
     /// Bind a cell. Only when its path is new does the block run, and the
     /// cell takes the value it gives. `Cell[T]`.
     Cell(FlatBlock),
-    /// Bind an identity, which the node of the element that takes it keeps
-    /// across renders. `ElementId`.
-    Mint,
     /// Update a cell to what the closure gives for the value the cell has
     /// then, which earlier updates of the same click have given it.
     /// `(Cell[T], fn(T) -> T) -> Tuple[]`.
@@ -157,9 +154,9 @@ pub enum FlatOp {
     Escape(ValueId),
     /// Concatenate Html. `(Html, ..., Html) -> Html`.
     Concat(Vec<ValueId>),
-    /// Bind a Html element, whose node its identity keeps across renders. A
+    /// Bind a Html element, whose node its binding keeps across renders. A
     /// void element has no children, and every other element has them.
-    /// `(ElementId, Html) -> Html`, or `ElementId -> Html` for a void element.
+    /// `Html -> Html`, or `Html` for a void element.
     Element(FlatHtmlElement),
     /// Run a fold-map over an array, where each iteration produces a Html value.
     /// The key, when there is one, gives each element the identity its
@@ -228,7 +225,7 @@ impl FlatOp {
     pub fn for_each_operand(&self, f: &mut impl FnMut(ValueId)) {
         match self {
             FlatOp::Data(op) => op.for_each_operand(f),
-            FlatOp::Text(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
+            FlatOp::Text(_) | FlatOp::Cell(_) => {}
             FlatOp::CellRead(name) | FlatOp::Escape(name) => f(*name),
             FlatOp::CellUpdate(cell, update) => {
                 f(*cell);
@@ -244,7 +241,6 @@ impl FlatOp {
                 }
             }
             FlatOp::Element(element) => {
-                f(element.identity);
                 element.for_each_attribute_operand(f);
                 if let Some(children) = element.children {
                     f(children);
@@ -267,7 +263,7 @@ impl FlatOp {
     pub fn for_each_operand_mut(&mut self, f: &mut impl FnMut(&mut ValueId)) {
         match self {
             FlatOp::Data(op) => op.for_each_operand_mut(f),
-            FlatOp::Text(_) | FlatOp::Cell(_) | FlatOp::Mint => {}
+            FlatOp::Text(_) | FlatOp::Cell(_) => {}
             FlatOp::CellRead(name) | FlatOp::Escape(name) => f(name),
             FlatOp::CellUpdate(cell, update) => {
                 f(cell);
@@ -283,7 +279,6 @@ impl FlatOp {
                 }
             }
             FlatOp::Element(element) => {
-                f(&mut element.identity);
                 element.for_each_attribute_operand_mut(f);
                 if let Some(children) = &mut element.children {
                     f(children);
@@ -374,7 +369,6 @@ mod test_support {
                     write!(Indent::new(f), "\n{initial}")?;
                     f.write_str("\n}")
                 }
-                FlatOp::Mint => f.write_str("mint()"),
                 FlatOp::CellUpdate(cell, update) => write!(f, "cell_update({cell}, {update})"),
                 FlatOp::CellRead(cell) => write!(f, "cell_read({cell})"),
                 FlatOp::AssertEq(assertion, left, right) => {
@@ -384,12 +378,7 @@ mod test_support {
                 FlatOp::Concat(parts) => write!(f, "concat({})", join(parts, ", ")),
                 FlatOp::Escape(string) => write!(f, "escape({string})"),
                 FlatOp::Element(element) => {
-                    write!(
-                        f,
-                        "element({}, {:?}, {{",
-                        element.identity,
-                        element.element.as_str()
-                    )?;
+                    write!(f, "element({:?}, {{", element.element.as_str())?;
                     for (i, (name, attribute)) in element.attributes.iter().enumerate() {
                         let sep = if i > 0 { ", " } else { "" };
                         write!(f, "{sep}{}", name.as_str())?;

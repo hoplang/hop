@@ -484,7 +484,7 @@ mod tests {
             FlatProgramBuilder::new()
                 .render_function("list", [("items", Ty::array(Ty::String))], Ty::Html, |t| {
                     t.html_for(t.param("items"), |t, item| {
-                        t.element(t.mint(), "li", [], Some(t.escape(item)))
+                        t.element("li", [], Some(t.escape(item)))
                     })
                 })
                 .entrypoint(
@@ -504,43 +504,40 @@ mod tests {
                 render fn list@f0(
                   items@v0: Array[String],
                 ) -> Html {
-                  let v5: Html = for v1: String in v0 {
-                    let v2: ElementId = mint()
-                    let v3: Html = escape(v1)
-                    let v4: Html = element(v2, "li", {}, v3)
-                    v4
+                  let v4: Html = for v1: String in v0 {
+                    let v2: Html = escape(v1)
+                    let v3: Html = element("li", {}, v2)
+                    v3
                   }
-                  v5
+                  v4
                 }
                 entrypoint Test@e0(
-                  a@v6: Array[String],
-                  b@v7: Array[String],
+                  a@v5: Array[String],
+                  b@v6: Array[String],
                 ) -> Html {
+                  let v7: Html = f0(v5)
                   let v8: Html = f0(v6)
-                  let v9: Html = f0(v7)
-                  let v10: Html = concat(v8, v9)
-                  v10
+                  let v9: Html = concat(v7, v8)
+                  v9
                 }
 
                 -- after --
                 entrypoint Test@e0(
-                  a@v6: Array[String],
-                  b@v7: Array[String],
+                  a@v5: Array[String],
+                  b@v6: Array[String],
                 ) -> Html {
-                  let v15: Html = for v11: String in v6 {
-                    let v12: ElementId = mint()
-                    let v13: Html = escape(v11)
-                    let v14: Html = element(v12, "li", {}, v13)
-                    v14
+                  let v13: Html = for v10: String in v5 {
+                    let v11: Html = escape(v10)
+                    let v12: Html = element("li", {}, v11)
+                    v12
                   }
-                  let v20: Html = for v16: String in v7 {
-                    let v17: ElementId = mint()
-                    let v18: Html = escape(v16)
-                    let v19: Html = element(v17, "li", {}, v18)
-                    v19
+                  let v17: Html = for v14: String in v6 {
+                    let v15: Html = escape(v14)
+                    let v16: Html = element("li", {}, v15)
+                    v16
                   }
-                  let v10: Html = concat(v15, v20)
-                  v10
+                  let v9: Html = concat(v13, v17)
+                  v9
                 }
             "#]],
         );
@@ -559,13 +556,7 @@ mod tests {
                         });
                         t.cell_update(n, incr)
                     });
-                    t.element_on_click(
-                        t.mint(),
-                        "button",
-                        [],
-                        bump,
-                        Some(t.escape(t.int_to_string(count))),
-                    )
+                    t.element_on_click("button", [], bump, Some(t.escape(t.int_to_string(count))))
                 })
                 .entrypoint("Test", [], |t| {
                     t.html_concat([t.call("counter", []), t.call("counter", [])])
@@ -581,11 +572,10 @@ mod tests {
                   }
                   let v2: Int = cell_read(v1)
                   let v9: mut () -> Tuple[] = l1[v1]
-                  let v10: ElementId = mint()
-                  let v11: String = int_to_string(v2)
-                  let v12: Html = escape(v11)
-                  let v13: Html = element(v10, "button", {}, v12) on_click v9
-                  v13
+                  let v10: String = int_to_string(v2)
+                  let v11: Html = escape(v10)
+                  let v12: Html = element("button", {}, v11) on_click v9
+                  v12
                 }
                 lambda l0[](
                   v3: Int,
@@ -602,10 +592,10 @@ mod tests {
                   v7
                 }
                 entrypoint Test@e0() -> Html {
+                  let v13: Html = f0()
                   let v14: Html = f0()
-                  let v15: Html = f0()
-                  let v16: Html = concat(v14, v15)
-                  v16
+                  let v15: Html = concat(v13, v14)
+                  v15
                 }
 
                 -- after --
@@ -624,28 +614,26 @@ mod tests {
                   v7
                 }
                 entrypoint Test@e0() -> Html {
-                  let v18: Cell[Int] = cell {
-                    let v17: Int = 0
-                    v17
+                  let v17: Cell[Int] = cell {
+                    let v16: Int = 0
+                    v16
                   }
-                  let v19: Int = cell_read(v18)
-                  let v20: mut () -> Tuple[] = l1[v18]
-                  let v21: ElementId = mint()
-                  let v22: String = int_to_string(v19)
-                  let v23: Html = escape(v22)
-                  let v24: Html = element(v21, "button", {}, v23) on_click v20
-                  let v26: Cell[Int] = cell {
-                    let v25: Int = 0
-                    v25
+                  let v18: Int = cell_read(v17)
+                  let v19: mut () -> Tuple[] = l1[v17]
+                  let v20: String = int_to_string(v18)
+                  let v21: Html = escape(v20)
+                  let v22: Html = element("button", {}, v21) on_click v19
+                  let v24: Cell[Int] = cell {
+                    let v23: Int = 0
+                    v23
                   }
-                  let v27: Int = cell_read(v26)
-                  let v28: mut () -> Tuple[] = l1[v26]
-                  let v29: ElementId = mint()
-                  let v30: String = int_to_string(v27)
-                  let v31: Html = escape(v30)
-                  let v32: Html = element(v29, "button", {}, v31) on_click v28
-                  let v16: Html = concat(v24, v32)
-                  v16
+                  let v25: Int = cell_read(v24)
+                  let v26: mut () -> Tuple[] = l1[v24]
+                  let v27: String = int_to_string(v25)
+                  let v28: Html = escape(v27)
+                  let v29: Html = element("button", {}, v28) on_click v26
+                  let v15: Html = concat(v22, v29)
+                  v15
                 }
             "#]],
         );
@@ -684,13 +672,7 @@ mod tests {
                         });
                         t.call("both", [bump, flip])
                     });
-                    t.element_on_click(
-                        t.mint(),
-                        "button",
-                        [],
-                        both,
-                        Some(t.escape(t.int_to_string(n))),
-                    )
+                    t.element_on_click("button", [], both, Some(t.escape(t.int_to_string(n))))
                 })
                 .build()
                 .unwrap(),
@@ -751,11 +733,10 @@ mod tests {
                   }
                   let v8: Int = cell_read(v5)
                   let v25: mut () -> Tuple[] = l4[v5, v7]
-                  let v26: ElementId = mint()
-                  let v27: String = int_to_string(v8)
-                  let v28: Html = escape(v27)
-                  let v29: Html = element(v26, "button", {}, v28) on_click v25
-                  v29
+                  let v26: String = int_to_string(v8)
+                  let v27: Html = escape(v26)
+                  let v28: Html = element("button", {}, v27) on_click v25
+                  v28
                 }
 
                 -- after --
@@ -792,9 +773,9 @@ mod tests {
                 ]() -> Tuple[] {
                   let v15: mut () -> Tuple[] = l1[v23]
                   let v21: mut () -> Tuple[] = l3[v24]
-                  let v30: Tuple[] = v15()
-                  let v31: Tuple[] = v21()
-                  v31
+                  let v29: Tuple[] = v15()
+                  let v30: Tuple[] = v21()
+                  v30
                 }
                 entrypoint Test@e0() -> Html {
                   let v5: Cell[Int] = cell {
@@ -807,11 +788,10 @@ mod tests {
                   }
                   let v8: Int = cell_read(v5)
                   let v25: mut () -> Tuple[] = l4[v5, v7]
-                  let v26: ElementId = mint()
-                  let v27: String = int_to_string(v8)
-                  let v28: Html = escape(v27)
-                  let v29: Html = element(v26, "button", {}, v28) on_click v25
-                  v29
+                  let v26: String = int_to_string(v8)
+                  let v27: Html = escape(v26)
+                  let v28: Html = element("button", {}, v27) on_click v25
+                  v28
                 }
             "#]],
         );

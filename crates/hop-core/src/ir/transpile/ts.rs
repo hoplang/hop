@@ -1706,18 +1706,18 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                function renderNest_0(v_8: number, v_9: () => string): string {
+                function renderNest_0(v_7: number, v_8: () => string): string {
                     let output: string = "";
-                    const v_10: number = 0;
-                    const v_11: boolean = v_10 < v_8;
-                    if (v_11) {
-                        const v_12: number = 1;
-                        const v_13: number = (v_8 - v_12) | 0;
+                    const v_9: number = 0;
+                    const v_10: boolean = v_9 < v_7;
+                    if (v_10) {
+                        const v_11: number = 1;
+                        const v_12: number = (v_7 - v_11) | 0;
                         output += "<div>";
-                        output += renderNest_0(v_13, v_9);
+                        output += renderNest_0(v_12, v_8);
                         output += "</div>";
                     } else {
-                        output += v_9();
+                        output += v_8();
                     }
                     return output;
                 }
@@ -1725,14 +1725,14 @@ mod tests {
                 export function Test({name: v_0}: {name: string}): string {
                     let output: string = "";
                     const v_1: number = 2;
-                    const v_20: () => string = (): string => {
+                    const v_18: () => string = (): string => {
                         let output: string = "";
                         output += "<b>";
                         output += escapeHtml(v_0);
                         output += "</b>";
                         return output;
                     };
-                    output += renderNest_0(v_1, v_20);
+                    output += renderNest_0(v_1, v_18);
                     return output;
                 }
             "#]],
@@ -1767,14 +1767,9 @@ mod tests {
                     let prefix = t.param("prefix");
                     let row = t.render_lambda([FlatType::INT], |t, params| {
                         let text = t.string_concat([prefix, t.int_to_string(params[0])]);
-                        t.element(t.mint(), "li", [], Some(t.escape(text)))
+                        t.element("li", [], Some(t.escape(text)))
                     });
-                    t.element(
-                        t.mint(),
-                        "ul",
-                        [],
-                        Some(t.call("Countdown", [t.int(3), row])),
-                    )
+                    t.element("ul", [], Some(t.call("Countdown", [t.int(3), row])))
                 })
                 .build()
                 .unwrap(),
@@ -1804,7 +1799,7 @@ mod tests {
 
                 export function Test({prefix: v_11}: {prefix: string}): string {
                     let output: string = "";
-                    const v_19: (a0: number) => string = (v_12: number): string => {
+                    const v_18: (a0: number) => string = (v_12: number): string => {
                         let output: string = "";
                         const v_13: string = v_12.toString();
                         output += "<li>";
@@ -1813,9 +1808,9 @@ mod tests {
                         output += "</li>";
                         return output;
                     };
-                    const v_21: number = 3;
+                    const v_19: number = 3;
                     output += "<ul>";
-                    output += renderCountdown_0(v_21, v_19);
+                    output += renderCountdown_0(v_19, v_18);
                     output += "</ul>";
                     return output;
                 }
@@ -1935,7 +1930,7 @@ mod tests {
                 )
                 .entrypoint("Test", [], |t| {
                     let wrap = t.render_lambda([FlatType::HTML], |t, params| {
-                        t.element(t.mint(), "b", [], Some(params[0]))
+                        t.element("b", [], Some(params[0]))
                     });
                     t.call("Wrap", [t.int(2), wrap])
                 })
@@ -1953,27 +1948,27 @@ mod tests {
                     } else {
                         const v_5: number = 1;
                         const v_6: number = (v_0 - v_5) | 0;
-                        const v_16: () => string = (): string => {
+                        const v_15: () => string = (): string => {
                             let output: string = "";
                             output += renderWrap_0(v_6, v_1);
                             return output;
                         };
-                        output += v_1(v_16);
+                        output += v_1(v_15);
                     }
                     return output;
                 }
 
                 export function Test(): string {
                     let output: string = "";
-                    const v_13: (a0: () => string) => string = (v_10: () => string): string => {
+                    const v_12: (a0: () => string) => string = (v_10: () => string): string => {
                         let output: string = "";
                         output += "<b>";
                         output += v_10();
                         output += "</b>";
                         return output;
                     };
-                    const v_14: number = 2;
-                    output += renderWrap_0(v_14, v_13);
+                    const v_13: number = 2;
+                    output += renderWrap_0(v_13, v_12);
                     return output;
                 }
             "#]],
@@ -2000,8 +1995,8 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [("label", Ty::String)], |t| {
-                    t.element(t.mint(), "i", [], Some(t.text("*")));
-                    let badge = t.element(t.mint(), "b", [], Some(t.escape(t.param("label"))));
+                    t.element("i", [], Some(t.text("*")));
+                    let badge = t.element("b", [], Some(t.escape(t.param("label"))));
                     let width = t.call("Width", [badge, t.int(3)]);
                     t.escape(t.int_to_string(width))
                 })
@@ -2021,7 +2016,7 @@ mod tests {
                 function renderWidth_0(v_0: () => string, v_1: number): number {
                     const v_2: number = 0;
                     const v_3: boolean = v_1 <= v_2;
-                    const v_23: number = (() => {
+                    const v_21: number = (() => {
                         if (v_3) {
                             const v_4: number = 0;
                             return v_4;
@@ -2034,22 +2029,22 @@ mod tests {
                             return v_9;
                         }
                     })();
-                    return v_23;
+                    return v_21;
                 }
 
                 export function Test({label: v_11}: {label: string}): string {
                     let output: string = "";
-                    const v_18: number = 3;
-                    const v_22: () => string = (): string => {
+                    const v_16: number = 3;
+                    const v_20: () => string = (): string => {
                         let output: string = "";
                         output += "<b>";
                         output += escapeHtml(v_11);
                         output += "</b>";
                         return output;
                     };
-                    const v_19: number = renderWidth_0(v_22, v_18);
-                    const v_20: string = v_19.toString();
-                    output += escapeHtml(v_20);
+                    const v_17: number = renderWidth_0(v_20, v_16);
+                    const v_18: string = v_17.toString();
+                    output += escapeHtml(v_18);
                     return output;
                 }
             "#]],
@@ -2988,9 +2983,9 @@ mod tests {
                     const s_0: Option.Option<string> = v_0;
                     switch (s_0.tag) {
                         case "Some": {
-                            const v_12 = s_0.value;
+                            const v_10 = s_0.value;
                             output += "<span>Found: ";
-                            output += escapeHtml(v_12);
+                            output += escapeHtml(v_10);
                             output += "</span>";
                             break;
                         }
@@ -3305,22 +3300,22 @@ mod tests {
                     let output: string = "";
                     const v_0: number = 42;
                     const v_1: Outcome.Outcome = Outcome.Success({value: v_0});
-                    const v_12: string = (() => {
+                    const v_11: string = (() => {
                         const s_0: Outcome.Outcome = v_1;
                         switch (s_0._tag) {
                             case "Success": {
-                                const { value: v_10 } = s_0;
-                                const v_3: string = v_10.toString();
+                                const { value: v_9 } = s_0;
+                                const v_3: string = v_9.toString();
                                 return v_3;
                             }
                             case "Failure": {
-                                const { message: v_11 } = s_0;
-                                return v_11;
+                                const { message: v_10 } = s_0;
+                                return v_10;
                             }
                         }
                     })();
                     output += "<div>";
-                    output += escapeHtml(v_12);
+                    output += escapeHtml(v_11);
                     output += "</div>";
                     return output;
                 }
@@ -3499,10 +3494,10 @@ mod tests {
                         .replace(/"/g, '&quot;');
                 }
 
-                function renderFoo_0(v_17: number): number {
-                    const v_18: number = 10;
-                    const v_19: number = (v_17 + v_18) | 0;
-                    return v_19;
+                function renderFoo_0(v_16: number): number {
+                    const v_17: number = 10;
+                    const v_18: number = (v_16 + v_17) | 0;
+                    return v_18;
                 }
 
                 export function Test(): string {

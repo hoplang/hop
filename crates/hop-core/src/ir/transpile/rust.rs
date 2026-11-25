@@ -1802,14 +1802,9 @@ mod tests {
                     let prefix = t.param("prefix");
                     let row = t.render_lambda([FlatType::INT], |t, params| {
                         let text = t.string_concat([prefix, t.int_to_string(params[0])]);
-                        t.element(t.mint(), "li", [], Some(t.escape(text)))
+                        t.element("li", [], Some(t.escape(text)))
                     });
-                    t.element(
-                        t.mint(),
-                        "ul",
-                        [],
-                        Some(t.call("Countdown", [t.int(3), row])),
-                    )
+                    t.element("ul", [], Some(t.call("Countdown", [t.int(3), row])))
                 })
                 .build()
                 .unwrap(),
@@ -1865,16 +1860,16 @@ mod tests {
 
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { prefix: v_11 } = self;
-                        let v_19: &'a (dyn Fn(&mut String, i32) + 'a) = arena.alloc(move |output: &mut String, v_12: i32| {
+                        let v_18: &'a (dyn Fn(&mut String, i32) + 'a) = arena.alloc(move |output: &mut String, v_12: i32| {
                             let v_13: &'a str = arena.alloc_str(&v_12.to_string());
                             output.push_str("<li>");
                             write_escaped_html(v_11, output);
                             write_escaped_html(v_13, output);
                             output.push_str("</li>");
                         });
-                        let v_21: i32 = 3_i32;
+                        let v_19: i32 = 3_i32;
                         output.push_str("<ul>");
-                        render_countdown_0(arena, output, v_21, v_19);
+                        render_countdown_0(arena, output, v_19, v_18);
                         output.push_str("</ul>");
                     }
                 }
@@ -2022,7 +2017,7 @@ mod tests {
                 )
                 .entrypoint("Test", [], |t| {
                     let wrap = t.render_lambda([FlatType::HTML], |t, params| {
-                        t.element(t.mint(), "b", [], Some(params[0]))
+                        t.element("b", [], Some(params[0]))
                     });
                     t.call("Wrap", [t.int(2), wrap])
                 })
@@ -2054,10 +2049,10 @@ mod tests {
                     } else {
                         let v_5: i32 = 1_i32;
                         let v_6: i32 = v_0.wrapping_sub(v_5);
-                        let v_16: &'a (dyn Fn(&mut String) + 'a) = arena.alloc(move |output: &mut String| {
+                        let v_15: &'a (dyn Fn(&mut String) + 'a) = arena.alloc(move |output: &mut String| {
                             render_wrap_0(arena, output, v_6, v_1);
                         });
-                        v_1(&mut *output, v_16);
+                        v_1(&mut *output, v_15);
                     }
                 }
 
@@ -2069,13 +2064,13 @@ mod tests {
                     }
 
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
-                        let v_13: &'a (dyn Fn(&mut String, &'a (dyn Fn(&mut String) + 'a)) + 'a) = arena.alloc(move |output: &mut String, v_10: &'a (dyn Fn(&mut String) + 'a)| {
+                        let v_12: &'a (dyn Fn(&mut String, &'a (dyn Fn(&mut String) + 'a)) + 'a) = arena.alloc(move |output: &mut String, v_10: &'a (dyn Fn(&mut String) + 'a)| {
                             output.push_str("<b>");
                             v_10(&mut *output);
                             output.push_str("</b>");
                         });
-                        let v_14: i32 = 2_i32;
-                        render_wrap_0(arena, output, v_14, v_13);
+                        let v_13: i32 = 2_i32;
+                        render_wrap_0(arena, output, v_13, v_12);
                     }
                 }
             "#]],
@@ -2102,8 +2097,8 @@ mod tests {
                     },
                 )
                 .entrypoint("Test", [("label", Ty::String)], |t| {
-                    t.element(t.mint(), "i", [], Some(t.text("*")));
-                    let badge = t.element(t.mint(), "b", [], Some(t.escape(t.param("label"))));
+                    t.element("i", [], Some(t.text("*")));
+                    let badge = t.element("b", [], Some(t.escape(t.param("label"))));
                     let width = t.call("Width", [badge, t.int(3)]);
                     t.escape(t.int_to_string(width))
                 })
@@ -2144,7 +2139,7 @@ mod tests {
                 fn render_width_0<'a>(arena: &'a impl Arena, v_0: &'a (dyn Fn(&mut String) + 'a), v_1: i32) -> i32 {
                     let v_2: i32 = 0_i32;
                     let v_3: bool = v_1 <= v_2;
-                    let v_23: i32 = match v_3 {
+                    let v_21: i32 = match v_3 {
                         true => {
                             let v_4: i32 = 0_i32;
                             v_4
@@ -2158,7 +2153,7 @@ mod tests {
                             v_9
                         },
                     };
-                    v_23
+                    v_21
                 }
 
                 impl<'a> View<'a> for Test<'a> {
@@ -2170,15 +2165,15 @@ mod tests {
 
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { label: v_11 } = self;
-                        let v_18: i32 = 3_i32;
-                        let v_22: &'a (dyn Fn(&mut String) + 'a) = arena.alloc(move |output: &mut String| {
+                        let v_16: i32 = 3_i32;
+                        let v_20: &'a (dyn Fn(&mut String) + 'a) = arena.alloc(move |output: &mut String| {
                             output.push_str("<b>");
                             write_escaped_html(v_11, output);
                             output.push_str("</b>");
                         });
-                        let v_19: i32 = render_width_0(arena, v_22, v_18);
-                        let v_20: &'a str = arena.alloc_str(&v_19.to_string());
-                        write_escaped_html(v_20, output);
+                        let v_17: i32 = render_width_0(arena, v_20, v_16);
+                        let v_18: &'a str = arena.alloc_str(&v_17.to_string());
+                        write_escaped_html(v_18, output);
                     }
                 }
             "#]],
@@ -2371,21 +2366,21 @@ mod tests {
                 pub struct Test {}
 
                 fn render_decorate_0<'a>(arena: &'a impl Arena, v_9: &'a str) -> &'a (dyn Fn(&mut String, &'a str) + 'a) {
-                    let v_17: &'a (dyn Fn(&mut String, &'a str) + 'a) = arena.alloc(move |output: &mut String, v_10: &'a str| {
+                    let v_16: &'a (dyn Fn(&mut String, &'a str) + 'a) = arena.alloc(move |output: &mut String, v_10: &'a str| {
                         output.push_str("<b>");
                         write_escaped_html(v_10, output);
                         write_escaped_html(v_9, output);
                         output.push_str("</b>");
                     });
-                    v_17
+                    v_16
                 }
 
-                fn render_adder_1<'a>(arena: &'a impl Arena, v_18: i32) -> &'a (dyn Fn(i32) -> i32 + 'a) {
-                    let v_22: &'a (dyn Fn(i32) -> i32 + 'a) = arena.alloc(move |v_19: i32| -> i32 {
-                        let v_20: i32 = v_18.wrapping_add(v_19);
-                        v_20
+                fn render_adder_1<'a>(arena: &'a impl Arena, v_17: i32) -> &'a (dyn Fn(i32) -> i32 + 'a) {
+                    let v_21: &'a (dyn Fn(i32) -> i32 + 'a) = arena.alloc(move |v_18: i32| -> i32 {
+                        let v_19: i32 = v_17.wrapping_add(v_18);
+                        v_19
                     });
-                    v_22
+                    v_21
                 }
 
                 impl<'a> View<'a> for Test {
@@ -2461,17 +2456,17 @@ mod tests {
                     pub name: &'a str,
                 }
 
-                fn render_nest_0<'a>(arena: &'a impl Arena, output: &mut String, v_8: i32, v_9: &'a (dyn Fn(&mut String) + 'a)) {
-                    let v_10: i32 = 0_i32;
-                    let v_11: bool = v_10 < v_8;
-                    if v_11 {
-                        let v_12: i32 = 1_i32;
-                        let v_13: i32 = v_8.wrapping_sub(v_12);
+                fn render_nest_0<'a>(arena: &'a impl Arena, output: &mut String, v_7: i32, v_8: &'a (dyn Fn(&mut String) + 'a)) {
+                    let v_9: i32 = 0_i32;
+                    let v_10: bool = v_9 < v_7;
+                    if v_10 {
+                        let v_11: i32 = 1_i32;
+                        let v_12: i32 = v_7.wrapping_sub(v_11);
                         output.push_str("<div>");
-                        render_nest_0(arena, output, v_13, v_9);
+                        render_nest_0(arena, output, v_12, v_8);
                         output.push_str("</div>");
                     } else {
-                        v_9(&mut *output);
+                        v_8(&mut *output);
                     }
                 }
 
@@ -2485,12 +2480,12 @@ mod tests {
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
                         let Test { name: v_0 } = self;
                         let v_1: i32 = 2_i32;
-                        let v_20: &'a (dyn Fn(&mut String) + 'a) = arena.alloc(move |output: &mut String| {
+                        let v_18: &'a (dyn Fn(&mut String) + 'a) = arena.alloc(move |output: &mut String| {
                             output.push_str("<b>");
                             write_escaped_html(v_0, output);
                             output.push_str("</b>");
                         });
-                        render_nest_0(arena, output, v_1, v_20);
+                        render_nest_0(arena, output, v_1, v_18);
                     }
                 }
             "#]],
@@ -2684,8 +2679,8 @@ mod tests {
                     }
 
                     fn write(self, arena: &'a impl Arena, output: &mut String) {
-                        let Second { title: v_4 } = self;
-                        write_escaped_html(v_4, output);
+                        let Second { title: v_3 } = self;
+                        write_escaped_html(v_3, output);
                     }
                 }
             "#]],
@@ -4517,10 +4512,10 @@ mod tests {
 
                 pub struct Test {}
 
-                fn render_foo_0<'a>(arena: &'a impl Arena, v_17: i32) -> i32 {
-                    let v_18: i32 = 10_i32;
-                    let v_19: i32 = v_17.wrapping_add(v_18);
-                    v_19
+                fn render_foo_0<'a>(arena: &'a impl Arena, v_16: i32) -> i32 {
+                    let v_17: i32 = 10_i32;
+                    let v_18: i32 = v_16.wrapping_add(v_17);
+                    v_18
                 }
 
                 impl<'a> View<'a> for Test {
