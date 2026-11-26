@@ -13387,6 +13387,191 @@ mod tests {
     }
 
     #[test]
+    fn rejects_html_used_after_a_let_that_binds_it_again() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let x = <input/>;
+                  let y = x;
+                  <div>
+                    {x}
+                    {y}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Html value x is used more than once
+                  --> main.hop (line 5, col 6)
+                4 |   <div>
+                5 |     {x}
+                  |      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_used_after_a_block_that_returns_it() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let x = <input/>;
+                  let y = {
+                    x
+                  };
+                  <div>
+                    {x}
+                    {y}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Html value x is used more than once
+                  --> main.hop (line 7, col 6)
+                 6 |   <div>
+                 7 |     {x}
+                   |      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_passed_to_two_calls() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Card(children: Html) -> Html {
+                  <section>
+                    {children}
+                  </section>
+                }
+                fn Main() -> Html {
+                  let x = <input/>;
+                  let a = Card(children: x);
+                  let b = Card(children: x);
+                  <div>
+                    {a}
+                    {b}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Html value x is used more than once
+                  --> main.hop (line 9, col 26)
+                 8 |   let a = Card(children: x);
+                 9 |   let b = Card(children: x);
+                   |                          ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_used_after_a_lambda_call_that_returns_it() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main() -> Html {
+                  let x = <input/>;
+                  let id = fn(h: Html) -> Html { h };
+                  let y = id(x);
+                  <div>
+                    {x}
+                    {y}
+                  </div>
+                }
+            "#},
+            expect![[r#"
+                error: Html value x is used more than once
+                  --> main.hop (line 6, col 6)
+                5 |   <div>
+                6 |     {x}
+                  |      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_used_in_an_arm_after_the_match_subject_uses_it() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Main(is_empty: fn(Html) -> Bool, children: Html) -> Html {
+                  match is_empty(children) {
+                    true => <></>,
+                    false => children,
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html value children is used more than once
+                  --> main.hop (line 4, col 14)
+                3 |     true => <></>,
+                4 |     false => children,
+                  |              ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_used_after_a_nested_match_that_uses_it() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Pick(a: Bool, b: Bool, children: Html) -> Html {
+                  match a {
+                    true => {
+                      let inner = match b {
+                        true => children,
+                        false => <></>,
+                      };
+                      <>
+                        {inner}
+                        {children}
+                      </>
+                    },
+                    false => children,
+                  }
+                }
+            "#},
+            expect![[r#"
+                error: Html value children is used more than once
+                  --> main.hop (line 10, col 10)
+                 9 |         {inner}
+                10 |         {children}
+                   |          ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn rejects_html_supplied_alongside_a_rest_spread_and_used_again() {
+        reject(
+            indoc! {r#"
+                -- main.hop --
+                fn Callout(children: Html) -> Html {
+                  <aside>
+                    {children}
+                  </aside>
+                }
+                fn Tip(children: Html, ...rest) -> Html {
+                  <>
+                    <Callout children={children} ...rest/>
+                    {children}
+                  </>
+                }
+            "#},
+            expect![[r#"
+                error: Html value children is used more than once
+                  --> main.hop (line 9, col 6)
+                 8 |     <Callout children={children} ...rest/>
+                 9 |     {children}
+                   |      ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn rejects_rest_spread_passing_on_html_in_a_loop() {
         reject(
             indoc! {r#"
