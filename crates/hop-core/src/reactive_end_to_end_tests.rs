@@ -2203,3 +2203,982 @@ fn an_updater_chooses_the_next_record_state_from_the_current_one() {
         "#]],
     );
 }
+
+#[test]
+fn the_text_an_arm_binds_stays_when_the_subject_is_set_to_an_equal_value() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (picked, set_picked) = state!(Some("a"));
+                let again = mut fn() {
+                  set_picked(fn(curr) {
+                    match curr {
+                      Some(s) => Some(s),
+                      None => None,
+                    }
+                  })
+                };
+
+                <>
+                  <b on:click={again}>again</b>
+                  {match picked {
+                    Some(s) => <p>{s}</p>,
+                    None => <i>none</i>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>again</b>
+            <p@e2>a</p>
+            -- click b@e1 --
+            <b@e1>again</b>
+            <p@e2>a</p>
+        "#]],
+    );
+}
+
+#[test]
+fn a_text_stays_when_a_state_the_match_no_longer_chooses_changes() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (use_x, set_use_x) = state!(true);
+                let (x, set_x) = state!("x");
+                let flip = mut fn() {
+                  set_use_x(fn(curr) { !curr })
+                };
+                let grow = mut fn() {
+                  set_x(fn(curr) { curr + "!" })
+                };
+                let shown = match use_x {
+                  true => x,
+                  false => "y",
+                };
+
+                <>
+                  <b on:click={flip}>flip</b>
+                  <i on:click={grow}>grow</i>
+                  <p>{shown}</p>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <b@e1>flip</b>
+            <i@e2>grow</i>
+            <p@e3>x</p>
+            -- click b@e1 --
+            <b@e1>flip</b>
+            <i@e2>grow</i>
+            <p@e3>y</p>
+            -- click i@e2 --
+            <b@e1>flip</b>
+            <i@e2>grow</i>
+            <p@e3>y</p>
+        "#]],
+    );
+}
+
+#[test]
+fn an_arm_a_match_leaves_does_not_take_the_element_the_new_arm_shows() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (on, set_on) = state!(false);
+                let toggle = mut fn() {
+                  set_on(fn(curr) { !curr })
+                };
+                let field = <input/>;
+
+                <>
+                  <b on:click={toggle}>toggle</b>
+                  {match on {
+                    true => field,
+                    false => {
+                      <div>
+                        {match on {
+                          true => field,
+                          false => <p>off</p>,
+                        }}
+                      </div>
+                    }
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>toggle</b>
+            <div@e2>
+              <p@e3>off</p>
+            </div>
+            -- click b@e1 --
+            <b@e1>toggle</b>
+            <input@e4>
+        "#]],
+    );
+}
+
+#[test]
+fn a_presence_attribute_follows_its_state_on_and_off() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (on, set_on) = state!(false);
+                let toggle = mut fn() {
+                  set_on(fn(curr) { !curr })
+                };
+
+                <>
+                  <b on:click={toggle}>toggle</b>
+                  <input checked={on}/>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>toggle</b>
+            <input@e2>
+            -- click b@e1 --
+            <b@e1>toggle</b>
+            <input@e2 checked>
+            -- click b@e1 --
+            <b@e1>toggle</b>
+            <input@e2>
+        "#]],
+    );
+}
+
+#[test]
+fn each_lambda_in_an_array_has_state_of_its_own() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let shows = [
+                  fn() {
+                    let (count, set_count) = state!(0);
+                    let incr = mut fn() { set_count(fn(curr) { curr + 1 }) };
+                    <b on:click={incr}>{count.to_string()}</b>
+                  },
+                  fn() {
+                    let (count, set_count) = state!(0);
+                    let incr = mut fn() { set_count(fn(curr) { curr + 10 }) };
+                    <i on:click={incr}>{count.to_string()}</i>
+                  },
+                ];
+                <>
+                  {for show in shows {
+                    show()
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(1),
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(2),
+        ],
+        expect![[r#"
+            -- render --
+            <b@e1>0</b>
+            <i@e2>0</i>
+            -- click b@e1 --
+            <b@e1>1</b>
+            <i@e2>0</i>
+            -- click i@e2 --
+            <b@e1>1</b>
+            <i@e2>10</i>
+            -- click b@e1 --
+            <b@e1>2</b>
+            <i@e2>10</i>
+            -- click i@e2 --
+            <b@e1>2</b>
+            <i@e2>20</i>
+        "#]],
+    );
+}
+
+#[test]
+fn state_of_lambdas_in_an_array_starts_over_when_a_loop_without_a_key_applies_another_at_the_index()
+{
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (flipped, set_flipped) = state!(false);
+                let flip = mut fn() { set_flipped(fn(curr) { !curr }) };
+                let first = fn() {
+                  let (count, set_count) = state!(0);
+                  let incr = mut fn() { set_count(fn(curr) { curr + 1 }) };
+                  <b on:click={incr}>{count.to_string()}</b>
+                };
+                let second = fn() {
+                  let (count, set_count) = state!(0);
+                  let incr = mut fn() { set_count(fn(curr) { curr + 10 }) };
+                  <i on:click={incr}>{count.to_string()}</i>
+                };
+                let shows = match flipped {
+                  true => [second, first],
+                  false => [first, second],
+                };
+                <>
+                  <button on:click={flip}>flip</button>
+                  {for show in shows {
+                    show()
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(3),
+            Event::Click(1),
+            Event::Click(4),
+            Event::Click(5),
+            Event::Click(1),
+            Event::Click(6),
+        ],
+        expect![[r#"
+            -- render --
+            <button@e1>flip</button>
+            <b@e2>0</b>
+            <i@e3>0</i>
+            -- click b@e2 --
+            <button@e1>flip</button>
+            <b@e2>1</b>
+            <i@e3>0</i>
+            -- click i@e3 --
+            <button@e1>flip</button>
+            <b@e2>1</b>
+            <i@e3>10</i>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <i@e4>0</i>
+            <b@e5>0</b>
+            -- click i@e4 --
+            <button@e1>flip</button>
+            <i@e4>10</i>
+            <b@e5>0</b>
+            -- click b@e5 --
+            <button@e1>flip</button>
+            <i@e4>10</i>
+            <b@e5>1</b>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <b@e6>0</b>
+            <i@e7>0</i>
+            -- click b@e6 --
+            <button@e1>flip</button>
+            <b@e6>1</b>
+            <i@e7>0</i>
+        "#]],
+    );
+}
+
+#[test]
+fn state_of_lambdas_in_an_array_follows_the_key_of_the_loop_that_applies_them() {
+    check(
+        indoc! {r#"
+            record Item {
+              label: String,
+              show: fn() -> Html,
+            }
+
+            page Test {
+              fn body() -> Html {
+                let (flipped, set_flipped) = state!(false);
+                let flip = mut fn() { set_flipped(fn(curr) { !curr }) };
+                let first = Item {
+                  label: "A",
+                  show: fn() {
+                    let (count, set_count) = state!(0);
+                    let incr = mut fn() { set_count(fn(curr) { curr + 1 }) };
+                    <b on:click={incr}>{count.to_string()}</b>
+                  },
+                };
+                let second = Item {
+                  label: "B",
+                  show: fn() {
+                    let (count, set_count) = state!(0);
+                    let incr = mut fn() { set_count(fn(curr) { curr + 10 }) };
+                    <i on:click={incr}>{count.to_string()}</i>
+                  },
+                };
+                let items = match flipped {
+                  true => [second, first],
+                  false => [first, second],
+                };
+                <>
+                  <button on:click={flip}>flip</button>
+                  {for item in items key item.label {
+                    let show = item.show;
+                    show()
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(3),
+            Event::Click(1),
+            Event::Click(2),
+            Event::Click(3),
+            Event::Click(1),
+            Event::Click(2),
+        ],
+        expect![[r#"
+            -- render --
+            <button@e1>flip</button>
+            <b@e2>0</b>
+            <i@e3>0</i>
+            -- click b@e2 --
+            <button@e1>flip</button>
+            <b@e2>1</b>
+            <i@e3>0</i>
+            -- click i@e3 --
+            <button@e1>flip</button>
+            <b@e2>1</b>
+            <i@e3>10</i>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <i@e3>10</i>
+            <b@e2>1</b>
+            -- click b@e2 --
+            <button@e1>flip</button>
+            <i@e3>10</i>
+            <b@e2>2</b>
+            -- click i@e3 --
+            <button@e1>flip</button>
+            <i@e3>20</i>
+            <b@e2>2</b>
+            -- click button@e1 --
+            <button@e1>flip</button>
+            <b@e2>2</b>
+            <i@e3>20</i>
+            -- click b@e2 --
+            <button@e1>flip</button>
+            <b@e2>3</b>
+            <i@e3>20</i>
+        "#]],
+    );
+}
+
+#[test]
+fn an_arm_stays_when_the_updates_of_a_click_leave_its_subject_the_same() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (a, set_a) = state!(0);
+                let (b, set_b) = state!(0);
+                let (c, _) = state!(0);
+                let rest = b + c;
+                let sum = a + rest;
+                let shift = mut fn() {
+                  set_a(fn(curr) { curr + 1 });
+                  set_b(fn(curr) { curr - 1 })
+                };
+
+                <>
+                  <b on:click={shift}>shift</b>
+                  {match sum == 0 {
+                    true => <p>same</p>,
+                    false => <p>other</p>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>shift</b>
+            <p@e2>same</p>
+            -- click b@e1 --
+            <b@e1>shift</b>
+            <p@e2>same</p>
+        "#]],
+    );
+}
+
+#[test]
+fn the_rows_a_loop_keeps_show_state_bound_outside_the_loop() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (count, set_count) = state!(0);
+                let incr_count = mut fn() {
+                  set_count(fn(curr) { curr + 1 })
+                };
+
+                <>
+                  <b on:click={incr_count}>raise</b>
+                  {for id in [1, 2] {
+                    <p>{id.to_string()}:{count.to_string()}</p>
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>raise</b>
+            <p@e2>1:0</p>
+            <p@e3>2:0</p>
+            -- click b@e1 --
+            <b@e1>raise</b>
+            <p@e2>1:1</p>
+            <p@e3>2:1</p>
+        "#]],
+    );
+}
+
+#[test]
+fn an_arm_stays_when_the_value_its_pattern_binds_changes() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (picked, set_picked) = state!(Some(0));
+                let raise = mut fn() {
+                  set_picked(fn(curr) {
+                    match curr {
+                      Some(n) => Some(n + 1),
+                      None => None,
+                    }
+                  })
+                };
+
+                <>
+                  <b on:click={raise}>raise</b>
+                  {match picked {
+                    Some(n) => <p>{n.to_string()}</p>,
+                    None => <i>none</i>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>raise</b>
+            <p@e2>0</p>
+            -- click b@e1 --
+            <b@e1>raise</b>
+            <p@e2>1</p>
+        "#]],
+    );
+}
+
+#[test]
+fn render_closures_in_an_array_applied_outside_a_match_keep_their_state_and_elements() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (first, set_first) = state!(true);
+                let flip = mut fn() {
+                  set_first(fn(curr) { !curr })
+                };
+                let counters = [
+                  render fn() -> Html {
+                    let (count, set_count) = state!(0);
+                    let incr_count = mut fn() {
+                      set_count(fn(curr) { curr + 1 })
+                    };
+                    <button on:click={incr_count}>A:{count.to_string()}</button>
+                  },
+                  render fn() -> Html {
+                    let (count, set_count) = state!(0);
+                    let incr_count = mut fn() {
+                      set_count(fn(curr) { curr + 1 })
+                    };
+                    <button on:click={incr_count}>B:{count.to_string()}</button>
+                  },
+                ];
+                let show_a = counters.get(0).unwrap_or(render fn() -> Html { <></> });
+                let show_b = counters.get(1).unwrap_or(render fn() -> Html { <></> });
+                let a = show_a();
+                let b = show_b();
+
+                <>
+                  <b on:click={flip}>flip</b>
+                  {match first {
+                    true => a,
+                    false => b,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(3),
+            Event::Click(3),
+            Event::Click(1),
+            Event::Click(2),
+            Event::Click(1),
+        ],
+        expect![[r#"
+            -- render --
+            <b@e1>flip</b>
+            <button@e2>A:0</button>
+            -- click button@e2 --
+            <b@e1>flip</b>
+            <button@e2>A:1</button>
+            -- click b@e1 --
+            <b@e1>flip</b>
+            <button@e3>B:0</button>
+            -- click button@e3 --
+            <b@e1>flip</b>
+            <button@e3>B:1</button>
+            -- click button@e3 --
+            <b@e1>flip</b>
+            <button@e3>B:2</button>
+            -- click b@e1 --
+            <b@e1>flip</b>
+            <button@e2>A:1</button>
+            -- click button@e2 --
+            <b@e1>flip</b>
+            <button@e2>A:2</button>
+            -- click b@e1 --
+            <b@e1>flip</b>
+            <button@e3>B:2</button>
+        "#]],
+    );
+}
+
+#[test]
+fn a_match_keeps_its_arm_when_a_nested_match_changes_arm_and_gives_the_same_value() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (entered, set_entered) = state!(false);
+                let (n, set_n) = state!(0);
+                let enter = mut fn() {
+                  set_entered(fn(_) { true })
+                };
+                let raise = mut fn() {
+                  set_n(fn(curr) { curr + 1 })
+                };
+                let zero = match entered {
+                  true => match n == 0 {
+                    true => n,
+                    false => 0,
+                  },
+                  false => 0,
+                };
+
+                <>
+                  <b on:click={enter}>enter</b>
+                  <i on:click={raise}>raise</i>
+                  {match zero == 0 {
+                    true => <p>zero</p>,
+                    false => <p>nonzero</p>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <b@e1>enter</b>
+            <i@e2>raise</i>
+            <p@e3>zero</p>
+            -- click b@e1 --
+            <b@e1>enter</b>
+            <i@e2>raise</i>
+            <p@e3>zero</p>
+            -- click i@e2 --
+            <b@e1>enter</b>
+            <i@e2>raise</i>
+            <p@e3>zero</p>
+        "#]],
+    );
+}
+
+#[test]
+fn a_text_stays_when_the_match_takes_an_arm_that_gives_the_same_value() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (picked, set_picked) = state!(Some("none"));
+                let clear = mut fn() {
+                  set_picked(fn(_) { None })
+                };
+                let shown = match picked {
+                  Some(s) => s,
+                  None => "none",
+                };
+
+                <>
+                  <b on:click={clear}>clear</b>
+                  <p>{shown}</p>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>clear</b>
+            <p@e2>none</p>
+            -- click b@e1 --
+            <b@e1>clear</b>
+            <p@e2>none</p>
+        "#]],
+    );
+}
+
+#[test]
+fn text_reading_a_nested_match_in_an_arm() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (entered, set_entered) = state!(false);
+                let (on, set_on) = state!(false);
+                let enter = mut fn() {
+                  set_entered(fn(_) { true })
+                };
+                let flip = mut fn() {
+                  set_on(fn(curr) { !curr })
+                };
+                let inner = match entered {
+                  true => match on {
+                    true => "A",
+                    false => "B",
+                  },
+                  false => "-",
+                };
+                let mark = match on {
+                  true => "1",
+                  false => "0",
+                };
+
+                <>
+                  <b on:click={enter}>enter</b>
+                  <i on:click={flip}>flip</i>
+                  <p>{inner + mark}</p>
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <b@e1>enter</b>
+            <i@e2>flip</i>
+            <p@e3>-0</p>
+            -- click b@e1 --
+            <b@e1>enter</b>
+            <i@e2>flip</i>
+            <p@e3>B0</p>
+            -- click i@e2 --
+            <b@e1>enter</b>
+            <i@e2>flip</i>
+            <p@e3>A1</p>
+        "#]],
+    );
+}
+
+#[test]
+fn state_bound_in_an_arm_takes_the_latest_value_of_a_nested_match() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (entered, set_entered) = state!(false);
+                let (on, set_on) = state!(false);
+                let enter = mut fn() {
+                  set_entered(fn(_) { true })
+                };
+                let flip = mut fn() {
+                  set_on(fn(curr) { !curr })
+                };
+                let inner = match entered {
+                  true => match on {
+                    true => "A",
+                    false => "B",
+                  },
+                  false => "-",
+                };
+
+                <>
+                  <b on:click={enter}>enter</b>
+                  <i on:click={flip}>flip</i>
+                  {match on {
+                    true => {
+                      let (first, _) = state!(inner);
+                      <p>{first}</p>
+                    },
+                    false => <p>off</p>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <b@e1>enter</b>
+            <i@e2>flip</i>
+            <p@e3>off</p>
+            -- click b@e1 --
+            <b@e1>enter</b>
+            <i@e2>flip</i>
+            <p@e3>off</p>
+            -- click i@e2 --
+            <b@e1>enter</b>
+            <i@e2>flip</i>
+            <p@e4>A</p>
+        "#]],
+    );
+}
+
+#[test]
+fn nested_loops_over_the_same_keys_both_follow_a_reorder() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (keys, set_keys) = state!(["A", "B"]);
+                let flip = mut fn() {
+                  set_keys(fn(_) { ["B", "A"] })
+                };
+
+                <>
+                  <b on:click={flip}>flip</b>
+                  {for row in keys key row {
+                    {for col in keys key col {
+                      <i>{row + col}</i>
+                    }}
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>flip</b>
+            <i@e2>AA</i>
+            <i@e3>AB</i>
+            <i@e4>BA</i>
+            <i@e5>BB</i>
+            -- click b@e1 --
+            <b@e1>flip</b>
+            <i@e5>BB</i>
+            <i@e4>BA</i>
+            <i@e3>AB</i>
+            <i@e2>AA</i>
+        "#]],
+    );
+}
+
+#[test]
+fn state_bound_in_an_arm_takes_the_latest_value_that_an_arm_two_matches_out_binds() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (picked, set_picked) = state!(Some(1));
+                let (open, _) = state!(true);
+                let (n, set_n) = state!(0);
+                let both = mut fn() {
+                  set_n(fn(_) { 1 });
+                  set_picked(fn(_) { Some(2) })
+                };
+
+                <>
+                  <b on:click={both}>both</b>
+                  {match picked {
+                    Some(x) => <>
+                      <u>{x.to_string()}</u>
+                      {match open {
+                        true => match n < 1 {
+                          true => <p>off</p>,
+                          false => {
+                            let (kept, _) = state!(x);
+                            <p>{kept.to_string()}</p>
+                          },
+                        },
+                        false => <p>closed</p>,
+                      }}
+                    </>,
+                    None => <p>none</p>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1)],
+        expect![[r#"
+            -- render --
+            <b@e1>both</b>
+            <u@e2>1</u>
+            <p@e3>off</p>
+            -- click b@e1 --
+            <b@e1>both</b>
+            <u@e2>2</u>
+            <p@e4>2</p>
+        "#]],
+    );
+}
+
+#[test]
+fn state_bound_in_an_arm_starts_when_the_match_takes_the_arm_before_anything_reads_its_value() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (entered, set_entered) = state!(false);
+                let (shown, set_shown) = state!(false);
+                let (n, set_n) = state!(0);
+                let enter = mut fn() {
+                  set_entered(fn(_) { true })
+                };
+                let raise = mut fn() {
+                  set_n(fn(curr) { curr + 1 })
+                };
+                let show = mut fn() {
+                  set_shown(fn(_) { true })
+                };
+                let first = match entered {
+                  true => {
+                    let (kept, _) = state!(n);
+                    kept
+                  },
+                  false => 0,
+                };
+
+                <>
+                  <b on:click={enter}>enter</b>
+                  <i on:click={raise}>raise</i>
+                  <u on:click={show}>show</u>
+                  {match shown {
+                    true => <p>{first.to_string()}</p>,
+                    false => <p>off</p>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[
+            Event::Click(2),
+            Event::Click(1),
+            Event::Click(2),
+            Event::Click(3),
+        ],
+        expect![[r#"
+            -- render --
+            <b@e1>enter</b>
+            <i@e2>raise</i>
+            <u@e3>show</u>
+            <p@e4>off</p>
+            -- click i@e2 --
+            <b@e1>enter</b>
+            <i@e2>raise</i>
+            <u@e3>show</u>
+            <p@e4>off</p>
+            -- click b@e1 --
+            <b@e1>enter</b>
+            <i@e2>raise</i>
+            <u@e3>show</u>
+            <p@e4>off</p>
+            -- click i@e2 --
+            <b@e1>enter</b>
+            <i@e2>raise</i>
+            <u@e3>show</u>
+            <p@e4>off</p>
+            -- click u@e3 --
+            <b@e1>enter</b>
+            <i@e2>raise</i>
+            <u@e3>show</u>
+            <p@e5>1</p>
+        "#]],
+    );
+}
+
+#[test]
+fn state_bound_in_an_arm_takes_the_latest_value_of_a_nested_match_that_binds_state_in_an_arm() {
+    check(
+        indoc! {r#"
+            page Test {
+              fn body() -> Html {
+                let (entered, set_entered) = state!(false);
+                let (on, set_on) = state!(false);
+                let enter = mut fn() {
+                  set_entered(fn(_) { true })
+                };
+                let flip = mut fn() {
+                  set_on(fn(curr) { !curr })
+                };
+                let inner = match entered {
+                  true => match on {
+                    true => {
+                      let (kept, _) = state!("A");
+                      kept
+                    },
+                    false => "B",
+                  },
+                  false => "-",
+                };
+
+                <>
+                  <b on:click={enter}>enter</b>
+                  <i on:click={flip}>flip</i>
+                  {match on {
+                    true => {
+                      let (first, _) = state!(inner);
+                      <p>{first}</p>
+                    },
+                    false => <p>off</p>,
+                  }}
+                </>
+              }
+            }
+        "#},
+        &[Event::Click(1), Event::Click(2)],
+        expect![[r#"
+            -- render --
+            <b@e1>enter</b>
+            <i@e2>flip</i>
+            <p@e3>off</p>
+            -- click b@e1 --
+            <b@e1>enter</b>
+            <i@e2>flip</i>
+            <p@e3>off</p>
+            -- click i@e2 --
+            <b@e1>enter</b>
+            <i@e2>flip</i>
+            <p@e4>A</p>
+        "#]],
+    );
+}
